@@ -1,0 +1,15 @@
+:root {
+  --chat-bg: #000000;
+  --chat-surface: #292a29;
+  --chat-surface-dim: rgba(43, 43, 43, 0.58);
+  --chat-border: rgba(255, 255, 255, 0.32);
+  --chat-border-sidebar: #4f4f4f;
+  --chat-button: #898989;
+  --chat-text: #dddddd;
+  --chat-text-muted: rgba(255, 255, 255, 0.7);
+  --chat-radius-pill: 25px;
+  --chat-radius-card: 16px;
+  --chat-sidebar-width: 297px;
+  --chat-topbar-height: 76px;
+  --chat-input-height: 50px;
+}
