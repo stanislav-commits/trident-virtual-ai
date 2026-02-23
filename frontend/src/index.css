@@ -1,5 +1,6 @@
 @import './styles/theme.css';
 @import './styles/chat.css';
+@import './styles/admin-panel.css';
 
 *,
 *::before,
