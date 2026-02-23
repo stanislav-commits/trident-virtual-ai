@@ -1,0 +1,69 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  admin
+  user
+}
+
+model User {
+  id           String   @id @default(cuid())
+  userId       String   @unique @map("user_id")
+  passwordHash String   @map("password_hash")
+  role         Role     @default(user)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+model MetricDefinition {
+  key       String   @id @db.VarChar(50)
+  label     String   @db.VarChar(100)
+  unit      String?  @db.VarChar(20)
+  dataType  String   @default("numeric") @map("data_type") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  configs ShipMetricsConfig[]
+}
+
+model Ship {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @db.VarChar(255)
+  serialNumber  String?  @unique @map("serial_number") @db.VarChar(100)
+  lastTelemetry Json     @default("{}") @map("last_telemetry")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  metricsConfig ShipMetricsConfig[]
+}
+
+model ShipMetricsConfig {
+  shipId    String @map("ship_id") @db.Uuid
+  metricKey String @map("metric_key") @db.VarChar(50)
+  isActive  Boolean @default(true) @map("is_active")
+
+  ship   Ship             @relation(fields: [shipId], references: [id], onDelete: Cascade)
+  metric MetricDefinition @relation(fields: [metricKey], references: [key])
+
+  @@id([shipId, metricKey])
+}
+
+model TelemetryHistory {
+  id        BigInt   @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at")
+  shipId    String   @map("ship_id") @db.Uuid
+  payload   Json
+
+  @@id([id, createdAt])
+  @@map("telemetry_history")
+}
