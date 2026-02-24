@@ -39,7 +39,9 @@ export type UserListItem = {
   id: string;
   userId: string;
   role: string;
+  shipId: string | null;
   createdAt: string;
+  ship?: { id: string; name: string } | null;
 };
 
 export async function getUsers(token: string): Promise<UserListItem[]> {
@@ -94,14 +96,21 @@ export async function deleteUser(id: string, token: string): Promise<void> {
 export type MetricDefinitionItem = {
   key: string;
   label: string;
+  description: string | null;
   unit: string | null;
   dataType: string;
+  createdAt?: string;
 };
 
 export type ShipMetricsConfigItem = {
   metricKey: string;
   isActive: boolean;
   metric?: { key: string; label: string; unit: string | null };
+};
+
+export type ShipAssignedUserItem = {
+  id: string;
+  userId: string;
 };
 
 export type ShipListItem = {
@@ -111,6 +120,7 @@ export type ShipListItem = {
   lastTelemetry: Record<string, unknown>;
   updatedAt: string;
   metricsConfig: ShipMetricsConfigItem[];
+  assignedUsers: ShipAssignedUserItem[];
 };
 
 export async function getMetricDefinitions(
@@ -121,6 +131,78 @@ export async function getMetricDefinitions(
   return res.json();
 }
 
+export async function getMetrics(
+  token: string,
+): Promise<MetricDefinitionItem[]> {
+  const res = await fetchWithAuth('metrics', { token });
+  if (!res.ok) throw new Error('Failed to fetch metrics');
+  return res.json();
+}
+
+export type CreateMetricBody = {
+  key: string;
+  label: string;
+  description?: string;
+  unit?: string;
+  dataType?: string;
+};
+
+export async function createMetric(
+  body: CreateMetricBody,
+  token: string,
+): Promise<MetricDefinitionItem> {
+  const res = await fetchWithAuth('metrics', {
+    token,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? 'Failed to create metric');
+  }
+  return res.json();
+}
+
+export type UpdateMetricBody = {
+  label?: string;
+  description?: string;
+  unit?: string;
+  dataType?: string;
+};
+
+export async function updateMetric(
+  key: string,
+  body: UpdateMetricBody,
+  token: string,
+): Promise<MetricDefinitionItem> {
+  const res = await fetchWithAuth(`metrics/${encodeURIComponent(key)}`, {
+    token,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? 'Failed to update metric');
+  }
+  return res.json();
+}
+
+export async function deleteMetric(
+  key: string,
+  token: string,
+): Promise<void> {
+  const res = await fetchWithAuth(`metrics/${encodeURIComponent(key)}`, {
+    token,
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? 'Failed to delete metric');
+  }
+}
+
 export async function getShips(token: string): Promise<ShipListItem[]> {
   const res = await fetchWithAuth('ships', { token });
   if (!res.ok) throw new Error('Failed to fetch ships');
@@ -128,7 +210,7 @@ export async function getShips(token: string): Promise<ShipListItem[]> {
 }
 
 export async function createShip(
-  body: { name: string; serialNumber?: string; metricKeys: string[] },
+  body: { name: string; serialNumber?: string; metricKeys: string[]; userIds?: string[] },
   token: string,
 ): Promise<ShipListItem> {
   const res = await fetchWithAuth('ships', {
@@ -158,7 +240,7 @@ export async function getShip(
 
 export async function updateShip(
   id: string,
-  body: { name?: string; serialNumber?: string | null; metricKeys?: string[] },
+  body: { name?: string; serialNumber?: string | null; metricKeys?: string[]; userIds?: string[] },
   token: string,
 ): Promise<ShipListItem> {
   const res = await fetchWithAuth(`ships/${id}`, {
