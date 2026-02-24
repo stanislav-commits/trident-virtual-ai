@@ -22,7 +22,10 @@ model User {
   userId       String   @unique @map("user_id")
   passwordHash String   @map("password_hash")
   role         Role     @default(user)
+  shipId       String?  @map("ship_id") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at")
+
+  ship Ship? @relation(fields: [shipId], references: [id], onDelete: SetNull)
 
   @@map("users")
 }
@@ -30,6 +33,7 @@ model User {
 model MetricDefinition {
   key       String   @id @db.VarChar(50)
   label     String   @db.VarChar(100)
+  description String?  @db.Text
   unit      String?  @db.VarChar(20)
   dataType  String   @default("numeric") @map("data_type") @db.VarChar(20)
   createdAt DateTime @default(now()) @map("created_at")
@@ -38,13 +42,29 @@ model MetricDefinition {
 }
 
 model Ship {
-  id            String   @id @default(uuid()) @db.Uuid
-  name          String   @db.VarChar(255)
-  serialNumber  String?  @unique @map("serial_number") @db.VarChar(100)
-  lastTelemetry Json     @default("{}") @map("last_telemetry")
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String   @db.VarChar(255)
+  serialNumber       String?  @unique @map("serial_number") @db.VarChar(100)
+  lastTelemetry      Json     @default("{}") @map("last_telemetry")
+  ragflowDatasetId   String?  @map("ragflow_dataset_id") @db.VarChar(255)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
 
+  assignedUsers User[]
   metricsConfig ShipMetricsConfig[]
+  manuals       ShipManual[]
+}
+
+model ShipManual {
+  id                 String   @id @default(cuid())
+  shipId             String   @map("ship_id") @db.Uuid
+  ragflowDocumentId  String   @map("ragflow_document_id") @db.VarChar(255)
+  filename           String   @db.VarChar(500)
+  uploadedAt         DateTime @default(now()) @map("uploaded_at")
+
+  ship Ship @relation(fields: [shipId], references: [id], onDelete: Cascade)
+
+  @@unique([shipId, ragflowDocumentId])
+  @@map("ship_manuals")
 }
 
 model ShipMetricsConfig {
@@ -58,9 +78,10 @@ model ShipMetricsConfig {
   @@id([shipId, metricKey])
 }
 
+// Partitioned by RANGE(created_at) in DB; do not change createdAt type or Prisma will generate breaking ALTERs.
 model TelemetryHistory {
   id        BigInt   @default(autoincrement())
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   shipId    String   @map("ship_id") @db.Uuid
   payload   Json
 

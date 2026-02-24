@@ -14,7 +14,7 @@ export class ShipsService {
   async getMetricDefinitions() {
     return this.prisma.metricDefinition.findMany({
       orderBy: { key: 'asc' },
-      select: { key: true, label: true, unit: true, dataType: true },
+      select: { key: true, label: true, description: true, unit: true, dataType: true },
     });
   }
 
@@ -30,6 +30,27 @@ export class ShipsService {
         throw new BadRequestException(
           `Unknown metric keys: ${invalid.join(', ')}`,
         );
+      }
+    }
+
+    const userIds = dto.userIds ?? [];
+    if (userIds.length) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, role: true, shipId: true },
+      });
+      const foundIds = new Set(users.map((u) => u.id));
+      const missing = userIds.filter((id) => !foundIds.has(id));
+      if (missing.length) {
+        throw new BadRequestException(`User(s) not found: ${missing.join(', ')}`);
+      }
+      const notUserRole = users.filter((u) => u.role !== 'user');
+      if (notUserRole.length) {
+        throw new BadRequestException('Only users with role "user" can be assigned to a ship');
+      }
+      const alreadyAssigned = users.filter((u) => u.shipId != null);
+      if (alreadyAssigned.length) {
+        throw new BadRequestException('Some users are already assigned to another ship');
       }
     }
 
@@ -49,9 +70,17 @@ export class ShipsService {
       },
       include: {
         metricsConfig: { select: { metricKey: true, isActive: true } },
+        assignedUsers: { select: { id: true, userId: true } },
       },
     });
-    return ship;
+
+    if (userIds.length) {
+      await this.prisma.user.updateMany({
+        where: { id: { in: userIds } },
+        data: { shipId: ship.id },
+      });
+    }
+    return this.findOne(ship.id);
   }
 
   async findAll() {
@@ -59,6 +88,7 @@ export class ShipsService {
       orderBy: { updatedAt: 'desc' },
       include: {
         metricsConfig: { select: { metricKey: true, isActive: true } },
+        assignedUsers: { select: { id: true, userId: true } },
       },
     });
   }
@@ -68,9 +98,9 @@ export class ShipsService {
       where: { id },
       include: {
         metricsConfig: {
-          select: { metricKey: true, isActive: true },
-          include: { metric: { select: { key: true, label: true, unit: true } } },
+          include: { metric: { select: { key: true, label: true, description: true, unit: true } } },
         },
+        assignedUsers: { select: { id: true, userId: true } },
       },
     });
     if (!ship) throw new NotFoundException('Ship not found');
@@ -95,6 +125,27 @@ export class ShipsService {
       }
     }
 
+    const userIds = dto.userIds ?? undefined;
+    if (userIds !== undefined && userIds.length > 0) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, role: true, shipId: true },
+      });
+      const foundIds = new Set(users.map((u) => u.id));
+      const missing = userIds.filter((uid) => !foundIds.has(uid));
+      if (missing.length) {
+        throw new BadRequestException(`User(s) not found: ${missing.join(', ')}`);
+      }
+      const notAssignable = users.filter(
+        (u) => u.role !== 'user' || (u.shipId != null && u.shipId !== id),
+      );
+      if (notAssignable.length) {
+        throw new BadRequestException(
+          'Only users with role "user" can be assigned; some are already on another ship',
+        );
+      }
+    }
+
     await this.prisma.$transaction(async (tx) => {
       const updateData: Parameters<typeof tx.ship.update>[0]['data'] = {};
       if (dto.name !== undefined) updateData.name = dto.name;
@@ -112,6 +163,18 @@ export class ShipsService {
               metricKey,
               isActive: true,
             })),
+          });
+        }
+      }
+      if (userIds !== undefined) {
+        await tx.user.updateMany({
+          where: { shipId: id },
+          data: { shipId: null },
+        });
+        if (userIds.length) {
+          await tx.user.updateMany({
+            where: { id: { in: userIds } },
+            data: { shipId: id },
           });
         }
       }

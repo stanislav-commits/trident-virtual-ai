@@ -29,7 +29,14 @@ export class UsersService {
   async findAll(excludeId: string) {
     const users = await this.prisma.user.findMany({
       where: { id: { not: excludeId } },
-      select: { id: true, userId: true, role: true, createdAt: true },
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        shipId: true,
+        createdAt: true,
+        ship: { select: { id: true, name: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     return users;
