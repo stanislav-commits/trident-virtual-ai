@@ -11,7 +11,12 @@
   background: var(--chat-bg);
   color: var(--chat-text);
   overflow: hidden;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
 }
 
 /* ── Sidebar ── */
@@ -94,7 +99,9 @@
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   position: relative;
 }
 
@@ -110,7 +117,7 @@
 }
 
 .admin-panel__nav-item--active::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 50%;
@@ -156,7 +163,10 @@
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .admin-panel__back:hover {
@@ -322,7 +332,9 @@
   color: var(--chat-text);
   font-size: 0.9rem;
   min-width: 120px;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
   outline: none;
   font-family: inherit;
 }
@@ -353,7 +365,7 @@
 }
 
 .admin-panel__code-inline {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.8rem;
   background: rgba(0, 0, 0, 0.35);
   padding: 2px 8px;
@@ -379,6 +391,70 @@
   color: var(--chat-text);
 }
 
+/* ── File upload (custom) ── */
+.admin-panel__file-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.admin-panel__file-input {
+  position: absolute;
+  width: 0.1px;
+  height: 0.1px;
+  opacity: 0;
+  overflow: hidden;
+  z-index: -1;
+}
+
+.admin-panel__file-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--chat-text);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+  font-family: inherit;
+  min-width: 160px;
+}
+
+.admin-panel__file-trigger:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.admin-panel__file-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-panel__file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-panel__file-list-item {
+  font-size: 0.85rem;
+  color: var(--chat-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Buttons ── */
 .admin-panel__btn {
   display: inline-flex;
@@ -390,7 +466,11 @@
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, filter 0.15s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    filter 0.15s,
+    opacity 0.15s;
   white-space: nowrap;
   font-family: inherit;
 }
@@ -461,7 +541,9 @@
 }
 
 @keyframes ap-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .admin-panel__muted {
@@ -519,7 +601,7 @@
 }
 
 .admin-panel__td--userid {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.85rem;
   font-weight: 500;
   overflow: hidden;
@@ -595,7 +677,7 @@
 
 /* ── Code / monospace ── */
 .admin-panel__code {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.8rem;
   background: rgba(0, 0, 0, 0.35);
   padding: 3px 8px;
@@ -628,7 +710,9 @@
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   font-family: inherit;
 }
 
@@ -716,7 +800,9 @@
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   font-size: 0.875rem;
   color: var(--chat-text);
 }
@@ -773,6 +859,10 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+.admin-panel__modal--wide {
+  max-width: 480px;
 }
 
 .admin-panel__modal-icon {
@@ -905,5 +995,112 @@
   .admin-panel__th:nth-child(2),
   .admin-panel__td:nth-child(2) {
     display: none;
+  }
+}
+
+/* ── Toast Notification ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  max-width: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: translateY(120%) scale(0.95);
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.toast--visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.toast--error {
+  border-color: rgba(229, 115, 115, 0.28);
+  background: rgba(229, 115, 115, 0.08);
+}
+
+.toast--error .toast__icon {
+  color: #ef9a9a;
+}
+
+.toast--success {
+  border-color: rgba(129, 199, 132, 0.28);
+  background: rgba(129, 199, 132, 0.08);
+}
+
+.toast--success .toast__icon {
+  color: #81c784;
+}
+
+.toast--info {
+  border-color: rgba(100, 181, 246, 0.28);
+  background: rgba(100, 181, 246, 0.08);
+}
+
+.toast--info .toast__icon {
+  color: #64b5f6;
+}
+
+.toast__content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.toast__icon {
+  flex-shrink: 0;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.toast__message {
+  word-break: break-word;
+}
+
+.toast__close {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 1rem;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  padding: 0;
+}
+
+.toast__close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 640px) {
+  .toast {
+    bottom: 16px;
+    right: 16px;
+    left: 16px;
+    max-width: none;
   }
 }
