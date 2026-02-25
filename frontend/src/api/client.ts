@@ -1,22 +1,23 @@
-import type { AuthUser } from '../types/auth';
+import type { AuthUser } from "../types/auth";
 
-const getBaseUrl = () => import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const getBaseUrl = () =>
+  import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 export function getApiUrl(path: string): string {
-  const base = getBaseUrl().replace(/\/$/, '');
-  const p = path.startsWith('/') ? path : `/${path}`;
+  const base = getBaseUrl().replace(/\/$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
 }
 
 export async function login(userId: string, password: string) {
-  const res = await fetch(getApiUrl('auth/login'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const res = await fetch(getApiUrl("auth/login"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId, password }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Login failed');
+    throw new Error(err.message ?? "Login failed");
   }
   return res.json() as Promise<{ access_token: string; user: AuthUser }>;
 }
@@ -45,24 +46,27 @@ export type UserListItem = {
 };
 
 export async function getUsers(token: string): Promise<UserListItem[]> {
-  const res = await fetchWithAuth('users', { token });
-  if (!res.ok) throw new Error('Failed to fetch users');
+  const res = await fetchWithAuth("users", { token });
+  if (!res.ok) throw new Error("Failed to fetch users");
   return res.json();
 }
 
 export async function createUser(
-  role: 'user' | 'admin',
+  role: "user" | "admin",
   token: string,
+  shipId?: string,
 ): Promise<{ id: string; userId: string; password: string }> {
-  const res = await fetchWithAuth('users', {
+  const body: Record<string, unknown> = { role };
+  if (shipId) body.shipId = shipId;
+  const res = await fetchWithAuth("users", {
     token,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role }),
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to create user');
+    throw new Error(err.message ?? "Failed to create user");
   }
   return res.json();
 }
@@ -73,11 +77,11 @@ export async function resetPassword(
 ): Promise<{ userId: string; password: string }> {
   const res = await fetchWithAuth(`users/${id}/reset-password`, {
     token,
-    method: 'PATCH',
+    method: "PATCH",
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to reset password');
+    throw new Error(err.message ?? "Failed to reset password");
   }
   return res.json();
 }
@@ -85,11 +89,11 @@ export async function resetPassword(
 export async function deleteUser(id: string, token: string): Promise<void> {
   const res = await fetchWithAuth(`users/${id}`, {
     token,
-    method: 'DELETE',
+    method: "DELETE",
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to delete user');
+    throw new Error(err.message ?? "Failed to delete user");
   }
 }
 
@@ -113,6 +117,13 @@ export type ShipAssignedUserItem = {
   userId: string;
 };
 
+export type ShipManualItem = {
+  id: string;
+  ragflowDocumentId: string;
+  filename: string;
+  uploadedAt: string;
+};
+
 export type ShipListItem = {
   id: string;
   name: string;
@@ -121,21 +132,23 @@ export type ShipListItem = {
   updatedAt: string;
   metricsConfig: ShipMetricsConfigItem[];
   assignedUsers: ShipAssignedUserItem[];
+  ragflowDatasetId?: string | null;
+  manuals?: ShipManualItem[];
 };
 
 export async function getMetricDefinitions(
   token: string,
 ): Promise<MetricDefinitionItem[]> {
-  const res = await fetchWithAuth('ships/metric-definitions', { token });
-  if (!res.ok) throw new Error('Failed to fetch metric definitions');
+  const res = await fetchWithAuth("ships/metric-definitions", { token });
+  if (!res.ok) throw new Error("Failed to fetch metric definitions");
   return res.json();
 }
 
 export async function getMetrics(
   token: string,
 ): Promise<MetricDefinitionItem[]> {
-  const res = await fetchWithAuth('metrics', { token });
-  if (!res.ok) throw new Error('Failed to fetch metrics');
+  const res = await fetchWithAuth("metrics", { token });
+  if (!res.ok) throw new Error("Failed to fetch metrics");
   return res.json();
 }
 
@@ -151,15 +164,15 @@ export async function createMetric(
   body: CreateMetricBody,
   token: string,
 ): Promise<MetricDefinitionItem> {
-  const res = await fetchWithAuth('metrics', {
+  const res = await fetchWithAuth("metrics", {
     token,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to create metric');
+    throw new Error(err.message ?? "Failed to create metric");
   }
   return res.json();
 }
@@ -178,50 +191,52 @@ export async function updateMetric(
 ): Promise<MetricDefinitionItem> {
   const res = await fetchWithAuth(`metrics/${encodeURIComponent(key)}`, {
     token,
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to update metric');
+    throw new Error(err.message ?? "Failed to update metric");
   }
   return res.json();
 }
 
-export async function deleteMetric(
-  key: string,
-  token: string,
-): Promise<void> {
+export async function deleteMetric(key: string, token: string): Promise<void> {
   const res = await fetchWithAuth(`metrics/${encodeURIComponent(key)}`, {
     token,
-    method: 'DELETE',
+    method: "DELETE",
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to delete metric');
+    throw new Error(err.message ?? "Failed to delete metric");
   }
 }
 
 export async function getShips(token: string): Promise<ShipListItem[]> {
-  const res = await fetchWithAuth('ships', { token });
-  if (!res.ok) throw new Error('Failed to fetch ships');
+  const res = await fetchWithAuth("ships", { token });
+  if (!res.ok) throw new Error("Failed to fetch ships");
   return res.json();
 }
 
 export async function createShip(
-  body: { name: string; serialNumber?: string; metricKeys: string[]; userIds?: string[] },
+  body: {
+    name: string;
+    serialNumber?: string;
+    metricKeys: string[];
+    userIds?: string[];
+  },
   token: string,
 ): Promise<ShipListItem> {
-  const res = await fetchWithAuth('ships', {
+  const res = await fetchWithAuth("ships", {
     token,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to create ship');
+    throw new Error(err.message ?? "Failed to create ship");
   }
   return res.json();
 }
@@ -232,26 +247,31 @@ export async function getShip(
 ): Promise<ShipListItem> {
   const res = await fetchWithAuth(`ships/${id}`, { token });
   if (!res.ok) {
-    if (res.status === 404) throw new Error('Ship not found');
-    throw new Error('Failed to fetch ship');
+    if (res.status === 404) throw new Error("Ship not found");
+    throw new Error("Failed to fetch ship");
   }
   return res.json();
 }
 
 export async function updateShip(
   id: string,
-  body: { name?: string; serialNumber?: string | null; metricKeys?: string[]; userIds?: string[] },
+  body: {
+    name?: string;
+    serialNumber?: string | null;
+    metricKeys?: string[];
+    userIds?: string[];
+  },
   token: string,
 ): Promise<ShipListItem> {
   const res = await fetchWithAuth(`ships/${id}`, {
     token,
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to update ship');
+    throw new Error(err.message ?? "Failed to update ship");
   }
   return res.json();
 }
@@ -259,10 +279,72 @@ export async function updateShip(
 export async function deleteShip(id: string, token: string): Promise<void> {
   const res = await fetchWithAuth(`ships/${id}`, {
     token,
-    method: 'DELETE',
+    method: "DELETE",
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? 'Failed to delete ship');
+    throw new Error(err.message ?? "Failed to delete ship");
   }
+}
+
+export async function uploadManual(
+  shipId: string,
+  file: File,
+  token: string,
+): Promise<ShipManualItem | ShipManualItem[]> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetchWithAuth(`ships/${shipId}/manuals`, {
+    token,
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to upload manual");
+  }
+  return res.json();
+}
+
+export async function getManuals(
+  shipId: string,
+  token: string,
+): Promise<ShipManualItem[]> {
+  const res = await fetchWithAuth(`ships/${shipId}/manuals`, { token });
+  if (!res.ok) throw new Error("Failed to fetch manuals");
+  return res.json();
+}
+
+export async function deleteManual(
+  shipId: string,
+  manualId: string,
+  token: string,
+): Promise<void> {
+  const res = await fetchWithAuth(`ships/${shipId}/manuals/${manualId}`, {
+    token,
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to delete manual");
+  }
+}
+
+export async function updateManual(
+  shipId: string,
+  manualId: string,
+  body: { filename?: string },
+  token: string,
+): Promise<ShipManualItem> {
+  const res = await fetchWithAuth(`ships/${shipId}/manuals/${manualId}`, {
+    token,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to update manual");
+  }
+  return res.json();
 }
