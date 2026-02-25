@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import type { Role } from '@prisma/client';
@@ -16,12 +20,36 @@ function generatePassword(): string {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(role: Role) {
+  async create(role: Role, shipId?: string) {
     const userId = generateUserId();
     const plainPassword = generatePassword();
     const passwordHash = await bcrypt.hash(plainPassword, 10);
+    // If creating a regular user, ensure ship-binding rules:
+    if (role === 'user') {
+      const shipsCount = await this.prisma.ship.count();
+      if (shipsCount === 0) {
+        throw new BadRequestException(
+          'No ships exist; please add a ship first',
+        );
+      }
+      if (!shipId) {
+        throw new BadRequestException(
+          'At least one ship exists; please select a ship to assign the user to',
+        );
+      }
+      const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
+      if (!ship) {
+        throw new BadRequestException('Ship not found');
+      }
+    }
+
     const user = await this.prisma.user.create({
-      data: { userId, passwordHash, role },
+      data: {
+        userId,
+        passwordHash,
+        role,
+        shipId: role === 'user' ? (shipId ?? undefined) : undefined,
+      },
     });
     return { id: user.id, userId: user.userId, password: plainPassword };
   }
