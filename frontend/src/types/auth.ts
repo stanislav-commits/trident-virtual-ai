@@ -4,6 +4,7 @@ export interface AuthUser {
   id: string;
   userId: string;
   role: Role;
+  shipId?: string | null;
 }
 
 export interface LoginResponse {

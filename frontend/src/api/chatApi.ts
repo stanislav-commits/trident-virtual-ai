@@ -1,0 +1,95 @@
+import { fetchWithAuth } from "./client";
+import type { ChatSessionDto, ChatMessageDto } from "../types/chat";
+
+export async function getChatSessions(
+  token: string,
+): Promise<ChatSessionDto[]> {
+  const res = await fetchWithAuth("chat/sessions", { token });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to fetch chat sessions");
+  }
+  return res.json();
+}
+
+export async function getChatSession(
+  sessionId: string,
+  token: string,
+): Promise<ChatSessionDto> {
+  const res = await fetchWithAuth(`chat/sessions/${sessionId}`, { token });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to fetch chat session");
+  }
+  return res.json();
+}
+
+/** Omit shipId for admin (global RAG). */
+export async function createChatSession(
+  shipId: string | undefined,
+  token: string,
+  title?: string,
+): Promise<ChatSessionDto> {
+  const body: { shipId?: string | null; title: string } = {
+    title: title || `Chat on ${new Date().toLocaleDateString()}`,
+  };
+  if (shipId != null) body.shipId = shipId;
+
+  const res = await fetchWithAuth("chat/sessions", {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to create chat session");
+  }
+  return res.json();
+}
+
+export async function sendChatMessage(
+  sessionId: string,
+  content: string,
+  token: string,
+): Promise<ChatMessageDto> {
+  const res = await fetchWithAuth(`chat/sessions/${sessionId}/messages`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: content.trim() }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to send message");
+  }
+  return res.json();
+}
+
+export async function getChatMessages(
+  sessionId: string,
+  token: string,
+): Promise<ChatMessageDto[]> {
+  const res = await fetchWithAuth(`chat/sessions/${sessionId}/messages`, {
+    token,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to fetch messages");
+  }
+  return res.json();
+}
+
+export async function deleteChatSession(
+  sessionId: string,
+  token: string,
+): Promise<void> {
+  const res = await fetchWithAuth(`chat/sessions/${sessionId}`, {
+    token,
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to delete chat session");
+  }
+}
