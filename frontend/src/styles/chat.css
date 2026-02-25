@@ -770,3 +770,118 @@
 .chat-topbar__profile-item:hover {
   background: rgba(255, 255, 255, 0.08);
 }
+
+/* Chat Sources/Citations */
+.chat-sources {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--chat-border);
+}
+
+.chat-sources__header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--chat-text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chat-sources__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-source-item {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.85rem;
+}
+
+.chat-source-item__title {
+  font-weight: 500;
+  color: var(--chat-text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.chat-source-item__page {
+  font-size: 0.75rem;
+  color: var(--chat-text-muted);
+  font-weight: normal;
+  margin-left: 8px;
+}
+
+.chat-source-item__snippet {
+  color: var(--chat-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  max-height: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.chat-source-item__count {
+  font-size: 0.75rem;
+  color: var(--chat-text-muted);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Message content and sources container */
+.chat-message__content {
+  word-break: break-word;
+}
+
+.chat-message__sources {
+  margin-top: 12px;
+}
+
+/* Loading state */
+.chat-message__loading {
+  color: var(--chat-text-muted);
+  font-style: italic;
+  font-size: 0.9rem;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Error banner */
+.chat-error-banner {
+  padding: 12px 24px;
+  margin: 0;
+  background: rgba(229, 115, 115, 0.1);
+  border-bottom: 1px solid rgba(229, 115, 115, 0.3);
+  color: #ef5350;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.chat-error-banner p {
+  margin: 0;
+}
+
+/* Empty state refinement */
+.chat-empty-state {
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--chat-text-muted);
+  font-size: 0.95rem;
+}
