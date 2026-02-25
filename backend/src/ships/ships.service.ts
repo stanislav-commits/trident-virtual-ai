@@ -2,19 +2,30 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RagflowService } from '../ragflow/ragflow.service';
 import { CreateShipDto } from './dto/create-ship.dto';
 import { UpdateShipDto } from './dto/update-ship.dto';
 
 @Injectable()
 export class ShipsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ragflow: RagflowService,
+  ) {}
 
   async getMetricDefinitions() {
     return this.prisma.metricDefinition.findMany({
       orderBy: { key: 'asc' },
-      select: { key: true, label: true, description: true, unit: true, dataType: true },
+      select: {
+        key: true,
+        label: true,
+        description: true,
+        unit: true,
+        dataType: true,
+      },
     });
   }
 
@@ -42,15 +53,21 @@ export class ShipsService {
       const foundIds = new Set(users.map((u) => u.id));
       const missing = userIds.filter((id) => !foundIds.has(id));
       if (missing.length) {
-        throw new BadRequestException(`User(s) not found: ${missing.join(', ')}`);
+        throw new BadRequestException(
+          `User(s) not found: ${missing.join(', ')}`,
+        );
       }
       const notUserRole = users.filter((u) => u.role !== 'user');
       if (notUserRole.length) {
-        throw new BadRequestException('Only users with role "user" can be assigned to a ship');
+        throw new BadRequestException(
+          'Only users with role "user" can be assigned to a ship',
+        );
       }
       const alreadyAssigned = users.filter((u) => u.shipId != null);
       if (alreadyAssigned.length) {
-        throw new BadRequestException('Some users are already assigned to another ship');
+        throw new BadRequestException(
+          'Some users are already assigned to another ship',
+        );
       }
     }
 
@@ -80,6 +97,19 @@ export class ShipsService {
         data: { shipId: ship.id },
       });
     }
+    if (this.ragflow.isConfigured()) {
+      try {
+        const datasetId = await this.ragflow.createDataset(`ship-${ship.id}`);
+        if (datasetId) {
+          await this.prisma.ship.update({
+            where: { id: ship.id },
+            data: { ragflowDatasetId: datasetId },
+          });
+        }
+      } catch {
+        // leave ragflow_dataset_id null
+      }
+    }
     return this.findOne(ship.id);
   }
 
@@ -89,6 +119,14 @@ export class ShipsService {
       include: {
         metricsConfig: { select: { metricKey: true, isActive: true } },
         assignedUsers: { select: { id: true, userId: true } },
+        manuals: {
+          select: {
+            id: true,
+            ragflowDocumentId: true,
+            filename: true,
+            uploadedAt: true,
+          },
+        },
       },
     });
   }
@@ -98,9 +136,21 @@ export class ShipsService {
       where: { id },
       include: {
         metricsConfig: {
-          include: { metric: { select: { key: true, label: true, description: true, unit: true } } },
+          include: {
+            metric: {
+              select: { key: true, label: true, description: true, unit: true },
+            },
+          },
         },
         assignedUsers: { select: { id: true, userId: true } },
+        manuals: {
+          select: {
+            id: true,
+            ragflowDocumentId: true,
+            filename: true,
+            uploadedAt: true,
+          },
+        },
       },
     });
     if (!ship) throw new NotFoundException('Ship not found');
@@ -134,7 +184,9 @@ export class ShipsService {
       const foundIds = new Set(users.map((u) => u.id));
       const missing = userIds.filter((uid) => !foundIds.has(uid));
       if (missing.length) {
-        throw new BadRequestException(`User(s) not found: ${missing.join(', ')}`);
+        throw new BadRequestException(
+          `User(s) not found: ${missing.join(', ')}`,
+        );
       }
       const notAssignable = users.filter(
         (u) => u.role !== 'user' || (u.shipId != null && u.shipId !== id),
@@ -186,6 +238,23 @@ export class ShipsService {
   async remove(id: string) {
     const ship = await this.prisma.ship.findUnique({ where: { id } });
     if (!ship) throw new NotFoundException('Ship not found');
+
+    // If ship has RAGFlow dataset, must delete it from RAGFlow first
+    if (ship.ragflowDatasetId) {
+      if (!this.ragflow.isConfigured()) {
+        throw new ServiceUnavailableException(
+          'RAGFlow service is not available',
+        );
+      }
+      try {
+        await this.ragflow.deleteDataset(ship.ragflowDatasetId);
+      } catch (error) {
+        throw new ServiceUnavailableException(
+          `Failed to delete dataset from RAGFlow: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
     await this.prisma.ship.delete({ where: { id } });
   }
 }

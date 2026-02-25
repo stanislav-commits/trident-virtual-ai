@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -6,20 +7,28 @@ import {
   Param,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateShipDto } from './dto/create-ship.dto';
+import { UpdateManualDto } from './dto/update-manual.dto';
 import { UpdateShipDto } from './dto/update-ship.dto';
+import { ManualsService } from './manuals.service';
 import { ShipsService } from './ships.service';
 
 @Controller('ships')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 export class ShipsController {
-  constructor(private readonly shipsService: ShipsService) {}
+  constructor(
+    private readonly shipsService: ShipsService,
+    private readonly manualsService: ManualsService,
+  ) {}
 
   @Get('metric-definitions')
   getMetricDefinitions() {
@@ -34,6 +43,44 @@ export class ShipsController {
   @Get()
   findAll() {
     return this.shipsService.findAll();
+  }
+
+  @Get(':id/manuals/:manualId')
+  findOneManual(@Param('id') id: string, @Param('manualId') manualId: string) {
+    return this.manualsService.findOne(id, manualId);
+  }
+
+  @Patch(':id/manuals/:manualId')
+  updateManual(
+    @Param('id') id: string,
+    @Param('manualId') manualId: string,
+    @Body() dto: UpdateManualDto,
+  ) {
+    return this.manualsService.update(id, manualId, dto);
+  }
+
+  @Delete(':id/manuals/:manualId')
+  removeManual(@Param('id') id: string, @Param('manualId') manualId: string) {
+    return this.manualsService.remove(id, manualId);
+  }
+
+  @Get(':id/manuals')
+  findAllManuals(@Param('id') id: string) {
+    return this.manualsService.findAll(id);
+  }
+
+  @Post(':id/manuals')
+  @UseInterceptors(FileInterceptor('file'))
+  createManual(
+    @Param('id') id: string,
+    @UploadedFile()
+    file: { buffer?: Buffer; originalname?: string } | undefined,
+  ) {
+    if (!file?.buffer) throw new BadRequestException('File is required');
+    return this.manualsService.create(id, {
+      buffer: file.buffer,
+      originalname: file.originalname,
+    });
   }
 
   @Get(':id')
