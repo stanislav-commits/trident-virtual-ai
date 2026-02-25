@@ -102,15 +102,15 @@ model ChatSession {
   id        String    @id @default(cuid())
   title     String?   @db.VarChar(500)
   userId    String    @map("user_id")
-  shipId    String    @map("ship_id") @db.Uuid
+  shipId    String?   @map("ship_id") @db.Uuid
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
   messages ChatMessage[]
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ship Ship @relation(fields: [shipId], references: [id], onDelete: Cascade)
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ship Ship? @relation(fields: [shipId], references: [id], onDelete: SetNull)
 
   @@index([userId, updatedAt])
   @@index([shipId])

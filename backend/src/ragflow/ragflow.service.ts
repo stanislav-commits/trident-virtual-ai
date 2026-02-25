@@ -40,7 +40,8 @@ export class RagflowService {
       throw new Error(`RAGFlow createDataset failed: ${res.status} ${err}`);
     }
     const data = (await res.json()) as { code?: number; data?: { id: string } };
-    if (data.code !== 0 || !data.data?.id) throw new Error('RAGFlow createDataset invalid response');
+    if (data.code !== 0 || !data.data?.id)
+      throw new Error('RAGFlow createDataset invalid response');
     return data.data.id;
   }
 
@@ -69,28 +70,43 @@ export class RagflowService {
       new Blob([new Uint8Array(file.buffer)]),
       file.originalname || 'document.pdf',
     );
-    const res = await fetch(`${this.baseUrl}/api/v1/datasets/${datasetId}/documents`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${RAGFLOW_API_KEY}` },
-      body: form,
-    });
+    const res = await fetch(
+      `${this.baseUrl}/api/v1/datasets/${datasetId}/documents`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${RAGFLOW_API_KEY}` },
+        body: form,
+      },
+    );
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`RAGFlow uploadDocument failed: ${res.status} ${err}`);
     }
-    const data = (await res.json()) as { code?: number; data?: { id: string; name?: string }[] };
+    const data = (await res.json()) as {
+      code?: number;
+      data?: { id: string; name?: string }[];
+    };
     if (data.code !== 0 || !Array.isArray(data.data))
       throw new Error('RAGFlow uploadDocument invalid response');
-    return data.data.map((d) => ({ id: d.id, name: d.name ?? file.originalname ?? 'document' }));
+    return data.data.map((d) => ({
+      id: d.id,
+      name: d.name ?? file.originalname ?? 'document',
+    }));
   }
 
-  async parseDocuments(datasetId: string, documentIds: string[]): Promise<void> {
+  async parseDocuments(
+    datasetId: string,
+    documentIds: string[],
+  ): Promise<void> {
     if (!documentIds.length) return;
-    const res = await fetch(`${this.baseUrl}/api/v1/datasets/${datasetId}/chunks`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({ document_ids: documentIds }),
-    });
+    const res = await fetch(
+      `${this.baseUrl}/api/v1/datasets/${datasetId}/chunks`,
+      {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({ document_ids: documentIds }),
+      },
+    );
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`RAGFlow parseDocuments failed: ${res.status} ${err}`);
@@ -100,16 +116,63 @@ export class RagflowService {
   }
 
   async deleteDocument(datasetId: string, documentId: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/api/v1/datasets/${datasetId}/documents`, {
-      method: 'DELETE',
-      headers: this.headers,
-      body: JSON.stringify({ ids: [documentId] }),
-    });
+    const res = await fetch(
+      `${this.baseUrl}/api/v1/datasets/${datasetId}/documents`,
+      {
+        method: 'DELETE',
+        headers: this.headers,
+        body: JSON.stringify({ ids: [documentId] }),
+      },
+    );
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`RAGFlow deleteDocument failed: ${res.status} ${err}`);
     }
     const data = (await res.json()) as { code?: number };
     if (data.code !== 0) throw new Error('RAGFlow deleteDocument failed');
+  }
+
+  async searchDataset(
+    datasetId: string,
+    query: string,
+    topK: number = 5,
+  ): Promise<
+    Array<{
+      id: string;
+      doc_id: string;
+      doc_name: string;
+      content: string;
+      meta?: Record<string, unknown>;
+    }>
+  > {
+    if (!this.isConfigured()) return [];
+    const res = await fetch(
+      `${this.baseUrl}/api/v1/datasets/${datasetId}/search`,
+      {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({ queries: [query], top_k: topK }),
+      },
+    );
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`RAGFlow search failed: ${res.status} ${err}`);
+    }
+    const data = (await res.json()) as {
+      code?: number;
+      data?: {
+        [key: string]: Array<{
+          id: string;
+          doc_id: string;
+          doc_name: string;
+          content: string;
+          meta?: Record<string, unknown>;
+        }>;
+      };
+    };
+    if (data.code !== 0) throw new Error('RAGFlow search failed');
+
+    const results = data.data?.[query] || [];
+    return results;
   }
 }
