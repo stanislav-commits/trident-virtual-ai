@@ -1,47 +1,51 @@
-import { useState, useCallback } from 'react';
-import type { TopBarTab } from './components/layout/TopBar';
-import { AdminPanelProvider, useAdminPanel } from './context/AdminPanelContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { AdminPanelPage } from './pages/AdminPanelPage';
-import { HomePage } from './pages/HomePage';
-import { ChatPage } from './pages/ChatPage';
-import { DatasetPage } from './pages/DatasetPage';
-import { LoginPage } from './pages/LoginPage';
+import { useState, useCallback } from "react";
+import type { TopBarTab } from "./components/layout/TopBar";
+import { AdminPanelProvider, useAdminPanel } from "./context/AdminPanelContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AdminPanelPage } from "./pages/AdminPanelPage";
+import { HomePage } from "./pages/HomePage";
+import { ChatPage } from "./pages/ChatPage";
+import { DatasetPage } from "./pages/DatasetPage";
+import { LoginPage } from "./pages/LoginPage";
 
 function AuthenticatedContent() {
   const { isOpen } = useAdminPanel();
-  const [activeTab, setActiveTab] = useState<TopBarTab>('home');
+  const [activeTab, setActiveTab] = useState<TopBarTab>("home");
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const handleTabChange = useCallback((tab: TopBarTab) => {
     setActiveTab(tab);
   }, []);
 
-  const handleStartChat = useCallback((_message: string) => {
-    setActiveTab('chats');
+  const handleStartChat = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId);
+    setActiveTab("chats");
   }, []);
 
   if (isOpen) {
     return <AdminPanelPage />;
   }
 
-  if (activeTab === 'home') {
+  if (activeTab === "home") {
     return (
       <HomePage
         activeTab={activeTab}
         onTabChange={handleTabChange}
-        onStartChat={handleStartChat}
+        onChatCreated={handleStartChat}
       />
     );
   }
 
-  if (activeTab === 'dataset') {
-    return (
-      <DatasetPage activeTab={activeTab} onTabChange={handleTabChange} />
-    );
+  if (activeTab === "dataset") {
+    return <DatasetPage activeTab={activeTab} onTabChange={handleTabChange} />;
   }
 
   return (
-    <ChatPage activeTab={activeTab} onTabChange={handleTabChange} />
+    <ChatPage
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      initialSessionId={activeSessionId}
+    />
   );
 }
 
