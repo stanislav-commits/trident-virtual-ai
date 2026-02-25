@@ -17,6 +17,12 @@ enum Role {
   user
 }
 
+enum ChatRole {
+  user
+  assistant
+  system
+}
+
 model User {
   id           String   @id @default(cuid())
   userId       String   @unique @map("user_id")
@@ -25,51 +31,54 @@ model User {
   shipId       String?  @map("ship_id") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at")
 
-  ship Ship? @relation(fields: [shipId], references: [id], onDelete: SetNull)
+  ship         Ship?         @relation(fields: [shipId], references: [id], onDelete: SetNull)
+  chatSessions ChatSession[]
 
   @@map("users")
 }
 
 model MetricDefinition {
-  key       String   @id @db.VarChar(50)
-  label     String   @db.VarChar(100)
+  key         String   @id @db.VarChar(50)
+  label       String   @db.VarChar(100)
   description String?  @db.Text
-  unit      String?  @db.VarChar(20)
-  dataType  String   @default("numeric") @map("data_type") @db.VarChar(20)
-  createdAt DateTime @default(now()) @map("created_at")
+  unit        String?  @db.VarChar(20)
+  dataType    String   @default("numeric") @map("data_type") @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at")
 
   configs ShipMetricsConfig[]
 }
 
 model Ship {
-  id                 String   @id @default(uuid()) @db.Uuid
-  name               String   @db.VarChar(255)
-  serialNumber       String?  @unique @map("serial_number") @db.VarChar(100)
-  lastTelemetry      Json     @default("{}") @map("last_telemetry")
-  ragflowDatasetId   String?  @map("ragflow_dataset_id") @db.VarChar(255)
-  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String   @db.VarChar(255)
+  serialNumber     String?  @unique @map("serial_number") @db.VarChar(100)
+  lastTelemetry    Json     @default("{}") @map("last_telemetry")
+  ragflowDatasetId String?  @map("ragflow_dataset_id") @db.VarChar(255)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
 
   assignedUsers User[]
   metricsConfig ShipMetricsConfig[]
   manuals       ShipManual[]
+  chatSessions  ChatSession[]
 }
 
 model ShipManual {
-  id                 String   @id @default(cuid())
-  shipId             String   @map("ship_id") @db.Uuid
-  ragflowDocumentId  String   @map("ragflow_document_id") @db.VarChar(255)
-  filename           String   @db.VarChar(500)
-  uploadedAt         DateTime @default(now()) @map("uploaded_at")
+  id                String   @id @default(cuid())
+  shipId            String   @map("ship_id") @db.Uuid
+  ragflowDocumentId String   @map("ragflow_document_id") @db.VarChar(255)
+  filename          String   @db.VarChar(500)
+  uploadedAt        DateTime @default(now()) @map("uploaded_at")
 
-  ship Ship @relation(fields: [shipId], references: [id], onDelete: Cascade)
+  ship              Ship                   @relation(fields: [shipId], references: [id], onDelete: Cascade)
+  contextReferences ChatContextReference[]
 
   @@unique([shipId, ragflowDocumentId])
   @@map("ship_manuals")
 }
 
 model ShipMetricsConfig {
-  shipId    String @map("ship_id") @db.Uuid
-  metricKey String @map("metric_key") @db.VarChar(50)
+  shipId    String  @map("ship_id") @db.Uuid
+  metricKey String  @map("metric_key") @db.VarChar(50)
   isActive  Boolean @default(true) @map("is_active")
 
   ship   Ship             @relation(fields: [shipId], references: [id], onDelete: Cascade)
@@ -87,4 +96,62 @@ model TelemetryHistory {
 
   @@id([id, createdAt])
   @@map("telemetry_history")
+}
+
+model ChatSession {
+  id        String    @id @default(cuid())
+  title     String?   @db.VarChar(500)
+  userId    String    @map("user_id")
+  shipId    String    @map("ship_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  messages ChatMessage[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ship Ship @relation(fields: [shipId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([shipId])
+  @@index([createdAt])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id             String    @id @default(cuid())
+  sessionId      String    @map("session_id")
+  role           ChatRole
+  content        String    @db.Text
+  ragflowContext Json?     @map("ragflow_context") // keep technical metadata
+  deletedAt      DateTime? @map("deleted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  contextReferences ChatContextReference[]
+
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
+}
+
+model ChatContextReference {
+  id           String  @id @default(cuid())
+  messageId    String  @map("message_id")
+  shipManualId String? @map("ship_manual_id")
+  chunkId      String? @map("chunk_id")
+  score        Float?
+  pageNumber   Int?    @map("page_number")
+  startOffset  Int?    @map("start_offset")
+  endOffset    Int?    @map("end_offset")
+  snippet      String? @db.Text
+  sourceTitle  String? @map("source_title")
+  sourceUrl    String? @map("source_url")
+
+  message    ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  shipManual ShipManual? @relation(fields: [shipManualId], references: [id], onDelete: SetNull)
+
+  @@index([messageId])
+  @@index([shipManualId])
+  @@map("chat_context_references")
 }
