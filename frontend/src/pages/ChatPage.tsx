@@ -10,7 +10,6 @@ import { ChatList } from "../components/chat/ChatList";
 import { MessageList } from "../components/chat/MessageList";
 import { MessageInput } from "../components/chat/MessageInput";
 import logoImg from "../assets/logo-chats.png";
-import type { ChatSessionDto } from "../types/chat";
 
 interface ChatPageProps {
   activeTab: TopBarTab;
@@ -39,6 +38,8 @@ export function ChatPage({
     error: messagesError,
     addMessage,
   } = useChatMessages(activeSessionId, token);
+
+  const isLoading = isLoadingSessions || isLoadingMessages;
 
   const {
     isSending,
@@ -122,7 +123,6 @@ export function ChatPage({
   }, [user, createSession]);
 
   const hasError = sessionsError || messagesError || sendError;
-  const isInitialLoading = isLoadingSessions;
   const showEmptyState = !activeSessionId && sessions.length === 0;
 
   return (
@@ -178,7 +178,7 @@ export function ChatPage({
             value={inputValue}
             onChange={setInputValue}
             onSend={handleSend}
-            disabled={isSending || isWaitingForResponse || isInitialLoading}
+            disabled={isSending || isWaitingForResponse || isLoading}
             placeholder="Type a message..."
           />
         </>
