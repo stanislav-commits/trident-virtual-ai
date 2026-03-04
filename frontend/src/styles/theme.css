@@ -58,7 +58,8 @@
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.6);
   --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.8);
   --shadow-accent: 0 0 20px var(--accent-glow);
-  --shadow-accent-lg: 0 0 40px var(--accent-glow), 0 0 80px rgba(59, 130, 246, 0.15);
+  --shadow-accent-lg:
+    0 0 40px var(--accent-glow), 0 0 80px rgba(59, 130, 246, 0.15);
 
   /* ── Transitions ── */
   --transition-fast: 0.12s ease;
@@ -71,4 +72,133 @@
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-blur: blur(20px);
   --glass-blur-heavy: blur(40px);
+
+  /* ── Theme-dependent hardcoded values ── */
+  --sidebar-bg: rgba(6, 6, 6, 0.95);
+  --topbar-bg: rgba(0, 0, 0, 0.85);
+  --admin-sidebar-bg: rgba(8, 8, 8, 0.98);
+  --icon-invert: invert(1);
+  --icon-invert-bright: invert(1) brightness(10);
+  --icon-invert-reverse: invert(0);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.14);
+  --overlay-subtle: rgba(255, 255, 255, 0.08);
+  --overlay-faint: rgba(255, 255, 255, 0.04);
+  --overlay-micro: rgba(255, 255, 255, 0.05);
+  --overlay-nano: rgba(255, 255, 255, 0.025);
+  --focus-glow: rgba(255, 255, 255, 0.04);
+  --focus-border: rgba(255, 255, 255, 0.25);
+  --focus-border-lg: rgba(255, 255, 255, 0.3);
+  --focus-border-md: rgba(255, 255, 255, 0.24);
+  --focus-border-sm: rgba(255, 255, 255, 0.2);
+  --title-gradient: linear-gradient(
+    135deg,
+    #ffffff 0%,
+    rgba(255, 255, 255, 0.65) 100%
+  );
+  --submit-hover-bg: #ffffff;
+  --submit-hover-shadow: 0 8px 24px rgba(255, 255, 255, 0.18);
+  --submit-text: #000000;
+  --login-card-border-gradient: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08),
+    transparent,
+    rgba(255, 255, 255, 0.04)
+  );
+  --input-placeholder: rgba(232, 234, 237, 0.3);
+  --selection-color: #ffffff;
+  --focus-ring: rgba(255, 255, 255, 0.3);
+}
+
+/* ── Light Theme ── */
+[data-theme="light"] {
+  /* Core backgrounds */
+  --chat-bg: #f5f6f8;
+  --chat-bg-subtle: #edeef1;
+  --chat-surface: #ffffff;
+  --chat-surface-2: #f0f1f4;
+  --chat-surface-3: #e5e7ec;
+  --chat-surface-dim: rgba(255, 255, 255, 0.8);
+  --chat-surface-glass: rgba(0, 0, 0, 0.02);
+
+  /* Borders */
+  --chat-border: rgba(0, 0, 0, 0.08);
+  --chat-border-strong: rgba(0, 0, 0, 0.13);
+  --chat-border-sidebar: rgba(0, 0, 0, 0.07);
+
+  /* Accent — keep blue, tweak glow for light */
+  --accent: #2563eb;
+  --accent-dim: rgba(37, 99, 235, 0.1);
+  --accent-glow: rgba(37, 99, 235, 0.2);
+  --accent-bright: #3b82f6;
+  --accent-gradient: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+
+  /* Text */
+  --chat-text: #1a1d26;
+  --chat-text-muted: rgba(26, 29, 38, 0.55);
+  --chat-text-subtle: rgba(26, 29, 38, 0.35);
+
+  /* Interactive */
+  --chat-button: #1a1d26;
+  --chat-button-hover: #000000;
+
+  /* Semantic */
+  --color-error: #dc2626;
+  --color-error-bg: rgba(220, 38, 38, 0.08);
+  --color-error-border: rgba(220, 38, 38, 0.2);
+  --color-success: #16a34a;
+  --color-success-bg: rgba(22, 163, 74, 0.08);
+  --color-success-border: rgba(22, 163, 74, 0.2);
+  --color-info: #2563eb;
+  --color-info-bg: rgba(37, 99, 235, 0.08);
+  --color-info-border: rgba(37, 99, 235, 0.2);
+
+  /* Shadows — lighter for light theme */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.1);
+  --shadow-accent: 0 0 20px var(--accent-glow);
+  --shadow-accent-lg:
+    0 0 40px var(--accent-glow), 0 0 80px rgba(37, 99, 235, 0.08);
+
+  /* Glassmorphism */
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(0, 0, 0, 0.06);
+
+  /* Theme-dependent values */
+  --sidebar-bg: rgba(255, 255, 255, 0.96);
+  --topbar-bg: rgba(255, 255, 255, 0.92);
+  --admin-sidebar-bg: rgba(248, 249, 251, 0.98);
+  --icon-invert: none;
+  --icon-invert-bright: none;
+  --icon-invert-reverse: invert(1);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.1);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.18);
+  --overlay-subtle: rgba(0, 0, 0, 0.05);
+  --overlay-faint: rgba(0, 0, 0, 0.03);
+  --overlay-micro: rgba(0, 0, 0, 0.04);
+  --overlay-nano: rgba(0, 0, 0, 0.025);
+  --focus-glow: rgba(37, 99, 235, 0.08);
+  --focus-border: rgba(37, 99, 235, 0.35);
+  --focus-border-lg: rgba(37, 99, 235, 0.4);
+  --focus-border-md: rgba(37, 99, 235, 0.3);
+  --focus-border-sm: rgba(37, 99, 235, 0.25);
+  --title-gradient: linear-gradient(
+    135deg,
+    #1a1d26 0%,
+    rgba(26, 29, 38, 0.7) 100%
+  );
+  --submit-hover-bg: #1a1d26;
+  --submit-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --submit-text: #ffffff;
+  --login-card-border-gradient: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.06),
+    transparent,
+    rgba(0, 0, 0, 0.03)
+  );
+  --input-placeholder: rgba(26, 29, 38, 0.35);
+  --selection-color: #000000;
+  --focus-ring: rgba(37, 99, 235, 0.4);
 }
