@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import type { TopBarTab } from "./components/layout/TopBar";
 import { AdminPanelProvider, useAdminPanel } from "./context/AdminPanelContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import { AdminPanelPage } from "./pages/AdminPanelPage";
 import { HomePage } from "./pages/HomePage";
 import { ChatPage } from "./pages/ChatPage";
@@ -65,9 +66,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

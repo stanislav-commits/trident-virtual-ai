@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
 import { useChatMessages } from "../hooks/useChatMessages";
@@ -30,6 +30,8 @@ export function ChatPage({
     error: sessionsError,
     createSession,
     deleteSession,
+    renameSession,
+    refreshSessions,
   } = useChatSessions(token);
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -50,16 +52,17 @@ export function ChatPage({
 
   const [inputValue, setInputValue] = useState("");
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (initialSessionId) setActiveSessionId(initialSessionId);
   }, [initialSessionId]);
 
-  useEffect(() => {
-    if (!initialSessionId && sessions.length > 0 && !activeSessionId) {
-      setActiveSessionId(sessions[0].id);
-    }
-  }, [initialSessionId, sessions, activeSessionId]);
+  const filteredSessions = useMemo(() => {
+    if (!searchQuery.trim()) return sessions;
+    const q = searchQuery.toLowerCase();
+    return sessions.filter((s) => (s.title || "").toLowerCase().includes(q));
+  }, [sessions, searchQuery]);
 
   const handleSend = useCallback(async () => {
     if (!inputValue.trim() || isSending || !activeSessionId) return;
@@ -89,6 +92,8 @@ export function ChatPage({
               lastMessage.id !== userMessage.id
             ) {
               addMessage(lastMessage);
+              // Refresh sessions to pick up auto-generated title
+              refreshSessions();
               break;
             }
           } catch {}
@@ -102,16 +107,38 @@ export function ChatPage({
       setIsWaitingForResponse(false);
       console.error("Failed to send message:", err);
     }
-  }, [inputValue, isSending, activeSessionId, sendMessage, addMessage, token]);
+  }, [
+    inputValue,
+    isSending,
+    activeSessionId,
+    sendMessage,
+    addMessage,
+    token,
+    refreshSessions,
+  ]);
 
-  const handleDeleteSession = useCallback(async (sessionId: string) => {
-    try {
-      await deleteSession(sessionId);
-      if (activeSessionId === sessionId) setActiveSessionId(null);
-    } catch (err) {
-      console.error("Failed to delete session:", err);
-    }
-  }, [deleteSession, activeSessionId]);
+  const handleDeleteSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        await deleteSession(sessionId);
+        if (activeSessionId === sessionId) setActiveSessionId(null);
+      } catch (err) {
+        console.error("Failed to delete session:", err);
+      }
+    },
+    [deleteSession, activeSessionId],
+  );
+
+  const handleRenameSession = useCallback(
+    async (sessionId: string, title: string) => {
+      try {
+        await renameSession(sessionId, title);
+      } catch (err) {
+        console.error("Failed to rename session:", err);
+      }
+    },
+    [renameSession],
+  );
 
   const handleNewChat = useCallback(async () => {
     const canCreate =
@@ -133,67 +160,80 @@ export function ChatPage({
   }, [user, createSession]);
 
   const hasError = sessionsError || messagesError || sendError;
-  const showEmptyState = !activeSessionId && sessions.length === 0;
+  const showEmptyState = !activeSessionId;
+  const hasChats = sessions.length > 0;
 
   return (
     <AppLayout
       sidebar={
         <ChatList
-          sessions={sessions.map((s) => ({
+          sessions={filteredSessions.map((s) => ({
             id: s.id,
-            title: s.title || "Untitled Chat",
+            title: s.title || "New Chat",
             messageCount: s.messageCount || 0,
             updatedAt: s.updatedAt,
           }))}
           activeId={activeSessionId}
           onSelect={setActiveSessionId}
           onDelete={handleDeleteSession}
+          onRename={handleRenameSession}
         />
       }
       onNewChat={handleNewChat}
+      onSearch={setSearchQuery}
       activeTab={activeTab}
       onTabChange={onTabChange}
     >
-      {showEmptyState ? (
-        <div className="chat-empty">
-          <div className="chat-empty__logo-zone">
-            <img
-              src={logoImg}
-              alt="Trident Virtual AI"
-              className="chat-empty__logo chats-logo"
-            />
-          </div>
-          <div className="chat-empty__card">
-            <div className="chat-empty__title">No chats yet</div>
-            <p>Create a new chat to get started.</p>
-          </div>
-        </div>
-      ) : activeSessionId ? (
-        <>
-          <div className="chat-main__bg-logo" aria-hidden>
-            <img src={logoImg} alt="" />
-          </div>
-
-          {hasError && (
-            <div className="chat-error-banner">
-              <p>{sessionsError || messagesError || sendError}</p>
+      {
+        showEmptyState ? (
+          <div className="chat-empty">
+            <div className="chat-empty__logo-zone">
+              <img
+                src={logoImg}
+                alt="Trident Virtual AI"
+                className="chat-empty__logo chats-logo"
+              />
             </div>
-          )}
+            <div className="chat-empty__card">
+              <div className="chat-empty__title">
+                {hasChats
+                  ? `Welcome back${user?.name ? `, ${user.name}` : ""}!`
+                  : `Hello${user?.name ? `, ${user.name}` : ""}!`}
+              </div>
+              <p>
+                {hasChats
+                  ? "Select an existing chat or create a new one to continue."
+                  : "Create a new chat to get started."}
+              </p>
+            </div>
+          </div>
+        ) : activeSessionId ? (
+          <>
+            <div className="chat-main__bg-logo" aria-hidden>
+              <img src={logoImg} alt="" />
+            </div>
 
-          <MessageList
-            messages={messages}
-            isLoadingResponse={isWaitingForResponse}
-          />
+            {hasError && (
+              <div className="chat-error-banner">
+                <p>{sessionsError || messagesError || sendError}</p>
+              </div>
+            )}
 
-          <MessageInput
-            value={inputValue}
-            onChange={setInputValue}
-            onSend={handleSend}
-            disabled={isSending || isWaitingForResponse || isLoading}
-            placeholder="Type a message..."
-          />
-        </>
-      ) : null}
+            <MessageList
+              messages={messages}
+              isLoadingResponse={isWaitingForResponse}
+            />
+
+            <MessageInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSend={handleSend}
+              disabled={isSending || isWaitingForResponse || isLoading}
+              placeholder="Type a message..."
+            />
+          </>
+        ) : null /* unreachable — kept for safety */
+      }
     </AppLayout>
   );
 }

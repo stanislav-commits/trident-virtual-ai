@@ -39,6 +39,7 @@ export async function fetchWithAuth(
 export type UserListItem = {
   id: string;
   userId: string;
+  name?: string | null;
   role: string;
   shipId: string | null;
   createdAt: string;
@@ -55,9 +56,11 @@ export async function createUser(
   role: "user" | "admin",
   token: string,
   shipId?: string,
+  name?: string,
 ): Promise<{ id: string; userId: string; password: string }> {
   const body: Record<string, unknown> = { role };
   if (shipId) body.shipId = shipId;
+  if (name?.trim()) body.name = name.trim();
   const res = await fetchWithAuth("users", {
     token,
     method: "POST",
@@ -97,6 +100,24 @@ export async function deleteUser(id: string, token: string): Promise<void> {
   }
 }
 
+export async function updateUserName(
+  id: string,
+  name: string,
+  token: string,
+): Promise<{ id: string; userId: string; name: string | null }> {
+  const res = await fetchWithAuth(`users/${id}/name`, {
+    token,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: name.trim() || null }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to update user name");
+  }
+  return res.json();
+}
+
 export type MetricDefinitionItem = {
   key: string;
   label: string;
@@ -115,6 +136,7 @@ export type ShipMetricsConfigItem = {
 export type ShipAssignedUserItem = {
   id: string;
   userId: string;
+  name?: string | null;
 };
 
 export type ShipManualItem = {
