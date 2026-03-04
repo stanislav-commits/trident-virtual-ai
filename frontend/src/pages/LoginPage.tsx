@@ -28,6 +28,10 @@ export function LoginPage() {
         <img src={logoImg} alt="" />
       </div>
       <div className="login-card">
+        <div className="login-card__brand">
+          <div className="login-card__brand-title">Trident Virtual AI</div>
+          <div className="login-card__brand-sub">Intelligence Platform</div>
+        </div>
         <form className="login-form" onSubmit={handleSubmit}>
           <div className="login-field">
             <label className="login-field__label" htmlFor="login-userId">

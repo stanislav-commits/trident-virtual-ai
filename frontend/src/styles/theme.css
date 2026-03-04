@@ -1,15 +1,73 @@
 :root {
+  /* ── Core backgrounds ── */
   --chat-bg: #000000;
-  --chat-surface: #292a29;
-  --chat-surface-dim: rgba(43, 43, 43, 0.58);
-  --chat-border: rgba(255, 255, 255, 0.32);
-  --chat-border-sidebar: #4f4f4f;
-  --chat-button: #898989;
-  --chat-text: #dddddd;
-  --chat-text-muted: rgba(255, 255, 255, 0.7);
-  --chat-radius-pill: 25px;
+  --chat-bg-subtle: #080808;
+  --chat-surface: #111111;
+  --chat-surface-2: #181818;
+  --chat-surface-3: #202020;
+  --chat-surface-dim: rgba(17, 17, 17, 0.72);
+  --chat-surface-glass: rgba(255, 255, 255, 0.03);
+
+  /* ── Borders ── */
+  --chat-border: rgba(255, 255, 255, 0.08);
+  --chat-border-strong: rgba(255, 255, 255, 0.14);
+  --chat-border-sidebar: rgba(255, 255, 255, 0.07);
+
+  /* ── Accent (ocean blue) ── */
+  --accent: #3b82f6;
+  --accent-dim: rgba(59, 130, 246, 0.18);
+  --accent-glow: rgba(59, 130, 246, 0.35);
+  --accent-bright: #60a5fa;
+  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+
+  /* ── Text ── */
+  --chat-text: #e8eaed;
+  --chat-text-muted: rgba(232, 234, 237, 0.45);
+  --chat-text-subtle: rgba(232, 234, 237, 0.28);
+
+  /* ── Interactive ── */
+  --chat-button: #e8eaed;
+  --chat-button-hover: #ffffff;
+
+  /* ── Semantic ── */
+  --color-error: #f87171;
+  --color-error-bg: rgba(248, 113, 113, 0.1);
+  --color-error-border: rgba(248, 113, 113, 0.25);
+  --color-success: #4ade80;
+  --color-success-bg: rgba(74, 222, 128, 0.1);
+  --color-success-border: rgba(74, 222, 128, 0.25);
+  --color-info: #60a5fa;
+  --color-info-bg: rgba(96, 165, 250, 0.1);
+  --color-info-border: rgba(96, 165, 250, 0.25);
+
+  /* ── Radius ── */
+  --chat-radius-pill: 28px;
   --chat-radius-card: 16px;
-  --chat-sidebar-width: 297px;
-  --chat-topbar-height: 76px;
-  --chat-input-height: 50px;
+  --chat-radius-lg: 20px;
+  --chat-radius-sm: 10px;
+
+  /* ── Layout ── */
+  --chat-sidebar-width: 288px;
+  --chat-topbar-height: 72px;
+  --chat-input-height: 52px;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.8);
+  --shadow-accent: 0 0 20px var(--accent-glow);
+  --shadow-accent-lg: 0 0 40px var(--accent-glow), 0 0 80px rgba(59, 130, 246, 0.15);
+
+  /* ── Transitions ── */
+  --transition-fast: 0.12s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Glassmorphism ── */
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: blur(20px);
+  --glass-blur-heavy: blur(40px);
 }

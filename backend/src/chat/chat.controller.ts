@@ -8,6 +8,7 @@ import {
   UseGuards,
   HttpCode,
   ForbiddenException,
+  Query,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -24,7 +25,7 @@ import type { AuthUser } from '../auth/auth.service';
 @Controller('chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(private readonly chatService: ChatService) { }
 
   @Post('sessions')
   async createSession(
@@ -46,8 +47,9 @@ export class ChatController {
   @Get('sessions')
   async listSessions(
     @CurrentUser() user: AuthUser,
+    @Query('search') search?: string,
   ): Promise<ChatSessionResponseDto[]> {
-    return this.chatService.listSessions(user.id, user.role);
+    return this.chatService.listSessions(user.id, user.role, search);
   }
 
   @Get('sessions/:id')
