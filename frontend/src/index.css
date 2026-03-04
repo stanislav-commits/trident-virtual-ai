@@ -8,14 +8,81 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: var(--chat-bg);
+  color: var(--chat-text);
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Global scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Text selection */
+::selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: #ffffff;
+}
+
+/* Focus visible ring (accessibility) */
+:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.3);
+  outline-offset: 2px;
+}
+
+/* Remove default focus for non-keyboard users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Smooth img rendering */
+img {
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+/* Remove default button styles */
+button {
+  font-family: inherit;
+}
+
+/* Transitions for interactive elements */
+a,
+button {
+  transition-property: color, background, border-color, box-shadow, opacity, transform;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
 }

@@ -20,7 +20,7 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly contextService: ChatContextService,
     private readonly llmService: LlmService,
-  ) {}
+  ) { }
 
   async createSession(
     userId: string,
@@ -40,9 +40,14 @@ export class ChatService {
   async listSessions(
     userId: string,
     role: string,
+    search?: string,
   ): Promise<ChatSessionResponseDto[]> {
-    const where =
+    let where: any =
       role === 'admin' ? { deletedAt: null } : { userId, deletedAt: null };
+
+    if (search) {
+      where.title = { contains: search, mode: 'insensitive' };
+    }
 
     const sessions = await this.prisma.chatSession.findMany({
       where,
@@ -222,8 +227,8 @@ export class ChatService {
           : null,
         contextReferences: contextReferences
           ? {
-              create: contextReferences,
-            }
+            create: contextReferences,
+          }
           : undefined,
       },
       include: {

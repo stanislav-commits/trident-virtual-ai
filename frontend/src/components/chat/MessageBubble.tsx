@@ -38,7 +38,11 @@ export function MessageBubble({
         )}
 
       {isLoading && (
-        <div className="chat-message__loading">Generating response...</div>
+        <div className="typing-dots">
+          <span className="typing-dot" />
+          <span className="typing-dot" />
+          <span className="typing-dot" />
+        </div>
       )}
 
       <div className="chat-message__time">{formatTime(createdAt)}</div>
