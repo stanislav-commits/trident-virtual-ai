@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Delete,
   Param,
   Body,
@@ -25,7 +26,7 @@ import type { AuthUser } from '../auth/auth.service';
 @Controller('chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ChatController {
-  constructor(private readonly chatService: ChatService) { }
+  constructor(private readonly chatService: ChatService) {}
 
   @Post('sessions')
   async createSession(
@@ -58,6 +59,20 @@ export class ChatController {
     @CurrentUser() user: AuthUser,
   ): Promise<ChatSessionResponseDto> {
     return this.chatService.getSession(sessionId, user.id, user.role);
+  }
+
+  @Patch('sessions/:id')
+  async updateSession(
+    @Param('id') sessionId: string,
+    @Body() body: { title?: string },
+    @CurrentUser() user: AuthUser,
+  ): Promise<ChatSessionResponseDto> {
+    return this.chatService.updateSessionTitle(
+      sessionId,
+      user.id,
+      user.role,
+      body.title,
+    );
   }
 
   @Delete('sessions/:id')

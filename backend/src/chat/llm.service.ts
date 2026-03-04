@@ -78,6 +78,29 @@ export class LlmService {
     }
   }
 
+  async generateTitle(userMessage: string): Promise<string> {
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        temperature: 0.5,
+        max_tokens: 20,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Generate a very short chat title (3-6 words, no quotes) summarizing the user message. Respond with ONLY the title, nothing else.',
+          },
+          { role: 'user', content: userMessage },
+        ],
+      });
+
+      const title = response.choices[0]?.message?.content?.trim();
+      return title || 'New Chat';
+    } catch {
+      return 'New Chat';
+    }
+  }
+
   private buildSystemPrompt(shipName?: string): string {
     const name = shipName ? ` (${shipName})` : '';
     return `You are a technical support assistant for yacht operations and maintenance${name}.

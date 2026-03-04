@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -10,6 +11,8 @@ import { UpdateManualDto } from './dto/update-manual.dto';
 
 @Injectable()
 export class ManualsService {
+  private readonly logger = new Logger(ManualsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ragflow: RagflowService,
@@ -129,7 +132,7 @@ export class ManualsService {
     });
     if (!manual) throw new NotFoundException('Manual not found');
 
-    // If manual is associated with RAGFlow dataset, must delete from RAGFlow first
+    // If manual is associated with RAGFlow dataset, try to delete from RAGFlow
     if (manual.ship.ragflowDatasetId) {
       if (!this.ragflow.isConfigured()) {
         throw new ServiceUnavailableException(
@@ -142,8 +145,9 @@ export class ManualsService {
           manual.ragflowDocumentId,
         );
       } catch (error) {
-        throw new ServiceUnavailableException(
-          `Failed to delete document from RAGFlow: ${error instanceof Error ? error.message : String(error)}`,
+        // Document may already be removed from RAGFlow — log and continue
+        this.logger.warn(
+          `RAGFlow document deletion failed for manual ${manualId}, proceeding with DB removal: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
