@@ -11,7 +11,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ onTabChange: _onTabChange }: TopBarProps) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { open: openAdminPanel } = useAdminPanel();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -25,11 +25,6 @@ export function TopBar({ onTabChange: _onTabChange }: TopBarProps) {
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, [dropdownOpen]);
-
-  const handleLogout = () => {
-    setDropdownOpen(false);
-    logout();
-  };
 
   const handleAdminPanel = () => {
     setDropdownOpen(false);
