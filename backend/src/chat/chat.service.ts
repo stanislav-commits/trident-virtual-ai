@@ -20,7 +20,7 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly contextService: ChatContextService,
     private readonly llmService: LlmService,
-  ) { }
+  ) {}
 
   async createSession(
     userId: string,
@@ -30,7 +30,7 @@ export class ChatService {
       data: {
         userId,
         shipId: dto.shipId ?? null,
-        title: dto.title || `Chat on ${new Date().toLocaleDateString()}`,
+        title: dto.title || 'New Chat',
       },
     });
 
@@ -137,6 +137,11 @@ export class ChatService {
       data: { updatedAt: new Date() },
     });
 
+    // Auto-generate title from first user message
+    this.autoGenerateTitle(sessionId, dto.content).catch((err) =>
+      console.error('Failed to auto-generate title:', err),
+    );
+
     this.generateAssistantResponse(
       session.shipId ?? null,
       sessionId,
@@ -148,6 +153,36 @@ export class ChatService {
     );
 
     return this.formatMessageResponse(userMessage);
+  }
+
+  private async autoGenerateTitle(
+    sessionId: string,
+    firstMessage: string,
+  ): Promise<void> {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        messages: {
+          where: { deletedAt: null, role: 'user' },
+          select: { id: true },
+        },
+      },
+    });
+
+    // Only generate title on the first user message and if title is still default
+    if (
+      !session ||
+      session.messages.length !== 1 ||
+      (session.title && session.title !== 'New Chat')
+    ) {
+      return;
+    }
+
+    const title = await this.llmService.generateTitle(firstMessage);
+    await this.prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { title },
+    });
   }
 
   private async generateAssistantResponse(
@@ -227,8 +262,8 @@ export class ChatService {
           : null,
         contextReferences: contextReferences
           ? {
-            create: contextReferences,
-          }
+              create: contextReferences,
+            }
           : undefined,
       },
       include: {
@@ -242,6 +277,27 @@ export class ChatService {
     });
 
     return this.formatMessageResponse(message);
+  }
+
+  async updateSessionTitle(
+    sessionId: string,
+    userId: string,
+    role: string,
+    title?: string,
+  ): Promise<ChatSessionResponseDto> {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) throw new NotFoundException('Chat session not found');
+    this.validateAccess(session, userId, role);
+
+    const updated = await this.prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { title: title || session.title },
+    });
+
+    return this.formatSessionResponse(updated);
   }
 
   async deleteSession(

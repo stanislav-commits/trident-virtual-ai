@@ -16,6 +16,7 @@ export type AuthUser = {
   userId: string;
   role: Role;
   shipId: string | null;
+  name: string | null;
 };
 
 @Injectable()
@@ -40,6 +41,7 @@ export class AuthService {
       userId: user.userId,
       role: user.role,
       shipId: user.shipId,
+      name: user.name ?? null,
     };
   }
 

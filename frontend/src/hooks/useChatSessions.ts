@@ -4,6 +4,7 @@ import {
   getChatSessions,
   createChatSession,
   deleteChatSession,
+  renameChatSession,
 } from "../api/chatApi";
 
 interface UseChatSessionsState {
@@ -79,6 +80,25 @@ export function useChatSessions(token: string | null) {
     }
   };
 
+  const renameSession = async (sessionId: string, title: string) => {
+    if (!token) throw new Error("No authentication token");
+
+    try {
+      const updated = await renameChatSession(sessionId, title, token);
+      setState((prev) => ({
+        ...prev,
+        sessions: prev.sessions.map((s) =>
+          s.id === sessionId ? { ...s, title: updated.title } : s,
+        ),
+      }));
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to rename session";
+      setState((prev) => ({ ...prev, error: message }));
+      throw err;
+    }
+  };
+
   const refreshSessions = async () => {
     if (!token) return;
     try {
@@ -95,6 +115,7 @@ export function useChatSessions(token: string | null) {
     ...state,
     createSession,
     deleteSession,
+    renameSession,
     refreshSessions,
   };
 }

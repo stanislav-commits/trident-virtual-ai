@@ -20,7 +20,10 @@ function generatePassword(): string {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(role: Role, shipId?: string) {
+  async create(role: Role, shipId?: string, name?: string) {
+    if (!name?.trim()) {
+      throw new BadRequestException('Name is required');
+    }
     const userId = generateUserId();
     const plainPassword = generatePassword();
     const passwordHash = await bcrypt.hash(plainPassword, 10);
@@ -48,6 +51,7 @@ export class UsersService {
         userId,
         passwordHash,
         role,
+        name: name?.trim() || null,
         shipId: role === 'user' ? (shipId ?? undefined) : undefined,
       },
     });
@@ -60,6 +64,7 @@ export class UsersService {
       select: {
         id: true,
         userId: true,
+        name: true,
         role: true,
         shipId: true,
         createdAt: true,
@@ -80,6 +85,20 @@ export class UsersService {
       data: { passwordHash },
     });
     return { userId: user.userId, password: plainPassword };
+  }
+
+  async updateName(id: string, name?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!name?.trim()) {
+      throw new BadRequestException('Name cannot be empty');
+    }
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { name: name?.trim() || null },
+      select: { id: true, userId: true, name: true },
+    });
+    return updated;
   }
 
   async remove(id: string) {

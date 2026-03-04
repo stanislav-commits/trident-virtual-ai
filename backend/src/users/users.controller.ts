@@ -24,7 +24,7 @@ export class UsersController {
 
   @Post()
   create(@Body() dto: CreateUserDto) {
-    return this.usersService.create(dto.role, dto.shipId);
+    return this.usersService.create(dto.role, dto.shipId, dto.name);
   }
 
   @Get()
@@ -35,6 +35,11 @@ export class UsersController {
   @Patch(':id/reset-password')
   resetPassword(@Param('id') id: string) {
     return this.usersService.resetPassword(id);
+  }
+
+  @Patch(':id/name')
+  updateName(@Param('id') id: string, @Body() body: { name?: string }) {
+    return this.usersService.updateName(id, body.name);
   }
 
   @Delete(':id')

@@ -26,6 +26,7 @@ enum ChatRole {
 model User {
   id           String   @id @default(cuid())
   userId       String   @unique @map("user_id")
+  name         String?  @db.VarChar(255)
   passwordHash String   @map("password_hash")
   role         Role     @default(user)
   shipId       String?  @map("ship_id") @db.Uuid

@@ -31,7 +31,7 @@ export async function createChatSession(
   title?: string,
 ): Promise<ChatSessionDto> {
   const body: { shipId?: string | null; title: string } = {
-    title: title || `Chat on ${new Date().toLocaleDateString()}`,
+    title: title || "New Chat",
   };
   if (shipId != null) body.shipId = shipId;
 
@@ -76,6 +76,24 @@ export async function getChatMessages(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to fetch messages");
+  }
+  return res.json();
+}
+
+export async function renameChatSession(
+  sessionId: string,
+  title: string,
+  token: string,
+): Promise<ChatSessionDto> {
+  const res = await fetchWithAuth(`chat/sessions/${sessionId}`, {
+    token,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to rename chat session");
   }
   return res.json();
 }

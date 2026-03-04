@@ -3,7 +3,6 @@ import {
   getUsers,
   getShips,
   getMetricDefinitions,
-  getMetrics,
   getManuals,
   type UserListItem,
   type ShipListItem,
@@ -16,14 +15,12 @@ import logoImg from "../assets/logo-chats.png";
 import {
   UsersIcon,
   ShipIcon,
-  MetricsIcon,
   ChevronLeftIcon,
   MenuIcon,
   XIcon,
 } from "../components/admin/AdminPanelIcons";
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
-import { MetricsSection } from "../components/admin/MetricsSection";
 import { ManualsPromptModal } from "../components/admin/ManualsPromptModal";
 import { Toast } from "../components/layout/Toast";
 
@@ -32,9 +29,9 @@ export function AdminPanelPage() {
   const { token } = useAuth();
 
   // Navigation state
-  const [activeSection, setActiveSection] = useState<
-    "users" | "ships" | "metrics"
-  >("users");
+  const [activeSection, setActiveSection] = useState<"users" | "ships">(
+    "users",
+  );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Common state
@@ -50,10 +47,6 @@ export function AdminPanelPage() {
   const [metricDefinitions, setMetricDefinitions] = useState<
     MetricDefinitionItem[]
   >([]);
-
-  // Metrics section state
-  const [metrics, setMetrics] = useState<MetricDefinitionItem[]>([]);
-  const [metricsLoading, setMetricsLoading] = useState(false);
 
   // Manuals modal state
   const [manuals, setManuals] = useState<ShipManualItem[]>([]);
@@ -106,24 +99,6 @@ export function AdminPanelPage() {
     if (activeSection === "ships") loadShips();
   }, [activeSection, loadShips]);
 
-  // Load metrics
-  const loadMetrics = useCallback(async () => {
-    if (!token) return;
-    setMetricsLoading(true);
-    setError("");
-    try {
-      setMetrics(await getMetrics(token));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load metrics");
-    } finally {
-      setMetricsLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (activeSection === "metrics") loadMetrics();
-  }, [activeSection, loadMetrics]);
-
   // Load manuals for prompt modal
   useEffect(() => {
     if (!manualsPromptShip || !token) return;
@@ -142,7 +117,7 @@ export function AdminPanelPage() {
     };
   }, [manualsPromptShip, token]);
 
-  const handleNavClick = (section: "users" | "ships" | "metrics") => {
+  const handleNavClick = (section: "users" | "ships") => {
     setActiveSection(section);
     setIsSidebarOpen(false);
   };
@@ -190,16 +165,6 @@ export function AdminPanelPage() {
             </span>
             <span className="admin-panel__nav-label">Ships</span>
           </button>
-          <button
-            type="button"
-            className={`admin-panel__nav-item ${activeSection === "metrics" ? "admin-panel__nav-item--active" : ""}`}
-            onClick={() => handleNavClick("metrics")}
-          >
-            <span className="admin-panel__nav-icon">
-              <MetricsIcon />
-            </span>
-            <span className="admin-panel__nav-label">Metrics</span>
-          </button>
         </nav>
 
         <div className="admin-panel__sidebar-footer">
@@ -221,11 +186,7 @@ export function AdminPanelPage() {
             {isSidebarOpen ? <XIcon /> : <MenuIcon />}
           </button>
           <span className="admin-panel__topbar-title">
-            {activeSection === "users"
-              ? "Users"
-              : activeSection === "ships"
-                ? "Ships"
-                : "Metrics"}
+            {activeSection === "users" ? "Users" : "Ships"}
           </span>
         </header>
 
@@ -256,26 +217,9 @@ export function AdminPanelPage() {
                 error={error}
                 onLoadShips={loadShips}
                 onError={setError}
-                onShipCreated={(shipId, shipName) => {
-                  setManualsPromptShip({ id: shipId, name: shipName });
-                }}
                 onOpenManuals={(shipId, shipName) => {
                   setManualsPromptShip({ id: shipId, name: shipName });
                 }}
-              />
-            )}
-
-            {activeSection === "metrics" && (
-              <MetricsSection
-                token={token}
-                metrics={metrics}
-                loading={metricsLoading}
-                error={error}
-                onLoadMetrics={loadMetrics}
-                onMetricDeleteSuccess={() => {
-                  loadShips();
-                }}
-                onError={setError}
               />
             )}
           </div>

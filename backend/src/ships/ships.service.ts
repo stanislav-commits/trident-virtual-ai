@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -11,6 +12,8 @@ import { UpdateShipDto } from './dto/update-ship.dto';
 
 @Injectable()
 export class ShipsService {
+  private readonly logger = new Logger(ShipsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ragflow: RagflowService,
@@ -87,7 +90,7 @@ export class ShipsService {
       },
       include: {
         metricsConfig: { select: { metricKey: true, isActive: true } },
-        assignedUsers: { select: { id: true, userId: true } },
+        assignedUsers: { select: { id: true, userId: true, name: true } },
       },
     });
 
@@ -118,7 +121,7 @@ export class ShipsService {
       orderBy: { updatedAt: 'desc' },
       include: {
         metricsConfig: { select: { metricKey: true, isActive: true } },
-        assignedUsers: { select: { id: true, userId: true } },
+        assignedUsers: { select: { id: true, userId: true, name: true } },
         manuals: {
           select: {
             id: true,
@@ -142,7 +145,7 @@ export class ShipsService {
             },
           },
         },
-        assignedUsers: { select: { id: true, userId: true } },
+        assignedUsers: { select: { id: true, userId: true, name: true } },
         manuals: {
           select: {
             id: true,
@@ -239,7 +242,7 @@ export class ShipsService {
     const ship = await this.prisma.ship.findUnique({ where: { id } });
     if (!ship) throw new NotFoundException('Ship not found');
 
-    // If ship has RAGFlow dataset, must delete it from RAGFlow first
+    // If ship has RAGFlow dataset, try to delete it from RAGFlow
     if (ship.ragflowDatasetId) {
       if (!this.ragflow.isConfigured()) {
         throw new ServiceUnavailableException(
@@ -249,8 +252,9 @@ export class ShipsService {
       try {
         await this.ragflow.deleteDataset(ship.ragflowDatasetId);
       } catch (error) {
-        throw new ServiceUnavailableException(
-          `Failed to delete dataset from RAGFlow: ${error instanceof Error ? error.message : String(error)}`,
+        // Dataset may already be removed from RAGFlow — log and continue
+        this.logger.warn(
+          `RAGFlow dataset deletion failed for ship ${id}, proceeding with DB removal: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }

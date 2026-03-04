@@ -16,12 +16,14 @@ export function MessageList({
   isLoadingResponse = false,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    }
+    // Use rAF to ensure DOM has painted the new content before scrolling
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
   }, [messages, isLoadingResponse]);
 
   return (
@@ -41,6 +43,9 @@ export function MessageList({
           <div className="chat-message__loading">Generating response...</div>
         </div>
       )}
+
+      {/* Scroll anchor */}
+      <div ref={bottomRef} />
     </div>
   );
 }
