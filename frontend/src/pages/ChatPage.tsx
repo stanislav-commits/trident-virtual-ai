@@ -9,7 +9,7 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
 import { MessageList } from "../components/chat/MessageList";
 import { MessageInput } from "../components/chat/MessageInput";
-import logoImg from "../assets/logo-chats.png";
+import logoImg from "../assets/logo-home.png";
 
 interface ChatPageProps {
   activeTab: TopBarTab;
@@ -29,6 +29,7 @@ export function ChatPage({
     isLoading: isLoadingSessions,
     error: sessionsError,
     createSession,
+    deleteSession,
   } = useChatSessions(token);
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -103,6 +104,15 @@ export function ChatPage({
     }
   }, [inputValue, isSending, activeSessionId, sendMessage, addMessage, token]);
 
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
+    try {
+      await deleteSession(sessionId);
+      if (activeSessionId === sessionId) setActiveSessionId(null);
+    } catch (err) {
+      console.error("Failed to delete session:", err);
+    }
+  }, [deleteSession, activeSessionId]);
+
   const handleNewChat = useCallback(async () => {
     const canCreate =
       user?.role === "admin" || (user?.role === "user" && !!user?.shipId);
@@ -137,6 +147,7 @@ export function ChatPage({
           }))}
           activeId={activeSessionId}
           onSelect={setActiveSessionId}
+          onDelete={handleDeleteSession}
         />
       }
       onNewChat={handleNewChat}

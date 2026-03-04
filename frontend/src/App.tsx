@@ -10,7 +10,7 @@ import { LoginPage } from "./pages/LoginPage";
 
 function AuthenticatedContent() {
   const { isOpen } = useAdminPanel();
-  const [activeTab, setActiveTab] = useState<TopBarTab>("home");
+  const [activeTab, setActiveTab] = useState<TopBarTab>("chats");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const handleTabChange = useCallback((tab: TopBarTab) => {

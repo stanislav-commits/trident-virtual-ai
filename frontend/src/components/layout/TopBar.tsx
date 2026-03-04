@@ -10,7 +10,7 @@ interface TopBarProps {
   onTabChange: (tab: TopBarTab) => void;
 }
 
-export function TopBar({ activeTab, onTabChange }: TopBarProps) {
+export function TopBar({ onTabChange: _onTabChange }: TopBarProps) {
   const { user, logout } = useAuth();
   const { open: openAdminPanel } = useAdminPanel();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -36,37 +36,15 @@ export function TopBar({ activeTab, onTabChange }: TopBarProps) {
     openAdminPanel();
   };
 
-  const initials = user?.role === 'admin' ? 'A' : (user?.userId?.slice(0, 2).toUpperCase() ?? 'U');
+  const initials = user?.role === 'admin'
+    ? 'A'
+    : (user?.userId?.slice(0, 2).toUpperCase() ?? 'U');
 
   return (
     <header className="chat-topbar">
       <div className="chat-topbar__brand">
         <span className="chat-topbar__brand-name">TRIDENT VIRTUAL AI</span>
       </div>
-
-      <nav className="chat-topbar__tabs" aria-label="Navigation">
-        <button
-          type="button"
-          className={`chat-topbar__tab ${activeTab === 'home' ? 'chat-topbar__tab--active' : ''}`}
-          onClick={() => onTabChange('home')}
-        >
-          Home
-        </button>
-        <button
-          type="button"
-          className={`chat-topbar__tab ${activeTab === 'chats' ? 'chat-topbar__tab--active' : ''}`}
-          onClick={() => onTabChange('chats')}
-        >
-          Chats
-        </button>
-        <button
-          type="button"
-          className={`chat-topbar__tab ${activeTab === 'dataset' ? 'chat-topbar__tab--active' : ''}`}
-          onClick={() => onTabChange('dataset')}
-        >
-          Dataset
-        </button>
-      </nav>
 
       <div className="chat-topbar__right">
         <div className="chat-topbar__profile-wrap" ref={wrapRef}>
@@ -95,7 +73,7 @@ export function TopBar({ activeTab, onTabChange }: TopBarProps) {
                   className="chat-topbar__profile-item"
                   onClick={handleAdminPanel}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><circle cx="19" cy="6" r="3" fill="currentColor" stroke="none" opacity="0.4"/></svg>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
                   Admin panel
                 </button>
               )}
@@ -104,7 +82,7 @@ export function TopBar({ activeTab, onTabChange }: TopBarProps) {
                 className="chat-topbar__profile-item chat-topbar__profile-item--danger"
                 onClick={handleLogout}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Logout
               </button>
             </div>

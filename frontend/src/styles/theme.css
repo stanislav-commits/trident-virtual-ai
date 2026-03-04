@@ -50,6 +50,7 @@
   --chat-sidebar-width: 288px;
   --chat-topbar-height: 72px;
   --chat-input-height: 52px;
+  --chat-send-size: 48px;
 
   /* ── Shadows ── */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);

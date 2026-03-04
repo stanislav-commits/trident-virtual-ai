@@ -1,4 +1,3 @@
-import plusAddIcon from '../../assets/plus-add.svg';
 import sendIcon from '../../assets/Vector.svg';
 
 interface MessageInputProps {
@@ -21,18 +20,23 @@ export function MessageInput({
     if (value.trim()) onSend();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && value.trim() && !disabled) {
+      e.preventDefault();
+      onSend();
+    }
+  };
+
   return (
     <form className="chat-main__input-row" onSubmit={handleSubmit}>
       <div className="chat-main__capsule">
-        <button type="button" className="chat-main__attach" aria-label="Attach" title="Attach" disabled={disabled}>
-          <img src={plusAddIcon} alt="" className="chat-main__attach-img" />
-        </button>
         <input
           type="text"
           className="chat-main__input"
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           disabled={disabled}
           aria-label="Message input"
         />
@@ -41,7 +45,7 @@ export function MessageInput({
         type="submit"
         className="chat-main__send"
         disabled={disabled || !value.trim()}
-        aria-label="Send"
+        aria-label="Send message"
       >
         <img src={sendIcon} alt="" className="chat-main__send-img" />
       </button>
