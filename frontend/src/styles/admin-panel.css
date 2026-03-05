@@ -698,6 +698,54 @@
   border: 1px solid var(--chat-border);
 }
 
+/* ── Manual status badges ── */
+.admin-panel__badge--manual-done {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.admin-panel__badge--manual-running {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent-bright);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  animation: admin-badge-pulse 1.5s ease-in-out infinite;
+}
+
+.admin-panel__badge--manual-pending {
+  background: rgba(234, 179, 8, 0.12);
+  color: #eab308;
+  border: 1px solid rgba(234, 179, 8, 0.25);
+}
+
+.admin-panel__badge--manual-fail {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.admin-panel__badge--manual-cancel {
+  background: var(--chat-surface-2);
+  color: var(--chat-text-muted);
+  border: 1px solid var(--chat-border);
+}
+
+.admin-panel__badge--manual-unknown {
+  background: transparent;
+  color: var(--chat-text-muted);
+  border: 1px solid transparent;
+}
+
+@keyframes admin-badge-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
 /* ── Actions cell ── */
 .admin-panel__actions {
   display: flex;
