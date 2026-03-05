@@ -203,6 +203,30 @@
   --focus-ring: rgba(37, 99, 235, 0.4);
 }
 
+/* ── Login page: always dark, ignore app theme ── */
+[data-theme="light"] .login-layout {
+  --chat-bg: #000000;
+  --chat-bg-subtle: #080808;
+  --chat-surface: #111111;
+  --chat-surface-2: #181818;
+  --chat-surface-3: #202020;
+  --chat-border: rgba(255, 255, 255, 0.08);
+  --chat-border-strong: rgba(255, 255, 255, 0.14);
+  --chat-text: #e8eaed;
+  --chat-text-muted: rgba(232, 234, 237, 0.45);
+  --chat-text-subtle: rgba(232, 234, 237, 0.28);
+  --color-error: #f87171;
+  --color-error-bg: rgba(248, 113, 113, 0.1);
+  --color-error-border: rgba(248, 113, 113, 0.25);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.8);
+  --focus-border: rgba(255, 255, 255, 0.25);
+  --focus-border-md: rgba(255, 255, 255, 0.24);
+  --overlay-micro: rgba(255, 255, 255, 0.05);
+  --submit-hover-bg: #ffffff;
+  --submit-hover-shadow: 0 8px 24px rgba(255, 255, 255, 0.18);
+  --submit-text: #000000;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     /* ── Core backgrounds ── */
@@ -244,5 +268,29 @@
     /* ── Glassmorphism ── */
     --glass-bg: rgba(0, 0, 0, 0.015);
     --glass-border: rgba(0, 0, 0, 0.09);
+  }
+
+  /* Login page: always dark, ignore system theme */
+  .login-layout {
+    --chat-bg: #000000;
+    --chat-bg-subtle: #080808;
+    --chat-surface: #111111;
+    --chat-surface-2: #181818;
+    --chat-surface-3: #202020;
+    --chat-border: rgba(255, 255, 255, 0.08);
+    --chat-border-strong: rgba(255, 255, 255, 0.14);
+    --chat-text: #e8eaed;
+    --chat-text-muted: rgba(232, 234, 237, 0.45);
+    --chat-text-subtle: rgba(232, 234, 237, 0.28);
+    --color-error: #f87171;
+    --color-error-bg: rgba(248, 113, 113, 0.1);
+    --color-error-border: rgba(248, 113, 113, 0.25);
+    --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.8);
+    --focus-border: rgba(255, 255, 255, 0.25);
+    --focus-border-md: rgba(255, 255, 255, 0.24);
+    --overlay-micro: rgba(255, 255, 255, 0.05);
+    --submit-hover-bg: #ffffff;
+    --submit-hover-shadow: 0 8px 24px rgba(255, 255, 255, 0.18);
+    --submit-text: #000000;
   }
 }

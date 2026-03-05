@@ -1057,11 +1057,11 @@
 }
 
 .login-layout__bg-logo img {
-  max-width: 420px;
-  width: 60%;
+  max-width: 480px;
+  width: 55%;
   height: auto;
-  opacity: 0.18;
-  filter: blur(0px) drop-shadow(0 0 80px rgba(59, 130, 246, 0.25));
+  opacity: 0.28;
+  filter: blur(0) drop-shadow(0 0 80px rgba(59, 130, 246, 0.35));
   animation: subtleFloat 9s ease-in-out infinite;
 }
 
@@ -1934,60 +1934,7 @@
     filter: drop-shadow(0 0 40px rgba(59, 130, 246, 0.22));
   }
 
-  /* ── Login page ── */
-  .login-layout {
-    background: linear-gradient(145deg, #f0f4ff 0%, #edf1fb 50%, #e8edf8 100%);
-  }
-
-  .login-layout::before {
-    background: radial-gradient(circle, rgba(59, 130, 246, 0.14) 0%, transparent 70%);
-  }
-
-  .login-layout::after {
-    background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
-  }
-
-  .login-layout__bg-logo img {
-    opacity: 0.12;
-    filter: drop-shadow(0 0 60px rgba(59, 130, 246, 0.3));
-  }
-
-  .login-card {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: rgba(0, 0, 0, 0.08);
-    box-shadow: var(--shadow-xl);
-  }
-
-  .login-card::before {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.06), transparent, rgba(99, 102, 241, 0.04));
-  }
-
-  .login-card__brand-title {
-    color: #0d1117;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-  }
-
-  .login-field__input {
-    background: var(--chat-surface-2);
-    border-color: var(--chat-border-strong);
-    color: var(--chat-text);
-  }
-
-  .login-field__input:focus {
-    border-color: rgba(59, 130, 246, 0.5);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-
-  .login-form__submit {
-    background: #0d1117;
-    color: #ffffff;
-  }
-
-  .login-form__submit:hover:not(:disabled) {
-    background: #000000;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  }
+  /* Login page: no overrides — always dark (see theme.css .login-layout) */
 
   /* ── Chat sources ── */
   .chat-source-item {
