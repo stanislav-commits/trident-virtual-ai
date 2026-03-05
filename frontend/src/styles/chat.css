@@ -411,8 +411,9 @@
   flex: 1;
   display: flex;
   align-items: center;
+  gap: 8px;
   min-height: var(--chat-input-height);
-  padding: 0 8px;
+  padding: 0 6px 0 14px;
   border-radius: var(--chat-radius-pill);
   background: var(--chat-surface-2);
   border: 1px solid var(--chat-border-strong);
@@ -465,7 +466,7 @@
   flex: 1;
   min-height: var(--chat-input-height);
   min-width: 0;
-  padding: 14px 12px;
+  padding: 14px 8px 14px 0;
   border-radius: 0;
   background: transparent;
   border: none;
@@ -488,6 +489,38 @@
   object-fit: contain;
   filter: var(--icon-invert);
   opacity: 0.85;
+}
+
+/* Send inside capsule (Grok-style: white circle, black arrow) */
+.chat-main__send--inside {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: none;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.chat-main__send--inside .chat-main__send-img {
+  filter: brightness(0);
+  opacity: 1;
+}
+
+.chat-main__send--inside:hover:not(:disabled) {
+  background: #f0f0f0;
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.chat-main__send--inside:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.chat-main__send--inside:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.6);
 }
 
 .chat-main__send {
@@ -1883,10 +1916,26 @@
     opacity: 0.5;
   }
 
-  /* Chat send: grey button, dark icon */
+  /* Chat send: grey button, dark icon (standalone send) */
   .chat-main__send-img {
     filter: none;
     opacity: 0.7;
+  }
+
+  /* Send inside capsule (light theme: dark circle, white arrow) */
+  .chat-main__send--inside {
+    background: #1f2937;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  .chat-main__send--inside .chat-main__send-img {
+    filter: brightness(0) invert(1);
+  }
+  .chat-main__send--inside:hover:not(:disabled) {
+    background: #374151;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  }
+  .chat-main__send--inside:disabled {
+    background: rgba(31, 41, 55, 0.5);
   }
 
   /* Home card send stays white icon (if button stays accent) */
@@ -2080,4 +2129,20 @@
 [data-theme="light"] .chat-sidebar__new-img {
   filter: invert(1);
   opacity: 0.9;
+}
+
+/* Send inside capsule in light theme (data-theme toggle) */
+[data-theme="light"] .chat-main__send--inside {
+  background: #1f2937;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .chat-main__send--inside .chat-main__send-img {
+  filter: brightness(0) invert(1);
+}
+[data-theme="light"] .chat-main__send--inside:hover:not(:disabled) {
+  background: #374151;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+[data-theme="light"] .chat-main__send--inside:disabled {
+  background: rgba(31, 41, 55, 0.5);
 }

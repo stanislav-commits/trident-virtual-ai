@@ -40,15 +40,15 @@ export function MessageInput({
           disabled={disabled}
           aria-label="Message input"
         />
+        <button
+          type="submit"
+          className="chat-main__send chat-main__send--inside"
+          disabled={disabled || !value.trim()}
+          aria-label="Send message"
+        >
+          <img src={sendIcon} alt="" className="chat-main__send-img" />
+        </button>
       </div>
-      <button
-        type="submit"
-        className="chat-main__send"
-        disabled={disabled || !value.trim()}
-        aria-label="Send message"
-      >
-        <img src={sendIcon} alt="" className="chat-main__send-img" />
-      </button>
     </form>
   );
 }
