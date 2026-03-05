@@ -66,6 +66,20 @@ body {
   color: var(--selection-color);
 }
 
+@media (prefers-color-scheme: light) {
+  * {
+    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.18);
+  }
+}
+
 /* Focus visible ring (accessibility) */
 :focus-visible {
   outline: 2px solid var(--focus-ring);

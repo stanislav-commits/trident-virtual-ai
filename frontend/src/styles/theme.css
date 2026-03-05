@@ -202,3 +202,47 @@
   --selection-color: #000000;
   --focus-ring: rgba(37, 99, 235, 0.4);
 }
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* ── Core backgrounds ── */
+    --chat-bg: #f0f2f7;
+    --chat-bg-subtle: #e8ebf2;
+    --chat-surface: #ffffff;
+    --chat-surface-2: #f3f5fa;
+    --chat-surface-3: #eaecf3;
+    --chat-surface-dim: rgba(255, 255, 255, 0.75);
+    --chat-surface-glass: rgba(0, 0, 0, 0.015);
+
+    /* ── Borders ── */
+    --chat-border: rgba(0, 0, 0, 0.09);
+    --chat-border-strong: rgba(0, 0, 0, 0.16);
+    --chat-border-sidebar: rgba(0, 0, 0, 0.08);
+
+    /* ── Text ── */
+    --chat-text: #0d1117;
+    --chat-text-muted: rgba(13, 17, 23, 0.52);
+    --chat-text-subtle: rgba(13, 17, 23, 0.36);
+
+    /* ── Interactive ── */
+    --chat-button: #0d1117;
+    --chat-button-hover: #000000;
+
+    /* ── Semantic ── */
+    --color-error: #c0392b;
+    --color-error-bg: rgba(192, 57, 43, 0.07);
+    --color-error-border: rgba(192, 57, 43, 0.18);
+
+    /* ── Shadows ── */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.07);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.09);
+    --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.13);
+    --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.18);
+    --shadow-accent: 0 0 20px rgba(59, 130, 246, 0.25);
+    --shadow-accent-lg: 0 0 40px rgba(59, 130, 246, 0.2), 0 0 80px rgba(59, 130, 246, 0.08);
+
+    /* ── Glassmorphism ── */
+    --glass-bg: rgba(0, 0, 0, 0.015);
+    --glass-border: rgba(0, 0, 0, 0.09);
+  }
+}

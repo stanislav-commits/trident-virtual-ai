@@ -332,9 +332,9 @@
   max-width: 480px;
   width: 55%;
   height: auto;
-  opacity: 0.06;
-  filter: blur(1px);
-  animation: bgLogoFade 1s ease both;
+  opacity: 0.13;
+  filter: blur(0.5px) drop-shadow(0 0 60px rgba(59, 130, 246, 0.18));
+  animation: subtleFloat 8s ease-in-out infinite;
 }
 
 .chat-main__messages {
@@ -488,10 +488,9 @@
 }
 
 .chat-main__send:disabled {
-  opacity: 0.3;
+  opacity: 0.5;
   cursor: not-allowed;
-  box-shadow: none;
-  animation: none;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
 }
 
 .chat-main__send:not(:disabled) {
@@ -794,6 +793,12 @@
   color: var(--chat-text-muted);
 }
 
+/* ── Phantom new chat spacer ── */
+.chat-main__phantom-spacer {
+  flex: 1;
+  min-height: 0;
+}
+
 /* ── Home / Welcome ── */
 .home-layout {
   display: flex;
@@ -988,9 +993,9 @@
 }
 
 .home-card__send:disabled {
-  opacity: 0.3;
+  opacity: 0.5;
   cursor: not-allowed;
-  box-shadow: none;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
 }
 
 /* Login page */
@@ -1052,12 +1057,12 @@
 }
 
 .login-layout__bg-logo img {
-  max-width: 380px;
-  width: 100%;
+  max-width: 420px;
+  width: 60%;
   height: auto;
-  opacity: 0.06;
-  filter: blur(2px);
-  animation: bgLogoFade 1.2s ease both;
+  opacity: 0.18;
+  filter: blur(0px) drop-shadow(0 0 80px rgba(59, 130, 246, 0.25));
+  animation: subtleFloat 9s ease-in-out infinite;
 }
 
 .login-card {
@@ -1754,5 +1759,264 @@
   }
   100% {
     box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* =========================================================
+   Light Mode Overrides
+   ========================================================= */
+@media (prefers-color-scheme: light) {
+
+  /* ── Fix icon filters (don't invert dark icons on light bg) ── */
+  .chat-sidebar__search-icon,
+  .chat-sidebar__header-icon,
+  .chat-sidebar__new-img,
+  .chat-main__attach-img,
+  .chat-topbar__profile-img {
+    filter: none;
+    opacity: 0.5;
+  }
+
+  .chat-main__attach-img {
+    opacity: 0.55;
+  }
+
+  .home-card__attach-img {
+    filter: none;
+    opacity: 0.5;
+  }
+
+  /* Send icons stay white since button is always blue */
+  .chat-main__send-img,
+  .home-card__send-img {
+    filter: invert(1) brightness(10);
+  }
+
+  /* ── Sidebar ── */
+  .chat-sidebar {
+    background: rgba(248, 249, 252, 0.98);
+    border-right-color: var(--chat-border-sidebar);
+  }
+
+  .chat-sidebar__list {
+    scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+  }
+
+  .chat-sidebar__list::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+  }
+
+  .chat-sidebar__search-wrap:focus-within {
+    border-color: rgba(59, 130, 246, 0.45);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  /* ── TopBar ── */
+  .chat-topbar {
+    background: rgba(255, 255, 255, 0.92);
+    border-bottom-color: var(--chat-border-sidebar);
+  }
+
+  .chat-topbar__brand-name {
+    color: rgba(13, 17, 23, 0.45);
+    letter-spacing: 0.16em;
+  }
+
+  .chat-topbar__avatar {
+    background: var(--chat-surface-2);
+    border-color: var(--chat-border-strong);
+  }
+
+  .chat-topbar__profile-btn:hover .chat-topbar__avatar {
+    border-color: rgba(0, 0, 0, 0.28);
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .chat-topbar__profile-dropdown {
+    background: var(--chat-surface);
+    border-color: var(--chat-border-strong);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .chat-topbar__profile-item:hover {
+    background: var(--chat-surface-2);
+  }
+
+  /* ── Chat list items ── */
+  .chat-list-item:hover {
+    background: var(--chat-surface-2);
+  }
+
+  .chat-list-item--active {
+    background: var(--chat-surface-3);
+  }
+
+  .chat-list-item__dots:hover {
+    background: rgba(0, 0, 0, 0.06);
+  }
+
+  .chat-list-item__dropdown {
+    background: var(--chat-surface);
+    border-color: var(--chat-border-strong);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .chat-list-item__dropdown-item:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  /* ── Messages ── */
+  .chat-main__messages {
+    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  }
+
+  .chat-main__messages::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  .chat-message--user {
+    background: var(--chat-surface-3);
+    border-color: var(--chat-border-strong);
+  }
+
+  .chat-message--assistant {
+    background: var(--chat-surface);
+    border-color: var(--chat-border);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* ── Input area ── */
+  .chat-main__capsule {
+    background: var(--chat-surface);
+    border-color: var(--chat-border-strong);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .chat-main__capsule:focus-within {
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    background: var(--chat-surface);
+  }
+
+  .chat-main__input::placeholder {
+    color: rgba(13, 17, 23, 0.3);
+  }
+
+  /* ── Home page ── */
+  .home-card {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: var(--chat-border);
+    box-shadow: var(--shadow-md);
+  }
+
+  .home-card__title {
+    background: linear-gradient(135deg, #0d1117 0%, rgba(13, 17, 23, 0.7) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .home-card__capsule {
+    background: var(--chat-surface-2);
+    border-color: var(--chat-border-strong);
+  }
+
+  .home-card__capsule:focus-within {
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  .home-card__input::placeholder {
+    color: rgba(13, 17, 23, 0.32);
+  }
+
+  .home-logo {
+    filter: drop-shadow(0 0 40px rgba(59, 130, 246, 0.22));
+  }
+
+  /* ── Login page ── */
+  .login-layout {
+    background: linear-gradient(145deg, #f0f4ff 0%, #edf1fb 50%, #e8edf8 100%);
+  }
+
+  .login-layout::before {
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.14) 0%, transparent 70%);
+  }
+
+  .login-layout::after {
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+  }
+
+  .login-layout__bg-logo img {
+    opacity: 0.12;
+    filter: drop-shadow(0 0 60px rgba(59, 130, 246, 0.3));
+  }
+
+  .login-card {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-xl);
+  }
+
+  .login-card::before {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.06), transparent, rgba(99, 102, 241, 0.04));
+  }
+
+  .login-card__brand-title {
+    color: #0d1117;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+  }
+
+  .login-field__input {
+    background: var(--chat-surface-2);
+    border-color: var(--chat-border-strong);
+    color: var(--chat-text);
+  }
+
+  .login-field__input:focus {
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  .login-form__submit {
+    background: #0d1117;
+    color: #ffffff;
+  }
+
+  .login-form__submit:hover:not(:disabled) {
+    background: #000000;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  /* ── Chat sources ── */
+  .chat-source-item {
+    background: rgba(0, 0, 0, 0.02);
+    border-color: var(--chat-border);
+  }
+
+  /* ── Global scrollbar for light mode ── */
+  * {
+    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.18);
+  }
+
+  /* ── Text selection ── */
+  ::selection {
+    background: rgba(59, 130, 246, 0.2);
+    color: #0d1117;
+  }
+
+  /* ── Focus ring ── */
+  :focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.55);
+    outline-offset: 2px;
   }
 }

@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
 import { useChatMessages } from "../hooks/useChatMessages";
-import { useSendMessage } from "../hooks/useSendMessage";
-import { getChatSession } from "../api/chatApi";
+import { getChatSession, sendChatMessage } from "../api/chatApi";
 import type { TopBarTab } from "../components/layout/TopBar";
 import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
@@ -35,6 +34,8 @@ export function ChatPage({
   } = useChatSessions(token);
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [isNewChatMode, setIsNewChatMode] = useState(false);
+
   const {
     messages,
     isLoading: isLoadingMessages,
@@ -42,20 +43,17 @@ export function ChatPage({
     addMessage,
   } = useChatMessages(activeSessionId, token);
 
-  const isLoading = isLoadingSessions || isLoadingMessages;
-
-  const {
-    isSending,
-    error: sendError,
-    send: sendMessage,
-  } = useSendMessage(activeSessionId, token);
-
   const [inputValue, setInputValue] = useState("");
+  const [isSending, setIsSending] = useState(false);
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (initialSessionId) setActiveSessionId(initialSessionId);
+    if (initialSessionId) {
+      setActiveSessionId(initialSessionId);
+      setIsNewChatMode(false);
+    }
   }, [initialSessionId]);
 
   const filteredSessions = useMemo(() => {
@@ -64,64 +62,103 @@ export function ChatPage({
     return sessions.filter((s) => (s.title || "").toLowerCase().includes(q));
   }, [sessions, searchQuery]);
 
+  // Auto-select the most recent session on load, but only if not explicitly in new-chat mode
+  useEffect(() => {
+    if (!initialSessionId && sessions.length > 0 && !activeSessionId && !isNewChatMode) {
+      setActiveSessionId(sessions[0].id);
+    }
+  }, [initialSessionId, sessions, activeSessionId, isNewChatMode]);
+
+  const pollForResponse = useCallback(
+    async (sessionId: string, userMessageId: string) => {
+      const maxAttempts = 30;
+      let attempts = 0;
+      while (attempts < maxAttempts) {
+        try {
+          const updatedSession = await getChatSession(sessionId, token!);
+          const currentMessages = updatedSession.messages || [];
+          const lastMessage = currentMessages[currentMessages.length - 1];
+          if (
+            lastMessage &&
+            lastMessage.role === "assistant" &&
+            lastMessage.id !== userMessageId
+          ) {
+            addMessage(lastMessage);
+            refreshSessions();
+            break;
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 2000));
+        attempts++;
+      }
+      setIsWaitingForResponse(false);
+    },
+    [token, addMessage, refreshSessions],
+  );
+
   const handleSend = useCallback(async () => {
-    if (!inputValue.trim() || isSending || !activeSessionId) return;
+    if (!inputValue.trim() || isSending || isWaitingForResponse) return;
 
     const messageContent = inputValue;
     setInputValue("");
-    setIsWaitingForResponse(true);
+    setIsSending(true);
+    setSendError(null);
 
     try {
-      const userMessage = await sendMessage(messageContent);
-      addMessage(userMessage);
+      let currentSessionId = activeSessionId;
 
-      const maxAttempts = 30;
-      const checkForResponse = async () => {
-        let attempts = 0;
-        while (attempts < maxAttempts) {
-          try {
-            const updatedSession = await getChatSession(
-              activeSessionId,
-              token!,
-            );
-            const currentMessages = updatedSession.messages || [];
-            const lastMessage = currentMessages[currentMessages.length - 1];
-            if (
-              lastMessage &&
-              lastMessage.role === "assistant" &&
-              lastMessage.id !== userMessage.id
-            ) {
-              addMessage(lastMessage);
-              // Refresh sessions to pick up auto-generated title
-              refreshSessions();
-              break;
-            }
-          } catch {}
-          await new Promise((r) => setTimeout(r, 2000));
-          attempts++;
+      if (!currentSessionId) {
+        const canCreate =
+          user?.role === "admin" || (user?.role === "user" && !!user?.shipId);
+        if (!canCreate) {
+          setIsSending(false);
+          return;
         }
-        setIsWaitingForResponse(false);
-      };
-      checkForResponse();
+        const shipIdForSession =
+          user?.role === "admin" ? undefined : (user?.shipId ?? undefined);
+        const newSession = await createSession(shipIdForSession);
+        currentSessionId = newSession.id;
+        setActiveSessionId(currentSessionId);
+        setIsNewChatMode(false);
+      }
+
+      setIsWaitingForResponse(true);
+      const userMessage = await sendChatMessage(
+        currentSessionId,
+        messageContent,
+        token!,
+      );
+      addMessage(userMessage);
+      setIsSending(false);
+      pollForResponse(currentSessionId, userMessage.id);
     } catch (err) {
+      setIsSending(false);
       setIsWaitingForResponse(false);
+      setSendError(
+        err instanceof Error ? err.message : "Failed to send message",
+      );
       console.error("Failed to send message:", err);
     }
   }, [
     inputValue,
     isSending,
+    isWaitingForResponse,
     activeSessionId,
-    sendMessage,
-    addMessage,
+    user,
+    createSession,
     token,
-    refreshSessions,
+    addMessage,
+    pollForResponse,
   ]);
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
       try {
         await deleteSession(sessionId);
-        if (activeSessionId === sessionId) setActiveSessionId(null);
+        if (activeSessionId === sessionId) {
+          setActiveSessionId(null);
+          setIsNewChatMode(true);
+        }
       } catch (err) {
         console.error("Failed to delete session:", err);
       }
@@ -140,28 +177,20 @@ export function ChatPage({
     [renameSession],
   );
 
-  const handleNewChat = useCallback(async () => {
-    const canCreate =
-      user?.role === "admin" || (user?.role === "user" && !!user?.shipId);
-    if (!canCreate) {
-      console.error("Cannot create chat: admin or user with shipId required");
-      return;
-    }
+  const handleNewChat = useCallback(() => {
+    setActiveSessionId(null);
+    setIsNewChatMode(true);
+    setInputValue("");
+    setSendError(null);
+  }, []);
 
-    try {
-      const shipIdForSession =
-        user?.role === "admin" ? undefined : (user?.shipId ?? undefined);
-      const newSession = await createSession(shipIdForSession);
-      setActiveSessionId(newSession.id);
-      setInputValue("");
-    } catch (err) {
-      console.error("Failed to create new chat:", err);
-    }
-  }, [user, createSession]);
+  const handleSelectSession = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId);
+    setIsNewChatMode(false);
+  }, []);
 
   const hasError = sessionsError || messagesError || sendError;
-  const showEmptyState = !activeSessionId;
-  const hasChats = sessions.length > 0;
+  const isDisabled = isSending || isWaitingForResponse || isLoadingSessions;
 
   return (
     <AppLayout
@@ -174,7 +203,7 @@ export function ChatPage({
             updatedAt: s.updatedAt,
           }))}
           activeId={activeSessionId}
-          onSelect={setActiveSessionId}
+          onSelect={handleSelectSession}
           onDelete={handleDeleteSession}
           onRename={handleRenameSession}
         />
@@ -184,56 +213,38 @@ export function ChatPage({
       activeTab={activeTab}
       onTabChange={onTabChange}
     >
-      {
-        showEmptyState ? (
-          <div className="chat-empty">
-            <div className="chat-empty__logo-zone">
-              <img
-                src={logoImg}
-                alt="Trident Virtual AI"
-                className="chat-empty__logo chats-logo"
-              />
-            </div>
-            <div className="chat-empty__card">
-              <div className="chat-empty__title">
-                {hasChats
-                  ? `Welcome back${user?.name ? `, ${user.name}` : ""}!`
-                  : `Hello${user?.name ? `, ${user.name}` : ""}!`}
-              </div>
-              <p>
-                {hasChats
-                  ? "Select an existing chat or create a new one to continue."
-                  : "Create a new chat to get started."}
-              </p>
-            </div>
+      <>
+        <div className="chat-main__bg-logo" aria-hidden>
+          <img src={logoImg} alt="" />
+        </div>
+
+        {hasError && activeSessionId && (
+          <div className="chat-error-banner">
+            <p>{sessionsError || messagesError || sendError}</p>
           </div>
-        ) : activeSessionId ? (
-          <>
-            <div className="chat-main__bg-logo" aria-hidden>
-              <img src={logoImg} alt="" />
-            </div>
+        )}
 
-            {hasError && (
-              <div className="chat-error-banner">
-                <p>{sessionsError || messagesError || sendError}</p>
-              </div>
-            )}
+        {activeSessionId ? (
+          <MessageList
+            messages={messages}
+            isLoadingResponse={isWaitingForResponse || isLoadingMessages}
+          />
+        ) : (
+          <div className="chat-main__phantom-spacer" />
+        )}
 
-            <MessageList
-              messages={messages}
-              isLoadingResponse={isWaitingForResponse}
-            />
-
-            <MessageInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSend={handleSend}
-              disabled={isSending || isWaitingForResponse || isLoading}
-              placeholder="Type a message..."
-            />
-          </>
-        ) : null /* unreachable — kept for safety */
-      }
+        <MessageInput
+          value={inputValue}
+          onChange={setInputValue}
+          onSend={handleSend}
+          disabled={isDisabled}
+          placeholder={
+            activeSessionId
+              ? "Type a message..."
+              : "Start a new conversation..."
+          }
+        />
+      </>
     </AppLayout>
   );
 }
