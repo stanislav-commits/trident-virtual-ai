@@ -11,7 +11,7 @@ import {
 } from "../api/client";
 import { useAdminPanel } from "../context/AdminPanelContext";
 import { useAuth } from "../context/AuthContext";
-import logoImg from "../assets/logo-chats.png";
+import logoImg from "../assets/logo-home.png";
 import {
   UsersIcon,
   ShipIcon,
@@ -137,9 +137,9 @@ export function AdminPanelPage() {
         aria-label="Admin navigation"
       >
         <div className="admin-panel__sidebar-brand">
-          <img src={logoImg} alt="" className="admin-panel__brand-logo" />
+          <img src={logoImg} alt="" className="admin-panel__brand-logo" aria-hidden />
           <div className="admin-panel__brand-text">
-            <span className="admin-panel__brand-name">Trident</span>
+            <span className="admin-panel__brand-name">TRIDENT VIRTUAL AI</span>
             <span className="admin-panel__brand-sub">Admin Panel</span>
           </div>
         </div>
