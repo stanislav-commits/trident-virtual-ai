@@ -34,7 +34,7 @@ export function ChatPage({
   } = useChatSessions(token);
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [isNewChatMode, setIsNewChatMode] = useState(false);
+  const [isNewChatMode, setIsNewChatMode] = useState(true);
 
   const {
     messages,
