@@ -7,10 +7,12 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -43,6 +45,27 @@ export class ShipsController {
   @Get()
   findAll() {
     return this.shipsService.findAll();
+  }
+
+  @Get(':id/manuals/status')
+  findAllManualsWithStatus(@Param('id') id: string) {
+    return this.manualsService.findAllWithStatus(id);
+  }
+
+  @Get(':id/manuals/:manualId/download')
+  async downloadManual(
+    @Param('id') id: string,
+    @Param('manualId') manualId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename, contentType } =
+      await this.manualsService.download(id, manualId);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${filename.replace(/"/g, '_')}"`,
+    );
+    res.send(buffer);
   }
 
   @Get(':id/manuals/:manualId')

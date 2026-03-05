@@ -92,6 +92,63 @@ export class ManualsService {
     });
   }
 
+  async findAllWithStatus(shipId: string) {
+    const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
+    if (!ship) throw new NotFoundException('Ship not found');
+
+    const manuals = await this.prisma.shipManual.findMany({
+      where: { shipId },
+      orderBy: { uploadedAt: 'desc' },
+      select: {
+        id: true,
+        ragflowDocumentId: true,
+        filename: true,
+        uploadedAt: true,
+      },
+    });
+
+    if (
+      !manuals.length ||
+      !ship.ragflowDatasetId ||
+      !this.ragflow.isConfigured()
+    ) {
+      return manuals.map((m) => ({
+        ...m,
+        run: null as string | null,
+        progress: null as number | null,
+        progressMsg: null as string | null,
+        chunkCount: null as number | null,
+      }));
+    }
+
+    try {
+      const docs = await this.ragflow.listDocuments(ship.ragflowDatasetId);
+      const docMap = new Map(docs.map((d) => [d.id, d]));
+
+      return manuals.map((m) => {
+        const doc = docMap.get(m.ragflowDocumentId);
+        return {
+          ...m,
+          run: doc?.run ?? null,
+          progress: doc?.progress ?? null,
+          progressMsg: doc?.progress_msg ?? null,
+          chunkCount: doc?.chunk_count ?? null,
+        };
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to fetch RAGFlow document statuses: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return manuals.map((m) => ({
+        ...m,
+        run: null as string | null,
+        progress: null as number | null,
+        progressMsg: null as string | null,
+        chunkCount: null as number | null,
+      }));
+    }
+  }
+
   async findOne(shipId: string, manualId: string) {
     const manual = await this.prisma.shipManual.findFirst({
       where: { id: manualId, shipId },
@@ -104,6 +161,24 @@ export class ManualsService {
     });
     if (!manual) throw new NotFoundException('Manual not found');
     return manual;
+  }
+
+  async download(shipId: string, manualId: string) {
+    const manual = await this.prisma.shipManual.findFirst({
+      where: { id: manualId, shipId },
+      include: { ship: true },
+    });
+    if (!manual) throw new NotFoundException('Manual not found');
+    if (!manual.ship.ragflowDatasetId) {
+      throw new NotFoundException('Ship has no RAGFlow dataset');
+    }
+    if (!this.ragflow.isConfigured()) {
+      throw new ServiceUnavailableException('RAGFlow is not configured');
+    }
+    return this.ragflow.downloadDocument(
+      manual.ship.ragflowDatasetId,
+      manual.ragflowDocumentId,
+    );
   }
 
   async update(shipId: string, manualId: string, dto: UpdateManualDto) {
