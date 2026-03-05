@@ -214,9 +214,11 @@ export function ChatPage({
       onTabChange={onTabChange}
     >
       <>
-        <div className="chat-main__bg-logo" aria-hidden>
-          <img src={logoImg} alt="" />
-        </div>
+        {activeSessionId && (
+          <div className="chat-main__bg-logo" aria-hidden>
+            <img src={logoImg} alt="" />
+          </div>
+        )}
 
         {hasError && activeSessionId && (
           <div className="chat-error-banner">
@@ -225,36 +227,42 @@ export function ChatPage({
         )}
 
         {activeSessionId ? (
-          <MessageList
-            messages={messages}
-            isLoadingResponse={isWaitingForResponse || isLoadingMessages}
-          />
+          <>
+            <MessageList
+              messages={messages}
+              isLoadingResponse={isWaitingForResponse || isLoadingMessages}
+            />
+            <MessageInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSend={handleSend}
+              disabled={isDisabled}
+              placeholder="Type a message..."
+            />
+          </>
         ) : (
-          <div className="chat-welcome">
-            <div className="chat-welcome__logo-zone">
-              <img
-                src={logoImg}
-                alt=""
-                className="chat-welcome__logo"
-                aria-hidden
-              />
+          <div className="chat-main__welcome-wrap">
+            <div className="chat-welcome">
+              <div className="chat-welcome__logo-zone">
+                <img
+                  src={logoImg}
+                  alt=""
+                  className="chat-welcome__logo"
+                  aria-hidden
+                />
+              </div>
+              <h1 className="chat-welcome__title">TRIDENT VIRTUAL AI</h1>
+              <p className="chat-welcome__sub">What would you like to know?</p>
             </div>
-            <h1 className="chat-welcome__title">TRIDENT VIRTUAL AI</h1>
-            <p className="chat-welcome__sub">What would you like to know?</p>
+            <MessageInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSend={handleSend}
+              disabled={isDisabled}
+              placeholder="Start a new conversation..."
+            />
           </div>
         )}
-
-        <MessageInput
-          value={inputValue}
-          onChange={setInputValue}
-          onSend={handleSend}
-          disabled={isDisabled}
-          placeholder={
-            activeSessionId
-              ? "Type a message..."
-              : "Start a new conversation..."
-          }
-        />
       </>
     </AppLayout>
   );

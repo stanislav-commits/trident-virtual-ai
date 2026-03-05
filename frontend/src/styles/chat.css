@@ -70,8 +70,8 @@
 }
 
 .chat-sidebar__brand-logo {
-  width: 48px;
-  height: 48px;
+  width: 68px;
+  height: 68px;
   object-fit: contain;
   opacity: 0.9;
   flex-shrink: 0;
@@ -827,14 +827,29 @@
 }
 
 /* ── First screen (welcome) when chat not started ── */
-.chat-welcome {
+.chat-main__welcome-wrap {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 32px 24px 80px;
+  padding: 32px 56px 48px;
   min-height: 0;
+  gap: 28px;
+}
+
+.chat-main__welcome-wrap .chat-main__input-row {
+  margin: 0;
+  padding: 0;
+  max-width: 900px;
+  width: 100%;
+}
+
+.chat-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
   animation: contentReveal 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
@@ -842,7 +857,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .chat-welcome__logo {
