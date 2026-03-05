@@ -198,8 +198,8 @@
   width: 16px;
   height: 16px;
   display: block;
-  filter: invert(1);
-  opacity: 0.85;
+  filter: none;
+  opacity: 0.9;
 }
 
 .chat-sidebar__divider {
@@ -1863,7 +1863,6 @@
   /* ── Fix icon filters (don't invert dark icons on light bg) ── */
   .chat-sidebar__search-icon,
   .chat-sidebar__header-icon,
-  .chat-sidebar__new-img,
   .chat-main__attach-img,
   .chat-topbar__profile-img {
     filter: none;
@@ -1871,7 +1870,8 @@
   }
 
   .chat-sidebar__new-img {
-    opacity: 0.85;
+    filter: invert(1);
+    opacity: 0.9;
   }
 
   .chat-main__attach-img {
@@ -2076,8 +2076,8 @@
   }
 }
 
-/* Plus icon: black in light theme when toggled via data-theme */
+/* Plus/cross icon: black in light theme when toggled via data-theme */
 [data-theme="light"] .chat-sidebar__new-img {
-  filter: none;
-  opacity: 0.85;
+  filter: invert(1);
+  opacity: 0.9;
 }
