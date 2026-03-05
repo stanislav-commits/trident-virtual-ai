@@ -8,7 +8,6 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
 import { MessageList } from "../components/chat/MessageList";
 import { MessageInput } from "../components/chat/MessageInput";
-import logoImg from "../assets/logo-home.png";
 
 interface ChatPageProps {
   activeTab: TopBarTab;
@@ -214,10 +213,6 @@ export function ChatPage({
       onTabChange={onTabChange}
     >
       <>
-        <div className="chat-main__bg-logo" aria-hidden>
-          <img src={logoImg} alt="" />
-        </div>
-
         {hasError && activeSessionId && (
           <div className="chat-error-banner">
             <p>{sessionsError || messagesError || sendError}</p>

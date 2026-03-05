@@ -63,33 +63,20 @@
 .chat-sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 18px 14px 14px;
+  justify-content: center;
+  padding: 20px 14px 16px;
   border-bottom: 1px solid var(--chat-border-sidebar);
   flex-shrink: 0;
 }
 
 .chat-sidebar__brand-logo {
-  width: 48px;
-  height: 48px;
+  width: 80px;
+  height: auto;
+  max-height: 80px;
   object-fit: contain;
-  opacity: 0.92;
-  flex-shrink: 0;
-}
-
-.chat-sidebar__brand-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.chat-sidebar__brand-name {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--chat-text);
-  line-height: 1.2;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 24px rgba(59, 130, 246, 0.35));
+  animation: subtleFloat 9s ease-in-out infinite;
 }
 
 .chat-sidebar__search-wrap {
@@ -322,6 +309,7 @@
 
 .chat-topbar__right {
   flex-shrink: 0;
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -346,26 +334,6 @@
   overflow: hidden;
   position: relative;
   animation: contentReveal 0.35s ease both;
-}
-
-.chat-main__bg-logo {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding-bottom: 10%;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.chat-main__bg-logo img {
-  max-width: 480px;
-  width: 55%;
-  height: auto;
-  opacity: 0.24;
-  filter: blur(0) drop-shadow(0 0 70px rgba(59, 130, 246, 0.28));
-  animation: subtleFloat 8s ease-in-out infinite;
 }
 
 .chat-main__messages {
@@ -488,15 +456,16 @@
   height: 18px;
   display: block;
   object-fit: contain;
-  filter: var(--icon-invert-bright);
+  filter: var(--icon-invert);
+  opacity: 0.85;
 }
 
 .chat-main__send {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: var(--accent);
-  border: none;
+  background: var(--chat-surface-3);
+  border: 1px solid var(--chat-border-strong);
   cursor: pointer;
   flex-shrink: 0;
   display: flex;
@@ -504,33 +473,27 @@
   justify-content: center;
   transition:
     background var(--transition-base),
+    border-color var(--transition-base),
     transform var(--transition-bounce),
     box-shadow var(--transition-base);
-  box-shadow:
-    0 0 0 3px rgba(59, 130, 246, 0.18),
-    0 4px 16px var(--accent-glow);
+  box-shadow: var(--shadow-sm);
 }
 
 .chat-main__send:hover:not(:disabled) {
-  background: var(--accent-bright);
-  transform: scale(1.08);
-  box-shadow:
-    0 0 0 4px rgba(59, 130, 246, 0.22),
-    0 6px 24px var(--accent-glow);
+  background: var(--chat-surface-2);
+  border-color: var(--chat-border-strong);
+  transform: scale(1.05);
+  box-shadow: var(--shadow-md);
 }
 
 .chat-main__send:active:not(:disabled) {
-  transform: scale(0.94);
+  transform: scale(0.96);
 }
 
 .chat-main__send:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
-  box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
-}
-
-.chat-main__send:not(:disabled) {
-  animation: sendPulse 2s ease-in-out infinite;
+  box-shadow: none;
 }
 
 /* ── Chat list items ── */
@@ -1827,8 +1790,13 @@
     opacity: 0.5;
   }
 
-  /* Send icons stay white since button is always blue */
-  .chat-main__send-img,
+  /* Chat send: grey button, dark icon */
+  .chat-main__send-img {
+    filter: none;
+    opacity: 0.7;
+  }
+
+  /* Home card send stays white icon (if button stays accent) */
   .home-card__send-img {
     filter: invert(1) brightness(10);
   }
@@ -1925,12 +1893,6 @@
     background: var(--chat-surface);
     border-color: var(--chat-border);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 12px rgba(0, 0, 0, 0.04);
-  }
-
-  /* Chat background logo — visible on light background */
-  .chat-main__bg-logo img {
-    opacity: 0.14;
-    filter: drop-shadow(0 0 50px rgba(59, 130, 246, 0.2)) drop-shadow(0 2px 20px rgba(0, 0, 0, 0.08));
   }
 
   /* ── Input area ── */

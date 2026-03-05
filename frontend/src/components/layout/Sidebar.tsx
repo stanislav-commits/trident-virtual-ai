@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import searchIcon from "../../assets/look.svg";
 import timeIcon from "../../assets/time.svg";
 import plusAddIcon from "../../assets/plus-add.svg";
-import logoImg from "../../assets/logo-chats.png";
+import logoImg from "../../assets/logo-home.png";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -24,10 +24,7 @@ export function Sidebar({
   return (
     <aside className="chat-sidebar">
       <div className="chat-sidebar__brand">
-        <img src={logoImg} alt="" className="chat-sidebar__brand-logo" aria-hidden />
-        <div className="chat-sidebar__brand-text">
-          <span className="chat-sidebar__brand-name">TRIDENT VIRTUAL AI</span>
-        </div>
+        <img src={logoImg} alt="TRIDENT VIRTUAL AI" className="chat-sidebar__brand-logo" aria-hidden />
       </div>
       <div className="chat-sidebar__search-wrap">
         <img

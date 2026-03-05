@@ -38,10 +38,6 @@ export function TopBar({ onTabChange: _onTabChange }: TopBarProps) {
 
   return (
     <header className="chat-topbar">
-      <div className="chat-topbar__brand">
-        <span className="chat-topbar__brand-name">TRIDENT VIRTUAL AI</span>
-      </div>
-
       <div className="chat-topbar__right">
         {user?.role === "admin" && (
           <div className="chat-topbar__profile-wrap" ref={wrapRef}>
