@@ -157,12 +157,13 @@
   padding: 6px 14px 10px;
 }
 
+/* Dark theme: time icon is white, keep visible. Light theme override inverts it. */
 .chat-sidebar__header-icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  opacity: 0.55;
-  filter: invert(1);
+  opacity: 0.75;
+  filter: none;
 }
 
 .chat-sidebar__header-title {
@@ -1907,11 +1908,16 @@
 
   /* ── Fix icon filters (don't invert dark icons on light bg) ── */
   .chat-sidebar__search-icon,
-  .chat-sidebar__header-icon,
   .chat-main__attach-img,
   .chat-topbar__profile-img {
     filter: none;
     opacity: 0.5;
+  }
+
+  /* Recent chats icon (time): asset is white, invert for light bg */
+  .chat-sidebar__header-icon {
+    filter: invert(1);
+    opacity: 0.6;
   }
 
   .chat-sidebar__new-img {
@@ -2140,6 +2146,12 @@
 [data-theme="light"] .chat-sidebar__new-img {
   filter: invert(1);
   opacity: 0.9;
+}
+
+/* Recent chats icon: invert for light theme (data-theme toggle) */
+[data-theme="light"] .chat-sidebar__header-icon {
+  filter: invert(1);
+  opacity: 0.6;
 }
 
 /* Send inside capsule in light theme (data-theme toggle) */
