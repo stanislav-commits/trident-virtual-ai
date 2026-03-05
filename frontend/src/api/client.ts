@@ -146,6 +146,13 @@ export type ShipManualItem = {
   uploadedAt: string;
 };
 
+export type ManualStatusItem = ShipManualItem & {
+  run: string | null;
+  progress: number | null;
+  progressMsg: string | null;
+  chunkCount: number | null;
+};
+
 export type ShipListItem = {
   id: string;
   name: string;
@@ -334,6 +341,15 @@ export async function getManuals(
 ): Promise<ShipManualItem[]> {
   const res = await fetchWithAuth(`ships/${shipId}/manuals`, { token });
   if (!res.ok) throw new Error("Failed to fetch manuals");
+  return res.json();
+}
+
+export async function getManualsStatus(
+  shipId: string,
+  token: string,
+): Promise<ManualStatusItem[]> {
+  const res = await fetchWithAuth(`ships/${shipId}/manuals/status`, { token });
+  if (!res.ok) throw new Error("Failed to fetch manuals status");
   return res.json();
 }
 
