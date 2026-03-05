@@ -8,6 +8,7 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
 import { MessageList } from "../components/chat/MessageList";
 import { MessageInput } from "../components/chat/MessageInput";
+import logoImg from "../assets/logo-home.png";
 
 interface ChatPageProps {
   activeTab: TopBarTab;
@@ -213,6 +214,10 @@ export function ChatPage({
       onTabChange={onTabChange}
     >
       <>
+        <div className="chat-main__bg-logo" aria-hidden>
+          <img src={logoImg} alt="" />
+        </div>
+
         {hasError && activeSessionId && (
           <div className="chat-error-banner">
             <p>{sessionsError || messagesError || sendError}</p>
@@ -225,7 +230,18 @@ export function ChatPage({
             isLoadingResponse={isWaitingForResponse || isLoadingMessages}
           />
         ) : (
-          <div className="chat-main__phantom-spacer" />
+          <div className="chat-welcome">
+            <div className="chat-welcome__logo-zone">
+              <img
+                src={logoImg}
+                alt=""
+                className="chat-welcome__logo"
+                aria-hidden
+              />
+            </div>
+            <h1 className="chat-welcome__title">TRIDENT VIRTUAL AI</h1>
+            <p className="chat-welcome__sub">What would you like to know?</p>
+          </div>
         )}
 
         <MessageInput

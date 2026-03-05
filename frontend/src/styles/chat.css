@@ -63,20 +63,30 @@
 .chat-sidebar__brand {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 20px 14px 16px;
+  gap: 12px;
+  padding: 18px 14px 14px;
   border-bottom: 1px solid var(--chat-border-sidebar);
   flex-shrink: 0;
 }
 
 .chat-sidebar__brand-logo {
-  width: 80px;
-  height: auto;
-  max-height: 80px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
-  opacity: 0.85;
-  filter: drop-shadow(0 0 24px rgba(59, 130, 246, 0.35));
-  animation: subtleFloat 9s ease-in-out infinite;
+  opacity: 0.9;
+  flex-shrink: 0;
+}
+
+.chat-sidebar__brand-name {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--chat-text);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-sidebar__search-wrap {
@@ -334,6 +344,26 @@
   overflow: hidden;
   position: relative;
   animation: contentReveal 0.35s ease both;
+}
+
+.chat-main__bg-logo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 10%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.chat-main__bg-logo img {
+  max-width: 480px;
+  width: 55%;
+  height: auto;
+  opacity: 0.24;
+  filter: blur(0) drop-shadow(0 0 70px rgba(59, 130, 246, 0.28));
+  animation: subtleFloat 8s ease-in-out infinite;
 }
 
 .chat-main__messages {
@@ -796,10 +826,53 @@
   color: var(--chat-text-muted);
 }
 
-/* ── Phantom new chat spacer ── */
-.chat-main__phantom-spacer {
+/* ── First screen (welcome) when chat not started ── */
+.chat-welcome {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px 80px;
   min-height: 0;
+  animation: contentReveal 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.chat-welcome__logo-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.chat-welcome__logo {
+  width: 120px;
+  height: auto;
+  max-width: 140px;
+  object-fit: contain;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 40px rgba(59, 130, 246, 0.25));
+  animation: subtleFloat 8s ease-in-out infinite;
+}
+
+.chat-welcome__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--chat-text);
+  margin: 0 0 8px;
+  background: var(--title-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.chat-welcome__sub {
+  font-size: 0.9375rem;
+  color: var(--chat-text-subtle);
+  margin: 0;
+  letter-spacing: 0.02em;
 }
 
 /* ── Home / Welcome ── */
@@ -1893,6 +1966,11 @@
     background: var(--chat-surface);
     border-color: var(--chat-border);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 12px rgba(0, 0, 0, 0.04);
+  }
+
+  .chat-main__bg-logo img {
+    opacity: 0.14;
+    filter: drop-shadow(0 0 50px rgba(59, 130, 246, 0.2)) drop-shadow(0 2px 20px rgba(0, 0, 0, 0.08));
   }
 
   /* ── Input area ── */
