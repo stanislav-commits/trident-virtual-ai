@@ -24,8 +24,8 @@ export function LoginPage() {
 
   return (
     <div className="login-layout">
-      <div className="login-layout__bg-logo" aria-hidden>
-        <img src={logoImg} alt="" />
+      <div className="login-layout__logo-zone" aria-hidden>
+        <img src={logoImg} alt="" className="login-layout__logo-img" />
       </div>
       <div className="login-card">
         <div className="login-card__brand">

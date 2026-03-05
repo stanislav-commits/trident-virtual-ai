@@ -1003,12 +1003,14 @@
   min-height: 100vh;
   background: var(--chat-bg);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 24px 24px 40px;
   position: relative;
   overflow: hidden;
   animation: pageFadeIn 0.5s ease both;
+  gap: 0;
 }
 
 /* Animated gradient orbs */
@@ -1046,22 +1048,22 @@
   pointer-events: none;
 }
 
-.login-layout__bg-logo {
-  position: absolute;
-  inset: 0;
+/* Logo above the card so it's always visible */
+.login-layout__logo-zone {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding-bottom: 24px;
   pointer-events: none;
-  z-index: 0;
 }
 
-.login-layout__bg-logo img {
-  max-width: 480px;
-  width: 55%;
+.login-layout__logo-img {
+  max-width: 200px;
+  width: 28vmin;
   height: auto;
-  opacity: 0.28;
-  filter: blur(0) drop-shadow(0 0 80px rgba(59, 130, 246, 0.35));
+  opacity: 0.85;
+  filter: drop-shadow(0 0 40px rgba(59, 130, 246, 0.4));
   animation: subtleFloat 9s ease-in-out infinite;
 }
 
