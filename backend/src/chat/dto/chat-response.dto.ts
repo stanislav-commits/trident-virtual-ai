@@ -1,6 +1,7 @@
 export class ChatContextReferenceDto {
   id: string;
   shipManualId?: string;
+  shipId?: string | null;
   chunkId?: string;
   score?: number;
   pageNumber?: number;

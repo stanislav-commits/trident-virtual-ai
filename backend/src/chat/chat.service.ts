@@ -77,7 +77,9 @@ export class ChatService {
         messages: {
           where: { deletedAt: null },
           include: {
-            contextReferences: true,
+            contextReferences: {
+              include: { shipManual: { select: { shipId: true } } },
+            },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -128,7 +130,9 @@ export class ChatService {
         content: dto.content.trim(),
       },
       include: {
-        contextReferences: true,
+        contextReferences: {
+          include: { shipManual: { select: { shipId: true } } },
+        },
       },
     });
 
@@ -267,7 +271,9 @@ export class ChatService {
           : undefined,
       },
       include: {
-        contextReferences: true,
+        contextReferences: {
+          include: { shipManual: { select: { shipId: true } } },
+        },
       },
     });
 
@@ -357,6 +363,7 @@ export class ChatService {
       contextReferences: (message.contextReferences || []).map((ref: any) => ({
         id: ref.id,
         shipManualId: ref.shipManualId,
+        shipId: ref.shipManual?.shipId ?? null,
         chunkId: ref.chunkId,
         score: ref.score,
         pageNumber: ref.pageNumber,

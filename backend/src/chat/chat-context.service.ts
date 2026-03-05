@@ -11,6 +11,7 @@ interface RAGFlowSearchResult {
   doc_id: string;
   doc_name: string;
   content: string;
+  similarity?: number;
   meta?: Record<string, unknown>;
 }
 
@@ -76,9 +77,9 @@ export class ChatContextService {
           return {
             shipManualId: manual?.id,
             chunkId: result.id,
-            score: 0.85, // placeholder; RAGFlow may return scores
+            score: result.similarity ?? undefined,
             snippet: result.content.substring(0, 300),
-            sourceTitle: result.doc_name || manual?.filename,
+            sourceTitle: result.doc_name || manual?.filename || 'Document',
             pageNumber: (result.meta?.page_num as number) ?? undefined,
           };
         });
@@ -131,13 +132,14 @@ export class ChatContextService {
             (m) => m.ragflowDocumentId === result.doc_id,
           );
 
+          const docName = result.doc_name || manual?.filename || 'Document';
+
           allCitations.push({
             shipManualId: manual?.id,
             chunkId: result.id,
-            score: 0.85,
+            score: result.similarity ?? undefined,
             snippet: result.content.substring(0, 300),
-            sourceTitle:
-              `${result.doc_name} (${ship.name})` || manual?.filename,
+            sourceTitle: `${docName} (${ship.name})`,
             pageNumber: (result.meta?.page_num as number) ?? undefined,
           });
         });
