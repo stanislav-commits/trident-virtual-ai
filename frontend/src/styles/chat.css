@@ -355,7 +355,7 @@
   animation: contentReveal 0.35s ease both;
 }
 
-/* Subtle floating stars background */
+/* Subtle floating stars — low opacity, random-looking grid, drift in different directions */
 .chat-main__stars {
   position: absolute;
   inset: 0;
@@ -371,42 +371,55 @@
   inset: 0;
 }
 
+/* Layer 1: finer grid, drifts right-down */
 .chat-main__stars::before {
   background-image: radial-gradient(
       circle at center,
-      rgba(255, 255, 255, 0.22) 1.5px,
+      rgba(255, 255, 255, 0.09) 1.5px,
       transparent 1.5px
     );
-  background-size: 64px 64px;
-  animation: starsDrift 90s linear infinite;
+  background-size: 53px 53px;
+  background-position: 0 0;
+  animation: starsDrift1 95s linear infinite;
 }
 
+/* Layer 2: offset grid, drifts left-up + slight twinkle */
 .chat-main__stars::after {
   background-image: radial-gradient(
       circle at center,
-      rgba(255, 255, 255, 0.12) 1px,
+      rgba(255, 255, 255, 0.055) 1px,
       transparent 1px
     );
-  background-size: 100px 100px;
-  background-position: 30px 20px;
-  animation: starsDriftSlow 130s linear infinite reverse;
+  background-size: 87px 87px;
+  background-position: 31px 47px;
+  animation: starsDrift2 125s linear infinite, starsTwinkle 12s ease-in-out infinite;
 }
 
-@keyframes starsDrift {
+@keyframes starsDrift1 {
   0% {
     transform: translate(0, 0);
   }
   100% {
-    transform: translate(64px, 64px);
+    transform: translate(53px, 18px);
   }
 }
 
-@keyframes starsDriftSlow {
+@keyframes starsDrift2 {
   0% {
     transform: translate(0, 0);
   }
   100% {
-    transform: translate(100px, 100px);
+    transform: translate(-87px, -52px);
+  }
+}
+
+@keyframes starsTwinkle {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
@@ -879,6 +892,55 @@
 
 .chat-message--assistant .chat-message__time {
   text-align: left;
+}
+
+.chat-message__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.chat-message:hover .chat-message__actions {
+  opacity: 1;
+}
+
+.chat-message--user .chat-message__actions {
+  justify-content: flex-end;
+}
+
+.chat-message--assistant .chat-message__actions {
+  justify-content: flex-start;
+}
+
+.chat-message__action {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chat-text-subtle);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-message__action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--chat-text);
+}
+
+.chat-message__action:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.3);
+  outline-offset: 1px;
+}
+
+.chat-message__action svg {
+  display: block;
 }
 
 /* ── Chat empty state ── */

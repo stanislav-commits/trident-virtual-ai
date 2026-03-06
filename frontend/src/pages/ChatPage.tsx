@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
 import { useChatMessages } from "../hooks/useChatMessages";
-import { getChatSession, sendChatMessage } from "../api/chatApi";
+import {
+  getChatSession,
+  sendChatMessage,
+  regenerateChatResponse,
+} from "../api/chatApi";
 import type { TopBarTab } from "../components/layout/TopBar";
 import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
@@ -41,6 +45,7 @@ export function ChatPage({
     isLoading: isLoadingMessages,
     error: messagesError,
     addMessage,
+    refetchMessages,
   } = useChatMessages(activeSessionId, token);
 
   const [inputValue, setInputValue] = useState("");
@@ -184,6 +189,23 @@ export function ChatPage({
     setSendError(null);
   }, []);
 
+  const handleRegenerate = useCallback(
+    async (_messageId: string) => {
+      if (!activeSessionId || !token) return;
+      try {
+        setIsWaitingForResponse(true);
+        await regenerateChatResponse(activeSessionId, token);
+        await refetchMessages();
+        refreshSessions();
+      } catch (err) {
+        console.error("Failed to regenerate:", err);
+      } finally {
+        setIsWaitingForResponse(false);
+      }
+    },
+    [activeSessionId, token, refetchMessages, refreshSessions],
+  );
+
   const handleSelectSession = useCallback((sessionId: string) => {
     setActiveSessionId(sessionId);
     setIsNewChatMode(false);
@@ -226,6 +248,7 @@ export function ChatPage({
             <MessageList
               messages={messages}
               isLoadingResponse={isWaitingForResponse || isLoadingMessages}
+              onRegenerate={handleRegenerate}
             />
             <MessageInput
               value={inputValue}

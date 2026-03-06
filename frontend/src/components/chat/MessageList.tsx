@@ -5,6 +5,8 @@ import { MessageBubble } from "./MessageBubble";
 interface MessageListProps {
   messages: ChatMessageDto[];
   isLoadingResponse?: boolean;
+  onCopy?: (content: string) => void;
+  onRegenerate?: (messageId: string) => void;
 }
 
 /**
@@ -14,6 +16,8 @@ interface MessageListProps {
 export function MessageList({
   messages,
   isLoadingResponse = false,
+  onCopy,
+  onRegenerate,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -34,7 +38,13 @@ export function MessageList({
         </div>
       ) : (
         messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} isLoading={false} />
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            isLoading={false}
+            onCopy={onCopy}
+            onRegenerate={onRegenerate}
+          />
         ))
       )}
 

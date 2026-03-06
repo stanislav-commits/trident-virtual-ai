@@ -111,3 +111,33 @@ export async function deleteChatSession(
     throw new Error(err.message ?? "Failed to delete chat session");
   }
 }
+
+export async function deleteChatMessage(
+  sessionId: string,
+  messageId: string,
+  token: string,
+): Promise<void> {
+  const res = await fetchWithAuth(
+    `chat/sessions/${sessionId}/messages/${messageId}`,
+    { token, method: "DELETE" },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to delete message");
+  }
+}
+
+export async function regenerateChatResponse(
+  sessionId: string,
+  token: string,
+): Promise<ChatMessageDto> {
+  const res = await fetchWithAuth(`chat/sessions/${sessionId}/regenerate`, {
+    token,
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to regenerate response");
+  }
+  return res.json();
+}

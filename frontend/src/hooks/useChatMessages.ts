@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { ChatMessageDto } from "../types/chat";
 import { getChatSession } from "../api/chatApi";
 
@@ -18,31 +18,33 @@ export function useChatMessages(
     error: null,
   });
 
-  // Fetch messages when session changes
+  const fetchMessages = useCallback(async (): Promise<ChatMessageDto[]> => {
+    if (!sessionId || !token) return [];
+    setState((prev) => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const session = await getChatSession(sessionId, token);
+      const list = session.messages || [];
+      setState({
+        messages: list,
+        isLoading: false,
+        error: null,
+      });
+      return list;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to load messages";
+      setState({ messages: [], isLoading: false, error: message });
+      return [];
+    }
+  }, [sessionId, token]);
+
   useEffect(() => {
     if (!sessionId || !token) {
       setState({ messages: [], isLoading: false, error: null });
       return;
     }
-
-    const fetchMessages = async () => {
-      setState((prev) => ({ ...prev, isLoading: true, error: null }));
-      try {
-        const session = await getChatSession(sessionId, token);
-        setState({
-          messages: session.messages || [],
-          isLoading: false,
-          error: null,
-        });
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to load messages";
-        setState({ messages: [], isLoading: false, error: message });
-      }
-    };
-
     fetchMessages();
-  }, [sessionId, token]);
+  }, [sessionId, token, fetchMessages]);
 
   const addMessage = (message: ChatMessageDto) => {
     setState((prev) => ({
@@ -68,5 +70,6 @@ export function useChatMessages(
     ...state,
     addMessage,
     updateLastMessage,
+    refetchMessages: fetchMessages,
   };
 }

@@ -195,7 +195,7 @@ export class ChatService {
     userQuery: string,
     shipName?: string,
     role: string = 'user',
-  ): Promise<void> {
+  ): Promise<ChatMessageResponseDto> {
     try {
       const session = await this.prisma.chatSession.findUnique({
         where: { id: sessionId },
@@ -235,10 +235,15 @@ export class ChatService {
         })),
       });
 
-      await this.addAssistantMessage(sessionId, response, undefined, citations);
+      return this.addAssistantMessage(
+        sessionId,
+        response,
+        undefined,
+        citations,
+      );
     } catch (err) {
       const fallback = `I encountered an issue processing your query: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again or contact support.`;
-      await this.addAssistantMessage(sessionId, fallback);
+      return this.addAssistantMessage(sessionId, fallback);
     }
   }
 
@@ -323,6 +328,86 @@ export class ChatService {
       where: { id: sessionId },
       data: { deletedAt: new Date() },
     });
+  }
+
+  async deleteMessage(
+    sessionId: string,
+    messageId: string,
+    userId: string,
+    role: string,
+  ): Promise<void> {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        messages: {
+          where: { id: messageId },
+          select: { id: true, sessionId: true },
+        },
+      },
+    });
+
+    if (!session) throw new NotFoundException('Chat session not found');
+
+    this.validateAccess(session, userId, role);
+
+    if (session.deletedAt)
+      throw new NotFoundException('Chat session not found');
+
+    if (session.messages.length === 0)
+      throw new NotFoundException('Message not found');
+
+    await this.prisma.chatMessage.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  async regenerateLastResponse(
+    sessionId: string,
+    userId: string,
+    role: string,
+  ): Promise<ChatMessageResponseDto> {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        ship: { select: { id: true, name: true } },
+        messages: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 2,
+        },
+      },
+    });
+
+    if (!session) throw new NotFoundException('Chat session not found');
+
+    this.validateAccess(session, userId, role);
+
+    if (session.deletedAt)
+      throw new NotFoundException('Chat session not found');
+
+    if (
+      session.messages.length < 2 ||
+      session.messages[0].role !== 'assistant' ||
+      session.messages[1].role !== 'user'
+    ) {
+      throw new BadRequestException(
+        'Regenerate only applies to the last assistant reply',
+      );
+    }
+
+    await this.prisma.chatMessage.update({
+      where: { id: session.messages[0].id },
+      data: { deletedAt: new Date() },
+    });
+
+    return this.generateAssistantResponse(
+      session.shipId ?? null,
+      sessionId,
+      session.messages[1].content,
+      session.ship?.name,
+      role,
+    );
   }
 
   private validateAccess(

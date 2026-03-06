@@ -105,4 +105,31 @@ export class ChatController {
     );
     return session.messages || [];
   }
+
+  @Delete('sessions/:sessionId/messages/:messageId')
+  @HttpCode(204)
+  async deleteMessage(
+    @Param('sessionId') sessionId: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: AuthUser,
+  ): Promise<void> {
+    return this.chatService.deleteMessage(
+      sessionId,
+      messageId,
+      user.id,
+      user.role,
+    );
+  }
+
+  @Post('sessions/:id/regenerate')
+  async regenerateLastResponse(
+    @Param('id') sessionId: string,
+    @CurrentUser() user: AuthUser,
+  ): Promise<ChatMessageResponseDto> {
+    return this.chatService.regenerateLastResponse(
+      sessionId,
+      user.id,
+      user.role,
+    );
+  }
 }
