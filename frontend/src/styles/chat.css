@@ -355,7 +355,7 @@
   animation: contentReveal 0.35s ease both;
 }
 
-/* Subtle floating stars — low opacity, random-looking grid, drift in different directions */
+/* Floating stars — drift + twinkle, more visible random movement */
 .chat-main__stars {
   position: absolute;
   inset: 0;
@@ -371,28 +371,29 @@
   inset: 0;
 }
 
-/* Layer 1: finer grid, drifts right-down */
+/* Layer 1: drifts right-down + twinkle */
 .chat-main__stars::before {
   background-image: radial-gradient(
       circle at center,
-      rgba(255, 255, 255, 0.09) 1.5px,
+      rgba(255, 255, 255, 0.1) 1.5px,
       transparent 1.5px
     );
-  background-size: 53px 53px;
+  background-size: 48px 48px;
   background-position: 0 0;
-  animation: starsDrift1 95s linear infinite;
+  animation: starsDrift1 45s linear infinite, starsTwinkle1 4s ease-in-out infinite;
 }
 
-/* Layer 2: offset grid, drifts left-up + slight twinkle */
+/* Layer 2: drifts left-up + twinkle (different phase) */
 .chat-main__stars::after {
   background-image: radial-gradient(
       circle at center,
-      rgba(255, 255, 255, 0.055) 1px,
+      rgba(255, 255, 255, 0.06) 1px,
       transparent 1px
     );
-  background-size: 87px 87px;
-  background-position: 31px 47px;
-  animation: starsDrift2 125s linear infinite, starsTwinkle 12s ease-in-out infinite;
+  background-size: 72px 72px;
+  background-position: 24px 38px;
+  animation: starsDrift2 60s linear infinite reverse, starsTwinkle2 5.5s ease-in-out infinite;
+  animation-delay: 0s, 1.2s;
 }
 
 @keyframes starsDrift1 {
@@ -400,7 +401,7 @@
     transform: translate(0, 0);
   }
   100% {
-    transform: translate(53px, 18px);
+    transform: translate(48px, 16px);
   }
 }
 
@@ -409,14 +410,24 @@
     transform: translate(0, 0);
   }
   100% {
-    transform: translate(-87px, -52px);
+    transform: translate(-72px, -36px);
   }
 }
 
-@keyframes starsTwinkle {
+@keyframes starsTwinkle1 {
   0%,
   100% {
-    opacity: 0.7;
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes starsTwinkle2 {
+  0%,
+  100% {
+    opacity: 0.6;
   }
   50% {
     opacity: 1;
