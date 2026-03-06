@@ -351,6 +351,7 @@
   min-height: 0;
   overflow: hidden;
   position: relative;
+  background: var(--chat-bg);
   animation: contentReveal 0.35s ease both;
 }
 
@@ -778,39 +779,34 @@
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 99, 102, 241), 0.25);
 }
 
-/* ── Message bubbles ── */
+/* ── Message bubbles (only user has bubble; AI = plain text) ── */
 .chat-message {
-  max-width: 80%;
-  padding: 14px 18px;
-  border-radius: 18px;
+  max-width: 85%;
   line-height: 1.62;
   font-size: 0.9375rem;
   animation: messageFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
   position: relative;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.06),
-    0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .chat-message--user {
   align-self: flex-end;
+  padding: 14px 18px;
+  border-radius: 18px;
+  border-bottom-right-radius: 6px;
   background: var(--chat-surface-3);
   border: 1px solid var(--chat-border-strong);
-  border-bottom-right-radius: 6px;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.1),
-    0 2px 10px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 2px 10px rgba(0, 0, 0, 0.06);
   animation-name: messageSlideLeft;
 }
 
 .chat-message--assistant {
   align-self: flex-start;
-  background: var(--chat-surface);
-  border: 1px solid var(--chat-border);
-  border-bottom-left-radius: 6px;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.08),
-    0 2px 12px rgba(0, 0, 0, 0.04);
+  max-width: 100%;
+  padding: 6px 0 4px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   animation-name: messageSlideRight;
 }
 
@@ -2219,17 +2215,9 @@
   }
 
   .chat-message--assistant {
-    background: var(--chat-surface);
-    border-color: var(--chat-border);
-    box-shadow:
-      0 1px 3px rgba(0, 0, 0, 0.06),
-      0 2px 12px rgba(0, 0, 0, 0.04);
-  }
-
-  .chat-main__bg-logo img {
-    opacity: 0.14;
-    filter: drop-shadow(0 0 50px rgba(59, 130, 246, 0.2))
-      drop-shadow(0 2px 20px rgba(0, 0, 0, 0.08));
+    background: none;
+    border: none;
+    box-shadow: none;
   }
 
   /* ── Input area ── */

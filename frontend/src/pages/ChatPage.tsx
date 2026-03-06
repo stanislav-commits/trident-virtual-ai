@@ -214,12 +214,6 @@ export function ChatPage({
       onTabChange={onTabChange}
     >
       <>
-        {activeSessionId && (
-          <div className="chat-main__bg-logo" aria-hidden>
-            <img src={logoImg} alt="" />
-          </div>
-        )}
-
         {hasError && activeSessionId && (
           <div className="chat-error-banner">
             <p>{sessionsError || messagesError || sendError}</p>
