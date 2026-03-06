@@ -222,6 +222,7 @@ export function ChatPage({
 
         {activeSessionId ? (
           <>
+            <div className="chat-main__stars" aria-hidden />
             <MessageList
               messages={messages}
               isLoadingResponse={isWaitingForResponse || isLoadingMessages}

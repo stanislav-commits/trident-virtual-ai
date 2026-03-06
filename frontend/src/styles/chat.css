@@ -355,6 +355,62 @@
   animation: contentReveal 0.35s ease both;
 }
 
+/* Subtle floating stars background */
+.chat-main__stars {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.chat-main__stars::before,
+.chat-main__stars::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+}
+
+.chat-main__stars::before {
+  background-image: radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0.14) 1px,
+      transparent 1px
+    );
+  background-size: 72px 72px;
+  animation: starsDrift 100s linear infinite;
+}
+
+.chat-main__stars::after {
+  background-image: radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0.08) 1px,
+      transparent 1px
+    );
+  background-size: 120px 120px;
+  background-position: 40px 30px;
+  animation: starsDriftSlow 160s linear infinite reverse;
+}
+
+@keyframes starsDrift {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(72px, 72px);
+  }
+}
+
+@keyframes starsDriftSlow {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(120px, 120px);
+  }
+}
+
 .chat-main__bg-logo {
   position: absolute;
   inset: 0;
@@ -790,9 +846,9 @@
 
 .chat-message--user {
   align-self: flex-end;
-  padding: 14px 18px;
-  border-radius: 18px;
-  border-bottom-right-radius: 6px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border-bottom-right-radius: 5px;
   background: var(--chat-surface-3);
   border: 1px solid var(--chat-border-strong);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 2px 10px rgba(0, 0, 0, 0.06);
