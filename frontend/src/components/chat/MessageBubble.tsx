@@ -146,7 +146,9 @@ export function MessageBubble({
         </div>
       )}
 
-      <div className="chat-message__time">{formatTime(createdAt)}</div>
+      {role !== "user" && (
+        <div className="chat-message__time">{formatTime(createdAt)}</div>
+      )}
     </div>
   );
 }

@@ -369,28 +369,27 @@
   content: "";
   position: absolute;
   inset: 0;
-  opacity: 0.5;
 }
 
 .chat-main__stars::before {
   background-image: radial-gradient(
       circle at center,
-      rgba(255, 255, 255, 0.14) 1px,
-      transparent 1px
+      rgba(255, 255, 255, 0.22) 1.5px,
+      transparent 1.5px
     );
-  background-size: 72px 72px;
-  animation: starsDrift 100s linear infinite;
+  background-size: 64px 64px;
+  animation: starsDrift 90s linear infinite;
 }
 
 .chat-main__stars::after {
   background-image: radial-gradient(
       circle at center,
-      rgba(255, 255, 255, 0.08) 1px,
+      rgba(255, 255, 255, 0.12) 1px,
       transparent 1px
     );
-  background-size: 120px 120px;
-  background-position: 40px 30px;
-  animation: starsDriftSlow 160s linear infinite reverse;
+  background-size: 100px 100px;
+  background-position: 30px 20px;
+  animation: starsDriftSlow 130s linear infinite reverse;
 }
 
 @keyframes starsDrift {
@@ -398,7 +397,7 @@
     transform: translate(0, 0);
   }
   100% {
-    transform: translate(72px, 72px);
+    transform: translate(64px, 64px);
   }
 }
 
@@ -407,7 +406,7 @@
     transform: translate(0, 0);
   }
   100% {
-    transform: translate(120px, 120px);
+    transform: translate(100px, 100px);
   }
 }
 
