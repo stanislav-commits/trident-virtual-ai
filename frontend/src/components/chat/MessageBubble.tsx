@@ -91,9 +91,19 @@ export function MessageBubble({
   onCopy,
   onRegenerate,
 }: MessageBubbleProps) {
-  const { token } = useAuth();
-  const { id, role, content, createdAt, contextReferences } = message;
+  const { token, user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const { id, role, content, createdAt, contextReferences, ragflowContext } =
+    message;
   const refs = contextReferences ?? [];
+  const telemetryShips = Array.isArray(ragflowContext?.telemetryShips)
+    ? ragflowContext.telemetryShips
+        .filter(
+          (v): v is string => typeof v === "string" && v.trim().length > 0,
+        )
+        .map((v) => v.trim())
+    : [];
+  const noDocumentation = ragflowContext?.noDocumentation === true;
 
   const handleCopy = useCallback(() => {
     const text = content.trim();
@@ -132,6 +142,18 @@ export function MessageBubble({
   return (
     <div className={`chat-message chat-message--${role}`}>
       <div className="chat-message__content">
+        {role === "assistant" && isAdmin && telemetryShips.length > 0 && (
+          <div
+            className="chat-message__telemetry-ships"
+            aria-label="Telemetry ships"
+          >
+            {telemetryShips.map((name) => (
+              <span key={name} className="chat-message__telemetry-ship">
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
         {role === "assistant" ? (
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
@@ -154,6 +176,28 @@ export function MessageBubble({
           </div>
         )}
 
+      {role === "assistant" && noDocumentation && refs.length === 0 && (
+        <div className="chat-message__no-docs">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+          </svg>
+          No matching manual chunk for this query — answered from telemetry
+          &amp; general knowledge
+        </div>
+      )}
+
       {isLoading && (
         <div className="typing-dots">
           <span className="typing-dot" />
@@ -175,7 +219,17 @@ export function MessageBubble({
             title="Copy"
             aria-label="Copy message"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
@@ -189,7 +243,17 @@ export function MessageBubble({
             title="Regenerate"
             aria-label="Regenerate response"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M21 2v6h-6" />
               <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
               <path d="M3 22v-6h6" />
