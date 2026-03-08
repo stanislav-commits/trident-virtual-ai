@@ -124,6 +124,10 @@ export type MetricDefinitionItem = {
   description: string | null;
   unit: string | null;
   dataType: string;
+  bucket?: string | null;
+  measurement?: string | null;
+  field?: string | null;
+  status?: string | null;
   createdAt?: string;
 };
 
