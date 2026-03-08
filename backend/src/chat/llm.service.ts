@@ -10,6 +10,7 @@ export interface LLMContext {
   }>;
   shipName?: string;
   telemetry?: Record<string, unknown>;
+  noDocumentation?: boolean;
   chatHistory?: Array<{
     role: 'user' | 'assistant' | 'system';
     content: string;
@@ -128,6 +129,9 @@ Guidelines:
         prompt += `[${idx + 1}] ${citation.sourceTitle}${pageInfo}:\n`;
         prompt += `${citation.snippet}\n\n`;
       });
+    } else if (context.noDocumentation) {
+      prompt +=
+        'Note: No matching documentation context was found for this query. Answer based on telemetry data and your general knowledge. Do not use citation markers like [1], [2].\n\n';
     }
 
     if (context.chatHistory && context.chatHistory.length > 0) {
