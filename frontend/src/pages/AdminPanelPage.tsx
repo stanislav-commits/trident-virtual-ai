@@ -22,6 +22,7 @@ import {
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
 import { ManualsPromptModal } from "../components/admin/ManualsPromptModal";
+import { MetricsModal } from "../components/admin/MetricsModal";
 import { Toast } from "../components/layout/Toast";
 
 export function AdminPanelPage() {
@@ -55,6 +56,11 @@ export function AdminPanelPage() {
     id: string;
     name: string;
   } | null>(null);
+
+  // Metrics modal state
+  const [metricsModalShip, setMetricsModalShip] = useState<ShipListItem | null>(
+    null,
+  );
 
   // Load users
   const loadUsers = useCallback(async () => {
@@ -137,7 +143,12 @@ export function AdminPanelPage() {
         aria-label="Admin navigation"
       >
         <div className="admin-panel__sidebar-brand">
-          <img src={logoImg} alt="" className="admin-panel__brand-logo" aria-hidden />
+          <img
+            src={logoImg}
+            alt=""
+            className="admin-panel__brand-logo"
+            aria-hidden
+          />
           <div className="admin-panel__brand-text">
             <span className="admin-panel__brand-name">TRIDENT VIRTUAL AI</span>
             <span className="admin-panel__brand-sub">Admin Panel</span>
@@ -220,6 +231,7 @@ export function AdminPanelPage() {
                 onOpenManuals={(shipId, shipName) => {
                   setManualsPromptShip({ id: shipId, name: shipName });
                 }}
+                onOpenMetrics={(ship) => setMetricsModalShip(ship)}
               />
             )}
           </div>
@@ -239,6 +251,24 @@ export function AdminPanelPage() {
           }}
           onError={setError}
           onManualsChanged={(list) => setManuals(list)}
+        />
+      )}
+
+      {metricsModalShip && (
+        <MetricsModal
+          token={token}
+          shipName={metricsModalShip.name}
+          metricsConfig={metricsModalShip.metricsConfig}
+          metricDefinitions={metricDefinitions}
+          onClose={() => setMetricsModalShip(null)}
+          onError={setError}
+          onDefinitionsChanged={() => {
+            if (token) {
+              getMetricDefinitions(token)
+                .then(setMetricDefinitions)
+                .catch(() => {});
+            }
+          }}
         />
       )}
 
