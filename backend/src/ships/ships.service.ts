@@ -27,6 +27,10 @@ export class ShipsService {
         label: true,
         description: true,
         unit: true,
+        bucket: true,
+        measurement: true,
+        field: true,
+        status: true,
         dataType: true,
       },
     });
@@ -141,7 +145,16 @@ export class ShipsService {
         metricsConfig: {
           include: {
             metric: {
-              select: { key: true, label: true, description: true, unit: true },
+              select: {
+                key: true,
+                label: true,
+                description: true,
+                unit: true,
+                bucket: true,
+                measurement: true,
+                field: true,
+                status: true,
+              },
             },
           },
         },
