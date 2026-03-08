@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -20,6 +21,26 @@ import { MetricsService } from './metrics.service';
 @Roles('admin')
 export class MetricsController {
   constructor(private readonly metricsService: MetricsService) {}
+
+  @Post('sync')
+  syncFromInflux() {
+    return this.metricsService.syncFromInflux();
+  }
+
+  @Get('values')
+  async getLatestValues(@Query('keys') keysParam?: string) {
+    const keys =
+      keysParam
+        ?.split(',')
+        .map((k) => k.trim())
+        .filter(Boolean) ?? [];
+    return this.metricsService.getLatestValues(keys);
+  }
+
+  @Get('ship/:shipId/telemetry')
+  async getShipTelemetry(@Param('shipId') shipId: string) {
+    return this.metricsService.getShipTelemetry(shipId);
+  }
 
   @Get()
   findAll() {
@@ -37,10 +58,7 @@ export class MetricsController {
   }
 
   @Patch(':key')
-  update(
-    @Param('key') key: string,
-    @Body() dto: UpdateMetricDefinitionDto,
-  ) {
+  update(@Param('key') key: string, @Body() dto: UpdateMetricDefinitionDto) {
     return this.metricsService.update(key, dto);
   }
 
