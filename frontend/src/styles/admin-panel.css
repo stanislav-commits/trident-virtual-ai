@@ -839,6 +839,77 @@
   color: var(--chat-text-muted);
 }
 
+/* ── Count badge (inside buttons) ── */
+.admin-panel__count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  background: var(--chat-text);
+  color: var(--submit-text);
+  line-height: 1;
+}
+
+/* ── Metrics modal search ── */
+.admin-panel__metrics-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--chat-surface);
+  border: 1px solid var(--chat-border);
+  margin-bottom: 16px;
+}
+.admin-panel__metrics-search svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+.admin-panel__metrics-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--chat-text);
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+.admin-panel__metrics-search-input::placeholder {
+  color: var(--chat-text-subtle);
+}
+
+/* ── Metrics modal group ── */
+.admin-panel__metrics-group {
+  margin-bottom: 20px;
+}
+.admin-panel__metrics-group:last-child {
+  margin-bottom: 8px;
+}
+.admin-panel__metrics-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.admin-panel__metrics-bucket-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent-bright);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
 /* ── Form card ── */
 .admin-panel__form-card {
   border-radius: var(--chat-radius-card);
@@ -1236,6 +1307,31 @@
 
 .admin-panel__picker-search::placeholder {
   color: var(--chat-text-subtle);
+}
+
+.admin-panel__picker-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--chat-border);
+}
+.admin-panel__picker-action-btn {
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.admin-panel__picker-action-btn:hover {
+  background: var(--chat-surface);
+  color: var(--chat-text);
 }
 
 .admin-panel__picker-list {
