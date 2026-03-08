@@ -1,22 +1,22 @@
-import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import logoImg from '../assets/logo-home.png';
+import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import logoImg from "../assets/logo-home.png";
 
 export function LoginPage() {
   const { login } = useAuth();
-  const [userId, setUserId] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [userId, setUserId] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
     try {
       await login(userId.trim(), password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
@@ -65,9 +65,17 @@ export function LoginPage() {
               disabled={loading}
             />
           </div>
-          {error && <p className="login-form__error" role="alert">{error}</p>}
-          <button type="submit" className="login-form__submit" disabled={loading}>
-            {loading ? '…' : 'Continue'}
+          {error && (
+            <p className="login-form__error" role="alert">
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            className="login-form__submit"
+            disabled={loading}
+          >
+            {loading ? "…" : "Continue"}
           </button>
         </form>
       </div>
