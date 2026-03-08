@@ -1,5 +1,5 @@
 -- DropIndex
-DROP INDEX "MetricDefinition_bucket_status_idx";
+DROP INDEX IF EXISTS "MetricDefinition_bucket_status_idx";
 
 -- AlterTable
 ALTER TABLE "ShipMetricsConfig" ADD COLUMN     "latest_value" JSONB,
