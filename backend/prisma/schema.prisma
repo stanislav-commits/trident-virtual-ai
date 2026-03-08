@@ -39,10 +39,16 @@ model User {
 }
 
 model MetricDefinition {
-  key         String   @id @db.VarChar(50)
+  key         String   @id @db.VarChar(255)
   label       String   @db.VarChar(100)
   description String?  @db.Text
   unit        String?  @db.VarChar(20)
+  bucket      String?  @db.VarChar(128)
+  measurement String?  @db.VarChar(255)
+  field       String?  @db.VarChar(255)
+  firstSeenAt DateTime? @map("first_seen_at")
+  lastSeenAt  DateTime? @map("last_seen_at")
+  status      String   @default("active") @db.VarChar(20)
   dataType    String   @default("numeric") @map("data_type") @db.VarChar(20)
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -78,9 +84,11 @@ model ShipManual {
 }
 
 model ShipMetricsConfig {
-  shipId    String  @map("ship_id") @db.Uuid
-  metricKey String  @map("metric_key") @db.VarChar(50)
-  isActive  Boolean @default(true) @map("is_active")
+  shipId         String    @map("ship_id") @db.Uuid
+  metricKey      String    @map("metric_key") @db.VarChar(255)
+  isActive       Boolean   @default(true) @map("is_active")
+  latestValue    Json?     @map("latest_value") @db.JsonB
+  valueUpdatedAt DateTime? @map("value_updated_at")
 
   ship   Ship             @relation(fields: [shipId], references: [id], onDelete: Cascade)
   metric MetricDefinition @relation(fields: [metricKey], references: [key])
