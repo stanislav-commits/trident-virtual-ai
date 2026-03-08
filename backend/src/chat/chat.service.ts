@@ -3,10 +3,12 @@ import {
   ForbiddenException,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatContextService } from './chat-context.service';
 import { LlmService } from './llm.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { CreateChatSessionDto } from './dto/create-chat-session.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import {
@@ -16,10 +18,13 @@ import {
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly contextService: ChatContextService,
     private readonly llmService: LlmService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async createSession(
@@ -42,8 +47,8 @@ export class ChatService {
     role: string,
     search?: string,
   ): Promise<ChatSessionResponseDto[]> {
-    let where: any =
-      role === 'admin' ? { deletedAt: null } : { userId, deletedAt: null };
+    // Sessions are private per account, regardless of role.
+    let where: any = { userId, deletedAt: null };
 
     if (search) {
       where.title = { contains: search, mode: 'insensitive' };
@@ -208,17 +213,81 @@ export class ChatService {
         },
       });
 
-      // Admin: global RAG; user: single ship
-      let citations;
-      if (role === 'admin' || !shipId) {
-        citations =
-          await this.contextService.findContextForAdminQuery(userQuery);
-      } else {
-        const result = await this.contextService.findContextForQuery(
-          shipId,
-          userQuery,
+      // RAG context is best-effort: if retrieval fails, continue with telemetry-only response.
+      let citations: Array<{
+        shipManualId?: string;
+        chunkId?: string;
+        score?: number;
+        pageNumber?: number;
+        snippet?: string;
+        sourceTitle?: string;
+      }> = [];
+      try {
+        if (role === 'admin' || !shipId) {
+          citations =
+            await this.contextService.findContextForAdminQuery(userQuery);
+        } else {
+          const result = await this.contextService.findContextForQuery(
+            shipId,
+            userQuery,
+          );
+          citations = result.citations;
+        }
+
+        // If primary retrieval found nothing, retry with an expanded query.
+        if (citations.length === 0) {
+          const fallbackQuery = this.buildRagFallbackQuery(userQuery);
+          if (fallbackQuery !== userQuery) {
+            if (role === 'admin' || !shipId) {
+              citations =
+                await this.contextService.findContextForAdminQuery(
+                  fallbackQuery,
+                );
+            } else {
+              const fallbackResult =
+                await this.contextService.findContextForQuery(
+                  shipId,
+                  fallbackQuery,
+                );
+              citations = fallbackResult.citations;
+            }
+          }
+        }
+      } catch (error) {
+        this.logger.warn(
+          `RAG retrieval skipped: ${error instanceof Error ? error.message : String(error)}`,
         );
-        citations = result.citations;
+      }
+
+      // Fetch live telemetry (best-effort, must not block response generation).
+      // User mode: selected ship only. Admin mode: aggregate from all ships that have active metrics.
+      let telemetry: Record<string, unknown> = {};
+      const telemetryShips: string[] = [];
+      try {
+        if (shipId) {
+          telemetry = await this.metricsService.getShipTelemetry(shipId);
+          if (shipName) telemetryShips.push(shipName);
+        } else if (role === 'admin') {
+          const shipsWithMetrics = await this.prisma.ship.findMany({
+            where: { metricsConfig: { some: { isActive: true } } },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+          });
+
+          for (const ship of shipsWithMetrics) {
+            const shipTelemetry = await this.metricsService.getShipTelemetry(
+              ship.id,
+            );
+            if (Object.keys(shipTelemetry).length > 0) {
+              telemetryShips.push(ship.name);
+            }
+            Object.entries(shipTelemetry).forEach(([label, value]) => {
+              telemetry[`[${ship.name}] ${label}`] = value;
+            });
+          }
+        }
+      } catch {
+        // telemetry is best-effort; don't block the response
       }
 
       const response = await this.llmService.generateResponse({
@@ -228,7 +297,9 @@ export class ChatService {
           sourceTitle: c.sourceTitle || 'Unknown',
           pageNumber: c.pageNumber,
         })),
+        noDocumentation: citations.length === 0,
         shipName,
+        telemetry,
         chatHistory: session?.messages.map((m) => ({
           role: m.role,
           content: m.content,
@@ -238,7 +309,12 @@ export class ChatService {
       return this.addAssistantMessage(
         sessionId,
         response,
-        undefined,
+        {
+          ...(telemetryShips.length > 0
+            ? { telemetryShips: [...new Set(telemetryShips)] }
+            : {}),
+          ...(citations.length === 0 ? { noDocumentation: true } : {}),
+        },
         citations,
       );
     } catch (err) {
@@ -415,9 +491,16 @@ export class ChatService {
     userId: string,
     role: string,
   ): void {
-    if (role !== 'admin' && session.userId !== userId) {
+    // Chat session ownership is strict: only creator can access it.
+    if (session.userId !== userId) {
       throw new ForbiddenException('Cannot access this chat session');
     }
+  }
+
+  private buildRagFallbackQuery(userQuery: string): string {
+    const normalized = userQuery.trim().replace(/\s+/g, ' ');
+    if (!normalized) return userQuery;
+    return `${normalized}. Include normal range, limits, alarms, troubleshooting and operating procedure.`;
   }
 
   private formatSessionResponse(session: {
@@ -445,6 +528,7 @@ export class ChatService {
       id: message.id,
       role: message.role,
       content: message.content,
+      ragflowContext: message.ragflowContext ?? null,
       contextReferences: (message.contextReferences || []).map((ref: any) => ({
         id: ref.id,
         shipManualId: ref.shipManualId,
