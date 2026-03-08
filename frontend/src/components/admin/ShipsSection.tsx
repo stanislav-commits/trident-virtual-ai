@@ -29,12 +29,16 @@ function MultiSelectPicker({
   options,
   selected,
   onToggle,
+  onSelectAll,
+  onDeselectAll,
   disabled,
   placeholder = "Select…",
 }: {
   options: PickerOption[];
   selected: string[];
   onToggle: (key: string) => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
   disabled?: boolean;
   placeholder?: string;
 }) {
@@ -89,6 +93,30 @@ function MultiSelectPicker({
               autoFocus
             />
           </div>
+          {(onSelectAll || onDeselectAll) && (
+            <div className="admin-panel__picker-actions">
+              {onSelectAll && (
+                <button
+                  type="button"
+                  className="admin-panel__picker-action-btn"
+                  onClick={onSelectAll}
+                  disabled={disabled}
+                >
+                  Select all
+                </button>
+              )}
+              {onDeselectAll && selected.length > 0 && (
+                <button
+                  type="button"
+                  className="admin-panel__picker-action-btn"
+                  onClick={onDeselectAll}
+                  disabled={disabled}
+                >
+                  Deselect all
+                </button>
+              )}
+            </div>
+          )}
           <div className="admin-panel__picker-list">
             {filtered.length === 0 ? (
               <div className="admin-panel__picker-empty">No results</div>
@@ -150,6 +178,7 @@ interface ShipsSectionProps {
   onError: (error: string) => void;
   onShipCreated?(shipId: string, shipName: string): void;
   onOpenManuals?: (shipId: string, shipName: string) => void;
+  onOpenMetrics?: (ship: ShipListItem) => void;
 }
 
 interface ShipForm {
@@ -173,6 +202,7 @@ export function ShipsSection({
   onLoadShips,
   onError,
   onOpenManuals,
+  onOpenMetrics,
 }: ShipsSectionProps) {
   const [shipForm, setShipForm] = useState<ShipForm>({
     name: "",
@@ -374,16 +404,16 @@ export function ShipsSection({
                     </td>
                     <td className="admin-panel__td admin-panel__td--metrics">
                       {ship.metricsConfig.length ? (
-                        <div className="admin-panel__metric-tags">
-                          {ship.metricsConfig.map((c) => (
-                            <span
-                              key={c.metricKey}
-                              className="admin-panel__metric-tag"
-                            >
-                              {c.metricKey}
-                            </span>
-                          ))}
-                        </div>
+                        <button
+                          type="button"
+                          className="admin-panel__btn admin-panel__btn--ghost"
+                          onClick={() => onOpenMetrics?.(ship)}
+                        >
+                          Metrics
+                          <span className="admin-panel__count-badge">
+                            {ship.metricsConfig.length}
+                          </span>
+                        </button>
                       ) : (
                         <span className="admin-panel__muted">—</span>
                       )}
@@ -528,6 +558,15 @@ export function ShipsSection({
                       }))}
                       selected={shipForm.metricKeys}
                       onToggle={toggleMetricKey}
+                      onSelectAll={() =>
+                        setShipForm((p) => ({
+                          ...p,
+                          metricKeys: metricDefinitions.map((m) => m.key),
+                        }))
+                      }
+                      onDeselectAll={() =>
+                        setShipForm((p) => ({ ...p, metricKeys: [] }))
+                      }
                       disabled={creatingShip}
                       placeholder="Choose metrics…"
                     />
