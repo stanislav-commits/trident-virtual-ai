@@ -14,6 +14,7 @@ export class ChatMessageResponseDto {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  ragflowContext?: Record<string, unknown> | null;
   contextReferences: ChatContextReferenceDto[];
   createdAt: string;
   deletedAt?: string | null;
