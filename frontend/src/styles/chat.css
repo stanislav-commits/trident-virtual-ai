@@ -63,17 +63,18 @@
 .chat-sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 18px 14px 14px;
+  gap: 10px;
+  padding: 14px 12px 12px;
   border-bottom: 1px solid var(--chat-border-sidebar);
   flex-shrink: 0;
-  min-height: 68px;
+  min-height: 56px;
   box-sizing: border-box;
+  min-width: 0;
 }
 
 .chat-sidebar__brand-logo {
-  width: 68px;
-  height: 68px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
   object-position: center;
   opacity: 0.9;
@@ -83,17 +84,18 @@
 }
 
 .chat-sidebar__brand-name {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--chat-text);
-  line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.25;
+  white-space: normal;
+  word-break: break-word;
   align-self: center;
   margin-top: -1px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chat-sidebar__search-wrap {
