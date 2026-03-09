@@ -1378,6 +1378,14 @@
   text-transform: uppercase;
   color: var(--chat-text);
   line-height: 1.3;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .login-card__brand {
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+  }
 }
 
 .login-form {
