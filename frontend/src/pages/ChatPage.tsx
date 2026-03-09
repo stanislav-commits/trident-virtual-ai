@@ -269,7 +269,7 @@ export function ChatPage({
                   aria-hidden
                 />
               </div>
-              <h1 className="chat-welcome__title">TRIDENT VIRTUAL AI</h1>
+              <h1 className="chat-welcome__title">Trident Intelligence Platform</h1>
               <p className="chat-welcome__sub">What would you like to know?</p>
             </div>
             <MessageInput

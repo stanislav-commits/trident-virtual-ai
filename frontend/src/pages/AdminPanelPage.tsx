@@ -150,7 +150,7 @@ export function AdminPanelPage() {
             aria-hidden
           />
           <div className="admin-panel__brand-text">
-            <span className="admin-panel__brand-name">TRIDENT VIRTUAL AI</span>
+            <span className="admin-panel__brand-name">Trident Intelligence Platform</span>
             <span className="admin-panel__brand-sub">Admin Panel</span>
           </div>
         </div>

@@ -29,7 +29,7 @@ export function LoginPage() {
       </div>
       <div className="login-card">
         <div className="login-card__brand">
-          <div className="login-card__brand-title">TRIDENT VIRTUAL AI</div>
+          <div className="login-card__brand-title">Trident</div>
           <div className="login-card__brand-sub">Intelligence Platform</div>
         </div>
         <form className="login-form" onSubmit={handleSubmit}>
