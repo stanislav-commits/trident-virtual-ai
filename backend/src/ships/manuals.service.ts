@@ -38,6 +38,14 @@ export class ManualsService {
           'Failed to create RAGFlow dataset for ship',
         );
       }
+    } else {
+      try {
+        await this.ragflow.updateDatasetConfig(ship.ragflowDatasetId);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to update RAGFlow dataset config for ship ${shipId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
     if (!ship.ragflowDatasetId)
       throw new BadRequestException('Ship has no RAGFlow dataset');
@@ -66,6 +74,22 @@ export class ManualsService {
         uploadedAt: manual.uploadedAt,
       });
     }
+
+    for (const doc of uploaded) {
+      const filenameForConfig = file.originalname ?? doc.name;
+      try {
+        await this.ragflow.updateDocumentConfig(
+          ship.ragflowDatasetId,
+          doc.id,
+          filenameForConfig,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to update RAGFlow document config for document ${doc.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     try {
       await this.ragflow.parseDocuments(
         ship.ragflowDatasetId,

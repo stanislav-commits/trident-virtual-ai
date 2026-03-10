@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
 const RAGFLOW_BASE_URL = process.env.RAGFLOW_BASE_URL ?? '';
 const RAGFLOW_API_KEY = process.env.RAGFLOW_API_KEY ?? '';
@@ -8,8 +8,30 @@ export interface RagflowUploadFile {
   originalname?: string;
 }
 
+export type RagflowChunkMethod =
+  | 'manual'
+  | 'naive'
+  | 'table'
+  | 'picture'
+  | 'presentation';
+
+interface RagflowConfigPayload {
+  chunk_method: RagflowChunkMethod;
+  parser_config: { raptor: { use_raptor: false } } | Record<string, never>;
+}
+
+interface RagflowDocumentUpdatePayload extends RagflowConfigPayload {}
+
+/** Optional retrieval / reranker settings built from environment variables. */
+interface RagflowRetrievalConfig {
+  similarity_threshold?: number;
+  top_n?: number;
+  rerank_model?: string;
+  vector_similarity_weight?: number;
+}
+
 @Injectable()
-export class RagflowService {
+export class RagflowService implements OnModuleInit {
   private readonly logger = new Logger(RagflowService.name);
   private get baseUrl(): string {
     const url = RAGFLOW_BASE_URL.replace(/\/$/, '');
@@ -29,12 +51,132 @@ export class RagflowService {
     return Boolean(RAGFLOW_BASE_URL && RAGFLOW_API_KEY);
   }
 
+  /** Called by NestJS once the module is fully initialised. */
+  onModuleInit(): void {
+    const cfg = this.buildRetrievalConfig();
+    if (cfg.rerank_model) {
+      this.logger.log(
+        `RAGFlow retrieval config: rerank enabled (model: ${cfg.rerank_model}), top_n=${cfg.top_n ?? 'default'}`,
+      );
+    } else {
+      this.logger.log(
+        `RAGFlow retrieval config: rerank disabled (set RAGFLOW_RERANK_MODEL to enable)`,
+      );
+    }
+  }
+
+  /**
+   * Reads optional retrieval / reranker env vars and returns only the
+   * fields that are actually configured.  When nothing is set the
+   * returned object is empty, so current behaviour is preserved.
+   */
+  private buildRetrievalConfig(): RagflowRetrievalConfig {
+    const cfg: RagflowRetrievalConfig = {};
+
+    const rerank = process.env.RAGFLOW_RERANK_MODEL?.trim();
+    if (rerank) cfg.rerank_model = rerank;
+
+    // Accept both naming conventions: RAGFLOW_RETRIEVAL_TOP_N and RAGFLOW_RETRIEVAL_TOP_K
+    const topN =
+      this.safeParseInt(process.env.RAGFLOW_RETRIEVAL_TOP_N) ??
+      this.safeParseInt(process.env.RAGFLOW_RETRIEVAL_TOP_K);
+    if (topN !== undefined && topN > 0) cfg.top_n = topN;
+
+    const simThresh = this.safeParseFloat(
+      process.env.RAGFLOW_RETRIEVAL_SIMILARITY_THRESHOLD,
+    );
+    if (simThresh !== undefined && simThresh >= 0 && simThresh <= 1)
+      cfg.similarity_threshold = simThresh;
+
+    const vecWeight = this.safeParseFloat(
+      process.env.RAGFLOW_RETRIEVAL_VECTOR_WEIGHT,
+    );
+    if (vecWeight !== undefined && vecWeight >= 0 && vecWeight <= 1)
+      cfg.vector_similarity_weight = vecWeight;
+
+    return cfg;
+  }
+
+  private safeParseInt(val: string | undefined): number | undefined {
+    if (!val) return undefined;
+    const n = parseInt(val, 10);
+    return Number.isFinite(n) ? n : undefined;
+  }
+
+  private safeParseFloat(val: string | undefined): number | undefined {
+    if (!val) return undefined;
+    const n = parseFloat(val);
+    return Number.isFinite(n) ? n : undefined;
+  }
+
+  private buildDatasetDefaultConfig(): RagflowConfigPayload {
+    return {
+      chunk_method: 'manual',
+      parser_config: { raptor: { use_raptor: false } },
+    };
+  }
+
+  private getFileExtension(filename: string): string {
+    const trimmed = filename.trim();
+    if (!trimmed) return '';
+    const base = trimmed.split(/[/\\]/).pop() ?? trimmed;
+    const dotIdx = base.lastIndexOf('.');
+    if (dotIdx < 0 || dotIdx === base.length - 1) return '';
+    return base
+      .slice(dotIdx + 1)
+      .toLowerCase()
+      .replace(/^\.+/, '');
+  }
+
+  private buildDocumentConfigForFilename(
+    filename: string,
+  ): RagflowDocumentUpdatePayload {
+    const ext = this.getFileExtension(filename);
+
+    if (['pdf', 'docx'].includes(ext)) {
+      return {
+        chunk_method: 'manual',
+        parser_config: { raptor: { use_raptor: false } },
+      };
+    }
+
+    if (['md', 'mdx', 'txt', 'html', 'json'].includes(ext)) {
+      return {
+        chunk_method: 'naive',
+        parser_config: { raptor: { use_raptor: false } },
+      };
+    }
+
+    if (['csv', 'xls', 'xlsx'].includes(ext)) {
+      return { chunk_method: 'table', parser_config: {} };
+    }
+
+    if (['png', 'jpg', 'jpeg', 'gif', 'tif', 'tiff', 'webp'].includes(ext)) {
+      return { chunk_method: 'picture', parser_config: {} };
+    }
+
+    if (['ppt', 'pptx'].includes(ext)) {
+      return {
+        chunk_method: 'presentation',
+        parser_config: { raptor: { use_raptor: false } },
+      };
+    }
+
+    return {
+      chunk_method: 'naive',
+      parser_config: { raptor: { use_raptor: false } },
+    };
+  }
+
   async createDataset(name: string): Promise<string | null> {
     if (!this.isConfigured()) return null;
     const res = await fetch(`${this.baseUrl}/api/v1/datasets`, {
       method: 'POST',
       headers: this.headers,
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({
+        name,
+        ...this.buildDatasetDefaultConfig(),
+      }),
     });
     if (!res.ok) {
       const err = await res.text();
@@ -44,6 +186,47 @@ export class RagflowService {
     if (data.code !== 0 || !data.data?.id)
       throw new Error('RAGFlow createDataset invalid response');
     return data.data.id;
+  }
+
+  async updateDatasetConfig(datasetId: string): Promise<void> {
+    if (!this.isConfigured()) return;
+    const res = await fetch(`${this.baseUrl}/api/v1/datasets/${datasetId}`, {
+      method: 'PUT',
+      headers: this.headers,
+      body: JSON.stringify(this.buildDatasetDefaultConfig()),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(
+        `RAGFlow updateDatasetConfig failed: ${res.status} ${err}`,
+      );
+    }
+    const data = (await res.json()) as { code?: number };
+    if (data.code !== 0) throw new Error('RAGFlow updateDatasetConfig failed');
+  }
+
+  async updateDocumentConfig(
+    datasetId: string,
+    documentId: string,
+    filename: string,
+  ): Promise<void> {
+    const payload = this.buildDocumentConfigForFilename(filename);
+    const res = await fetch(
+      `${this.baseUrl}/api/v1/datasets/${datasetId}/documents/${documentId}`,
+      {
+        method: 'PUT',
+        headers: this.headers,
+        body: JSON.stringify(payload),
+      },
+    );
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(
+        `RAGFlow updateDocumentConfig failed: ${res.status} ${err}`,
+      );
+    }
+    const data = (await res.json()) as { code?: number };
+    if (data.code !== 0) throw new Error('RAGFlow updateDocumentConfig failed');
   }
 
   async deleteDataset(datasetId: string): Promise<void> {
@@ -216,17 +399,46 @@ export class RagflowService {
     }>
   > {
     if (!this.isConfigured()) return [];
+
+    const config = this.buildRetrievalConfig();
+
+    // When a broader pool is configured (config.top_n > caller's topK),
+    // use it as top_k so RAGFlow has more candidates to rerank.
+    // The caller's topK is still enforced via a top_n cap when reranking.
+    const poolSize = config.top_n && config.top_n > topK ? config.top_n : topK;
+
+    const body: Record<string, unknown> = {
+      question: query,
+      dataset_ids: [datasetId],
+      top_k: poolSize,
+    };
+
+    if (config.similarity_threshold !== undefined)
+      body.similarity_threshold = config.similarity_threshold;
+    if (config.vector_similarity_weight !== undefined)
+      body.vector_similarity_weight = config.vector_similarity_weight;
+
+    if (config.rerank_model) {
+      body.rerank_model = config.rerank_model;
+      // When pool is broader than desired output, cap final results
+      if (poolSize > topK) body.top_n = topK;
+    }
+
+    this.logger.debug(
+      `RAGFlow retrieval: top_k=${poolSize}, rerank=${config.rerank_model ?? 'off'}`,
+    );
+    this.logger.debug(
+      `RAGFlow retrieval REQUEST body: ${JSON.stringify(body)}`,
+    );
+
     const res = await fetch(`${this.baseUrl}/api/v1/retrieval`, {
       method: 'POST',
       headers: this.headers,
-      body: JSON.stringify({
-        question: query,
-        dataset_ids: [datasetId],
-        top_k: topK,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const err = await res.text();
+      this.logger.error(`RAGFlow retrieval HTTP error ${res.status}: ${err}`);
       throw new Error(`RAGFlow retrieval failed: ${res.status} ${err}`);
     }
     const data = (await res.json()) as {
@@ -235,13 +447,32 @@ export class RagflowService {
         chunks?: Array<Record<string, unknown>>;
       };
     };
+
+    this.logger.debug(
+      `RAGFlow retrieval RESPONSE code=${data.code}, chunks=${data.data?.chunks?.length ?? 0}`,
+    );
+
     if (data.code !== 0) throw new Error('RAGFlow retrieval failed');
 
     const chunks = data.data?.chunks ?? [];
-    if (chunks.length > 0) {
+
+    if (chunks.length === 0) {
+      this.logger.debug(
+        `RAGFlow retrieval: no chunks returned for query="${query}"`,
+      );
+    } else {
       this.logger.debug(
         `RAGFlow retrieval chunk keys: ${Object.keys(chunks[0]).join(', ')}`,
       );
+      chunks.forEach((chunk, i) => {
+        this.logger.debug(
+          `  chunk[${i}] doc="${String(chunk.document_name ?? chunk.doc_name ?? chunk.docnm_kwd ?? '')}" ` +
+            `similarity=${typeof chunk.similarity === 'number' ? chunk.similarity.toFixed(4) : 'n/a'} ` +
+            `content="${String(chunk.content ?? chunk.content_with_weight ?? '')
+              .slice(0, 120)
+              .replace(/\n/g, ' ')}"`,
+        );
+      });
     }
 
     return chunks.map((chunk) => ({
