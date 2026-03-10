@@ -26,6 +26,20 @@ function injectCiteRefs(text: string): string {
   return text.replace(/\[(\d+)\]/g, '<cite-ref data-idx="$1"></cite-ref>');
 }
 
+function normalizeMathLikeFormatting(text: string): string {
+  return text
+    .replace(/\\\(|\\\)|\\\[|\\\]/g, "")
+    .replace(/\\text\{([^{}]+)\}/g, "$1")
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1 / $2)")
+    .replace(/\\lceil\s*/g, "ceil(")
+    .replace(/\s*\\rceil/g, ")")
+    .replace(/\\times/g, "×")
+    .replace(/\\cdot/g, "·")
+    .replace(/\\left/g, "")
+    .replace(/\\right/g, "")
+    .replace(/[ \t]+\n/g, "\n");
+}
+
 function CitationBadge({
   idx,
   citations,
@@ -138,6 +152,10 @@ export function MessageBubble({
   );
 
   const mdComponents = useMdComponents(refs, handleOpenDocument);
+  const renderedAssistantContent =
+    role === "assistant"
+      ? normalizeMathLikeFormatting(content.trim())
+      : content.trim();
 
   return (
     <div className={`chat-message chat-message--${role}`}>
@@ -160,7 +178,9 @@ export function MessageBubble({
             rehypePlugins={[rehypeRaw]}
             components={mdComponents}
           >
-            {refs.length > 0 ? injectCiteRefs(content.trim()) : content.trim()}
+            {refs.length > 0
+              ? injectCiteRefs(renderedAssistantContent)
+              : renderedAssistantContent}
           </ReactMarkdown>
         ) : (
           content.trim()
