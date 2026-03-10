@@ -67,11 +67,11 @@ export function HomePage({
       <TopBar activeTab={activeTab} onTabChange={onTabChange} />
       <div className="home-content">
         <div className="home-content__logo-zone">
-          <img src={logoImg} alt="TRIDENT VIRTUAL AI" className="home-logo" />
+          <img src={logoImg} alt="Trident Intelligence Platform" className="home-logo" />
         </div>
         <div className="home-card">
           <div className="home-card__welcome">Welcome to</div>
-          <h1 className="home-card__title">TRIDENT VIRTUAL AI</h1>
+          <h1 className="home-card__title">Trident Intelligence Platform</h1>
 
           {errorMessage && (
             <div className="home-card__error">{errorMessage}</div>
