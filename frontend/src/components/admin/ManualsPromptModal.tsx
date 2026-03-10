@@ -249,7 +249,7 @@ export function ManualsPromptModal({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.doc,.docx,.txt"
+                  accept=".pdf,.doc,.docx,.txt,.md,.csv,.jpg,.jpeg,.png,.bmp,.svg"
                   className="admin-panel__file-input"
                   multiple
                   disabled={uploading}

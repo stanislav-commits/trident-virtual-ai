@@ -638,7 +638,7 @@ export function ShipsSection({
                         ref={fileInputRef}
                         type="file"
                         multiple
-                        accept=".pdf,.doc,.docx,.txt"
+                        accept=".pdf,.doc,.docx,.txt,.md,.csv,.jpg,.jpeg,.png,.bmp,.svg"
                         className="admin-panel__dropzone-input"
                         onChange={(e) => {
                           const files = Array.from(e.target.files ?? []);
