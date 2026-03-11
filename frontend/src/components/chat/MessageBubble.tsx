@@ -12,6 +12,7 @@ interface MessageBubbleProps {
   isLoading?: boolean;
   onCopy?: (content: string) => void;
   onRegenerate?: (messageId: string) => void;
+  onSendMessage?: (text: string) => void;
 }
 
 function formatTime(iso: string): string {
@@ -104,6 +105,7 @@ export function MessageBubble({
   isLoading = false,
   onCopy,
   onRegenerate,
+  onSendMessage,
 }: MessageBubbleProps) {
   const { token, user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -176,7 +178,31 @@ export function MessageBubble({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw]}
-            components={mdComponents}
+            components={{
+              ...mdComponents,
+              span: ({ node, className, style, children, ...props }) => {
+                // If it's our specially injected yellow interactive span
+                if (style?.color === "#eab308" && style?.cursor === "pointer" && onSendMessage) {
+                  return (
+                    <span
+                      {...props}
+                      className={className}
+                      style={{ ...style, display: "block", marginTop: "12px", padding: "8px 12px", border: "1px solid #eab308", borderRadius: "6px", backgroundColor: "rgba(234, 179, 8, 0.1)" }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        const textContent = Array.isArray(children) ? children.join("") : children?.toString() || "";
+                        if (textContent) {
+                          onSendMessage(textContent);
+                        }
+                      }}
+                    >
+                      {children}
+                    </span>
+                  );
+                }
+                return <span className={className} style={style} {...props}>{children}</span>;
+              }
+            }}
           >
             {refs.length > 0
               ? injectCiteRefs(renderedAssistantContent)

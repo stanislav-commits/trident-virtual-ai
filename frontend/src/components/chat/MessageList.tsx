@@ -7,6 +7,7 @@ interface MessageListProps {
   isLoadingResponse?: boolean;
   onCopy?: (content: string) => void;
   onRegenerate?: (messageId: string) => void;
+  onSendMessage?: (text: string) => void;
 }
 
 /**
@@ -18,6 +19,7 @@ export function MessageList({
   isLoadingResponse = false,
   onCopy,
   onRegenerate,
+  onSendMessage,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -44,6 +46,7 @@ export function MessageList({
             isLoading={false}
             onCopy={onCopy}
             onRegenerate={onRegenerate}
+            onSendMessage={onSendMessage}
           />
         ))
       )}

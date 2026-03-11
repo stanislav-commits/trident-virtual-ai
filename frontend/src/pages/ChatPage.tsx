@@ -101,11 +101,14 @@ export function ChatPage({
     [token, addMessage, refreshSessions],
   );
 
-  const handleSend = useCallback(async () => {
-    if (!inputValue.trim() || isSending || isWaitingForResponse) return;
+  const handleSend = useCallback(async (textOverride?: string) => {
+    const textToSend = textOverride || inputValue;
+    if (!textToSend.trim() || isSending || isWaitingForResponse) return;
 
-    const messageContent = inputValue;
-    setInputValue("");
+    if (!textOverride) {
+      setInputValue("");
+    }
+    
     setIsSending(true);
     setSendError(null);
 
@@ -130,7 +133,7 @@ export function ChatPage({
       setIsWaitingForResponse(true);
       const userMessage = await sendChatMessage(
         currentSessionId,
-        messageContent,
+        textToSend,
         token!,
       );
       addMessage(userMessage);
@@ -249,11 +252,12 @@ export function ChatPage({
               messages={messages}
               isLoadingResponse={isWaitingForResponse || isLoadingMessages}
               onRegenerate={handleRegenerate}
+              onSendMessage={(text) => handleSend(text)}
             />
             <MessageInput
               value={inputValue}
               onChange={setInputValue}
-              onSend={handleSend}
+              onSend={() => handleSend()}
               disabled={isDisabled}
               placeholder="Type a message..."
             />
@@ -275,7 +279,7 @@ export function ChatPage({
             <MessageInput
               value={inputValue}
               onChange={setInputValue}
-              onSend={handleSend}
+              onSend={() => handleSend()}
               disabled={isDisabled}
               placeholder="Start a new conversation..."
             />
