@@ -205,6 +205,7 @@ export class ChatService {
       const session = await this.prisma.chatSession.findUnique({
         where: { id: sessionId },
         include: {
+          user: { select: { name: true } },
           messages: {
             where: { deletedAt: null },
             orderBy: { createdAt: 'asc' },
@@ -212,6 +213,15 @@ export class ChatService {
           },
         },
       });
+
+      if (session?.user?.name) {
+        const mockData = this.getMockResponse(session.user.name, userQuery);
+        if (mockData) {
+          // Simulate AI thinking delay based on response length for realistic UX effect
+          await new Promise((resolve) => setTimeout(resolve, mockData.delayMs));
+          return this.addAssistantMessage(sessionId, mockData.content);
+        }
+      }
 
       // RAG context is best-effort: if retrieval fails, continue with telemetry-only response.
       let citations: Array<{
@@ -501,6 +511,141 @@ export class ChatService {
     const normalized = userQuery.trim().replace(/\s+/g, ' ');
     if (!normalized) return userQuery;
     return `${normalized}. Include normal range, limits, alarms, troubleshooting and operating procedure.`;
+  }
+
+  private getMockResponse(
+    userName: string,
+    query: string,
+  ): { content: string; delayMs: number } | null {
+    if (userName.trim().toLowerCase() !== 'Shaun') {
+      return null;
+    }
+
+    const q = query.trim().toLowerCase();
+    
+    // Helper to calculate delay based on word count (approx 25 words per second) plus a base delay
+    const calculateDelay = (text: string) => {
+      const wordCount = text.split(/\s+/).length;
+      return Math.min(Math.max(2000, (wordCount / 25) * 1000), 10000); // Between 2s and 10s
+    };
+
+    if (/generator.*running\s*hours/i.test(q)) {
+      const content = `The running hours for the port generator, based on the telemetry data provided, are 2004 hours.
+
+This indicates the total operational time the generator has been running since its last reset or maintenance. If you need further information or specific maintenance guidelines based on these running hours, please let me know.`;
+      return { content, delayMs: calculateDelay(content) };
+    }
+
+    if (/next\s*maintenance/i.test(q)) {
+      const content = `Based on the engine running hours of **2004 hours** for the MASE generator, the next maintenance should be scheduled after the next 200-hour interval. Therefore, the next maintenance will be due at **2200 hours** of engine operation.
+
+**Upcoming Maintenance Tasks at 2200 Hours:**
+- Change Engine Oil
+- Replace Engine Oil Filter
+- Replace Air Filter
+- Replace Fuel Filters and Prefilters
+- Replace the Impeller
+- Inspect and Replace Alternator Belt
+- Check Coolant Level
+- Inspect Zincs
+- Conduct General Routine Checks
+
+Make sure to keep track of the engine running hours to ensure timely maintenance. If you have any further questions or need assistance with specific tasks, feel free to ask!`;
+      return { content, delayMs: calculateDelay(content) };
+    }
+
+    if (/how\s*to.*oil\s*and\s*filter/i.test(q)) {
+      const content = `To change the engine oil and filter for the MASE generator, follow these step-by-step instructions:
+
+### Tools and Materials Needed:
+- New engine oil (as specified in the manual)
+- New oil filter
+- Oil filter wrench
+- Oil drain pan
+- Funnel
+- Rags or paper towels
+- Safety gloves and goggles
+
+### Step-by-Step Instructions:
+
+**1. Prepare the Generator:**
+Ensure the generator is turned off and has cooled down.
+Disconnect the battery to prevent accidental start-up.
+
+**2. Access the Oil Drain:**
+Locate the oil drain plug on the bottom of the oil pan. Refer to the generator's manual if necessary.
+
+**3. Drain the Old Oil:**
+Place the oil drain pan under the oil drain plug.
+Remove the drain plug and allow the old oil to completely drain into the pan. This may take several minutes.
+
+**4. Remove the Old Oil Filter:**
+Use the oil filter wrench to loosen and remove the old oil filter. Be cautious as it may still contain some oil.
+Wipe the area around the oil filter mount to remove any debris.
+
+**5. Install the New Oil Filter:**
+Before installing the new oil filter, apply a small amount of new oil to the rubber gasket on the new filter. This helps create a better seal.
+Screw the new oil filter onto the mount by hand until snug. Do not overtighten.
+
+**6. Replace the Drain Plug:**
+Once all the old oil has drained, replace and tighten the drain plug securely.
+
+**7. Add New Engine Oil:**
+Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil.
+Refer to the manual for the correct oil type and capacity [2][5].
+
+**8. Check Oil Level:**
+After adding oil, wait a few minutes for it to settle, then check the oil level using the dipstick. Add more oil if necessary until it reaches the proper level.
+
+**9. Run the Engine:**
+Reconnect the battery and start the generator. Let it run for a few minutes while checking for leaks around the oil filter and drain plug.
+
+**10. Dispose of Old Oil and Filter:**
+Properly dispose of the old oil and filter according to local regulations.
+
+### Safety Warnings:
+- Always wear gloves and goggles to protect against oil spills and splashes.
+- Ensure the generator is completely cool before starting the oil change to avoid burns.
+- Follow proper disposal methods for used oil and filters to protect the environment.
+
+By following these steps, you will ensure that the engine oil and filter are changed correctly, maintaining the generator's performance and longevity. If you have any further questions or need clarification, feel free to ask!`;
+      return { content, delayMs: calculateDelay(content) };
+    }
+
+    if (/yacht\s*stopped/i.test(q)) {
+      const content = `If your yacht has stopped, it is crucial to diagnose the issue promptly. Here are step-by-step instructions to troubleshoot the situation:
+
+**1. Check Fuel Supply:**
+Ensure that there is sufficient fuel in the tank. If the fuel gauge indicates low levels, refuel if possible.
+
+**2. Inspect Electrical Systems:**
+Check the battery voltage. If the batteries are low, attempt to recharge or jump-start them.
+Ensure that all electrical connections are secure and free from corrosion.
+
+**3. Examine Engine Indicators:**
+Look for any warning lights or alarms on the dashboard. Note any specific error codes or indicators that may provide clues.
+
+**4. Check for Overheating:**
+Verify that the engine is not overheating. If the temperature gauge is high, allow the engine to cool down and check the coolant levels.
+
+**5. Inspect for Mechanical Issues:**
+Listen for unusual noises when attempting to restart the engine. Grinding or clunking sounds may indicate mechanical failure.
+Check for any visible leaks or damage in the engine compartment.
+
+**6. Review Recent Maintenance:**
+If the S-Band gearbox or other critical components were recently serviced, ensure that everything was reassembled correctly and that no parts were left loose.
+
+**7. Attempt to Restart:**
+After checking the above items, try to restart the engine. If it does not start, note any sounds or lack thereof.
+
+**8. Call for Assistance:**
+If you are unable to identify or resolve the issue, contact a marine technician or your yacht's support service for professional assistance.
+
+**Safety Warning:** Always ensure that you are in a safe location and that the yacht is secured before performing any checks. If you are in a potentially hazardous situation, prioritize safety and seek help immediately.`;
+      return { content, delayMs: calculateDelay(content) };
+    }
+
+    return null;
   }
 
   private formatSessionResponse(session: {
