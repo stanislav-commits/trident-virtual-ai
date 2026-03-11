@@ -178,19 +178,36 @@ export function MessageBubble({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw]}
-            components={{
-              ...mdComponents,
-              span: ({ node, className, style, children, ...props }) => {
-                // If it's our specially injected yellow interactive span
-                if (style?.color === "#eab308" && style?.cursor === "pointer" && onSendMessage) {
+            components={
+              {
+                ...mdComponents,
+                "action-button": ({ node, children, ...props }: any) => {
+                  if (!onSendMessage) {
+                    return (
+                      <span style={{ color: "#eab308", fontWeight: 500 }} {...props}>
+                        {children}
+                      </span>
+                    );
+                  }
                   return (
                     <span
                       {...props}
-                      className={className}
-                      style={{ ...style, display: "block", marginTop: "12px", padding: "8px 12px", border: "1px solid #eab308", borderRadius: "6px", backgroundColor: "rgba(234, 179, 8, 0.1)" }}
+                      style={{
+                        display: "block",
+                        marginTop: "12px",
+                        padding: "8px 12px",
+                        border: "1px solid #eab308",
+                        borderRadius: "6px",
+                        backgroundColor: "rgba(234, 179, 8, 0.1)",
+                        color: "#eab308",
+                        cursor: "pointer",
+                        fontWeight: 500,
+                      }}
                       onClick={(e) => {
                         e.preventDefault();
-                        const textContent = Array.isArray(children) ? children.join("") : children?.toString() || "";
+                        const textContent = Array.isArray(children)
+                          ? children.join("")
+                          : children?.toString() || "";
                         if (textContent) {
                           onSendMessage(textContent);
                         }
@@ -199,10 +216,14 @@ export function MessageBubble({
                       {children}
                     </span>
                   );
-                }
-                return <span className={className} style={style} {...props}>{children}</span>;
-              }
-            }}
+                },
+                "high-light": ({ node, children, ...props }: any) => (
+                  <span style={{ color: "#3b82f6" }} {...props}>
+                    {children}
+                  </span>
+                ),
+              } as Components
+            }
           >
             {refs.length > 0
               ? injectCiteRefs(renderedAssistantContent)

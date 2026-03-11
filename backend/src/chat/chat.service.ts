@@ -534,13 +534,13 @@ export class ChatService {
 
 Would you like to know:
 
-<span style="color: #eab308; cursor: pointer; font-weight: 500;">When the next maintenance is due and what this includes</span>
+<action-button>When the next maintenance is due and what this includes</action-button>
 
-<span style="color: #eab308; cursor: pointer; font-weight: 500;">How to carry out the next maintenance</span>
+<action-button>How to carry out the next maintenance</action-button>
 
-<span style="color: #eab308; cursor: pointer; font-weight: 500;">Part numbers and locations for the required spares</span>
+<action-button>Part numbers and locations for the required spares</action-button>
 
-<span style="color: #eab308; cursor: pointer; font-weight: 500;">Show all</span>`;
+<action-button>Show all</action-button>`;
       return { content, delayMs: calculateDelay(content) };
     }
 
@@ -561,7 +561,7 @@ Would you like to know:
 
     if (/(how.*oil\s*and\s*filter|how.*carry\s*out.*maintenance)/i.test(q)) {
       const content = `**Tools and Materials Needed:**
-- New engine oil <span style="color: #3b82f6;">(12 litres of 15w40)</span>
+- New engine oil <high-light>(12 litres of 15w40)</high-light>
 - New oil filter
 - Oil filter wrench
 - Oil drain pan
@@ -585,7 +585,7 @@ Would you like to know:
 6. Replace the Drain Plug:
    - Once all the old oil has drained, replace and tighten the drain plug securely.
 7. Add New Engine Oil:
-   - Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil. This will be approximately <span style="color: #3b82f6;">12 litres</span> of 15w40.
+   - Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil. This will be approximately <high-light>12 litres</high-light> of 15w40.
 8. Check Oil Level:
    - After adding oil, wait a few minutes for it to settle, then check the oil level using the dipstick. Add more oil if necessary until it reaches the proper level marked by U A L on the dipstick.
 9. Run the Engine:
@@ -603,13 +603,13 @@ Would you like to know:
     if (/part\s*number/i.test(q)) {
       const content = `For the 200 hourly maintenance on the port generator you will require the following:
 
-- **Volvo Penta - Oil Bypass Filter** (Qty: 1) – <span style="color: #3b82f6;">Part number: 21951346</span>
+- **Volvo Penta - Oil Bypass Filter** (Qty: 1) – <high-light>Part number: 21951346</high-light>
   - Locations: Box 23 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Volvo Penta - Oil Filter Element** (Qty: 2) - <span style="color: #3b82f6;">Part number: 477556</span>
+- **Volvo Penta - Oil Filter Element** (Qty: 2) - <high-light>Part number: 477556</high-light>
   - Locations: Box 21 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Racor Cartridges – Fuel filter element** (Qty: 1) - <span style="color: #3b82f6;">Part number: 2020PM</span>
+- **Racor Cartridges – Fuel filter element** (Qty: 1) - <high-light>Part number: 2020PM</high-light>
   - Locations: Box 20 (Racor Filters) & Box 24 (Volvo Penta Fuel Filter).
-- **Oil – 15W40** (Qty 12 Litres) – <span style="color: #3b82f6;">Part Number: 15W40 Oil</span>
+- **Oil – 15W40** (Qty 12 Litres) – <high-light>Part Number: 15W40 Oil</high-light>
   - Locations: Bilge SB Steering Room.`;
       return { content, delayMs: calculateDelay(content) };
     }
@@ -630,7 +630,7 @@ Would you like to know:
 ---
 
 **Tools and Materials Needed:**
-- New engine oil <span style="color: #3b82f6;">(12 litres of 15w40)</span>
+- New engine oil <high-light>(12 litres of 15w40)</high-light>
 - New oil filter
 - Oil filter wrench
 - Oil drain pan
@@ -654,7 +654,7 @@ Would you like to know:
 6. Replace the Drain Plug:
    - Once all the old oil has drained, replace and tighten the drain plug securely.
 7. Add New Engine Oil:
-   - Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil. This will be approximately <span style="color: #3b82f6;">12 litres</span> of 15w40.
+   - Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil. This will be approximately <high-light>12 litres</high-light> of 15w40.
 8. Check Oil Level:
    - After adding oil, wait a few minutes for it to settle, then check the oil level using the dipstick. Add more oil if necessary until it reaches the proper level marked by U A L on the dipstick.
 9. Run the Engine:
@@ -671,13 +671,13 @@ Would you like to know:
 
 For the 200 hourly maintenance on the port generator you will require the following:
 
-- **Volvo Penta - Oil Bypass Filter** (Qty: 1) – <span style="color: #3b82f6;">Part number: 21951346</span>
+- **Volvo Penta - Oil Bypass Filter** (Qty: 1) – <high-light>Part number: 21951346</high-light>
   - Locations: Box 23 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Volvo Penta - Oil Filter Element** (Qty: 2) - <span style="color: #3b82f6;">Part number: 477556</span>
+- **Volvo Penta - Oil Filter Element** (Qty: 2) - <high-light>Part number: 477556</high-light>
   - Locations: Box 21 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Racor Cartridges – Fuel filter element** (Qty: 1) - <span style="color: #3b82f6;">Part number: 2020PM</span>
+- **Racor Cartridges – Fuel filter element** (Qty: 1) - <high-light>Part number: 2020PM</high-light>
   - Locations: Box 20 (Racor Filters) & Box 24 (Volvo Penta Fuel Filter).
-- **Oil – 15W40** (Qty 12 Litres) – <span style="color: #3b82f6;">Part Number: 15W40 Oil</span>
+- **Oil – 15W40** (Qty 12 Litres) – <high-light>Part Number: 15W40 Oil</high-light>
   - Locations: Bilge SB Steering Room.`;
 
       return { content, delayMs: calculateDelay(content) };
