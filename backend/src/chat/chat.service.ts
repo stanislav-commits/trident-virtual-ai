@@ -530,16 +530,23 @@ export class ChatService {
     };
 
     if (/generator.*running\s*hours/i.test(q)) {
-      const content = `The running hours for the port generator, based on the telemetry data provided, are 2004 hours.
+      const content = `The port generator has 2004 running hours.
 
-This indicates the total operational time the generator has been running since its last reset or maintenance. If you need further information or specific maintenance guidelines based on these running hours, please let me know.`;
+Would you like to know:
+
+<span style="color: #eab308; cursor: pointer; font-weight: 500;">When the next maintenance is due and what this includes</span>
+
+<span style="color: #eab308; cursor: pointer; font-weight: 500;">How to carry out the next maintenance</span>
+
+<span style="color: #eab308; cursor: pointer; font-weight: 500;">Part numbers and locations for the required spares</span>
+
+<span style="color: #eab308; cursor: pointer; font-weight: 500;">Show all</span>`;
       return { content, delayMs: calculateDelay(content) };
     }
 
-    if (/next\s*maintenance/i.test(q)) {
-      const content = `Based on the engine running hours of **2004 hours** for the MASE generator, the next maintenance should be scheduled after the next 200-hour interval. Therefore, the next maintenance will be due at **2200 hours** of engine operation.
+    if (/(when.*next\s*maintenance|what.*includes)/i.test(q) && !/how/i.test(q)) {
+      const content = `The next scheduled service is due at 2200 hours and includes the following:
 
-**Upcoming Maintenance Tasks at 2200 Hours:**
 - Change Engine Oil
 - Replace Engine Oil Filter
 - Replace Air Filter
@@ -548,116 +555,154 @@ This indicates the total operational time the generator has been running since i
 - Inspect and Replace Alternator Belt
 - Check Coolant Level
 - Inspect Zincs
-- Conduct General Routine Checks
-
-Make sure to keep track of the engine running hours to ensure timely maintenance. If you have any further questions or need assistance with specific tasks, feel free to ask!`;
+- General routine checks such as signs of fluid or gas leaks.`;
       return { content, delayMs: calculateDelay(content) };
     }
 
-    if (/how\s*to.*oil\s*and\s*filter/i.test(q)) {
-      const content = `To change the engine oil and filter for the MASE generator, follow these step-by-step instructions:
-
-### Tools and Materials Needed:
-- New engine oil (as specified in the manual)
+    if (/(how.*oil\s*and\s*filter|how.*carry\s*out.*maintenance)/i.test(q)) {
+      const content = `**Tools and Materials Needed:**
+- New engine oil <span style="color: #3b82f6;">(12 litres of 15w40)</span>
 - New oil filter
 - Oil filter wrench
 - Oil drain pan
 - Funnel
 - Rags or paper towels
-- Safety gloves and goggles
+- Safety gloves
+- Trident Virtual headset for recording of the job
 
-### Step-by-Step Instructions:
+**Step-by-Step Instructions:**
 
-**1. Prepare the Generator:**
-Ensure the generator is turned off and has cooled down.
-Disconnect the battery to prevent accidental start-up.
+1. Ensure the generator is turned off and has cooled down.
+2. Disconnect the battery to prevent accidental start-up and place a lock out tag.
+3. Drain the oil:
+   - Locate the oil drain plug on the bottom of the oil pan. Refer to the generator's manual if necessary.
+   - Place the oil drain pan under the oil drain plug. Remove the drain plug and allow the old oil to completely drain into the pan. This may take several minutes.
+4. Remove the Old Oil Filter:
+   - Use the oil filter wrench to loosen and remove the old oil filter. Be cautious as it may still contain some oil. Wipe the area around the oil filter mount to remove any debris.
+5. Install the New Oil Filter:
+   - Before installing the new oil filter, apply a small amount of new oil to the rubber gasket on the new filter. This helps create a better seal.
+   - Screw the new oil filter onto the mount by hand until snug. Do not overtighten.
+6. Replace the Drain Plug:
+   - Once all the old oil has drained, replace and tighten the drain plug securely.
+7. Add New Engine Oil:
+   - Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil. This will be approximately <span style="color: #3b82f6;">12 litres</span> of 15w40.
+8. Check Oil Level:
+   - After adding oil, wait a few minutes for it to settle, then check the oil level using the dipstick. Add more oil if necessary until it reaches the proper level marked by U A L on the dipstick.
+9. Run the Engine:
+   - Reconnect the battery and start the generator in local. Let it run for a few minutes while checking for leaks around the oil filter and drain plug.
+10. Dispose of Old Oil and Filter:
+    - Properly dispose of the old oil and filter according to MARPOL.
 
-**2. Access the Oil Drain:**
-Locate the oil drain plug on the bottom of the oil pan. Refer to the generator's manual if necessary.
-
-**3. Drain the Old Oil:**
-Place the oil drain pan under the oil drain plug.
-Remove the drain plug and allow the old oil to completely drain into the pan. This may take several minutes.
-
-**4. Remove the Old Oil Filter:**
-Use the oil filter wrench to loosen and remove the old oil filter. Be cautious as it may still contain some oil.
-Wipe the area around the oil filter mount to remove any debris.
-
-**5. Install the New Oil Filter:**
-Before installing the new oil filter, apply a small amount of new oil to the rubber gasket on the new filter. This helps create a better seal.
-Screw the new oil filter onto the mount by hand until snug. Do not overtighten.
-
-**6. Replace the Drain Plug:**
-Once all the old oil has drained, replace and tighten the drain plug securely.
-
-**7. Add New Engine Oil:**
-Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil.
-Refer to the manual for the correct oil type and capacity [2][5].
-
-**8. Check Oil Level:**
-After adding oil, wait a few minutes for it to settle, then check the oil level using the dipstick. Add more oil if necessary until it reaches the proper level.
-
-**9. Run the Engine:**
-Reconnect the battery and start the generator. Let it run for a few minutes while checking for leaks around the oil filter and drain plug.
-
-**10. Dispose of Old Oil and Filter:**
-Properly dispose of the old oil and filter according to local regulations.
-
-### Safety Warnings:
+**Safety Warnings:**
 - Always wear gloves and goggles to protect against oil spills and splashes.
 - Ensure the generator is completely cool before starting the oil change to avoid burns.
-- Follow proper disposal methods for used oil and filters to protect the environment.
-
-By following these steps, you will ensure that the engine oil and filter are changed correctly, maintaining the generator's performance and longevity. If you have any further questions or need clarification, feel free to ask!`;
+- Follow proper disposal methods for used oil and filters in accordance with MARPOL.`;
       return { content, delayMs: calculateDelay(content) };
     }
 
-    if (/yacht\s*stopped/i.test(q)) {
-      const content = `If your yacht has stopped, it is crucial to diagnose the issue promptly. Here are step-by-step instructions to troubleshoot the situation:
+    if (/part\s*number/i.test(q)) {
+      const content = `For the 200 hourly maintenance on the port generator you will require the following:
 
-**1. Check Fuel Supply:**
-Ensure that there is sufficient fuel in the tank. If the fuel gauge indicates low levels, refuel if possible.
-
-**2. Inspect Electrical Systems:**
-Check the battery voltage. If the batteries are low, attempt to recharge or jump-start them.
-Ensure that all electrical connections are secure and free from corrosion.
-
-**3. Examine Engine Indicators:**
-Look for any warning lights or alarms on the dashboard. Note any specific error codes or indicators that may provide clues.
-
-**4. Check for Overheating:**
-Verify that the engine is not overheating. If the temperature gauge is high, allow the engine to cool down and check the coolant levels.
-
-**5. Inspect for Mechanical Issues:**
-Listen for unusual noises when attempting to restart the engine. Grinding or clunking sounds may indicate mechanical failure.
-Check for any visible leaks or damage in the engine compartment.
-
-**6. Review Recent Maintenance:**
-If the S-Band gearbox or other critical components were recently serviced, ensure that everything was reassembled correctly and that no parts were left loose.
-
-**7. Attempt to Restart:**
-After checking the above items, try to restart the engine. If it does not start, note any sounds or lack thereof.
-
-**8. Call for Assistance:**
-If you are unable to identify or resolve the issue, contact a marine technician or your yacht's support service for professional assistance.
-
-**Safety Warning:** Always ensure that you are in a safe location and that the yacht is secured before performing any checks. If you are in a potentially hazardous situation, prioritize safety and seek help immediately.`;
-      return { content, delayMs: calculateDelay(content) };
-    }
-
-    if (/part\s*number.*oil\s*filter/i.test(q)) {
-      const content = `If you're looking for the filters for the PS Engine service, here is where they're currently stowed:
-
-**Oil Filter Inventory & Locations**
-- **Volvo Penta - Oil Bypass Filter** (Qty: 1)
+- **Volvo Penta - Oil Bypass Filter** (Qty: 1) – <span style="color: #3b82f6;">Part number: 21951346</span>
   - Locations: Box 23 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Volvo Penta - Oil Filter Element** (Qty: 2)
+- **Volvo Penta - Oil Filter Element** (Qty: 2) - <span style="color: #3b82f6;">Part number: 477556</span>
   - Locations: Box 21 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
+- **Racor Cartridges – Fuel filter element** (Qty: 1) - <span style="color: #3b82f6;">Part number: 2020PM</span>
+  - Locations: Box 20 (Racor Filters) & Box 24 (Volvo Penta Fuel Filter).
+- **Oil – 15W40** (Qty 12 Litres) – <span style="color: #3b82f6;">Part Number: 15W40 Oil</span>
+  - Locations: Bilge SB Steering Room.`;
+      return { content, delayMs: calculateDelay(content) };
+    }
 
-**Note for the Service:**
-If you also need the Racor Cartridges for the fuel/oil system, you'll find them in Box 20 (Racor Filters) or Box 24 (Volvo Penta Fuel Filter).
+    if (/show\s*all/i.test(q)) {
+      const content = `The next scheduled service is due at 2200 hours and includes the following:
 
-*Should I check the stock levels for the 15W-40 oil in the Bilge SB Steering Room as well?*`;
+- Change Engine Oil
+- Replace Engine Oil Filter
+- Replace Air Filter
+- Replace Fuel Filters and Prefilters
+- Replace the Impeller
+- Inspect and Replace Alternator Belt
+- Check Coolant Level
+- Inspect Zincs
+- General routine checks such as signs of fluid or gas leaks.
+
+---
+
+**Tools and Materials Needed:**
+- New engine oil <span style="color: #3b82f6;">(12 litres of 15w40)</span>
+- New oil filter
+- Oil filter wrench
+- Oil drain pan
+- Funnel
+- Rags or paper towels
+- Safety gloves
+- Trident Virtual headset for recording of the job
+
+**Step-by-Step Instructions:**
+
+1. Ensure the generator is turned off and has cooled down.
+2. Disconnect the battery to prevent accidental start-up and place a lock out tag.
+3. Drain the oil:
+   - Locate the oil drain plug on the bottom of the oil pan. Refer to the generator's manual if necessary.
+   - Place the oil drain pan under the oil drain plug. Remove the drain plug and allow the old oil to completely drain into the pan. This may take several minutes.
+4. Remove the Old Oil Filter:
+   - Use the oil filter wrench to loosen and remove the old oil filter. Be cautious as it may still contain some oil. Wipe the area around the oil filter mount to remove any debris.
+5. Install the New Oil Filter:
+   - Before installing the new oil filter, apply a small amount of new oil to the rubber gasket on the new filter. This helps create a better seal.
+   - Screw the new oil filter onto the mount by hand until snug. Do not overtighten.
+6. Replace the Drain Plug:
+   - Once all the old oil has drained, replace and tighten the drain plug securely.
+7. Add New Engine Oil:
+   - Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil. This will be approximately <span style="color: #3b82f6;">12 litres</span> of 15w40.
+8. Check Oil Level:
+   - After adding oil, wait a few minutes for it to settle, then check the oil level using the dipstick. Add more oil if necessary until it reaches the proper level marked by U A L on the dipstick.
+9. Run the Engine:
+   - Reconnect the battery and start the generator in local. Let it run for a few minutes while checking for leaks around the oil filter and drain plug.
+10. Dispose of Old Oil and Filter:
+    - Properly dispose of the old oil and filter according to MARPOL.
+
+**Safety Warnings:**
+- Always wear gloves and goggles to protect against oil spills and splashes.
+- Ensure the generator is completely cool before starting the oil change to avoid burns.
+- Follow proper disposal methods for used oil and filters in accordance with MARPOL.
+
+---
+
+For the 200 hourly maintenance on the port generator you will require the following:
+
+- **Volvo Penta - Oil Bypass Filter** (Qty: 1) – <span style="color: #3b82f6;">Part number: 21951346</span>
+  - Locations: Box 23 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
+- **Volvo Penta - Oil Filter Element** (Qty: 2) - <span style="color: #3b82f6;">Part number: 477556</span>
+  - Locations: Box 21 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
+- **Racor Cartridges – Fuel filter element** (Qty: 1) - <span style="color: #3b82f6;">Part number: 2020PM</span>
+  - Locations: Box 20 (Racor Filters) & Box 24 (Volvo Penta Fuel Filter).
+- **Oil – 15W40** (Qty 12 Litres) – <span style="color: #3b82f6;">Part Number: 15W40 Oil</span>
+  - Locations: Bilge SB Steering Room.`;
+
+      return { content, delayMs: calculateDelay(content) };
+    }
+
+    if (/what\s*happened/i.test(q) || /yacht\s*stopped/i.test(q) || /generator\s*stopped/i.test(q)) {
+      const content = `Common causes to check include:
+- Low fuel supply
+- Low battery voltage
+- Overheating
+- Fault alarm or shutdown
+- Low oil pressure
+- Cooling water flow issue
+
+**Start with these quick checks:**
+- Active alarm or fault message
+- Fuel level in the tank
+- Air in the fuel system (vent the filters)
+- Battery voltage, should be a minimum of 24V
+- Cooling water flow, check the sea water system valve configuration and the pump for any air
+- Coolant header tank, check the header tank level
+- Oil level
+- Emergency stop status
+
+If the fault remains, review the last shutdown alarm and contact Trident Virtual for remote assistance.`;
       return { content, delayMs: calculateDelay(content) };
     }
 
