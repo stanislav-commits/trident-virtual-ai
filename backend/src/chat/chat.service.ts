@@ -645,6 +645,22 @@ If you are unable to identify or resolve the issue, contact a marine technician 
       return { content, delayMs: calculateDelay(content) };
     }
 
+    if (/part\s*number.*oil\s*filter/i.test(q)) {
+      const content = `If you're looking for the filters for the PS Engine service, here is where they're currently stowed:
+
+**Oil Filter Inventory & Locations**
+- **Volvo Penta - Oil Bypass Filter** (Qty: 1)
+  - Locations: Box 23 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
+- **Volvo Penta - Oil Filter Element** (Qty: 2)
+  - Locations: Box 21 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
+
+**Note for the Service:**
+If you also need the Racor Cartridges for the fuel/oil system, you'll find them in Box 20 (Racor Filters) or Box 24 (Volvo Penta Fuel Filter).
+
+*Should I check the stock levels for the 15W-40 oil in the Bilge SB Steering Room as well?*`;
+      return { content, delayMs: calculateDelay(content) };
+    }
+
     return null;
   }
 
