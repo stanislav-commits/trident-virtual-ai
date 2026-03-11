@@ -517,7 +517,7 @@ export class ChatService {
     userName: string,
     query: string,
   ): { content: string; delayMs: number } | null {
-    if (userName.trim().toLowerCase() !== 'Shaun') {
+    if (userName.trim().toLowerCase() !== 'shaun') {
       return null;
     }
 
