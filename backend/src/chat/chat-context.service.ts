@@ -6,6 +6,20 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
 
+const DEFAULT_RAGFLOW_CONTEXT_TOP_K = (() => {
+  const parsed = Number.parseInt(process.env.RAGFLOW_CONTEXT_TOP_K ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 8;
+})();
+
+const DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS = (() => {
+  const parsed = Number.parseInt(
+    process.env.RAGFLOW_CONTEXT_SNIPPET_CHARS ?? '',
+    10,
+  );
+  if (!Number.isFinite(parsed) || parsed < 300) return 1200;
+  return Math.min(parsed, 4000);
+})();
+
 interface RAGFlowSearchResult {
   id: string;
   doc_id: string;
@@ -34,7 +48,7 @@ export class ChatContextService {
   async findContextForQuery(
     shipId: string,
     query: string,
-    topK: number = 5,
+    topK: number = DEFAULT_RAGFLOW_CONTEXT_TOP_K,
   ): Promise<{
     citations: ContextCitation[];
     ragflowRequestId?: string;
@@ -67,22 +81,29 @@ export class ChatContextService {
       );
 
       // Map RAGFlow results to citations with ShipManual references
-      const citations = results
-        .slice(0, topK)
+      const citations = this.dedupeCitations(
+        results
         .map((result: RAGFlowSearchResult) => {
           const manual = ship.manuals.find(
             (m) => m.ragflowDocumentId === result.doc_id,
           );
 
+          const rawContent = result.content ?? '';
+          const snippet =
+            rawContent.length > DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS
+              ? rawContent.slice(0, DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS)
+              : rawContent;
+
           return {
             shipManualId: manual?.id,
             chunkId: result.id,
             score: result.similarity ?? undefined,
-            snippet: result.content.substring(0, 300),
+            snippet,
             sourceTitle: result.doc_name || manual?.filename || 'Document',
             pageNumber: (result.meta?.page_num as number) ?? undefined,
           };
-        });
+        }),
+      ).slice(0, topK);
 
       return {
         citations,
@@ -97,7 +118,7 @@ export class ChatContextService {
 
   async findContextForAdminQuery(
     query: string,
-    topK: number = 5,
+    topK: number = DEFAULT_RAGFLOW_CONTEXT_TOP_K,
   ): Promise<ContextCitation[]> {
     // Admin search across all ship datasets
     const ships = await this.prisma.ship.findMany({
@@ -127,18 +148,23 @@ export class ChatContextService {
           topK,
         );
 
-        results.slice(0, topK).forEach((result: RAGFlowSearchResult) => {
+        results.forEach((result: RAGFlowSearchResult) => {
           const manual = ship.manuals.find(
             (m) => m.ragflowDocumentId === result.doc_id,
           );
 
           const docName = result.doc_name || manual?.filename || 'Document';
+          const rawContent = result.content ?? '';
+          const snippet =
+            rawContent.length > DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS
+              ? rawContent.slice(0, DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS)
+              : rawContent;
 
           allCitations.push({
             shipManualId: manual?.id,
             chunkId: result.id,
             score: result.similarity ?? undefined,
-            snippet: result.content.substring(0, 300),
+            snippet,
             sourceTitle: `${docName} (${ship.name})`,
             pageNumber: (result.meta?.page_num as number) ?? undefined,
           });
@@ -149,8 +175,32 @@ export class ChatContextService {
     }
 
     // Return top-k across all ships
-    return allCitations
+    return this.dedupeCitations(allCitations)
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
       .slice(0, topK);
+  }
+
+  private dedupeCitations(citations: ContextCitation[]): ContextCitation[] {
+    const seen = new Set<string>();
+    const deduped: ContextCitation[] = [];
+
+    for (const citation of citations) {
+      const normalizedSnippet = (citation.snippet ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()
+        .slice(0, 220);
+      const key = [
+        citation.sourceTitle ?? '',
+        citation.pageNumber ?? '',
+        normalizedSnippet,
+      ].join('|');
+
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(citation);
+    }
+
+    return deduped;
   }
 }

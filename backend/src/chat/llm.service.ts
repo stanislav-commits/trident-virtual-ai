@@ -3,6 +3,8 @@ import OpenAI from 'openai';
 
 export interface LLMContext {
   userQuery: string;
+  previousUserQuery?: string;
+  resolvedSubjectQuery?: string;
   citations?: Array<{
     snippet: string;
     sourceTitle: string;
@@ -24,6 +26,13 @@ interface HourTelemetryEntry {
 
 interface DocumentedIntervalEntry {
   intervalHours: number;
+  sourceIndex: number;
+  sourceTitle: string;
+  pageNumber?: number;
+}
+
+interface ExplicitNextDueEntry {
+  nextDueHours: number;
   sourceIndex: number;
   sourceTitle: string;
   pageNumber?: number;
@@ -76,11 +85,19 @@ export class LlmService {
         context.chatHistory &&
         context.chatHistory.length > 0
       ) {
-        const historyMessages = context.chatHistory.map((msg) => ({
+        const historyMessages = [...context.chatHistory];
+        const lastHistoryMessage = historyMessages[historyMessages.length - 1];
+        if (
+          lastHistoryMessage?.role === 'user' &&
+          lastHistoryMessage.content.trim() === context.userQuery.trim()
+        ) {
+          historyMessages.pop();
+        }
+
+        messages.push(...historyMessages.map((msg) => ({
           role: msg.role as 'user' | 'assistant' | 'system',
           content: msg.content,
-        }));
-        messages.push(...historyMessages);
+        })));
       }
 
       // Add current user query
@@ -168,7 +185,11 @@ Intent handling:
 - Do not convert a due-task question into a due-hours calculation unless no identifiable task information is available in the provided documentation.
 - If the user asks about spare parts, consumables, filters, oil, coolant, or fluid quantities, answer only from explicit parts lists, service procedures, specifications, or capacities found in the provided documentation.
 - If the user asks about a procedure, provide the documented steps or summarize the documented procedure. Do not replace a procedure answer with a due-hours calculation.
-- If the user message is only a short label, code, title, or fragment, ask a short clarifying question instead of inferring a full maintenance answer.
+- If the user message is only a short opaque label, code, or fragment, ask a short clarifying question instead of inferring a full maintenance answer.
+- If the user message is a concrete task title, service title, component name, or maintenance item, treat it as a lookup request for that named item instead of asking the user to restate the same subject.
+- If the user asks for a named task, service, component, or reference ID, do not substitute a nearby but different task just because it has a similar interval or wording. If the exact asked item is not clearly present in the provided snippets, say so.
+- If the current question is a short follow-up and prior user context is provided, treat it as continuing the previous subject. Do not ask the user to repeat the same subject unless the previous subject is still genuinely ambiguous.
+- If the retrieved snippets mix multiple unrelated components, tasks, or manuals, do not merge them into one answer. Use only the snippets that clearly match the asked subject. If no single subject match is clear, say the retrieved context is ambiguous and ask a short clarification.
 
 Maintenance and calculation rules:
 - Never assume a maintenance interval unless that exact interval is stated in the provided documentation for the same component or task.
@@ -176,6 +197,7 @@ Maintenance and calculation rules:
   1) the user explicitly asked for a calculation, and
   2) the exact interval is stated in the provided documentation for the same task or component.
 - If a maintenance table already contains fields such as "Due", "Next due", "Last due", "Status", or equivalent, use those values directly instead of recalculating.
+- If both "Last due" and "Next due" are present, answer from the "Next due" field when the user asks what is next due. Never report the "Last due" value as the next due value.
 - If multiple documented intervals exist, use the one that matches the specific task or component asked about.
 - If the matching task or component is ambiguous, briefly state the ambiguity and ask a short clarifying question or explain which task you matched.
 
@@ -186,11 +208,14 @@ Calculation format:
   next_due_hours = ceil(current_hours / interval_hours) * interval_hours
   remaining_hours = next_due_hours - current_hours
 - When an explicit next-due value is already present in the documentation, prefer that value over a calculation.
+- If multiple different hour-based intervals appear in the provided snippets and they are not clearly tied to the same asked component or task, do not choose one. State that the available documentation context is ambiguous.
 
 Parts / fluids / consumables rules:
 - For spare parts, consumables, and fluid quantities, provide exact part names, part numbers, filter references, oil grades, and capacities only when they are explicitly present in the provided documentation.
 - Do not infer "typical" parts or quantities from general knowledge.
+- Do not present maintenance actions such as "replace oil filter" or "inspect belts" as spare parts unless the documentation explicitly names a spare item, consumable, quantity, or part number.
 - If the provided documents do not include exact spare parts or fluid quantities, clearly state that the information is not available in the provided documentation.
+- If the user asks for parts for a named maintenance task or component and the retrieved snippets show the task but not a parts list for that same task or component, state that the parts are not shown in the provided documentation for that item.
 
 Telemetry rules:
 - Use telemetry to report current readings or support a calculation only when relevant.
@@ -206,6 +231,39 @@ Answer style:
   private buildUserPrompt(context: LLMContext): string {
     const intent = this.classifyQueryIntent(context.userQuery);
     let prompt = `Detected intent: ${intent}\nQuestion: ${context.userQuery}\n\n`;
+
+    if (context.previousUserQuery) {
+      prompt +=
+        `Follow-up context:\n` +
+        `Previous user question: ${context.previousUserQuery}\n` +
+        `Interpret the current question as continuing that subject unless the current question clearly changes topic.\n\n`;
+    }
+
+    if (
+      context.resolvedSubjectQuery &&
+      context.resolvedSubjectQuery.trim() &&
+      context.resolvedSubjectQuery.trim() !== context.userQuery.trim()
+    ) {
+      prompt += `Resolved subject for retrieval: ${context.resolvedSubjectQuery}\n\n`;
+    }
+
+    if (this.isDirectLookupSubjectQuery(context.userQuery)) {
+      prompt +=
+        'Important: The user input looks like a concrete task, service, component, or maintenance item title. ' +
+        'Treat it as a lookup request for that named item. ' +
+        'Return the most relevant documented details for that item without asking for clarification unless multiple equally plausible matches remain.\n\n';
+    }
+
+    if (
+      this.classifyQueryIntent(context.userQuery) ===
+        'parts_fluids_consumables' &&
+      !this.hasExplicitPartsEvidence(context.citations)
+    ) {
+      prompt +=
+        'Important: The retrieved context does not show an explicit parts table or part-number fields for the asked item. ' +
+        'Do not convert maintenance actions into parts. ' +
+        'If no explicit spare names, quantities, or part numbers are shown for the asked item, state that the documentation does not list parts for it.\n\n';
+    }
 
     if (intent === 'fragment_reference') {
       prompt +=
@@ -255,16 +313,29 @@ Answer style:
       return '';
     }
 
+    const subjectQuery = context.resolvedSubjectQuery ?? context.userQuery;
     const hourTelemetry = this.extractHourTelemetry(context.telemetry);
     const documentedIntervals = this.extractDocumentedIntervals(
       context.citations,
+      subjectQuery,
     );
+    const explicitNextDueValues = this.extractExplicitNextDueHours(
+      context.citations,
+      subjectQuery,
+    );
+    const subjectTerms = this.extractSubjectTerms(subjectQuery);
 
     let prompt = 'Maintenance Calculation Guidance:\n';
     prompt +=
       '- Use telemetry hour counters together with the documented service interval that matches the asked maintenance item.\n';
     prompt +=
       '- If you perform a due-hours calculation, show the arithmetic with exact values before the conclusion.\n';
+    prompt +=
+      '- Do not use an interval unless the snippet clearly refers to the same component, task, or asset as the question.\n';
+
+    if (subjectTerms.length > 0) {
+      prompt += `- Subject terms to match: ${subjectTerms.join(', ')}.\n`;
+    }
 
     if (hourTelemetry.length > 0) {
       prompt += 'Detected telemetry hour counters:\n';
@@ -282,7 +353,31 @@ Answer style:
       });
     }
 
-    if (hourTelemetry.length > 0 && documentedIntervals.length > 0) {
+    if (explicitNextDueValues.length > 0) {
+      prompt +=
+        'Explicit next-due hour values found in the provided documentation:\n';
+      explicitNextDueValues.forEach((entry) => {
+        const pageInfo = entry.pageNumber ? `, page ${entry.pageNumber}` : '';
+        prompt += `- [${entry.sourceIndex}] next due ${this.formatHours(entry.nextDueHours)} hours from ${entry.sourceTitle}${pageInfo}\n`;
+      });
+      prompt +=
+        '- Prefer these explicit next-due values over any derived calculation from the interval.\n';
+    }
+
+    if (subjectTerms.length === 0 && documentedIntervals.length > 1) {
+      prompt +=
+        '- The current question does not identify a single component or task, and multiple different hour-based intervals appear in the snippets. Do not choose one interval unless the documentation explicitly provides the matching next-due value.\n';
+    }
+
+    if (hourTelemetry.length > 0 && explicitNextDueValues.length > 0) {
+      prompt += 'Remaining-hours candidates using explicit next-due values:\n';
+      hourTelemetry.forEach((telemetryEntry) => {
+        explicitNextDueValues.forEach((nextDueEntry) => {
+          const remainingHours = nextDueEntry.nextDueHours - telemetryEntry.hours;
+          prompt += `- With ${telemetryEntry.label} = ${this.formatHours(telemetryEntry.hours)} hours and explicit next due ${this.formatHours(nextDueEntry.nextDueHours)} hours from [${nextDueEntry.sourceIndex}], remaining is ${this.formatHours(remainingHours)} hours.\n`;
+        });
+      });
+    } else if (hourTelemetry.length > 0 && documentedIntervals.length > 0) {
       prompt += 'Calculated next-due candidates:\n';
       hourTelemetry.forEach((telemetryEntry) => {
         documentedIntervals.forEach((intervalEntry) => {
@@ -300,7 +395,7 @@ Answer style:
   }
 
   private isMaintenanceCalculationQuery(query: string): boolean {
-    return /(when\s+is\s+.*(maintenance|service)\s+due|next\s+(maintenance|service)\s+due|how\s+many\s+hours\s+(left|remaining)|remaining\s+hours|hours\s+until\s+next\s+(maintenance|service)|next\s+service\s+at\s+what\s+hour)/i.test(
+    return /(when\s+is\s+.*(maintenance|service)\s+due|what\s+is\s+next\s+due|next\s+due\s+value|next\s+(maintenance|service)\s+due|how\s+many\s+hours\s+(left|remaining)|remaining\s+hours|hours\s+until\s+next\s+(maintenance|service)|next\s+service\s+at\s+what\s+hour)/i.test(
       query,
     );
   }
@@ -322,6 +417,15 @@ Answer style:
       )
     )
       return false;
+    // Maintenance task titles like "JET SKI ANNUAL SERVICE" should be treated
+    // as concrete subjects, not as opaque fragment codes.
+    if (
+      /\b(service|maintenance|task|annual|biennial|monthly|weekly|daily|hrs?|hours?|overhaul|inspection|inspect|replace|clean|check)\b/i.test(
+        trimmed,
+      )
+    ) {
+      return false;
+    }
     // Path-like input (contains slash or backslash)
     if (/[\\/]/.test(trimmed)) return true;
     // Contains a 3-or-more-digit code number
@@ -336,17 +440,12 @@ Answer style:
   private classifyQueryIntent(query: string): QueryIntent {
     const q = query.toLowerCase();
 
-    // Detect short fragment/code/title inputs before any other classification
-    if (this.isFragmentReferenceQuery(query)) {
-      return 'fragment_reference';
-    }
-
     if (this.isMaintenanceCalculationQuery(q)) {
       return 'next_due_calculation';
     }
 
     if (
-      /(spare\s*parts?|consumables?|fluids?|oil|coolant|filter|filters|quantity|quantities|capacity|capacities)/i.test(
+      /\b(parts?|spare\s*parts?|spares?|consumables?|fluids?|oil|coolant|filter|filters|quantity|quantities|capacity|capacities|part\s*numbers?)\b/i.test(
         q,
       )
     ) {
@@ -385,7 +484,35 @@ Answer style:
       return 'telemetry_status';
     }
 
+    // Detect short fragment/code/title inputs after explicit task intents.
+    if (this.isFragmentReferenceQuery(query)) {
+      return 'fragment_reference';
+    }
+
     return 'general';
+  }
+
+  private isDirectLookupSubjectQuery(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed || trimmed.includes('?')) return false;
+    if (this.isFragmentReferenceQuery(trimmed)) return false;
+
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    if (words.length < 2 || words.length > 10) return false;
+
+    return /\b(service|maintenance|task|annual|biennial|monthly|weekly|daily|hrs?|hours?|overhaul|inspection|engine|generator|pump|filter|filters|jet\s*ski|castoldi|reference\s*id)\b/i.test(
+      trimmed,
+    );
+  }
+
+  private hasExplicitPartsEvidence(citations?: LLMContext['citations']): boolean {
+    if (!citations?.length) return false;
+
+    return citations.some((citation) =>
+      /\b(spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location)\b/i.test(
+        citation.snippet,
+      ),
+    );
   }
 
   private extractHourTelemetry(
@@ -407,13 +534,23 @@ Answer style:
 
   private extractDocumentedIntervals(
     citations?: LLMContext['citations'],
+    subjectQuery?: string,
   ): DocumentedIntervalEntry[] {
     if (!citations?.length) return [];
 
     const seen = new Set<string>();
     const result: DocumentedIntervalEntry[] = [];
+    const subjectTerms = this.extractSubjectTerms(subjectQuery ?? '');
 
     citations.forEach((citation, idx) => {
+      const haystack = `${citation.sourceTitle}\n${citation.snippet}`.toLowerCase();
+      if (
+        subjectTerms.length > 0 &&
+        !subjectTerms.some((term) => haystack.includes(term))
+      ) {
+        return;
+      }
+
       const matches = citation.snippet.matchAll(
         /(?:every|each|after|at|due(?:\s+every)?|replace(?:\s+.*?\s+every)?|change(?:\s+.*?\s+every)?)?\s*(\d+(?:[\s,]\d{3})*(?:\.\d+)?)\s*(?:hours?|hrs?|hr|h)\b/gi,
       );
@@ -436,6 +573,97 @@ Answer style:
     });
 
     return result;
+  }
+
+  private extractExplicitNextDueHours(
+    citations?: LLMContext['citations'],
+    subjectQuery?: string,
+  ): ExplicitNextDueEntry[] {
+    if (!citations?.length) return [];
+
+    const seen = new Set<string>();
+    const result: ExplicitNextDueEntry[] = [];
+    const subjectTerms = this.extractSubjectTerms(subjectQuery ?? '');
+
+    citations.forEach((citation, idx) => {
+      const haystack = `${citation.sourceTitle}\n${citation.snippet}`.toLowerCase();
+      if (
+        subjectTerms.length > 0 &&
+        !subjectTerms.some((term) => haystack.includes(term))
+      ) {
+        return;
+      }
+
+      const slashMatches = citation.snippet.matchAll(
+        /next\s*due[\s\S]{0,160}?\/\s*(\d{3,6})\b/gi,
+      );
+
+      for (const match of slashMatches) {
+        const numeric = Number(match[1]);
+        if (!Number.isFinite(numeric) || numeric <= 0) continue;
+
+        const dedupeKey = `${idx + 1}:${numeric}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+
+        result.push({
+          nextDueHours: numeric,
+          sourceIndex: idx + 1,
+          sourceTitle: citation.sourceTitle,
+          pageNumber: citation.pageNumber,
+        });
+      }
+    });
+
+    return result;
+  }
+
+  private extractSubjectTerms(query: string): string[] {
+    const stopWords = new Set([
+      'what',
+      'when',
+      'where',
+      'why',
+      'how',
+      'about',
+      'next',
+      'maintenance',
+      'service',
+      'due',
+      'hours',
+      'hour',
+      'remaining',
+      'left',
+      'provide',
+      'please',
+      'show',
+      'list',
+      'all',
+      'task',
+      'tasks',
+      'parts',
+      'part',
+      'procedure',
+      'steps',
+      'this',
+      'that',
+      'these',
+      'those',
+      'sure',
+      'correct',
+    ]);
+
+    const terms = query
+      .toLowerCase()
+      .replace(/[^a-z0-9\s/-]/g, ' ')
+      .split(/\s+/)
+      .map((term) => term.trim())
+      .filter(Boolean)
+      .filter((term) => term.length >= 2)
+      .filter((term) => !stopWords.has(term))
+      .filter((term) => !/^\d+$/.test(term));
+
+    return [...new Set(terms)];
   }
 
   private parseNumericValue(value: unknown): number | null {
