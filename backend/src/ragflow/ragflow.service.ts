@@ -15,9 +15,23 @@ export type RagflowChunkMethod =
   | 'picture'
   | 'presentation';
 
+interface RagflowManualParserConfig {
+  auto_keywords?: number;
+  auto_questions?: number;
+  chunk_token_num?: number;
+  delimiter?: string;
+  graphrag?: { use_graphrag: false };
+  image_context_size?: number;
+  layout_recognize?: string;
+  pages?: number[][];
+  raptor?: { use_raptor: false };
+  table_context_size?: number;
+  task_page_size?: number;
+}
+
 interface RagflowConfigPayload {
   chunk_method: RagflowChunkMethod;
-  parser_config: { raptor: { use_raptor: false } } | Record<string, never>;
+  parser_config: RagflowManualParserConfig | Record<string, never>;
 }
 
 interface RagflowDocumentUpdatePayload extends RagflowConfigPayload {}
@@ -54,6 +68,8 @@ export class RagflowService implements OnModuleInit {
   /** Called by NestJS once the module is fully initialised. */
   onModuleInit(): void {
     const cfg = this.buildRetrievalConfig();
+    const pdfCfg = this.buildPdfParserConfig();
+
     if (cfg.rerank_model) {
       this.logger.log(
         `RAGFlow retrieval config: rerank enabled (model: ${cfg.rerank_model}), top_n=${cfg.top_n ?? 'default'}`,
@@ -63,6 +79,10 @@ export class RagflowService implements OnModuleInit {
         `RAGFlow retrieval config: rerank disabled (set RAGFLOW_RERANK_MODEL to enable)`,
       );
     }
+
+    this.logger.log(
+      `RAGFlow PDF parser config: layout=${pdfCfg.layout_recognize ?? 'default'}, chunk_token_num=${pdfCfg.chunk_token_num ?? 'default'}, table_context_size=${pdfCfg.table_context_size ?? 0}, image_context_size=${pdfCfg.image_context_size ?? 0}`,
+    );
   }
 
   /**
@@ -109,10 +129,113 @@ export class RagflowService implements OnModuleInit {
     return Number.isFinite(n) ? n : undefined;
   }
 
+  private getStringEnv(name: string, fallback: string): string {
+    const value = process.env[name]?.trim();
+    return value ? value : fallback;
+  }
+
+  private getIntEnv(
+    name: string,
+    fallback: number,
+    constraints?: { min?: number; max?: number },
+  ): number {
+    const parsed = this.safeParseInt(process.env[name]);
+    if (parsed === undefined) return fallback;
+    if (constraints?.min !== undefined && parsed < constraints.min)
+      return fallback;
+    if (constraints?.max !== undefined && parsed > constraints.max)
+      return fallback;
+    return parsed;
+  }
+
+  private buildManualParserConfig(): RagflowManualParserConfig {
+    return {
+      layout_recognize: this.getStringEnv(
+        'RAGFLOW_MANUAL_LAYOUT_RECOGNIZE',
+        'DeepDOC',
+      ),
+      chunk_token_num: this.getIntEnv('RAGFLOW_MANUAL_CHUNK_TOKEN_NUM', 384, {
+        min: 1,
+        max: 2048,
+      }),
+      delimiter: this.getStringEnv('RAGFLOW_MANUAL_DELIMITER', '\n'),
+      auto_keywords: this.getIntEnv('RAGFLOW_MANUAL_AUTO_KEYWORDS', 6, {
+        min: 0,
+        max: 32,
+      }),
+      auto_questions: this.getIntEnv('RAGFLOW_MANUAL_AUTO_QUESTIONS', 0, {
+        min: 0,
+        max: 10,
+      }),
+      task_page_size: this.getIntEnv('RAGFLOW_MANUAL_TASK_PAGE_SIZE', 6, {
+        min: 1,
+      }),
+      raptor: { use_raptor: false },
+      graphrag: { use_graphrag: false },
+    };
+  }
+
+  private buildPdfParserConfig(): RagflowManualParserConfig {
+    const base = this.buildManualParserConfig();
+
+    return {
+      ...base,
+      layout_recognize: this.getStringEnv(
+        'RAGFLOW_PDF_LAYOUT_RECOGNIZE',
+        base.layout_recognize ?? 'DeepDOC',
+      ),
+      chunk_token_num: this.getIntEnv(
+        'RAGFLOW_PDF_CHUNK_TOKEN_NUM',
+        base.chunk_token_num ?? 384,
+        {
+          min: 1,
+          max: 2048,
+        },
+      ),
+      auto_keywords: this.getIntEnv(
+        'RAGFLOW_PDF_AUTO_KEYWORDS',
+        base.auto_keywords ?? 6,
+        {
+          min: 0,
+          max: 32,
+        },
+      ),
+      auto_questions: this.getIntEnv(
+        'RAGFLOW_PDF_AUTO_QUESTIONS',
+        base.auto_questions ?? 0,
+        {
+          min: 0,
+          max: 10,
+        },
+      ),
+      task_page_size: this.getIntEnv(
+        'RAGFLOW_PDF_TASK_PAGE_SIZE',
+        base.task_page_size ?? 6,
+        {
+          min: 1,
+        },
+      ),
+      table_context_size: this.getIntEnv(
+        'RAGFLOW_PDF_TABLE_CONTEXT_SIZE',
+        192,
+        {
+          min: 0,
+        },
+      ),
+      image_context_size: this.getIntEnv(
+        'RAGFLOW_PDF_IMAGE_CONTEXT_SIZE',
+        96,
+        {
+          min: 0,
+        },
+      ),
+    };
+  }
+
   private buildDatasetDefaultConfig(): RagflowConfigPayload {
     return {
       chunk_method: 'manual',
-      parser_config: { raptor: { use_raptor: false } },
+      parser_config: this.buildManualParserConfig(),
     };
   }
 
@@ -136,7 +259,10 @@ export class RagflowService implements OnModuleInit {
     if (['pdf', 'docx'].includes(ext)) {
       return {
         chunk_method: 'manual',
-        parser_config: { raptor: { use_raptor: false } },
+        parser_config:
+          ext === 'pdf'
+            ? this.buildPdfParserConfig()
+            : this.buildManualParserConfig(),
       };
     }
 
