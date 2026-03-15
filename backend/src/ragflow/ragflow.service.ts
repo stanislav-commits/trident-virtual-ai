@@ -232,6 +232,43 @@ export class RagflowService implements OnModuleInit {
     };
   }
 
+  private buildTableHeavyPdfParserConfig(): RagflowManualParserConfig {
+    const base = this.buildPdfParserConfig();
+
+    return {
+      ...base,
+      chunk_token_num: this.getIntEnv(
+        'RAGFLOW_TABLE_HEAVY_PDF_CHUNK_TOKEN_NUM',
+        Math.min(base.chunk_token_num ?? 384, 320),
+        {
+          min: 1,
+          max: 2048,
+        },
+      ),
+      task_page_size: this.getIntEnv(
+        'RAGFLOW_TABLE_HEAVY_PDF_TASK_PAGE_SIZE',
+        Math.max(base.task_page_size ?? 6, 8),
+        {
+          min: 1,
+        },
+      ),
+      table_context_size: this.getIntEnv(
+        'RAGFLOW_TABLE_HEAVY_PDF_TABLE_CONTEXT_SIZE',
+        Math.max(base.table_context_size ?? 192, 384),
+        {
+          min: 0,
+        },
+      ),
+      image_context_size: this.getIntEnv(
+        'RAGFLOW_TABLE_HEAVY_PDF_IMAGE_CONTEXT_SIZE',
+        base.image_context_size ?? 96,
+        {
+          min: 0,
+        },
+      ),
+    };
+  }
+
   private buildDatasetDefaultConfig(): RagflowConfigPayload {
     return {
       chunk_method: 'manual',
@@ -255,13 +292,16 @@ export class RagflowService implements OnModuleInit {
     filename: string,
   ): RagflowDocumentUpdatePayload {
     const ext = this.getFileExtension(filename);
+    const isTableHeavyPdf = this.isTableHeavyPdfFilename(filename);
 
     if (['pdf', 'docx'].includes(ext)) {
       return {
         chunk_method: 'manual',
         parser_config:
           ext === 'pdf'
-            ? this.buildPdfParserConfig()
+            ? isTableHeavyPdf
+              ? this.buildTableHeavyPdfParserConfig()
+              : this.buildPdfParserConfig()
             : this.buildManualParserConfig(),
       };
     }
@@ -292,6 +332,15 @@ export class RagflowService implements OnModuleInit {
       chunk_method: 'naive',
       parser_config: { raptor: { use_raptor: false } },
     };
+  }
+
+  private isTableHeavyPdfFilename(filename: string): boolean {
+    const normalized = filename.trim().toLowerCase();
+    if (!normalized) return false;
+
+    return /\b(maintenance|tasks?|checklist|schedule|spare|spares|parts?|inventory|consumables?|service\s+list|job\s+list)\b/i.test(
+      normalized,
+    );
   }
 
   async createDataset(name: string): Promise<string | null> {
@@ -522,6 +571,7 @@ export class RagflowService implements OnModuleInit {
       content: string;
       similarity?: number;
       meta?: Record<string, unknown>;
+      positions?: unknown;
     }>
   > {
     if (!this.isConfigured()) return [];
@@ -601,16 +651,206 @@ export class RagflowService implements OnModuleInit {
       });
     }
 
-    return chunks.map((chunk) => ({
+    return chunks.map((chunk) =>
+      this.mapChunkSummary(chunk, {
+        docName:
+          String(
+            chunk.document_name ?? chunk.doc_name ?? chunk.docnm_kwd ?? '',
+          ) || undefined,
+      }),
+    );
+  }
+
+  async listDocumentChunks(
+    datasetId: string,
+    documentId: string,
+    pageSize: number = 200,
+  ): Promise<
+    Array<{
+      id: string;
+      doc_id: string;
+      doc_name: string;
+      content: string;
+      similarity?: number;
+      meta?: Record<string, unknown>;
+      positions?: unknown;
+    }>
+  > {
+    if (!this.isConfigured()) return [];
+
+    const size = Math.max(1, Math.min(pageSize, 500));
+    const chunks: Array<{
+      id: string;
+      doc_id: string;
+      doc_name: string;
+      content: string;
+      similarity?: number;
+      meta?: Record<string, unknown>;
+      positions?: unknown;
+    }> = [];
+
+    let page = 1;
+    let total = Number.POSITIVE_INFINITY;
+
+    while (chunks.length < total) {
+      const res = await fetch(
+        `${this.baseUrl}/api/v1/datasets/${datasetId}/documents/${documentId}/chunks?page=${page}&page_size=${size}`,
+        { headers: this.headers },
+      );
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(
+          `RAGFlow listDocumentChunks failed: ${res.status} ${err}`,
+        );
+      }
+
+      const data = (await res.json()) as {
+        code?: number;
+        data?: {
+          chunks?: Array<Record<string, unknown>>;
+          doc?: Record<string, unknown>;
+          total?: number;
+        };
+        message?: string;
+      };
+
+      if (data.code !== 0) {
+        throw new Error(
+          data.message || 'RAGFlow listDocumentChunks invalid response',
+        );
+      }
+
+      const pageChunks = data.data?.chunks ?? [];
+      const docName = String(
+        data.data?.doc?.name ?? data.data?.doc?.location ?? '',
+      );
+
+      chunks.push(
+        ...pageChunks.map((chunk) =>
+          this.mapChunkSummary(chunk, {
+            defaultDocumentId: documentId,
+            docName,
+          }),
+        ),
+      );
+
+      total = Math.max(data.data?.total ?? pageChunks.length, pageChunks.length);
+      if (pageChunks.length === 0 || pageChunks.length < size) {
+        break;
+      }
+      page += 1;
+    }
+
+    return chunks;
+  }
+
+  private mapChunkSummary(
+    chunk: Record<string, unknown>,
+    options?: {
+      defaultDocumentId?: string;
+      docName?: string;
+    },
+  ): {
+    id: string;
+    doc_id: string;
+    doc_name: string;
+    content: string;
+    similarity?: number;
+    meta?: Record<string, unknown>;
+    positions?: unknown;
+  } {
+    const rawMeta = (chunk.metadata ?? chunk.meta ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const positions = chunk.positions;
+    const derivedPageNum =
+      this.extractPageNumberFromPositions(positions) ??
+      this.extractPageNumberFromMeta(rawMeta);
+
+    const meta =
+      derivedPageNum !== undefined && rawMeta.page_num === undefined
+        ? { ...rawMeta, page_num: derivedPageNum }
+        : rawMeta;
+
+    return {
       id: String(chunk.id ?? ''),
-      doc_id: String(chunk.document_id ?? chunk.doc_id ?? ''),
+      doc_id: String(
+        chunk.document_id ?? chunk.doc_id ?? options?.defaultDocumentId ?? '',
+      ),
       doc_name: String(
-        chunk.document_name ?? chunk.doc_name ?? chunk.docnm_kwd ?? '',
+        chunk.document_name ??
+          chunk.doc_name ??
+          chunk.docnm_kwd ??
+          options?.docName ??
+          '',
       ),
       content: String(chunk.content ?? chunk.content_with_weight ?? ''),
       similarity:
         typeof chunk.similarity === 'number' ? chunk.similarity : undefined,
-      meta: (chunk.metadata ?? chunk.meta ?? {}) as Record<string, unknown>,
-    }));
+      meta,
+      positions,
+    };
+  }
+
+  private extractPageNumberFromMeta(
+    meta?: Record<string, unknown>,
+  ): number | undefined {
+    if (!meta) return undefined;
+
+    for (const key of ['page_num', 'page', 'pageNumber']) {
+      const value = meta[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const parsed = Number.parseInt(value, 10);
+        if (Number.isFinite(parsed)) return parsed;
+      }
+    }
+
+    return undefined;
+  }
+
+  private extractPageNumberFromPositions(positions: unknown): number | undefined {
+    const pages = this.collectPositionPages(positions);
+    if (pages.length === 0) return undefined;
+
+    const counts = new Map<number, number>();
+    for (const page of pages) {
+      counts.set(page, (counts.get(page) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .sort((a, b) => {
+        if (a[1] !== b[1]) return b[1] - a[1];
+        return a[0] - b[0];
+      })[0]?.[0];
+  }
+
+  private collectPositionPages(positions: unknown): number[] {
+    if (positions === null || positions === undefined) return [];
+
+    if (Array.isArray(positions)) {
+      if (
+        positions.length >= 5 &&
+        positions.every((value) => typeof value === 'number')
+      ) {
+        const [page] = positions;
+        return Number.isFinite(page) ? [page] : [];
+      }
+
+      return positions.flatMap((entry) => this.collectPositionPages(entry));
+    }
+
+    if (typeof positions === 'object') {
+      const value = (positions as Record<string, unknown>).value;
+      if (value !== undefined) {
+        return this.collectPositionPages(value);
+      }
+    }
+
+    return [];
   }
 }

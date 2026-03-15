@@ -11,6 +11,15 @@ const DEFAULT_RAGFLOW_CONTEXT_TOP_K = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 8;
 })();
 
+const DEFAULT_RAGFLOW_CONTEXT_CANDIDATE_K = (() => {
+  const parsed = Number.parseInt(
+    process.env.RAGFLOW_CONTEXT_CANDIDATE_K ?? '',
+    10,
+  );
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return Math.max(DEFAULT_RAGFLOW_CONTEXT_TOP_K * 3, 24);
+})();
+
 const DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS = (() => {
   const parsed = Number.parseInt(
     process.env.RAGFLOW_CONTEXT_SNIPPET_CHARS ?? '',
@@ -49,6 +58,7 @@ export class ChatContextService {
     shipId: string,
     query: string,
     topK: number = DEFAULT_RAGFLOW_CONTEXT_TOP_K,
+    candidateK: number = DEFAULT_RAGFLOW_CONTEXT_CANDIDATE_K,
   ): Promise<{
     citations: ContextCitation[];
     ragflowRequestId?: string;
@@ -73,11 +83,14 @@ export class ChatContextService {
     }
 
     try {
+      const retrievalK = Math.max(topK, candidateK);
+      const snippetCharLimit = this.getSnippetCharLimit(query);
+
       // RAGFlow API call to search dataset
       const results = await this.ragflow.searchDataset(
         ship.ragflowDatasetId,
         query,
-        topK,
+        retrievalK,
       );
 
       // Map RAGFlow results to citations with ShipManual references
@@ -90,8 +103,8 @@ export class ChatContextService {
 
           const rawContent = result.content ?? '';
           const snippet =
-            rawContent.length > DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS
-              ? rawContent.slice(0, DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS)
+            rawContent.length > snippetCharLimit
+              ? rawContent.slice(0, snippetCharLimit)
               : rawContent;
 
           return {
@@ -103,7 +116,7 @@ export class ChatContextService {
             pageNumber: (result.meta?.page_num as number) ?? undefined,
           };
         }),
-      ).slice(0, topK);
+      ).slice(0, retrievalK);
 
       return {
         citations,
@@ -119,6 +132,7 @@ export class ChatContextService {
   async findContextForAdminQuery(
     query: string,
     topK: number = DEFAULT_RAGFLOW_CONTEXT_TOP_K,
+    candidateK: number = DEFAULT_RAGFLOW_CONTEXT_CANDIDATE_K,
   ): Promise<ContextCitation[]> {
     // Admin search across all ship datasets
     const ships = await this.prisma.ship.findMany({
@@ -139,13 +153,15 @@ export class ChatContextService {
     }
 
     const allCitations: ContextCitation[] = [];
+    const retrievalK = Math.max(topK, candidateK);
+    const snippetCharLimit = this.getSnippetCharLimit(query);
 
     for (const ship of ships) {
       try {
         const results = await this.ragflow.searchDataset(
           ship.ragflowDatasetId!,
           query,
-          topK,
+          retrievalK,
         );
 
         results.forEach((result: RAGFlowSearchResult) => {
@@ -156,8 +172,8 @@ export class ChatContextService {
           const docName = result.doc_name || manual?.filename || 'Document';
           const rawContent = result.content ?? '';
           const snippet =
-            rawContent.length > DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS
-              ? rawContent.slice(0, DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS)
+            rawContent.length > snippetCharLimit
+              ? rawContent.slice(0, snippetCharLimit)
               : rawContent;
 
           allCitations.push({
@@ -177,7 +193,7 @@ export class ChatContextService {
     // Return top-k across all ships
     return this.dedupeCitations(allCitations)
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-      .slice(0, topK);
+      .slice(0, retrievalK);
   }
 
   private dedupeCitations(citations: ContextCitation[]): ContextCitation[] {
@@ -185,11 +201,19 @@ export class ChatContextService {
     const deduped: ContextCitation[] = [];
 
     for (const citation of citations) {
+      const chunkKey = citation.chunkId?.trim();
+      if (chunkKey) {
+        const key = `chunk:${chunkKey}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(citation);
+        continue;
+      }
+
       const normalizedSnippet = (citation.snippet ?? '')
         .replace(/\s+/g, ' ')
         .trim()
-        .toLowerCase()
-        .slice(0, 220);
+        .toLowerCase();
       const key = [
         citation.sourceTitle ?? '',
         citation.pageNumber ?? '',
@@ -202,5 +226,17 @@ export class ChatContextService {
     }
 
     return deduped;
+  }
+
+  private getSnippetCharLimit(query: string): number {
+    if (
+      /\b(reference\s*id|1p\d{2,}|spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location|next\s*due|last\s*due|component\s*name|task\s*name|interval|parts?|spares?|part\s*numbers?|consumables?)\b/i.test(
+        query,
+      )
+    ) {
+      return Math.max(DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS, 7000);
+    }
+
+    return DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS;
   }
 }
