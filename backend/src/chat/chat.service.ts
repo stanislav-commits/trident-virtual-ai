@@ -6,7 +6,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ChatContextService } from './chat-context.service';
 import { LlmService } from './llm.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { CreateChatSessionDto } from './dto/create-chat-session.dto';
@@ -15,6 +14,8 @@ import {
   ChatSessionResponseDto,
   ChatMessageResponseDto,
 } from './dto/chat-response.dto';
+import { ChatDocumentationService } from './chat-documentation.service';
+import { ChatCitation } from './chat.types';
 
 @Injectable()
 export class ChatService {
@@ -22,9 +23,9 @@ export class ChatService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly contextService: ChatContextService,
     private readonly llmService: LlmService,
     private readonly metricsService: MetricsService,
+    private readonly documentationService: ChatDocumentationService,
   ) {}
 
   async createSession(
@@ -47,7 +48,6 @@ export class ChatService {
     role: string,
     search?: string,
   ): Promise<ChatSessionResponseDto[]> {
-    // Sessions are private per account, regardless of role.
     let where: any = { userId, deletedAt: null };
 
     if (search) {
@@ -65,9 +65,9 @@ export class ChatService {
       },
     });
 
-    return sessions.map((s) => ({
-      ...this.formatSessionResponse(s),
-      messageCount: s.messages.length,
+    return sessions.map((session) => ({
+      ...this.formatSessionResponse(session),
+      messageCount: session.messages.length,
     }));
   }
 
@@ -95,12 +95,15 @@ export class ChatService {
 
     this.validateAccess(session, userId, role);
 
-    if (session.deletedAt)
+    if (session.deletedAt) {
       throw new NotFoundException('Chat session not found');
+    }
 
     return {
       ...this.formatSessionResponse(session),
-      messages: session.messages.map((msg) => this.formatMessageResponse(msg)),
+      messages: session.messages.map((message) =>
+        this.formatMessageResponse(message),
+      ),
     };
   }
 
@@ -121,8 +124,9 @@ export class ChatService {
 
     this.validateAccess(session, userId, role);
 
-    if (session.deletedAt)
+    if (session.deletedAt) {
       throw new NotFoundException('Chat session not found');
+    }
 
     if (!dto.content?.trim()) {
       throw new BadRequestException('Message content cannot be empty');
@@ -146,9 +150,8 @@ export class ChatService {
       data: { updatedAt: new Date() },
     });
 
-    // Auto-generate title from first user message
-    this.autoGenerateTitle(sessionId, dto.content).catch((err) =>
-      console.error('Failed to auto-generate title:', err),
+    this.autoGenerateTitle(sessionId, dto.content).catch((error) =>
+      this.logger.error('Failed to auto-generate title', error),
     );
 
     this.generateAssistantResponse(
@@ -157,210 +160,18 @@ export class ChatService {
       dto.content,
       session.ship?.name,
       role,
-    ).catch((err) =>
-      console.error('Failed to generate assistant response:', err),
+    ).catch((error) =>
+      this.logger.error('Failed to generate assistant response', error),
     );
 
     return this.formatMessageResponse(userMessage);
-  }
-
-  private async autoGenerateTitle(
-    sessionId: string,
-    firstMessage: string,
-  ): Promise<void> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        messages: {
-          where: { deletedAt: null, role: 'user' },
-          select: { id: true },
-        },
-      },
-    });
-
-    // Only generate title on the first user message and if title is still default
-    if (
-      !session ||
-      session.messages.length !== 1 ||
-      (session.title && session.title !== 'New Chat')
-    ) {
-      return;
-    }
-
-    const title = await this.llmService.generateTitle(firstMessage);
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { title },
-    });
-  }
-
-  private async generateAssistantResponse(
-    shipId: string | null,
-    sessionId: string,
-    userQuery: string,
-    shipName?: string,
-    role: string = 'user',
-  ): Promise<ChatMessageResponseDto> {
-    try {
-      const session = await this.prisma.chatSession.findUnique({
-        where: { id: sessionId },
-        include: {
-          user: { select: { name: true } },
-          messages: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            take: 10,
-          },
-        },
-      });
-
-      if (session?.user?.name) {
-        const mockData = this.getMockResponse(session.user.name, userQuery);
-        if (mockData) {
-          // Simulate AI thinking delay based on response length for realistic UX effect
-          await new Promise((resolve) => setTimeout(resolve, mockData.delayMs));
-          return this.addAssistantMessage(sessionId, mockData.content);
-        }
-      }
-
-      // RAG context is best-effort: if retrieval fails, continue with telemetry-only response.
-      let citations: Array<{
-        shipManualId?: string;
-        chunkId?: string;
-        score?: number;
-        pageNumber?: number;
-        snippet?: string;
-        sourceTitle?: string;
-      }> = [];
-      const previousUserQuery = this.getPreviousUserQuery(session?.messages);
-      const retrievalQuery = this.buildRetrievalQuery(
-        userQuery,
-        previousUserQuery,
-      );
-      try {
-        if (role === 'admin' || !shipId) {
-          citations =
-            await this.contextService.findContextForAdminQuery(retrievalQuery);
-        } else {
-          const result = await this.contextService.findContextForQuery(
-            shipId,
-            retrievalQuery,
-          );
-          citations = result.citations;
-        }
-
-        // If primary retrieval found nothing, retry with an expanded query.
-        if (citations.length === 0) {
-          const fallbackQuery = this.buildRagFallbackQuery(retrievalQuery);
-          if (fallbackQuery !== retrievalQuery) {
-            if (role === 'admin' || !shipId) {
-              citations =
-                await this.contextService.findContextForAdminQuery(
-                  fallbackQuery,
-                );
-            } else {
-              const fallbackResult =
-                await this.contextService.findContextForQuery(
-                  shipId,
-                  fallbackQuery,
-                );
-              citations = fallbackResult.citations;
-            }
-          }
-        }
-
-        citations = this.pruneCitationsForResolvedSubject(
-          retrievalQuery,
-          citations,
-        );
-        citations = this.refineCitationsForIntent(userQuery, citations);
-      } catch (error) {
-        this.logger.warn(
-          `RAG retrieval skipped: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-
-      // Fetch live telemetry (best-effort, must not block response generation).
-      // User mode: selected ship only. Admin mode: aggregate from all ships that have active metrics.
-      let telemetry: Record<string, unknown> = {};
-      const telemetryShips: string[] = [];
-      try {
-        if (shipId) {
-          telemetry = await this.metricsService.getShipTelemetry(shipId);
-          if (shipName) telemetryShips.push(shipName);
-        } else if (role === 'admin') {
-          const shipsWithMetrics = await this.prisma.ship.findMany({
-            where: { metricsConfig: { some: { isActive: true } } },
-            select: { id: true, name: true },
-            orderBy: { name: 'asc' },
-          });
-
-          for (const ship of shipsWithMetrics) {
-            const shipTelemetry = await this.metricsService.getShipTelemetry(
-              ship.id,
-            );
-            if (Object.keys(shipTelemetry).length > 0) {
-              telemetryShips.push(ship.name);
-            }
-            Object.entries(shipTelemetry).forEach(([label, value]) => {
-              telemetry[`[${ship.name}] ${label}`] = value;
-            });
-          }
-        }
-      } catch {
-        // telemetry is best-effort; don't block the response
-      }
-
-      const response = await this.llmService.generateResponse({
-        userQuery,
-        previousUserQuery:
-          retrievalQuery !== userQuery ? previousUserQuery : undefined,
-        resolvedSubjectQuery:
-          retrievalQuery !== userQuery ? retrievalQuery : undefined,
-        citations: citations.map((c) => ({
-          snippet: c.snippet || '',
-          sourceTitle: c.sourceTitle || 'Unknown',
-          pageNumber: c.pageNumber,
-        })),
-        noDocumentation: citations.length === 0,
-        shipName,
-        telemetry,
-        chatHistory: session?.messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      });
-
-      return this.addAssistantMessage(
-        sessionId,
-        response,
-        {
-          ...(telemetryShips.length > 0
-            ? { telemetryShips: [...new Set(telemetryShips)] }
-            : {}),
-          ...(citations.length === 0 ? { noDocumentation: true } : {}),
-        },
-        citations,
-      );
-    } catch (err) {
-      const fallback = `I encountered an issue processing your query: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again or contact support.`;
-      return this.addAssistantMessage(sessionId, fallback);
-    }
   }
 
   async addAssistantMessage(
     sessionId: string,
     content: string,
     ragflowContext?: Record<string, unknown> | null,
-    contextReferences?: Array<{
-      shipManualId?: string;
-      chunkId?: string;
-      score?: number;
-      pageNumber?: number;
-      snippet?: string;
-      sourceTitle?: string;
-      sourceUrl?: string;
-    }>,
+    contextReferences?: ChatCitation[],
   ): Promise<ChatMessageResponseDto> {
     const message = await this.prisma.chatMessage.create({
       data: {
@@ -451,11 +262,13 @@ export class ChatService {
 
     this.validateAccess(session, userId, role);
 
-    if (session.deletedAt)
+    if (session.deletedAt) {
       throw new NotFoundException('Chat session not found');
+    }
 
-    if (session.messages.length === 0)
+    if (session.messages.length === 0) {
       throw new NotFoundException('Message not found');
+    }
 
     await this.prisma.chatMessage.update({
       where: { id: messageId },
@@ -484,8 +297,9 @@ export class ChatService {
 
     this.validateAccess(session, userId, role);
 
-    if (session.deletedAt)
+    if (session.deletedAt) {
       throw new NotFoundException('Chat session not found');
+    }
 
     if (
       session.messages.length < 2 ||
@@ -511,309 +325,152 @@ export class ChatService {
     );
   }
 
+  private async autoGenerateTitle(
+    sessionId: string,
+    firstMessage: string,
+  ): Promise<void> {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        messages: {
+          where: { deletedAt: null, role: 'user' },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (
+      !session ||
+      session.messages.length !== 1 ||
+      (session.title && session.title !== 'New Chat')
+    ) {
+      return;
+    }
+
+    const title = await this.llmService.generateTitle(firstMessage);
+    await this.prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { title },
+    });
+  }
+
+  private async generateAssistantResponse(
+    shipId: string | null,
+    sessionId: string,
+    userQuery: string,
+    shipName?: string,
+    role: string = 'user',
+  ): Promise<ChatMessageResponseDto> {
+    try {
+      const session = await this.prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          user: { select: { name: true } },
+          messages: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            take: 10,
+          },
+        },
+      });
+
+      if (session?.user?.name) {
+        const mockData = this.getMockResponse(session.user.name, userQuery);
+        if (mockData) {
+          await new Promise((resolve) => setTimeout(resolve, mockData.delayMs));
+          return this.addAssistantMessage(sessionId, mockData.content);
+        }
+      }
+
+      const documentationContext =
+        await this.documentationService.prepareDocumentationContext({
+          shipId,
+          role,
+          userQuery,
+          messageHistory: session?.messages.map((message) => ({
+            role: message.role,
+            content: message.content,
+            ragflowContext: message.ragflowContext ?? undefined,
+          })),
+        });
+
+      const { citations, previousUserQuery, retrievalQuery } =
+        documentationContext;
+
+      let telemetry: Record<string, unknown> = {};
+      const telemetryShips: string[] = [];
+      try {
+        if (shipId) {
+          telemetry = await this.metricsService.getShipTelemetry(shipId);
+          if (shipName) telemetryShips.push(shipName);
+        } else if (role === 'admin') {
+          const shipsWithMetrics = await this.prisma.ship.findMany({
+            where: { metricsConfig: { some: { isActive: true } } },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+          });
+
+          for (const ship of shipsWithMetrics) {
+            const shipTelemetry = await this.metricsService.getShipTelemetry(
+              ship.id,
+            );
+            if (Object.keys(shipTelemetry).length > 0) {
+              telemetryShips.push(ship.name);
+            }
+            Object.entries(shipTelemetry).forEach(([label, value]) => {
+              telemetry[`[${ship.name}] ${label}`] = value;
+            });
+          }
+        }
+      } catch {
+        // Telemetry is best-effort and must not block the answer.
+      }
+
+      const response = await this.llmService.generateResponse({
+        userQuery,
+        previousUserQuery:
+          retrievalQuery !== userQuery ? previousUserQuery : undefined,
+        resolvedSubjectQuery:
+          retrievalQuery !== userQuery ? retrievalQuery : undefined,
+        citations: citations.map((citation) => ({
+          snippet: citation.snippet || '',
+          sourceTitle: citation.sourceTitle || 'Unknown',
+          pageNumber: citation.pageNumber,
+        })),
+        noDocumentation: citations.length === 0,
+        shipName,
+        telemetry,
+        chatHistory: session?.messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+      });
+
+      return this.addAssistantMessage(
+        sessionId,
+        response,
+        {
+          ...(telemetryShips.length > 0
+            ? { telemetryShips: [...new Set(telemetryShips)] }
+            : {}),
+          ...(citations.length === 0 ? { noDocumentation: true } : {}),
+        },
+        citations,
+      );
+    } catch (error) {
+      const fallback = `I encountered an issue processing your query: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`;
+      return this.addAssistantMessage(sessionId, fallback);
+    }
+  }
+
   private validateAccess(
     session: { userId: string },
     userId: string,
     role: string,
   ): void {
-    // Chat session ownership is strict: only creator can access it.
     if (session.userId !== userId) {
       throw new ForbiddenException('Cannot access this chat session');
     }
-  }
-
-  private buildRagFallbackQuery(userQuery: string): string {
-    const normalized = userQuery.trim().replace(/\s+/g, ' ');
-    if (!normalized) return userQuery;
-
-    if (
-      /(fault|alarm|error|troubleshoot|issue|problem|not\s+working|failure)/i.test(
-        normalized,
-      )
-    ) {
-      return `${normalized}. Focus on alarms, likely causes, limits, troubleshooting and operating procedure.`;
-    }
-
-    if (
-      /(what\s+maintenance\s+is\s+due|what\s+service\s+is\s+due|due\s+now|maintenance\s+tasks?|service\s+items?|next\s+maintenance|next\s+service)/i.test(
-        normalized,
-      )
-    ) {
-      return `${normalized}. Focus on task name, reference ID, interval, last due and next due in the maintenance schedule.`;
-    }
-
-    if (
-      /\b(parts?|spares?|part\s*numbers?|consumables?|fluids?|oil|coolant|filter|filters)\b/i.test(
-        normalized,
-      )
-    ) {
-      return `${normalized}. Focus on spare name, quantity, location, manufacturer part number and supplier part number.`;
-    }
-
-    if (
-      /\b(procedure|steps?|how\s+to|instruction|instructions|checklist|replace|clean|inspect)\b/i.test(
-        normalized,
-      )
-    ) {
-      return `${normalized}. Focus on the documented procedure steps, required materials and cautions.`;
-    }
-
-    if (
-      /(telemetry|status|current|running\s+hours|hour\s*meter|hours\s*run|runtime)/i.test(
-        normalized,
-      )
-    ) {
-      return `${normalized}. Focus on running hours, runtime, hour meter and current status values.`;
-    }
-
-    return userQuery;
-  }
-
-  private getPreviousUserQuery(
-    messages?: Array<{ role: string; content: string }>,
-  ): string | undefined {
-    if (!messages?.length) return undefined;
-
-    const userMessages = messages
-      .filter((message) => message.role === 'user')
-      .map((message) => message.content.trim())
-      .filter(Boolean);
-
-    if (userMessages.length < 2) return undefined;
-    return userMessages[userMessages.length - 2];
-  }
-
-  private isContextualFollowUpQuery(query: string): boolean {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return false;
-
-    return /^(yes|yeah|yep|ok|okay|sure|correct|right|no|actually|and\b|also\b|then\b|what about|how about|are you sure|is that correct|is this correct|parts?|spares?|part\s*numbers?|procedure|steps?|details?|tasks?|show all|all tasks|list(?:\s+of)?\s+all\s+tasks|when\s+is\s+the\s+next\s+(maintenance|service)\s+due|what\s+(maintenance|service)\s+is\s+due|what\s+does\s+(it|that)\s+include|what\s+is\s+included)\b/i.test(
-      normalized,
-    );
-  }
-
-  private buildRetrievalQuery(
-    userQuery: string,
-    previousUserQuery?: string,
-  ): string {
-    const normalized = userQuery.trim().replace(/\s+/g, ' ');
-    if (!normalized || !previousUserQuery) return normalized;
-    if (this.isSelfContainedSubjectQuery(normalized)) return normalized;
-    if (!this.isContextualFollowUpQuery(normalized)) return normalized;
-
-    const followUp = normalized
-      .replace(/^(yes|yeah|yep|ok|okay|sure|correct|right)[,\s]*/i, '')
-      .trim();
-
-    if (!followUp) return previousUserQuery.trim();
-    if (followUp.toLowerCase() === previousUserQuery.trim().toLowerCase()) {
-      return followUp;
-    }
-
-    return `${previousUserQuery.trim()}. ${followUp}`;
-  }
-
-  private isSelfContainedSubjectQuery(query: string): boolean {
-    const normalized = query.trim();
-    if (!normalized) return false;
-
-    // Fully phrased questions that already contain a concrete subject should
-    // not be merged with the previous turn.
-    if (
-      /\b(for|about|regarding)\s+(?!it\b|that\b|this\b|them\b|those\b)[a-z0-9]/i.test(
-        normalized,
-      )
-    ) {
-      return true;
-    }
-
-    const subjectTerms = this.extractRetrievalSubjectTerms(normalized);
-    if (subjectTerms.length >= 2) return true;
-
-    if (/\b(reference\s*id|1p\d{2,}|[a-z0-9]+\s+\d+\s*hrs?)\b/i.test(normalized)) {
-      return true;
-    }
-
-    return false;
-  }
-
-  private pruneCitationsForResolvedSubject(
-    retrievalQuery: string,
-    citations: Array<{
-      shipManualId?: string;
-      chunkId?: string;
-      score?: number;
-      pageNumber?: number;
-      snippet?: string;
-      sourceTitle?: string;
-      sourceUrl?: string;
-    }>,
-  ) {
-    if (citations.length === 0) return citations;
-
-    const subjectTerms = this.extractRetrievalSubjectTerms(retrievalQuery);
-    if (subjectTerms.length === 0) return citations;
-
-    const matched = citations.filter((citation) => {
-      const haystack =
-        `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
-      return subjectTerms.some((term) => haystack.includes(term));
-    });
-
-    if (matched.length >= 2) return matched;
-    if (matched.length === 1 && subjectTerms.length >= 2) return matched;
-    return citations;
-  }
-
-  private refineCitationsForIntent(
-    userQuery: string,
-    citations: Array<{
-      shipManualId?: string;
-      chunkId?: string;
-      score?: number;
-      pageNumber?: number;
-      snippet?: string;
-      sourceTitle?: string;
-      sourceUrl?: string;
-    }>,
-  ) {
-    if (citations.length === 0) return citations;
-
-    let refined = citations;
-
-    const referenceIds = [
-      ...new Set(
-        (userQuery.match(/\b1p\d{2,}\b/gi) ?? []).map((value) =>
-          value.toLowerCase(),
-        ),
-      ),
-    ];
-
-    if (referenceIds.length > 0) {
-      const matchedByReference = refined.filter((citation) => {
-        const haystack =
-          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
-        return referenceIds.some((referenceId) => haystack.includes(referenceId));
-      });
-      if (matchedByReference.length > 0) {
-        refined = matchedByReference;
-      }
-    }
-
-    const numericTokens = this.extractSignificantNumericTokens(userQuery);
-    if (numericTokens.length > 0) {
-      const matchedByNumericToken = refined.filter((citation) => {
-        const haystack =
-          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
-        return numericTokens.some((token) => haystack.includes(token));
-      });
-      if (matchedByNumericToken.length > 0) {
-        refined = matchedByNumericToken;
-      }
-    }
-
-    if (this.isPartsQuery(userQuery)) {
-      const matchedParts = refined.filter((citation) =>
-        /\b(spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location)\b/i.test(
-          citation.snippet ?? '',
-        ),
-      );
-      if (matchedParts.length > 0) {
-        refined = matchedParts;
-      }
-    }
-
-    if (this.isNextDueLookupQuery(userQuery)) {
-      const matchedNextDue = refined.filter((citation) =>
-        /\bnext\s*due\b/i.test(citation.snippet ?? ''),
-      );
-      if (matchedNextDue.length > 0) {
-        refined = matchedNextDue;
-      }
-    }
-
-    return refined;
-  }
-
-  private extractRetrievalSubjectTerms(query: string): string[] {
-    const stopWords = new Set([
-      'what',
-      'when',
-      'where',
-      'why',
-      'how',
-      'about',
-      'next',
-      'maintenance',
-      'service',
-      'due',
-      'hours',
-      'hour',
-      'running',
-      'current',
-      'status',
-      'please',
-      'provide',
-      'show',
-      'list',
-      'task',
-      'tasks',
-      'details',
-      'parts',
-      'part',
-      'procedure',
-      'steps',
-      'include',
-      'included',
-      'does',
-      'that',
-      'this',
-      'it',
-      'the',
-      'for',
-      'all',
-      'is',
-      'are',
-    ]);
-
-    return [
-      ...new Set(
-        query
-          .toLowerCase()
-          .replace(/[^a-z0-9\s/-]/g, ' ')
-          .split(/\s+/)
-          .map((term) => term.trim())
-          .filter((term) => term.length >= 3)
-          .filter((term) => !stopWords.has(term))
-          .filter((term) => !/^\d+$/.test(term)),
-      ),
-    ];
-  }
-
-  private isPartsQuery(query: string): boolean {
-    return /\b(parts?|spares?|part\s*numbers?|consumables?|filters?|oil|coolant)\b/i.test(
-      query,
-    );
-  }
-
-  private isNextDueLookupQuery(query: string): boolean {
-    return /\b(next\s+due|what\s+is\s+next\s+due|next\s+due\s+value|when\s+is\s+the\s+next\s+(maintenance|service)\s+due)\b/i.test(
-      query,
-    );
-  }
-
-  private extractSignificantNumericTokens(query: string): string[] {
-    const tokens = new Set<string>();
-
-    for (const match of query.matchAll(/\b(\d{2,6})\s*(hrs?|hours?)\b/gi)) {
-      tokens.add(match[1]);
-    }
-
-    for (const match of query.matchAll(/\b1p\d{2,}\b/gi)) {
-      tokens.add(match[0].toLowerCase());
-    }
-
-    return [...tokens];
   }
 
   private getMockResponse(
@@ -825,11 +482,10 @@ export class ChatService {
     }
 
     const q = query.trim().toLowerCase();
-    
-    // Helper to calculate delay based on word count (approx 25 words per second) plus a base delay
+
     const calculateDelay = (text: string) => {
       const wordCount = text.split(/\s+/).length;
-      return Math.min(Math.max(2000, (wordCount / 25) * 1000), 10000); // Between 2s and 10s
+      return Math.min(Math.max(2000, (wordCount / 25) * 1000), 10000);
     };
 
     if (/generator.*running\s*hours/i.test(q)) {
@@ -906,13 +562,13 @@ Would you like to know:
     if (/part\s*number/i.test(q)) {
       const content = `For the 200 hourly maintenance on the port generator you will require the following:
 
-- **Volvo Penta - Oil Bypass Filter** (Qty: 1) – <high-light>Part number: 21951346</high-light>
+- **Volvo Penta - Oil Bypass Filter** (Qty: 1) - <high-light>Part number: 21951346</high-light>
   - Locations: Box 23 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
 - **Volvo Penta - Oil Filter Element** (Qty: 2) - <high-light>Part number: 477556</high-light>
   - Locations: Box 21 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Racor Cartridges – Fuel filter element** (Qty: 1) - <high-light>Part number: 2020PM</high-light>
+- **Racor Cartridges - Fuel filter element** (Qty: 1) - <high-light>Part number: 2020PM</high-light>
   - Locations: Box 20 (Racor Filters) & Box 24 (Volvo Penta Fuel Filter).
-- **Oil – 15W40** (Qty 12 Litres) – <high-light>Part Number: 15W40 Oil</high-light>
+- **Oil - 15W40** (Qty 12 Litres) - <high-light>Part Number: 15W40 Oil</high-light>
   - Locations: Bilge SB Steering Room.`;
       return { content, delayMs: calculateDelay(content) };
     }
@@ -974,19 +630,23 @@ Would you like to know:
 
 For the 200 hourly maintenance on the port generator you will require the following:
 
-- **Volvo Penta - Oil Bypass Filter** (Qty: 1) – <high-light>Part number: 21951346</high-light>
+- **Volvo Penta - Oil Bypass Filter** (Qty: 1) - <high-light>Part number: 21951346</high-light>
   - Locations: Box 23 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
 - **Volvo Penta - Oil Filter Element** (Qty: 2) - <high-light>Part number: 477556</high-light>
   - Locations: Box 21 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Racor Cartridges – Fuel filter element** (Qty: 1) - <high-light>Part number: 2020PM</high-light>
+- **Racor Cartridges - Fuel filter element** (Qty: 1) - <high-light>Part number: 2020PM</high-light>
   - Locations: Box 20 (Racor Filters) & Box 24 (Volvo Penta Fuel Filter).
-- **Oil – 15W40** (Qty 12 Litres) – <high-light>Part Number: 15W40 Oil</high-light>
+- **Oil - 15W40** (Qty 12 Litres) - <high-light>Part Number: 15W40 Oil</high-light>
   - Locations: Bilge SB Steering Room.`;
 
       return { content, delayMs: calculateDelay(content) };
     }
 
-    if (/what\s*happened/i.test(q) || /yacht\s*stopped/i.test(q) || /generator\s*stopped/i.test(q)) {
+    if (
+      /what\s*happened/i.test(q) ||
+      /yacht\s*stopped/i.test(q) ||
+      /generator\s*stopped/i.test(q)
+    ) {
       const content = `Common causes to check include:
 - Low fuel supply
 - Low battery voltage
