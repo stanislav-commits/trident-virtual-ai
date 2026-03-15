@@ -190,6 +190,10 @@ Intent handling:
 - If the user asks for a named task, service, component, or reference ID, do not substitute a nearby but different task just because it has a similar interval or wording. If the exact asked item is not clearly present in the provided snippets, say so.
 - If the current question is a short follow-up and prior user context is provided, treat it as continuing the previous subject. Do not ask the user to repeat the same subject unless the previous subject is still genuinely ambiguous.
 - If the retrieved snippets mix multiple unrelated components, tasks, or manuals, do not merge them into one answer. Use only the snippets that clearly match the asked subject. If no single subject match is clear, say the retrieved context is ambiguous and ask a short clarification.
+- If multiple manuals are relevant, clearly separate maintenance-schedule facts from operator-manual guidance. Say which source identifies the due task or task list, and which source only gives general procedure or safety information.
+- If the user explicitly asks "according to" a named manual, handbook, guide, or document, answer from that named source when matching citations from it are present. Do not switch to a different document just because it has more detailed but unrelated content.
+- If the user asks about one exact reference ID, use only the snippets tied to that exact reference ID plus obvious continuation lines from the same row/page. Do not borrow tasks, parts, or part numbers from nearby reference rows.
+- If the user asks for "all details", "list all", "do not omit any row", or asks how many spare-part rows exist, treat the relevant parts table as exhaustive. Merge wrapped lines that clearly belong to the same row, and do not stop early when more rows remain in the provided context.
 
 Maintenance and calculation rules:
 - Never assume a maintenance interval unless that exact interval is stated in the provided documentation for the same component or task.
@@ -254,6 +258,63 @@ Answer style:
         'Return the most relevant documented details for that item without asking for clarification unless multiple equally plausible matches remain.\n\n';
     }
 
+    if (this.hasExplicitSourceRequest(context.userQuery)) {
+      prompt +=
+        'Important: The user explicitly requested information according to a named source. ' +
+        'If matching citations from that named manual, handbook, guide, or document are present, answer from that source only and ignore unrelated manuals.\n\n';
+    }
+
+    if (this.hasExactReferenceId(context.userQuery, context.resolvedSubjectQuery)) {
+      prompt +=
+        'Important: The user is asking about an exact reference ID. ' +
+        'Use only the matching reference row plus obvious continuation lines tied to that same row or same page. ' +
+        'Do not borrow tasks, spare parts, or part numbers from earlier or later unrelated reference rows in the same snippet.\n\n';
+    }
+
+    if (intent === 'maintenance_procedure' && context.resolvedSubjectQuery) {
+      prompt +=
+        'Important: The user is asking what to do for the maintenance item already identified in prior context. ' +
+        'Prefer the task list or included work items from the matching maintenance schedule row for that subject. ' +
+        'If the schedule row lists the task items explicitly, list those scheduled tasks first. ' +
+        'Use generic manual procedure text only as supplementary guidance, and label it as general guidance rather than the task list itself.\n\n';
+    }
+
+    if (
+      intent === 'parts_fluids_consumables' &&
+      context.resolvedSubjectQuery
+    ) {
+      prompt +=
+        'Important: The user is asking for spare parts or consumables for the maintenance item already identified in prior context. ' +
+        'Prefer an explicit spare-parts table or part-number block tied to that same maintenance row or component. ' +
+        'If such a list is present, return all documented spare names, quantities, locations, and part numbers from that matching list instead of saying the parts are unavailable.\n\n';
+    }
+
+    if (this.wantsExhaustiveTableAnswer(context.userQuery)) {
+      prompt +=
+        'Important: The user asked for an exhaustive table answer. ' +
+        'Continue through the full relevant parts list visible in the citations, merge wrapped lines that clearly belong to the same part row, and do not omit lower rows.\n\n';
+    }
+
+    if (
+      intent === 'maintenance_due_now' &&
+      context.resolvedSubjectQuery &&
+      context.telemetry &&
+      Object.keys(context.telemetry).length > 0
+    ) {
+      prompt +=
+        'Important: The user is asking for the next upcoming maintenance item for the current asset. ' +
+        'If multiple maintenance schedule rows match the same asset, prefer the documented row with the earliest upcoming next-due threshold or date that is still ahead of the current telemetry reading. ' +
+        'Do not answer with a later 2000-hour or 3000-hour service if a nearer upcoming 500-hour or 1000-hour service is documented for the same asset. ' +
+        'Answer with the documented service or task name exactly as written in the schedule first, then provide the due date or due hours as supporting detail. Do not answer only with the due timing.\n\n';
+    }
+
+    if (intent === 'next_due_calculation') {
+      prompt +=
+        'Important: The user is asking when the maintenance is due. ' +
+        'Answer with the documented next-due date, next-due hour threshold, or remaining hours first. ' +
+        'You may mention the service name as supporting context, but the primary answer must be the due timing rather than just the service title.\n\n';
+    }
+
     if (
       this.classifyQueryIntent(context.userQuery) ===
         'parts_fluids_consumables' &&
@@ -263,6 +324,17 @@ Answer style:
         'Important: The retrieved context does not show an explicit parts table or part-number fields for the asked item. ' +
         'Do not convert maintenance actions into parts. ' +
         'If no explicit spare names, quantities, or part numbers are shown for the asked item, state that the documentation does not list parts for it.\n\n';
+    }
+
+    if (
+      this.classifyQueryIntent(context.userQuery) ===
+        'parts_fluids_consumables' &&
+      this.hasExplicitPartsEvidence(context.citations)
+    ) {
+      prompt +=
+        'Important: The retrieved context contains a spare-parts table or part-number fields. ' +
+        'Do not answer that spare parts are unavailable. ' +
+        'Return the documented spare names first, then quantities, locations, manufacturer part numbers, and supplier part numbers when they are visible.\n\n';
     }
 
     if (intent === 'fragment_reference') {
@@ -314,7 +386,10 @@ Answer style:
     }
 
     const subjectQuery = context.resolvedSubjectQuery ?? context.userQuery;
-    const hourTelemetry = this.extractHourTelemetry(context.telemetry);
+    const hourTelemetry = this.extractHourTelemetry(
+      context.telemetry,
+      subjectQuery,
+    );
     const documentedIntervals = this.extractDocumentedIntervals(
       context.citations,
       subjectQuery,
@@ -362,6 +437,16 @@ Answer style:
       });
       prompt +=
         '- Prefer these explicit next-due values over any derived calculation from the interval.\n';
+      prompt +=
+        '- If explicit next-due values are listed above, do not round to the next interval boundary such as 2500. Use one of the documented next-due values exactly.\n';
+    }
+
+    if (
+      explicitNextDueValues.length === 0 &&
+      context.citations?.some((citation) => /\bnext\s*due\b/i.test(citation.snippet))
+    ) {
+      prompt +=
+        '- The provided snippets already contain "Next due" schedule fields. If the exact next-due hour is visible in those snippets, answer from that documented next-due row instead of calculating a new rounded hour threshold from the interval.\n';
     }
 
     if (subjectTerms.length === 0 && documentedIntervals.length > 1) {
@@ -453,7 +538,7 @@ Answer style:
     }
 
     if (
-      /(procedure|steps?|how\s+to|instruction|instructions|checklist|perform|replace|clean|inspect)/i.test(
+      /(procedure|steps?|how\s+to|instruction|instructions|checklist|perform|replace|clean|inspect|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)/i.test(
         q,
       )
     ) {
@@ -469,7 +554,7 @@ Answer style:
     }
 
     if (
-      /(what\s+maintenance\s+is\s+due|what\s+service\s+is\s+due|due\s+now|maintenance\s+due\s+now|service\s+due\s+now)/i.test(
+      /(what\s+maintenance\s+is\s+due|what\s+service\s+is\s+due|due\s+now|maintenance\s+due\s+now|service\s+due\s+now|what\s+is\s+the\s+next\s+(maintenance|service)|what\s+(maintenance|service)\s+is\s+next)/i.test(
         q,
       )
     ) {
@@ -505,6 +590,25 @@ Answer style:
     );
   }
 
+  private hasExplicitSourceRequest(query: string): boolean {
+    return /\b(?:according\s+to|from|in)\s+the\s+.+?\b(manual|operator'?s\s+manual|operators\s+manual|handbook|guide|document)\b/i.test(
+      query,
+    );
+  }
+
+  private hasExactReferenceId(
+    userQuery: string,
+    resolvedSubjectQuery?: string,
+  ): boolean {
+    return /\b1p\d{2,}\b/i.test(`${userQuery}\n${resolvedSubjectQuery ?? ''}`);
+  }
+
+  private wantsExhaustiveTableAnswer(query: string): boolean {
+    return /\b(list\s+all|all\s+details|do\s+not\s+omit|how\s+many\s+spare-?part\s+rows)\b/i.test(
+      query,
+    );
+  }
+
   private hasExplicitPartsEvidence(citations?: LLMContext['citations']): boolean {
     if (!citations?.length) return false;
 
@@ -517,6 +621,7 @@ Answer style:
 
   private extractHourTelemetry(
     telemetry?: Record<string, unknown>,
+    subjectQuery?: string,
   ): HourTelemetryEntry[] {
     if (!telemetry) return [];
 
@@ -529,7 +634,16 @@ Answer style:
       if (numericValue == null) continue;
       result.push({ label, hours: numericValue });
     }
-    return result;
+
+    const subjectTerms = this.extractSubjectTerms(subjectQuery ?? '');
+    if (subjectTerms.length === 0) return result;
+
+    const matched = result.filter((entry) => {
+      const haystack = entry.label.toLowerCase();
+      return subjectTerms.some((term) => haystack.includes(term));
+    });
+
+    return matched.length > 0 ? matched : result;
   }
 
   private extractDocumentedIntervals(
@@ -595,7 +709,7 @@ Answer style:
       }
 
       const slashMatches = citation.snippet.matchAll(
-        /next\s*due[\s\S]{0,160}?\/\s*(\d{3,6})\b/gi,
+        /next\s*due[\s\S]{0,400}?\/\s*(\d{3,6})\b/gi,
       );
 
       for (const match of slashMatches) {
@@ -612,6 +726,28 @@ Answer style:
           sourceTitle: citation.sourceTitle,
           pageNumber: citation.pageNumber,
         });
+      }
+
+      if (
+        /\bnext\s*due\b/i.test(citation.snippet) &&
+        !result.some((entry) => entry.sourceIndex === idx + 1)
+      ) {
+        const allSlashHours = [
+          ...citation.snippet.matchAll(/\/\s*(\d{3,6})\b/g),
+        ].map((match) => Number(match[1]));
+        const fallbackNumeric = allSlashHours[allSlashHours.length - 1];
+        if (Number.isFinite(fallbackNumeric) && fallbackNumeric > 0) {
+          const dedupeKey = `${idx + 1}:${fallbackNumeric}`;
+          if (!seen.has(dedupeKey)) {
+            seen.add(dedupeKey);
+            result.push({
+              nextDueHours: fallbackNumeric,
+              sourceIndex: idx + 1,
+              sourceTitle: citation.sourceTitle,
+              pageNumber: citation.pageNumber,
+            });
+          }
+        }
       }
     });
 
@@ -651,6 +787,17 @@ Answer style:
       'those',
       'sure',
       'correct',
+      'should',
+      'use',
+      'need',
+      'needs',
+      'done',
+      'doing',
+      'with',
+      'from',
+      'into',
+      'your',
+      'you',
     ]);
 
     const terms = query
@@ -663,7 +810,11 @@ Answer style:
       .filter((term) => !stopWords.has(term))
       .filter((term) => !/^\d+$/.test(term));
 
-    return [...new Set(terms)];
+    return [
+      ...new Set(
+        terms.filter((term) => term.length >= 3 || term === 'ps' || term === 'sb'),
+      ),
+    ];
   }
 
   private parseNumericValue(value: unknown): number | null {
