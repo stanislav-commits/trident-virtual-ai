@@ -2,6 +2,24 @@ import { Injectable } from '@nestjs/common';
 import { ChatCitation } from './chat.types';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
 
+interface SourceEvidenceProfile {
+  sourceKey: string;
+  sourceTitle: string;
+  citations: ChatCitation[];
+  combinedText: string;
+  subjectCoverage: number;
+  aggregateScore: number;
+  explicitEvidenceScore: number;
+  intervalValues: string[];
+  nextDueValues: string[];
+  nextDueDates: string[];
+  lastDueValues: string[];
+  oilSpecs: string[];
+  partNumbers: string[];
+  quantityValues: string[];
+  capacityValues: string[];
+}
+
 @Injectable()
 export class ChatDocumentationCitationService {
   constructor(
@@ -134,6 +152,73 @@ export class ChatDocumentationCitationService {
     return merged;
   }
 
+  prepareCitationsForAnswer(
+    retrievalQuery: string,
+    userQuery: string,
+    citations: ChatCitation[],
+  ): {
+    citations: ChatCitation[];
+    compareBySource: boolean;
+    sourceComparisonTitles: string[];
+  } {
+    if (citations.length === 0) {
+      return {
+        citations,
+        compareBySource: false,
+        sourceComparisonTitles: [],
+      };
+    }
+
+    const profiles = this.buildSourceEvidenceProfiles(retrievalQuery, citations);
+    if (profiles.length < 2) {
+      return {
+        citations,
+        compareBySource: false,
+        sourceComparisonTitles: [],
+      };
+    }
+
+    const comparisonProfiles = this.findMateriallyDifferentSourceProfiles(
+      retrievalQuery,
+      userQuery,
+      profiles,
+    );
+    if (comparisonProfiles.length >= 2) {
+      const sourceKeys = new Set(
+        comparisonProfiles.map((profile) => profile.sourceKey),
+      );
+      return {
+        citations: this.balanceCitationsAcrossSources(citations, sourceKeys, 4),
+        compareBySource: true,
+        sourceComparisonTitles: comparisonProfiles.map(
+          (profile) => profile.sourceTitle,
+        ),
+      };
+    }
+
+    const preferredSourceKeys = this.selectPreferredSourceKeys(
+      retrievalQuery,
+      userQuery,
+      profiles,
+    );
+    if (preferredSourceKeys.length > 0) {
+      return {
+        citations: this.filterCitationsBySourceKeys(
+          citations,
+          new Set(preferredSourceKeys),
+        ),
+        compareBySource: false,
+        sourceComparisonTitles: [],
+      };
+    }
+
+    return {
+      citations,
+      compareBySource: false,
+      sourceComparisonTitles: [],
+    };
+  }
+
   focusCitationsForQuery(query: string, citations: ChatCitation[]): ChatCitation[] {
     if (citations.length === 0) return citations;
 
@@ -206,6 +291,7 @@ export class ChatDocumentationCitationService {
   limitCitationsForLlm(
     userQuery: string,
     citations: ChatCitation[],
+    compareBySource: boolean = false,
   ): ChatCitation[] {
     if (citations.length <= this.queryService.getDefaultContextTopK()) {
       return citations;
@@ -225,6 +311,14 @@ export class ChatDocumentationCitationService {
       wantsParts || wantsProcedure || hasReferenceId || wantsExhaustiveList
         ? 16
         : this.queryService.getDefaultContextTopK();
+
+    if (compareBySource) {
+      return this.balanceCitationsAcrossSources(
+        citations,
+        new Set(citations.map((citation) => this.getSourceKey(citation))),
+        4,
+      ).slice(0, Math.max(limit, 12));
+    }
 
     return citations.slice(0, limit);
   }
@@ -604,14 +698,36 @@ export class ChatDocumentationCitationService {
       return citations;
     }
 
-    let refined = citations.filter((citation) =>
+    const sideMatched = citations.filter((citation) =>
       this.queryService.matchesDirectionalSide(
         `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`,
         directionalSide,
       ),
     );
+    let refined = sideMatched;
     if (refined.length === 0) {
       refined = citations;
+    } else if (this.queryService.isProcedureQuery(query)) {
+      const neutralProcedureSupport = citations.filter((citation) => {
+        if (sideMatched.includes(citation)) {
+          return false;
+        }
+
+        const haystack =
+          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+        if (
+          this.queryService.matchesDirectionalSide(haystack, 'port') ||
+          this.queryService.matchesDirectionalSide(haystack, 'starboard')
+        ) {
+          return false;
+        }
+
+        return this.isSupplementalGeneratorProcedureCitation(query, citation);
+      });
+
+      if (neutralProcedureSupport.length > 0) {
+        refined = [...refined, ...neutralProcedureSupport];
+      }
     }
 
     const oppositeSide = directionalSide === 'port' ? 'starboard' : 'port';
@@ -626,7 +742,170 @@ export class ChatDocumentationCitationService {
       refined = withoutOppositeSide;
     }
 
-    return refined;
+    const scored = refined
+      .map((citation) => ({
+        citation,
+        analysis: this.analyzeGeneratorAssetCitation(query, citation),
+      }))
+      .sort((left, right) => {
+        if (right.analysis.score !== left.analysis.score) {
+          return right.analysis.score - left.analysis.score;
+        }
+
+        return (right.citation.score ?? 0) - (left.citation.score ?? 0);
+      });
+
+    const focusFiltered = scored.filter(
+      (entry) => entry.analysis.focusOverlap > 0 || entry.analysis.querySpecificEvidence > 0,
+    );
+    if (focusFiltered.length > 0) {
+      return focusFiltered.map((entry) => entry.citation);
+    }
+
+    return scored.map((entry) => entry.citation);
+  }
+
+  private isSupplementalGeneratorProcedureCitation(
+    query: string,
+    citation: ChatCitation,
+  ): boolean {
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+    const subjectTerms = this.queryService
+      .extractRetrievalSubjectTerms(query)
+      .filter((term) => term.length >= 3);
+    const subjectOverlap = subjectTerms.filter((term) =>
+      haystack.includes(term),
+    ).length;
+
+    let score = 0;
+
+    if (
+      /\b(manual|handbook|operator|operators|operation|maintenance|lubrication)\b/i.test(
+        citation.sourceTitle ?? '',
+      )
+    ) {
+      score += 2;
+    }
+
+    if (
+      /\b(lubrication|engine oil|oil filter|oil bypass filter|drain|fill|dipstick|do not fill up above|stop the engine|max mark)\b/i.test(
+        haystack,
+      )
+    ) {
+      score += 4;
+    }
+
+    if (/\boil\b/i.test(query) && /\boil\b/i.test(haystack)) {
+      score += 3;
+    }
+
+    if (/\bfilter\b/i.test(query) && /\bfilter\b/i.test(haystack)) {
+      score += 2;
+    }
+
+    score += subjectOverlap * 2;
+
+    return score >= 6;
+  }
+
+  private analyzeGeneratorAssetCitation(
+    query: string,
+    citation: ChatCitation,
+  ): {
+    score: number;
+    focusOverlap: number;
+    querySpecificEvidence: number;
+  } {
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+    const focusKeywords = this.extractGeneratorAssetFocusKeywords(query);
+    const wantsNextDue = this.queryService.isNextDueLookupQuery(query);
+
+    let score = (citation.score ?? 0) * 10;
+    let focusOverlap = 0;
+    let querySpecificEvidence = 0;
+
+    if (/reference row:/i.test(haystack)) {
+      score += 8;
+    }
+    if (/included work items:/i.test(haystack)) {
+      score += 6;
+    }
+    if (/spare parts:/i.test(haystack)) {
+      score += 4;
+    }
+
+    for (const [keyword, pattern] of focusKeywords) {
+      if (!pattern.test(haystack)) {
+        continue;
+      }
+
+      focusOverlap += 1;
+      score += 8;
+
+      if (
+        keyword === 'oil' &&
+        /\b(replace oil and filters|take oil sample|engine oil|oil filter|oil bypass filter)\b/i.test(
+          haystack,
+        )
+      ) {
+        querySpecificEvidence += 1;
+        score += 10;
+      }
+    }
+
+    if (focusKeywords.length > 0 && focusOverlap === 0) {
+      score -= 6;
+    }
+
+    if (wantsNextDue) {
+      const due = this.extractUpcomingDueSortKey(citation.snippet ?? '');
+      if (due.nextDueHours !== undefined) {
+        score += Math.max(0, 8 - due.nextDueHours / 1000);
+      } else if (due.nextDueDate !== undefined) {
+        score += 2;
+      }
+    }
+
+    return { score, focusOverlap, querySpecificEvidence };
+  }
+
+  private extractGeneratorAssetFocusKeywords(
+    query: string,
+  ): Array<[string, RegExp]> {
+    const normalized = query.toLowerCase();
+    const keywords: Array<[string, RegExp]> = [];
+
+    const patterns: Array<[string, RegExp]> = [
+      ['oil', /\boil\b/i],
+      ['filter', /\bfilters?\b/i],
+      ['coolant', /\bcoolant\b/i],
+      ['fuel', /\bfuel\b/i],
+      ['air filter', /\bair\b/i],
+      ['belt', /\bbelts?\b/i],
+      ['impeller', /\bimpeller\b/i],
+      ['anode', /\banodes?\b|\bzincs?\b/i],
+      ['pump', /\bpump\b/i],
+      ['sea water', /\bsea\s*water\b/i],
+      ['sample', /\bsample\b/i],
+      ['thermostat', /\bthermostat\b/i],
+    ];
+
+    for (const [label, pattern] of patterns) {
+      if (pattern.test(normalized)) {
+        keywords.push([
+          label,
+          label === 'air filter'
+            ? /\bair\s*filter\b/i
+            : label === 'sea water'
+              ? /\bsea\s*water\b|\bseawater\b/i
+              : pattern,
+        ]);
+      }
+    }
+
+    return keywords;
   }
 
   private refineMaintenanceScheduleCitations(
@@ -645,7 +924,50 @@ export class ChatDocumentationCitationService {
       /maintenance\s+tasks/i.test(citation.sourceTitle ?? ''),
     );
 
-    return scheduleMatched.length > 0 ? scheduleMatched : citations;
+    if (scheduleMatched.length === 0) {
+      return citations;
+    }
+
+    if (!this.queryService.isProcedureQuery(query)) {
+      return scheduleMatched;
+    }
+
+    const supplementalProcedureCitations = citations
+      .filter(
+        (citation) =>
+          !/maintenance\s+tasks/i.test(citation.sourceTitle ?? '') &&
+          this.isProcedureSupportCitation(query, citation),
+      )
+      .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+      .slice(0, 2);
+
+    if (supplementalProcedureCitations.length === 0) {
+      return scheduleMatched;
+    }
+
+    return [...scheduleMatched, ...supplementalProcedureCitations];
+  }
+
+  private isProcedureSupportCitation(
+    query: string,
+    citation: ChatCitation,
+  ): boolean {
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+    const subjectTerms = this.queryService
+      .extractRetrievalSubjectTerms(query)
+      .filter((term) => term.length >= 3);
+    const overlap = subjectTerms.filter((term) => haystack.includes(term)).length;
+
+    if (
+      /\b(lubrication|procedure|instructions?|maintenance|engine oil|oil filter|oil bypass filter|drain|fill|dipstick)\b/i.test(
+        haystack,
+      )
+    ) {
+      return overlap > 0 || /\boil|filter|generator|engine\b/i.test(haystack);
+    }
+
+    return false;
   }
 
   private cropCitationAroundAnchor(
@@ -708,6 +1030,221 @@ export class ChatDocumentationCitationService {
     };
   }
 
+  private buildSourceEvidenceProfiles(
+    retrievalQuery: string,
+    citations: ChatCitation[],
+  ): SourceEvidenceProfile[] {
+    const grouped = new Map<string, ChatCitation[]>();
+
+    for (const citation of citations) {
+      const sourceKey = this.getSourceKey(citation);
+      const existing = grouped.get(sourceKey) ?? [];
+      existing.push(citation);
+      grouped.set(sourceKey, existing);
+    }
+
+    const subjectTerms =
+      this.queryService.extractRetrievalSubjectTerms(retrievalQuery);
+
+    return [...grouped.entries()]
+      .map(([sourceKey, sourceCitations]) => {
+        const combinedText = sourceCitations
+          .map((citation) => citation.snippet ?? '')
+          .join('\n');
+        const plainText = this.stripHtmlLikeMarkup(combinedText);
+        const sourceHaystack =
+          `${sourceCitations[0]?.sourceTitle ?? ''}\n${combinedText}`.toLowerCase();
+        const subjectCoverage = subjectTerms.filter((term) =>
+          sourceHaystack.includes(term),
+        ).length;
+
+        const intervalValues = this.extractUniqueMatches(
+          plainText,
+          /\b\d+(?:[\s,]\d{3})?\s*(?:hours?|hrs?|months?|years?)\b/gi,
+        );
+        const nextDueValues = this.extractUniqueMatches(
+          plainText,
+          /\bnext\s*due\b[\s\S]{0,120}?\/\s*\d{2,6}\b/gi,
+        );
+        const nextDueDates = this.extractUniqueMatches(
+          plainText,
+          /\bnext\s*due\b[\s\S]{0,80}?\d{2}[./]\d{2}[./]\d{4}\b/gi,
+        );
+        const lastDueValues = this.extractUniqueMatches(
+          plainText,
+          /\blast\s*due\b[\s\S]{0,120}?\/\s*\d{2,6}\b/gi,
+        );
+        const oilSpecs = this.extractUniqueMatches(
+          plainText,
+          /\b(?:sae\s*\d+\w*-\d+\w*|api\s*[a-z0-9-]+|vds[-\s]*\d+|iso\s*vg\s*\d+)\b/gi,
+        );
+        const partNumbers = this.extractUniqueMatches(
+          plainText,
+          /\b(?:manufacturer\s*part#?|supplier\s*part#?|part#?|p\/n)\b[\s:]*([A-Z0-9./-]{4,})/gi,
+          1,
+        );
+        const quantityValues = this.extractUniqueMatches(
+          plainText,
+          /\bquantity\b[\s:]*([0-9]+(?:\.[0-9]+)?)\b/gi,
+          1,
+        );
+        const capacityValues = this.extractUniqueMatches(
+          plainText,
+          /\b\d+(?:\.\d+)?\s*(?:l|liters?|litres?|ml|gal|gallons?)\b/gi,
+        );
+        const explicitEvidenceScore =
+          this.countNonEmptyArrays([
+            intervalValues,
+            nextDueValues,
+            nextDueDates,
+            lastDueValues,
+            oilSpecs,
+            partNumbers,
+            quantityValues,
+            capacityValues,
+          ]) +
+          sourceCitations.filter((citation) =>
+            /\b(reference\s*id|interval|next\s*due|last\s*due|spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location)\b/i.test(
+              citation.snippet ?? '',
+            ),
+          ).length;
+
+        return {
+          sourceKey,
+          sourceTitle: sourceCitations[0]?.sourceTitle ?? sourceKey,
+          citations: sourceCitations,
+          combinedText: plainText,
+          subjectCoverage,
+          aggregateScore: sourceCitations.reduce(
+            (sum, citation) => sum + (citation.score ?? 0),
+            0,
+          ),
+          explicitEvidenceScore,
+          intervalValues,
+          nextDueValues,
+          nextDueDates,
+          lastDueValues,
+          oilSpecs,
+          partNumbers,
+          quantityValues,
+          capacityValues,
+        };
+      })
+      .sort((a, b) => {
+        if (a.explicitEvidenceScore !== b.explicitEvidenceScore) {
+          return b.explicitEvidenceScore - a.explicitEvidenceScore;
+        }
+        if (a.subjectCoverage !== b.subjectCoverage) {
+          return b.subjectCoverage - a.subjectCoverage;
+        }
+        return b.aggregateScore - a.aggregateScore;
+      });
+  }
+
+  private findMateriallyDifferentSourceProfiles(
+    retrievalQuery: string,
+    userQuery: string,
+    profiles: SourceEvidenceProfile[],
+  ): SourceEvidenceProfile[] {
+    if (
+      /\b1p\d{2,}\b/i.test(retrievalQuery) ||
+      this.hasExplicitSourceRequest(userQuery)
+    ) {
+      return [];
+    }
+
+    const matchedProfiles = profiles.filter(
+      (profile) => profile.subjectCoverage > 0 && profile.explicitEvidenceScore > 0,
+    );
+    if (matchedProfiles.length < 2) return [];
+
+    const comparisonSet = new Map<string, SourceEvidenceProfile>();
+    for (let index = 0; index < matchedProfiles.length; index += 1) {
+      for (
+        let compareIndex = index + 1;
+        compareIndex < matchedProfiles.length;
+        compareIndex += 1
+      ) {
+        const a = matchedProfiles[index];
+        const b = matchedProfiles[compareIndex];
+        if (!this.isSameSubjectAcrossSources(a, b)) continue;
+        if (!this.hasMaterialFactDifference(userQuery, a, b)) continue;
+
+        comparisonSet.set(a.sourceKey, a);
+        comparisonSet.set(b.sourceKey, b);
+      }
+    }
+
+    return [...comparisonSet.values()].sort(
+      (a, b) => b.aggregateScore - a.aggregateScore,
+    );
+  }
+
+  private selectPreferredSourceKeys(
+    retrievalQuery: string,
+    userQuery: string,
+    profiles: SourceEvidenceProfile[],
+  ): string[] {
+    if (profiles.length < 2) return [];
+    if (this.hasExplicitSourceRequest(userQuery)) return [];
+
+    const [top, second] = profiles;
+    if (!top || !second) return [];
+    if (top.subjectCoverage === 0) return [];
+
+    const isPreciseLookup =
+      /\b1p\d{2,}\b/i.test(retrievalQuery) ||
+      this.queryService.isNextDueLookupQuery(userQuery) ||
+      this.queryService.isPartsQuery(userQuery) ||
+      /\b(procedure|steps?|how\s+to|instruction|instructions|checklist|what\s+should\s+i\s+do|what\s+needs?\s+to\s+be\s+done)\b/i.test(
+        userQuery,
+      );
+    if (!isPreciseLookup) return [];
+
+    const topClearlyStronger =
+      (top.explicitEvidenceScore >= second.explicitEvidenceScore + 2 &&
+        top.subjectCoverage >= second.subjectCoverage) ||
+      (top.explicitEvidenceScore > 0 &&
+        second.explicitEvidenceScore === 0 &&
+        top.subjectCoverage >= second.subjectCoverage) ||
+      (top.aggregateScore > 0 &&
+        second.aggregateScore > 0 &&
+        top.aggregateScore >= second.aggregateScore * 1.5 &&
+        top.explicitEvidenceScore >= second.explicitEvidenceScore);
+
+    return topClearlyStronger ? [top.sourceKey] : [];
+  }
+
+  private filterCitationsBySourceKeys(
+    citations: ChatCitation[],
+    sourceKeys: Set<string>,
+  ): ChatCitation[] {
+    return citations.filter((citation) => sourceKeys.has(this.getSourceKey(citation)));
+  }
+
+  private balanceCitationsAcrossSources(
+    citations: ChatCitation[],
+    sourceKeys: Set<string>,
+    perSourceLimit: number,
+  ): ChatCitation[] {
+    const grouped = new Map<string, ChatCitation[]>();
+    for (const citation of citations) {
+      const sourceKey = this.getSourceKey(citation);
+      if (!sourceKeys.has(sourceKey)) continue;
+      const existing = grouped.get(sourceKey) ?? [];
+      existing.push(citation);
+      grouped.set(sourceKey, existing);
+    }
+
+    const balanced: ChatCitation[] = [];
+    for (const sourceKey of sourceKeys) {
+      const sourceCitations = grouped.get(sourceKey) ?? [];
+      balanced.push(...sourceCitations.slice(0, perSourceLimit));
+    }
+
+    return balanced.length > 0 ? balanced : citations;
+  }
+
   private getCitationIdentity(citation: ChatCitation): string {
     return [
       citation.chunkId ?? '',
@@ -715,6 +1252,96 @@ export class ChatDocumentationCitationService {
       citation.sourceTitle ?? '',
       citation.snippet ?? '',
     ].join('::');
+  }
+
+  private getSourceKey(citation: ChatCitation): string {
+    return (
+      this.queryService.normalizeSourceTitleHint(citation.sourceTitle) ??
+      citation.sourceTitle ??
+      'unknown-source'
+    ).toLowerCase();
+  }
+
+  private extractUniqueMatches(
+    text: string,
+    pattern: RegExp,
+    captureGroupIndex?: number,
+  ): string[] {
+    const matches = new Set<string>();
+    for (const match of text.matchAll(pattern)) {
+      const value =
+        captureGroupIndex !== undefined ? match[captureGroupIndex] : match[0];
+      const normalized = value?.replace(/\s+/g, ' ').trim();
+      if (normalized) {
+        matches.add(normalized.toLowerCase());
+      }
+    }
+    return [...matches];
+  }
+
+  private countNonEmptyArrays(values: string[][]): number {
+    return values.filter((value) => value.length > 0).length;
+  }
+
+  private isSameSubjectAcrossSources(
+    a: SourceEvidenceProfile,
+    b: SourceEvidenceProfile,
+  ): boolean {
+    return Math.min(a.subjectCoverage, b.subjectCoverage) > 0;
+  }
+
+  private hasMaterialFactDifference(
+    userQuery: string,
+    a: SourceEvidenceProfile,
+    b: SourceEvidenceProfile,
+  ): boolean {
+    if (this.hasConflictingValueSet(a.intervalValues, b.intervalValues)) {
+      return true;
+    }
+    if (this.hasConflictingValueSet(a.nextDueValues, b.nextDueValues)) {
+      return true;
+    }
+    if (this.hasConflictingValueSet(a.nextDueDates, b.nextDueDates)) {
+      return true;
+    }
+    if (this.hasConflictingValueSet(a.lastDueValues, b.lastDueValues)) {
+      return true;
+    }
+    if (this.hasConflictingValueSet(a.oilSpecs, b.oilSpecs)) {
+      return true;
+    }
+    if (this.hasConflictingValueSet(a.capacityValues, b.capacityValues)) {
+      return true;
+    }
+
+    if (this.queryService.isPartsQuery(userQuery)) {
+      if (this.hasConflictingValueSet(a.partNumbers, b.partNumbers)) {
+        return true;
+      }
+      if (this.hasConflictingValueSet(a.quantityValues, b.quantityValues)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private hasConflictingValueSet(a: string[], b: string[]): boolean {
+    if (a.length === 0 || b.length === 0) return false;
+
+    const setA = new Set(a);
+    const setB = new Set(b);
+    if (setA.size === setB.size && [...setA].every((value) => setB.has(value))) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private hasExplicitSourceRequest(query: string): boolean {
+    return /\b(?:according\s+to|from|in)\s+the\s+.+?\b(manual|operator'?s\s+manual|operators\s+manual|handbook|guide|document)\b/i.test(
+      query,
+    );
   }
 
   private stripHtmlLikeMarkup(snippet: string): string {

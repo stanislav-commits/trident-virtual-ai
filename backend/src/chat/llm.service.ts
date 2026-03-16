@@ -5,6 +5,8 @@ export interface LLMContext {
   userQuery: string;
   previousUserQuery?: string;
   resolvedSubjectQuery?: string;
+  compareBySource?: boolean;
+  sourceComparisonTitles?: string[];
   citations?: Array<{
     snippet: string;
     sourceTitle: string;
@@ -191,6 +193,8 @@ Intent handling:
 - If the current question is a short follow-up and prior user context is provided, treat it as continuing the previous subject. Do not ask the user to repeat the same subject unless the previous subject is still genuinely ambiguous.
 - If the retrieved snippets mix multiple unrelated components, tasks, or manuals, do not merge them into one answer. Use only the snippets that clearly match the asked subject. If no single subject match is clear, say the retrieved context is ambiguous and ask a short clarification.
 - If multiple manuals are relevant, clearly separate maintenance-schedule facts from operator-manual guidance. Say which source identifies the due task or task list, and which source only gives general procedure or safety information.
+- If one source directly answers the exact asked subject and other snippets are only approximate, nearby, duplicate, or weaker matches, answer from the exact source only and do not pad the answer with the weaker sources.
+- If multiple sources describe the same subject but materially differ in documented facts such as interval, due timing, fluid specification, quantity, capacity, or part number, present the answer separately by source and attribute each differing fact to its source. Do not merge conflicting values into one blended answer.
 - If the user explicitly asks "according to" a named manual, handbook, guide, or document, answer from that named source when matching citations from it are present. Do not switch to a different document just because it has more detailed but unrelated content.
 - If the user asks about one exact reference ID, use only the snippets tied to that exact reference ID plus obvious continuation lines from the same row/page. Do not borrow tasks, parts, or part numbers from nearby reference rows.
 - If the user asks for "all details", "list all", "do not omit any row", or asks how many spare-part rows exist, treat the relevant parts table as exhaustive. Merge wrapped lines that clearly belong to the same row, and do not stop early when more rows remain in the provided context.
@@ -251,6 +255,13 @@ Answer style:
       prompt += `Resolved subject for retrieval: ${context.resolvedSubjectQuery}\n\n`;
     }
 
+    if (context.compareBySource && (context.sourceComparisonTitles?.length ?? 0) > 1) {
+      prompt +=
+        'Important: The retrieved context contains materially different documented facts for the same subject across multiple sources. ' +
+        `Answer separately by source for these manuals: ${context.sourceComparisonTitles?.join(', ')}. ` +
+        'For each source, state only the facts documented in that source. Do not merge conflicting values into one combined instruction.\n\n';
+    }
+
     if (this.isDirectLookupSubjectQuery(context.userQuery)) {
       prompt +=
         'Important: The user input looks like a concrete task, service, component, or maintenance item title. ' +
@@ -268,7 +279,8 @@ Answer style:
       prompt +=
         'Important: The user is asking about an exact reference ID. ' +
         'Use only the matching reference row plus obvious continuation lines tied to that same row or same page. ' +
-        'Do not borrow tasks, spare parts, or part numbers from earlier or later unrelated reference rows in the same snippet.\n\n';
+        'Do not borrow tasks, spare parts, or part numbers from earlier or later unrelated reference rows in the same snippet. ' +
+        'If the user only gives the exact reference ID, treat that as a direct lookup request and summarize the matching row instead of asking what they mean.\n\n';
     }
 
     if (intent === 'maintenance_procedure' && context.resolvedSubjectQuery) {
@@ -276,7 +288,9 @@ Answer style:
         'Important: The user is asking what to do for the maintenance item already identified in prior context. ' +
         'Prefer the task list or included work items from the matching maintenance schedule row for that subject. ' +
         'If the schedule row lists the task items explicitly, list those scheduled tasks first. ' +
-        'Use generic manual procedure text only as supplementary guidance, and label it as general guidance rather than the task list itself.\n\n';
+        'Use generic manual procedure text only as supplementary guidance, and label it as general guidance rather than the task list itself. ' +
+        'If the citations only show a maintenance schedule row, a spare-parts table, or general part names, do not invent an exact drain, refill, warm-up, or leak-check sequence unless those steps are explicitly documented in the cited manual text. ' +
+        'Do not infer oil capacity, fill volume, or consumption from spare-parts quantities, package sizes, or continuation lines such as "20LT", "Quantity: 2", or similar inventory text.\n\n';
     }
 
     if (
@@ -286,7 +300,7 @@ Answer style:
       prompt +=
         'Important: The user is asking for spare parts or consumables for the maintenance item already identified in prior context. ' +
         'Prefer an explicit spare-parts table or part-number block tied to that same maintenance row or component. ' +
-        'If such a list is present, return all documented spare names, quantities, locations, and part numbers from that matching list instead of saying the parts are unavailable.\n\n';
+        'If such a list is present, return the full documented spare-parts list for that matching row or component, including all visible spare names, quantities, locations, and part numbers, instead of giving only a partial sample or saying the parts are unavailable.\n\n';
     }
 
     if (this.wantsExhaustiveTableAnswer(context.userQuery)) {
@@ -399,6 +413,14 @@ Answer style:
       subjectQuery,
     );
     const subjectTerms = this.extractSubjectTerms(subjectQuery);
+    const canSafelyDeriveNextDue =
+      explicitNextDueValues.length > 0 ||
+      this.canSafelyDeriveNextDueFromInterval({
+        citations: context.citations,
+        subjectTerms,
+        hourTelemetry,
+        documentedIntervals,
+      });
 
     let prompt = 'Maintenance Calculation Guidance:\n';
     prompt +=
@@ -438,7 +460,7 @@ Answer style:
       prompt +=
         '- Prefer these explicit next-due values over any derived calculation from the interval.\n';
       prompt +=
-        '- If explicit next-due values are listed above, do not round to the next interval boundary such as 2500. Use one of the documented next-due values exactly.\n';
+        '- If explicit next-due values are listed above, do not round to a new interval boundary. Use one of the documented next-due values exactly.\n';
     }
 
     if (
@@ -454,6 +476,13 @@ Answer style:
         '- The current question does not identify a single component or task, and multiple different hour-based intervals appear in the snippets. Do not choose one interval unless the documentation explicitly provides the matching next-due value.\n';
     }
 
+    if (!canSafelyDeriveNextDue && explicitNextDueValues.length === 0) {
+      prompt +=
+        '- The provided documentation does not establish one exact next-due threshold for the asked subject. Do not derive or round a next-due hour value from a generic interval.\n';
+      prompt +=
+        '- If no explicit next-due value for the same subject is visible, answer that the exact next maintenance due is not confirmed by the provided documentation for that subject.\n';
+    }
+
     if (hourTelemetry.length > 0 && explicitNextDueValues.length > 0) {
       prompt += 'Remaining-hours candidates using explicit next-due values:\n';
       hourTelemetry.forEach((telemetryEntry) => {
@@ -462,7 +491,11 @@ Answer style:
           prompt += `- With ${telemetryEntry.label} = ${this.formatHours(telemetryEntry.hours)} hours and explicit next due ${this.formatHours(nextDueEntry.nextDueHours)} hours from [${nextDueEntry.sourceIndex}], remaining is ${this.formatHours(remainingHours)} hours.\n`;
         });
       });
-    } else if (hourTelemetry.length > 0 && documentedIntervals.length > 0) {
+    } else if (
+      canSafelyDeriveNextDue &&
+      hourTelemetry.length > 0 &&
+      documentedIntervals.length > 0
+    ) {
       prompt += 'Calculated next-due candidates:\n';
       hourTelemetry.forEach((telemetryEntry) => {
         documentedIntervals.forEach((intervalEntry) => {
@@ -480,7 +513,7 @@ Answer style:
   }
 
   private isMaintenanceCalculationQuery(query: string): boolean {
-    return /(when\s+is\s+.*(maintenance|service)\s+due|what\s+is\s+next\s+due|next\s+due\s+value|next\s+(maintenance|service)\s+due|how\s+many\s+hours\s+(left|remaining)|remaining\s+hours|hours\s+until\s+next\s+(maintenance|service)|next\s+service\s+at\s+what\s+hour)/i.test(
+    return /(when\s+is\s+.*(maintenance|service)\s+due|when\s+should\s+we\s+do\s+next\s+(maintenance|service)|what\s+is\s+next\s+due|next\s+due\s+value|next\s+(maintenance|service)\s+due|how\s+many\s+hours\s+(left|remaining)|remaining\s+hours|hours\s+until\s+next\s+(maintenance|service)|next\s+service\s+at\s+what\s+hour)/i.test(
       query,
     );
   }
@@ -511,6 +544,9 @@ Answer style:
     ) {
       return false;
     }
+    if (/\b(?:reference\s*id\s*)?1p\d{2,}\b/i.test(trimmed)) {
+      return false;
+    }
     // Path-like input (contains slash or backslash)
     if (/[\\/]/.test(trimmed)) return true;
     // Contains a 3-or-more-digit code number
@@ -530,19 +566,19 @@ Answer style:
     }
 
     if (
+      /(procedure|steps?|how\s+to|how\s+do\s+i|how\s+can\s+i|instruction|instructions|checklist|perform|replace|clean|inspect|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)/i.test(
+        q,
+      )
+    ) {
+      return 'maintenance_procedure';
+    }
+
+    if (
       /\b(parts?|spare\s*parts?|spares?|consumables?|fluids?|oil|coolant|filter|filters|quantity|quantities|capacity|capacities|part\s*numbers?)\b/i.test(
         q,
       )
     ) {
       return 'parts_fluids_consumables';
-    }
-
-    if (
-      /(procedure|steps?|how\s+to|instruction|instructions|checklist|perform|replace|clean|inspect|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)/i.test(
-        q,
-      )
-    ) {
-      return 'maintenance_procedure';
     }
 
     if (
@@ -581,6 +617,7 @@ Answer style:
     const trimmed = query.trim();
     if (!trimmed || trimmed.includes('?')) return false;
     if (this.isFragmentReferenceQuery(trimmed)) return false;
+    if (/\b(?:reference\s*id\s*)?1p\d{2,}\b/i.test(trimmed)) return true;
 
     const words = trimmed.split(/\s+/).filter(Boolean);
     if (words.length < 2 || words.length > 10) return false;
@@ -836,5 +873,35 @@ Answer style:
 
   private formatHours(value: number): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+
+  private canSafelyDeriveNextDueFromInterval(params: {
+    citations?: LLMContext['citations'];
+    subjectTerms: string[];
+    hourTelemetry: HourTelemetryEntry[];
+    documentedIntervals: DocumentedIntervalEntry[];
+  }): boolean {
+    const { citations, subjectTerms, hourTelemetry, documentedIntervals } = params;
+
+    if (subjectTerms.length === 0) return false;
+    if (hourTelemetry.length !== 1) return false;
+    if (documentedIntervals.length !== 1) return false;
+
+    const matchedSubjectCitations =
+      citations?.filter((citation) => {
+        const haystack =
+          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+        return subjectTerms.some((term) => haystack.includes(term));
+      }) ?? [];
+
+    if (matchedSubjectCitations.length === 0) return false;
+
+    const matchingScheduleEvidence = matchedSubjectCitations.filter((citation) =>
+      /\b(interval|last\s*due|next\s*due|reference\s*id|task\s*name|component\s*name|maintenance\s+tasks?)\b/i.test(
+        citation.snippet ?? '',
+      ),
+    );
+
+    return matchingScheduleEvidence.length === 1;
   }
 }

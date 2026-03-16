@@ -8,6 +8,7 @@ import {
 import { ChatDocumentationCitationService } from './chat-documentation-citation.service';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
 import { ChatDocumentationScanService } from './chat-documentation-scan.service';
+import { ChatReferenceExtractionService } from './chat-reference-extraction.service';
 
 @Injectable()
 export class ChatDocumentationService {
@@ -18,6 +19,7 @@ export class ChatDocumentationService {
     private readonly queryService: ChatDocumentationQueryService,
     private readonly citationService: ChatDocumentationCitationService,
     private readonly scanService: ChatDocumentationScanService,
+    private readonly referenceExtractionService: ChatReferenceExtractionService,
   ) {}
 
   async prepareDocumentationContext(params: {
@@ -30,20 +32,49 @@ export class ChatDocumentationService {
     let citations: ChatCitation[] = [];
     const previousUserQuery =
       this.queryService.getPreviousResolvedUserQuery(messageHistory);
-    const retrievalQuery = this.queryService.buildRetrievalQuery(
+    const pendingClarificationQuery =
+      this.queryService.getPendingClarificationQuery(messageHistory);
+    const isClarificationReply = this.queryService.shouldTreatAsClarificationReply(
       userQuery,
-      previousUserQuery,
+      pendingClarificationQuery,
     );
+    const retrievalQuery = isClarificationReply
+      ? this.queryService.buildClarificationResolvedQuery(
+          pendingClarificationQuery!,
+          userQuery,
+        )
+      : this.queryService.buildRetrievalQuery(userQuery, previousUserQuery);
+    const effectiveUserQuery = isClarificationReply ? retrievalQuery : userQuery;
+
+    if (
+      this.queryService.shouldAskClarifyingQuestion({
+        userQuery,
+        retrievalQuery,
+        previousUserQuery,
+        pendingClarificationQuery,
+      })
+    ) {
+      return {
+        previousUserQuery: previousUserQuery ?? undefined,
+        retrievalQuery,
+        citations,
+        needsClarification: true,
+        clarificationQuestion:
+          this.queryService.buildClarificationQuestion(userQuery),
+        clarificationReason: 'underspecified_query',
+        pendingClarificationQuery: userQuery.trim(),
+      };
+    }
 
     try {
       const shouldSkipRetrieval =
-        this.queryService.shouldSkipDocumentationRetrieval(userQuery);
+        this.queryService.shouldSkipDocumentationRetrieval(effectiveUserQuery);
       const searchCitationsForQuery = async (
         query: string,
       ): Promise<ChatCitation[]> => {
         const retrievalWindow = this.queryService.getRetrievalWindow(
           query,
-          userQuery,
+          effectiveUserQuery,
         );
         if (role === 'admin' || !shipId) {
           return this.contextService.findContextForAdminQuery(
@@ -77,13 +108,13 @@ export class ChatDocumentationService {
       const assetFallbackQueries =
         this.queryService.buildGeneratorAssetFallbackQueries(
           retrievalQuery,
-          userQuery,
+          effectiveUserQuery,
         );
       if (
         assetFallbackQueries.length > 0 &&
         (this.queryService.shouldAugmentGeneratorAssetLookup(
           retrievalQuery,
-          userQuery,
+          effectiveUserQuery,
         ) ||
           this.queryService.needsGeneratorAssetFallback(
             retrievalQuery,
@@ -106,12 +137,12 @@ export class ChatDocumentationService {
       }
 
       if (
-        this.queryService.isPartsQuery(userQuery) &&
+        this.queryService.isPartsQuery(effectiveUserQuery) &&
         !this.queryService.hasDetailedPartsEvidence(citations)
       ) {
         const partsFallbackQueries = this.queryService.buildPartsFallbackQueries(
           retrievalQuery,
-          userQuery,
+          effectiveUserQuery,
           citations,
         );
 
@@ -163,7 +194,7 @@ export class ChatDocumentationService {
       const referenceContinuationFallbackQueries =
         this.queryService.buildReferenceContinuationFallbackQueries(
           retrievalQuery,
-          userQuery,
+          effectiveUserQuery,
           citations,
         );
       for (const continuationQuery of referenceContinuationFallbackQueries) {
@@ -178,7 +209,7 @@ export class ChatDocumentationService {
         await this.scanService.expandReferenceDocumentChunkCitations(
           shipId,
           retrievalQuery,
-          userQuery,
+          effectiveUserQuery,
           citations,
         );
       citations = this.citationService.mergeCitations(
@@ -190,7 +221,7 @@ export class ChatDocumentationService {
         await this.scanService.expandMaintenanceAssetDocumentChunkCitations(
           shipId,
           retrievalQuery,
-          userQuery,
+          effectiveUserQuery,
           citations,
         );
       citations = this.citationService.mergeCitations(
@@ -204,17 +235,41 @@ export class ChatDocumentationService {
       );
       citations = this.citationService.refineCitationsForIntent(
         retrievalQuery,
-        userQuery,
+        effectiveUserQuery,
         citations,
       );
       citations = this.citationService.focusCitationsForQuery(
         retrievalQuery,
         citations,
       );
+      const preparedAnswerCitations =
+        this.citationService.prepareCitationsForAnswer(
+          retrievalQuery,
+          effectiveUserQuery,
+          citations,
+        );
+      citations = preparedAnswerCitations.citations;
       citations = this.citationService.limitCitationsForLlm(
-        userQuery,
+        effectiveUserQuery,
         citations,
+        preparedAnswerCitations.compareBySource,
       );
+      const resolvedSubjectQuery =
+        this.referenceExtractionService.buildResolvedMaintenanceSubjectQuery(
+          retrievalQuery,
+          effectiveUserQuery,
+          citations,
+        ) ?? undefined;
+
+      return {
+        previousUserQuery: previousUserQuery ?? undefined,
+        retrievalQuery,
+        answerQuery: isClarificationReply ? retrievalQuery : undefined,
+        resolvedSubjectQuery,
+        citations,
+        compareBySource: preparedAnswerCitations.compareBySource,
+        sourceComparisonTitles: preparedAnswerCitations.sourceComparisonTitles,
+      };
     } catch (error) {
       this.logger.warn(
         `RAG retrieval skipped: ${error instanceof Error ? error.message : String(error)}`,
