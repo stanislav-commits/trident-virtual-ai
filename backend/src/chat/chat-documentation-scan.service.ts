@@ -279,7 +279,12 @@ export class ChatDocumentationScanService {
         : userQuery;
     const normalized = queryContext.toLowerCase();
     if (
-      !this.queryService.isNextDueLookupQuery(userQuery) ||
+      !(
+        this.queryService.isNextDueLookupQuery(userQuery) ||
+        this.queryService.isProcedureQuery(userQuery) ||
+        this.queryService.isPartsQuery(userQuery) ||
+        /\b(maintenance|service|tasks?|included)\b/i.test(userQuery)
+      ) ||
       !/\b(generator|genset|main\s+generator)\b/i.test(normalized)
     ) {
       return [];
@@ -320,6 +325,7 @@ export class ChatDocumentationScanService {
               this.referenceExtractionService.extractGeneratorScheduleSnippet(
                 chunk.content ?? '',
                 directionalSide,
+                queryContext,
               );
             if (!scheduleSnippet) {
               return false;
@@ -336,10 +342,11 @@ export class ChatDocumentationScanService {
               this.mapDocumentChunkToCitation(
                 manual,
                 chunk,
-                0.97,
+                0.99,
                 this.referenceExtractionService.extractGeneratorScheduleSnippet(
                   chunk.content ?? '',
                   directionalSide,
+                  queryContext,
                 ) ??
                   chunk.content ??
                   '',

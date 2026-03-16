@@ -394,8 +394,36 @@ export class ChatService {
           })),
         });
 
-      const { citations, previousUserQuery, retrievalQuery } =
+      const {
+        citations,
+        previousUserQuery,
+        retrievalQuery,
+        resolvedSubjectQuery: exactResolvedSubjectQuery,
+        answerQuery,
+      } =
         documentationContext;
+      const resolvedSubjectQuery =
+        exactResolvedSubjectQuery ??
+        (retrievalQuery !== userQuery ? retrievalQuery : undefined);
+      const effectiveUserQuery = answerQuery ?? userQuery;
+
+      if (
+        documentationContext.needsClarification &&
+        documentationContext.clarificationQuestion
+      ) {
+        return this.addAssistantMessage(
+          sessionId,
+          documentationContext.clarificationQuestion,
+          {
+            awaitingClarification: true,
+            pendingClarificationQuery:
+              documentationContext.pendingClarificationQuery ?? userQuery.trim(),
+            clarificationReason:
+              documentationContext.clarificationReason ?? 'underspecified_query',
+          },
+          [],
+        );
+      }
 
       let telemetry: Record<string, unknown> = {};
       const telemetryShips: string[] = [];
@@ -427,11 +455,16 @@ export class ChatService {
       }
 
       const response = await this.llmService.generateResponse({
-        userQuery,
+        userQuery: effectiveUserQuery,
         previousUserQuery:
-          retrievalQuery !== userQuery ? previousUserQuery : undefined,
-        resolvedSubjectQuery:
-          retrievalQuery !== userQuery ? retrievalQuery : undefined,
+          answerQuery
+            ? undefined
+            : retrievalQuery !== userQuery
+              ? previousUserQuery
+              : undefined,
+        resolvedSubjectQuery,
+        compareBySource: documentationContext.compareBySource,
+        sourceComparisonTitles: documentationContext.sourceComparisonTitles,
         citations: citations.map((citation) => ({
           snippet: citation.snippet || '',
           sourceTitle: citation.sourceTitle || 'Unknown',
@@ -450,6 +483,7 @@ export class ChatService {
         sessionId,
         response,
         {
+          resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
           ...(telemetryShips.length > 0
             ? { telemetryShips: [...new Set(telemetryShips)] }
             : {}),

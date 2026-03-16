@@ -17,5 +17,13 @@ export interface ChatHistoryMessage {
 export interface ChatDocumentationContext {
   previousUserQuery?: string;
   retrievalQuery: string;
+  resolvedSubjectQuery?: string;
+  answerQuery?: string;
   citations: ChatCitation[];
+  needsClarification?: boolean;
+  clarificationQuestion?: string;
+  clarificationReason?: string;
+  pendingClarificationQuery?: string;
+  compareBySource?: boolean;
+  sourceComparisonTitles?: string[];
 }
