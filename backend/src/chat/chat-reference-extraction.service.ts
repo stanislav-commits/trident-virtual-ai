@@ -1,11 +1,214 @@
 import { Injectable } from '@nestjs/common';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
+import { ChatCitation } from './chat.types';
+
+interface MaintenanceRowContext {
+  referenceId: string;
+  componentName?: string;
+  taskName?: string;
+  responsible?: string;
+  interval?: string;
+  lastDue?: string;
+  nextDue?: string;
+}
+
+interface MaintenanceRowCandidate extends MaintenanceRowContext {
+  sourceTitle?: string;
+  score: number;
+  citationIndex: number;
+  explicitRowEvidence: boolean;
+}
 
 @Injectable()
 export class ChatReferenceExtractionService {
   constructor(
     private readonly queryService: ChatDocumentationQueryService,
   ) {}
+
+  buildResolvedMaintenanceSubjectQuery(
+    retrievalQuery: string,
+    userQuery: string,
+    citations: ChatCitation[],
+  ): string | null {
+    if (
+      citations.length === 0 ||
+      !this.shouldResolveToExactMaintenanceRow(
+        `${retrievalQuery}\n${userQuery}`,
+      )
+    ) {
+      return null;
+    }
+
+    const subjectTerms = this.queryService.extractRetrievalSubjectTerms(
+      `${retrievalQuery} ${userQuery}`.trim(),
+    );
+    const candidates = citations.reduce<MaintenanceRowCandidate[]>(
+      (accumulator, citation, citationIndex) => {
+        const context = this.extractMaintenanceRowContext(citation.snippet ?? '');
+        if (!context?.referenceId) {
+          return accumulator;
+        }
+
+        accumulator.push({
+          ...context,
+          sourceTitle: citation.sourceTitle,
+          citationIndex,
+          explicitRowEvidence: this.hasExplicitMaintenanceRowEvidence(
+            citation.snippet ?? '',
+          ),
+          score: this.scoreMaintenanceRowCandidate(
+            context,
+            citation,
+            `${retrievalQuery}\n${userQuery}`,
+            subjectTerms,
+          ),
+        });
+        return accumulator;
+      },
+      [],
+    );
+
+    if (candidates.length === 0) return null;
+
+    const leadingExplicitCandidate = [...candidates]
+      .filter((candidate) => candidate.explicitRowEvidence)
+      .sort((left, right) => {
+        if (left.citationIndex !== right.citationIndex) {
+          return left.citationIndex - right.citationIndex;
+        }
+        return right.score - left.score;
+      })[0];
+    if (leadingExplicitCandidate) {
+      return this.buildMaintenanceSubjectQuery(leadingExplicitCandidate);
+    }
+
+    const groupedCandidates = new Map<
+      string,
+      {
+        candidate: MaintenanceRowCandidate;
+        aggregateScore: number;
+        occurrenceCount: number;
+        explicitEvidenceCount: number;
+        bestCitationIndex: number;
+      }
+    >();
+    for (const candidate of candidates) {
+      const key = [
+        this.queryService.normalizeSourceTitleHint(candidate.sourceTitle) ?? '',
+        candidate.referenceId.toLowerCase(),
+        this.normalizeMaintenanceField(candidate.componentName),
+        this.normalizeMaintenanceField(candidate.taskName),
+      ].join('|');
+
+      const existing = groupedCandidates.get(key);
+      if (!existing) {
+        groupedCandidates.set(key, {
+          candidate,
+          aggregateScore: candidate.score,
+          occurrenceCount: 1,
+          explicitEvidenceCount: candidate.explicitRowEvidence ? 1 : 0,
+          bestCitationIndex: candidate.citationIndex,
+        });
+        continue;
+      }
+
+      existing.aggregateScore += candidate.score;
+      existing.occurrenceCount += 1;
+      existing.explicitEvidenceCount += candidate.explicitRowEvidence ? 1 : 0;
+      existing.bestCitationIndex = Math.min(
+        existing.bestCitationIndex,
+        candidate.citationIndex,
+      );
+      if (
+        candidate.score > existing.candidate.score ||
+        (candidate.score === existing.candidate.score &&
+          candidate.citationIndex < existing.candidate.citationIndex)
+      ) {
+        existing.candidate = candidate;
+      }
+    }
+
+    const rankedCandidates = [...groupedCandidates.values()].sort((left, right) => {
+      if (right.explicitEvidenceCount !== left.explicitEvidenceCount) {
+        return right.explicitEvidenceCount - left.explicitEvidenceCount;
+      }
+
+      if (right.aggregateScore !== left.aggregateScore) {
+        return right.aggregateScore - left.aggregateScore;
+      }
+
+      if (right.occurrenceCount !== left.occurrenceCount) {
+        return right.occurrenceCount - left.occurrenceCount;
+      }
+
+      if (left.bestCitationIndex !== right.bestCitationIndex) {
+        return left.bestCitationIndex - right.bestCitationIndex;
+      }
+
+      if (right.candidate.score !== left.candidate.score) {
+        return right.candidate.score - left.candidate.score;
+      }
+
+      const leftAnchorStrength =
+        Number(Boolean(left.candidate.referenceId)) +
+        Number(Boolean(left.candidate.taskName)) +
+        Number(Boolean(left.candidate.componentName));
+      const rightAnchorStrength =
+        Number(Boolean(right.candidate.referenceId)) +
+        Number(Boolean(right.candidate.taskName)) +
+        Number(Boolean(right.candidate.componentName));
+      if (rightAnchorStrength !== leftAnchorStrength) {
+        return rightAnchorStrength - leftAnchorStrength;
+      }
+
+      return (right.candidate.taskName ?? '').length - (left.candidate.taskName ?? '').length;
+    });
+
+    const bestCandidate = rankedCandidates[0]?.candidate;
+    if (!bestCandidate?.referenceId) return null;
+
+    if (rankedCandidates.length > 1) {
+      const secondCandidate = rankedCandidates[1]?.candidate;
+      if (
+        secondCandidate &&
+        bestCandidate.referenceId !== secondCandidate.referenceId &&
+        bestCandidate.score < secondCandidate.score + 2
+      ) {
+        return null;
+      }
+    }
+
+    return this.buildMaintenanceSubjectQuery(bestCandidate);
+  }
+
+  extractMaintenanceRowContext(snippet: string): MaintenanceRowContext | null {
+    if (!snippet.trim()) return null;
+
+    const labeledContext = this.parseMaintenanceRowContext(snippet);
+    if (labeledContext?.referenceId) {
+      return labeledContext;
+    }
+
+    const rows = snippet.match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
+    for (const row of rows) {
+      if (!/\b1p\d{2,}\b/i.test(this.stripHtmlLikeMarkup(row))) {
+        continue;
+      }
+
+      const summary = this.buildScheduleRowSummary(row);
+      const parsedSummary = summary
+        ? this.parseMaintenanceRowContext(summary)
+        : null;
+      if (parsedSummary?.referenceId) {
+        return parsedSummary;
+      }
+    }
+
+    const plainSnippet = this.normalizeReferenceExtractedText(
+      this.stripHtmlLikeMarkup(snippet),
+    );
+    return this.parseMaintenanceRowContext(plainSnippet);
+  }
 
   focusReferenceSnippet(snippet: string, referenceId: string): string {
     if (!snippet) return snippet;
@@ -15,17 +218,48 @@ export class ChatReferenceExtractionService {
       return snippet.trim();
     }
 
-    const matchingTables = (snippet.match(/<table[\s\S]*?<\/table>/gi) ?? []).filter(
-      (table) => table.toLowerCase().includes(normalizedReference),
-    );
-    if (matchingTables.length > 0) {
-      return [...matchingTables]
-        .sort(
-          (left, right) =>
-            this.scoreReferenceFocusBlock(right, referenceId) -
-            this.scoreReferenceFocusBlock(left, referenceId),
-        )[0]
-        .trim();
+    const tables = snippet.match(/<table[\s\S]*?<\/table>/gi) ?? [];
+    const matchingTableEntries = tables
+      .map((table, index) => ({ table, index }))
+      .filter((entry) => entry.table.toLowerCase().includes(normalizedReference));
+    if (matchingTableEntries.length > 0) {
+      const anchorEntry = [...matchingTableEntries].sort(
+        (left, right) =>
+          this.scoreReferenceFocusBlock(right.table, referenceId) -
+          this.scoreReferenceFocusBlock(left.table, referenceId),
+      )[0];
+
+      const selectedTables = [anchorEntry.table];
+      for (
+        let index = anchorEntry.index + 1;
+        index < Math.min(tables.length, anchorEntry.index + 4);
+        index += 1
+      ) {
+        const candidateTable = tables[index];
+        const candidateHaystack = this.stripHtmlLikeMarkup(candidateTable).toLowerCase();
+        const mentionedReferenceIds = [
+          ...candidateHaystack.matchAll(/\b1p\d{2,}\b/g),
+        ].map((match) => match[0].toLowerCase());
+        if (
+          mentionedReferenceIds.some(
+            (mentionedReferenceId) => mentionedReferenceId !== normalizedReference,
+          )
+        ) {
+          break;
+        }
+
+        if (
+          !/\b(spare\s*name|quantity|location|manufacturer\s*part#?|supplier\s*part#?|replace|inspect|check|clean|adjust|overhaul|sample|test|wear\s*kit|filter|impeller|belt|anode|coolant|pump)\b/i.test(
+            candidateHaystack,
+          )
+        ) {
+          break;
+        }
+
+        selectedTables.push(candidateTable);
+      }
+
+      return selectedTables.join('\n').trim();
     }
 
     const rows = snippet.match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
@@ -46,7 +280,7 @@ export class ChatReferenceExtractionService {
 
       for (
         let index = referenceRowIndex;
-        index < Math.min(rows.length, referenceRowIndex + 5);
+        index < Math.min(rows.length, referenceRowIndex + 40);
         index += 1
       ) {
         const row = rows[index];
@@ -71,6 +305,7 @@ export class ChatReferenceExtractionService {
   extractGeneratorScheduleSnippet(
     snippet: string,
     side: 'port' | 'starboard',
+    queryText?: string,
   ): string | null {
     if (!snippet) return null;
 
@@ -89,24 +324,32 @@ export class ChatReferenceExtractionService {
       );
 
     if (rowMatches.length > 0) {
-      const target = rowMatches[0];
-      const summary = this.buildScheduleRowSummary(target.row);
-      if (summary) {
-        return summary;
-      }
+      const bestMatch = [...rowMatches]
+        .map((target) => {
+          const referenceId =
+            target.plain.match(/\b1p\d{2,}\b/i)?.[0]?.toLowerCase() ?? null;
+          const extracted =
+            this.buildGeneratorScheduleCandidateSnippet(
+              snippet,
+              rows,
+              target.index,
+              referenceId,
+            ) ?? target.row;
 
-      const selectedRows: string[] = [];
-      const previousRow = rows[target.index - 1];
-      if (
-        previousRow &&
-        /\b(component\s*name|task\s*name|reference\s*id|responsible|interval|last\s*due|next\s*due|costs)\b/i.test(
-          this.stripHtmlLikeMarkup(previousRow),
-        )
-      ) {
-        selectedRows.push(previousRow);
+          return {
+            extracted,
+            score: this.scoreGeneratorScheduleCandidate(
+              extracted,
+              queryText,
+              referenceId,
+            ),
+          };
+        })
+        .sort((left, right) => right.score - left.score)[0];
+
+      if (bestMatch?.extracted) {
+        return bestMatch.extracted;
       }
-      selectedRows.push(target.row);
-      return selectedRows.join('\n').trim();
     }
 
     const plainSnippet = this.stripHtmlLikeMarkup(snippet);
@@ -123,6 +366,189 @@ export class ChatReferenceExtractionService {
     if (lineIndex < 0) return null;
 
     return lines.slice(Math.max(0, lineIndex - 1), lineIndex + 1).join('\n');
+  }
+
+  private buildGeneratorScheduleCandidateSnippet(
+    snippet: string,
+    rows: string[],
+    targetIndex: number,
+    referenceId: string | null,
+  ): string | null {
+    if (referenceId) {
+      const focused = this.focusReferenceRowWindow(snippet, referenceId);
+      const combined = this.buildReferenceCombinedSnippet(referenceId, [focused]);
+      if (combined) {
+        return combined;
+      }
+
+      return focused;
+    }
+
+    const targetRow = rows[targetIndex];
+    if (!targetRow) return null;
+
+    const summary = this.buildScheduleRowSummary(targetRow);
+    if (summary) {
+      return summary;
+    }
+
+    const selectedRows: string[] = [];
+    const previousRow = rows[targetIndex - 1];
+    if (
+      previousRow &&
+      /\b(component\s*name|task\s*name|reference\s*id|responsible|interval|last\s*due|next\s*due|costs)\b/i.test(
+        this.stripHtmlLikeMarkup(previousRow),
+      )
+    ) {
+      selectedRows.push(previousRow);
+    }
+    selectedRows.push(targetRow);
+    return selectedRows.join('\n').trim();
+  }
+
+  private focusReferenceRowWindow(snippet: string, referenceId: string): string {
+    const normalizedReference = referenceId.toLowerCase();
+    const rows = snippet.match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
+    const referenceRowIndex = rows.findIndex((row) =>
+      row.toLowerCase().includes(normalizedReference),
+    );
+    if (referenceRowIndex < 0) {
+      return this.focusReferenceSnippet(snippet, referenceId);
+    }
+
+    const selectedRows: string[] = [];
+    const previousRow = rows[referenceRowIndex - 1];
+    if (
+      previousRow &&
+      /\b(component\s*name|task\s*name|reference\s*id|responsible|interval|last\s*due|next\s*due|costs?)\b/i.test(
+        this.stripHtmlLikeMarkup(previousRow),
+      )
+    ) {
+      selectedRows.push(previousRow);
+    }
+
+    for (
+      let index = referenceRowIndex;
+      index < Math.min(rows.length, referenceRowIndex + 40);
+      index += 1
+    ) {
+      const row = rows[index];
+      if (
+        index > referenceRowIndex &&
+        /\b1p\d{2,}\b/i.test(row) &&
+        !row.toLowerCase().includes(normalizedReference)
+      ) {
+        break;
+      }
+      selectedRows.push(row);
+    }
+
+    return selectedRows.length > 0
+      ? selectedRows.join('\n').trim()
+      : this.focusReferenceSnippet(snippet, referenceId);
+  }
+
+  private scoreGeneratorScheduleCandidate(
+    snippet: string,
+    queryText?: string,
+    referenceId?: string | null,
+  ): number {
+    const haystack = this.normalizeReferenceExtractedText(snippet).toLowerCase();
+    const query = queryText ?? '';
+    const queryKeywords = this.extractReferenceSemanticKeywords(query);
+    const wantsNextDue = this.queryService.isNextDueLookupQuery(query);
+    const wantsParts = this.queryService.isPartsQuery(query);
+    const wantsProcedure = this.queryService.isProcedureQuery(query);
+
+    let score = 0;
+    score += referenceId ? 8 : 0;
+    score += /\breference row\b/i.test(haystack) ? 6 : 0;
+    score += /\bincluded work items\b/i.test(haystack) ? 5 : 0;
+    score += /\bspare parts\b/i.test(haystack) ? 4 : 0;
+
+    const keywordOverlap = queryKeywords.filter((keyword) =>
+      this.matchesReferenceSemanticKeyword(haystack, keyword),
+    ).length;
+    score += keywordOverlap * 10;
+
+    if (
+      queryKeywords.includes('oil') &&
+      /\b(replace oil and filters|take oil sample|engine oil|oil filter|oil bypass filter)\b/i.test(
+        haystack,
+      )
+    ) {
+      score += 12;
+    }
+
+    if (
+      queryKeywords.includes('filter') &&
+      /\b(fuel prefilter and filter|fuel filter|air filter|oil filter|bypass filter)\b/i.test(
+        haystack,
+      )
+    ) {
+      score += 6;
+    }
+
+    if (queryKeywords.length > 0 && keywordOverlap === 0) {
+      score -= 6;
+    }
+
+    if (wantsProcedure && /\bincluded work items\b/i.test(haystack)) {
+      score += 4;
+    }
+
+    if (wantsParts && /\bspare parts\b/i.test(haystack)) {
+      score += 4;
+    }
+
+    if (wantsNextDue) {
+      const context = this.extractMaintenanceRowContext(snippet);
+      if (context?.nextDue) {
+        score += 4;
+        const nextDueHours = context.nextDue.match(/\/\s*(\d{2,6})\b/)?.[1];
+        if (nextDueHours) {
+          score += Math.max(0, 8 - Number.parseInt(nextDueHours, 10) / 1000);
+        }
+      }
+    }
+
+    return score;
+  }
+
+  private matchesReferenceSemanticKeyword(
+    haystack: string,
+    keyword: string,
+  ): boolean {
+    switch (keyword) {
+      case 'wear-kit':
+        return /\bwear\s*kit\b/i.test(haystack);
+      case 'filter':
+        return /\bfilters?\b/i.test(haystack);
+      case 'belt':
+        return /\bbelts?\b/i.test(haystack);
+      case 'impeller':
+        return /\bimpellers?\b/i.test(haystack);
+      case 'anode':
+        return /\banodes?\b/i.test(haystack);
+      case 'coolant':
+        return /\bcoolant\b/i.test(haystack);
+      case 'pump':
+        return /\bpump\b/i.test(haystack);
+      case 'thermostat':
+        return /\bthermostats?\b/i.test(haystack);
+      case 'seal':
+        return /\bseals?\b/i.test(haystack);
+      case 'bearing':
+        return /\bbearings?\b/i.test(haystack);
+      case 'oil':
+        return /\boil\b/i.test(haystack);
+      case 'gasket':
+        return /\bgaskets?\b/i.test(haystack);
+      case 'sea-water':
+        return /\bsea\s*water\b|\bseawater\b/i.test(haystack);
+      default:
+        return haystack.includes(keyword.toLowerCase());
+    }
   }
 
   buildReferenceCombinedSnippet(
@@ -203,7 +629,7 @@ export class ChatReferenceExtractionService {
     if (taskItems.length > 0) {
       sections.push(
         `Included work items:\n${taskItems
-          .slice(0, 8)
+          .slice(0, 24)
           .map((item) => `- ${item}`)
           .join('\n')}`,
       );
@@ -211,14 +637,14 @@ export class ChatReferenceExtractionService {
     if (spareParts.length > 0) {
       sections.push(
         `Spare parts:\n${spareParts
-          .slice(0, 4)
+          .slice(0, 16)
           .map((part) => this.formatReferenceSparePartSummary(part))
           .join('\n\n')}`,
       );
     }
     if (continuationLines.length > 0) {
       sections.push(
-        `Same-page continuation:\n${continuationLines.slice(0, 12).join('\n')}`,
+        `Same-page continuation:\n${continuationLines.slice(0, 24).join('\n')}`,
       );
     }
 
@@ -323,11 +749,28 @@ export class ChatReferenceExtractionService {
 
         for (
           let valueIndex = index + 1;
-          valueIndex < Math.min(rows.length, index + 4);
+          valueIndex < Math.min(rows.length, index + 30);
           valueIndex += 1
         ) {
           const valueCells = this.extractTableCells(rows[valueIndex]);
-          const candidate = this.parseReferenceSparePartTableRow(valueCells);
+          const flattenedRow = this.normalizeReferenceExtractedText(
+            this.stripHtmlLikeMarkup(rows[valueIndex]),
+          );
+          if (this.isReferenceSparePartHeaderRow(valueCells)) {
+            break;
+          }
+          if (
+            /\b1p\d{2,}\b/i.test(flattenedRow) ||
+            /\b(component\s*name|task\s*name|reference\s*id|responsible|interval|last\s*due|next\s*due|costs?)\b/i.test(
+              flattenedRow,
+            )
+          ) {
+            break;
+          }
+
+          const candidate = this.normalizeReferenceSparePartCandidate(
+            this.parseReferenceSparePartTableRow(valueCells),
+          );
           if (!candidate) {
             continue;
           }
@@ -341,8 +784,10 @@ export class ChatReferenceExtractionService {
       }
 
       for (const row of rows) {
-        const candidate = this.parseReferenceSparePartCandidate(
-          this.normalizeReferenceExtractedText(this.stripHtmlLikeMarkup(row)),
+        const candidate = this.normalizeReferenceSparePartCandidate(
+          this.parseReferenceSparePartCandidate(
+            this.normalizeReferenceExtractedText(this.stripHtmlLikeMarkup(row)),
+          ),
         );
         if (!candidate) {
           continue;
@@ -357,9 +802,18 @@ export class ChatReferenceExtractionService {
       for (const candidate of this.extractReferenceSparePartLineCandidates(
         snippet,
       )) {
+        const normalizedCandidate =
+          this.normalizeReferenceSparePartCandidate(candidate);
+        if (!normalizedCandidate) {
+          continue;
+        }
         candidates.push({
-          ...candidate,
-          score: this.scoreReferenceSparePartCandidate(candidate, taskKeywords) + 5,
+          ...normalizedCandidate,
+          score:
+            this.scoreReferenceSparePartCandidate(
+              normalizedCandidate,
+              taskKeywords,
+            ) + 5,
         });
       }
     }
@@ -407,10 +861,18 @@ export class ChatReferenceExtractionService {
           Number(Boolean(candidate.location)) +
           Number(Boolean(candidate.manufacturerPart)) +
           Number(Boolean(candidate.supplierPart));
+        const hasValidManufacturerPart = candidate.manufacturerPart
+          ? this.looksLikeReferencePartNumber(candidate.manufacturerPart)
+          : false;
+        const hasValidSupplierPart = candidate.supplierPart
+          ? this.looksLikeReferencePartNumber(candidate.supplierPart)
+          : false;
+        const hasValidPartNumber =
+          hasValidManufacturerPart || hasValidSupplierPart;
         const hasStructuredPartData = Boolean(
-          candidate.location ||
-            candidate.manufacturerPart ||
-            candidate.supplierPart,
+          hasValidPartNumber ||
+            (candidate.location &&
+              this.looksLikeReferenceLocation(candidate.location)),
         );
         const hasTaskKeywordAlignment = this.extractReferenceSemanticKeywords(
           [
@@ -422,11 +884,17 @@ export class ChatReferenceExtractionService {
             .filter(Boolean)
             .join(' '),
         ).some((keyword) => taskKeywords.has(keyword));
+        const actionLikeSpareName =
+          candidate.spareName &&
+          /\b(replace|inspect|check|clean|adjust|overhaul|sample|test)\b/i.test(
+            candidate.spareName,
+          );
 
         return (
           completeness >= 2 &&
           candidate.score > 0 &&
-          (hasStructuredPartData || hasTaskKeywordAlignment)
+          (hasStructuredPartData || hasTaskKeywordAlignment) &&
+          (!actionLikeSpareName || hasValidPartNumber)
         );
       })
       .sort((a, b) => b.score - a.score)
@@ -485,11 +953,71 @@ export class ChatReferenceExtractionService {
         candidate.spareName &&
         candidate.quantity &&
         candidate.location &&
-        candidate.manufacturerPart &&
-        candidate.supplierPart
+        (candidate.manufacturerPart || candidate.supplierPart)
       ) {
         return candidate;
       }
+    }
+
+    if (
+      normalizedCells.length === 4 &&
+      this.looksLikeReferencePartNumber(normalizedCells[2]) &&
+      this.looksLikeReferencePartNumber(normalizedCells[3])
+    ) {
+      const [spareName, location, manufacturerPart, supplierPart] =
+        normalizedCells;
+      if (!spareName || !location) {
+        return null;
+      }
+
+      return {
+        spareName: this.stripReferenceFieldLabel(spareName, 'spare name'),
+        location: this.stripReferenceFieldLabel(location, 'location'),
+        manufacturerPart: this.stripReferenceFieldLabel(
+          manufacturerPart,
+          'manufacturer part#',
+        ),
+        supplierPart: this.stripReferenceFieldLabel(
+          supplierPart,
+          'supplier part#',
+        ),
+      };
+    }
+
+    if (
+      normalizedCells.length === 4 &&
+      /^\d{1,3}$/.test(normalizedCells[1])
+    ) {
+      const [spareName, quantity, location, trailingPart] = normalizedCells;
+      if (!spareName || !location || !this.looksLikeReferencePartNumber(trailingPart)) {
+        return null;
+      }
+
+      return {
+        spareName: this.stripReferenceFieldLabel(spareName, 'spare name'),
+        quantity: this.stripReferenceFieldLabel(quantity, 'quantity'),
+        location: this.stripReferenceFieldLabel(location, 'location'),
+        manufacturerPart: /^SYS/i.test(trailingPart) ? undefined : trailingPart,
+        supplierPart: /^SYS|^MM/i.test(trailingPart) ? trailingPart : undefined,
+      };
+    }
+
+    if (
+      normalizedCells.length === 3 &&
+      !this.looksLikeReferencePartNumber(normalizedCells[1]) &&
+      this.looksLikeReferencePartNumber(normalizedCells[2])
+    ) {
+      const [spareName, location, trailingPart] = normalizedCells;
+      if (!spareName || !location) {
+        return null;
+      }
+
+      return {
+        spareName: this.stripReferenceFieldLabel(spareName, 'spare name'),
+        location: this.stripReferenceFieldLabel(location, 'location'),
+        manufacturerPart: /^SYS|^MM/i.test(trailingPart) ? undefined : trailingPart,
+        supplierPart: /^SYS|^MM/i.test(trailingPart) ? trailingPart : undefined,
+      };
     }
 
     if (
@@ -544,7 +1072,9 @@ export class ChatReferenceExtractionService {
 
     const quantityIndex = tokens.findIndex(
       (token, index) =>
-        index < manufacturerIndex && /^\d{1,3}$/.test(token),
+        index < manufacturerIndex &&
+        /^\d{1,3}$/.test(token) &&
+        !/^(box|x)$/i.test(tokens[index - 1] ?? ''),
     );
     if (quantityIndex <= 0) {
       return null;
@@ -955,7 +1485,9 @@ export class ChatReferenceExtractionService {
       /\b(quantity|location|manufacturer\s*part#?|supplier\s*part#?|eur)\b/i.test(
         normalized,
       ) ||
-      normalized.startsWith('quantity ')
+      normalized.startsWith('quantity ') ||
+      /\bmaintenance\s*tasks\b/i.test(normalized) ||
+      /\bm\/y\b/i.test(normalized)
     );
   }
 
@@ -1124,6 +1656,112 @@ export class ChatReferenceExtractionService {
     );
   }
 
+  private normalizeReferenceSparePartCandidate(candidate: {
+    spareName?: string;
+    quantity?: string;
+    location?: string;
+    manufacturerPart?: string;
+    supplierPart?: string;
+  } | null): {
+    spareName?: string;
+    quantity?: string;
+    location?: string;
+    manufacturerPart?: string;
+    supplierPart?: string;
+  } | null {
+    if (!candidate) {
+      return null;
+    }
+
+    const normalized = {
+      spareName: candidate.spareName
+        ? this.normalizeReferenceExtractedText(candidate.spareName)
+        : undefined,
+      quantity: candidate.quantity
+        ? this.normalizeReferenceExtractedText(candidate.quantity)
+        : undefined,
+      location: candidate.location
+        ? this.normalizeReferenceExtractedText(candidate.location)
+        : undefined,
+      manufacturerPart: candidate.manufacturerPart
+        ? this.normalizeReferenceExtractedText(candidate.manufacturerPart)
+        : undefined,
+      supplierPart: candidate.supplierPart
+        ? this.normalizeReferenceExtractedText(candidate.supplierPart)
+        : undefined,
+    };
+
+    if (
+      normalized.spareName &&
+      normalized.quantity &&
+      /^\d{1,3}$/.test(normalized.quantity) &&
+      /\bbox$/i.test(normalized.spareName) &&
+      normalized.location
+    ) {
+      normalized.spareName = normalized.spareName.replace(/\s+box$/i, '').trim();
+      normalized.location = `BOX ${normalized.quantity} ${normalized.location}`
+        .replace(/\s+/g, ' ')
+        .trim();
+      normalized.quantity = undefined;
+    }
+
+    if (
+      !normalized.spareName &&
+      normalized.location &&
+      normalized.manufacturerPart &&
+      /^box\b/i.test(normalized.manufacturerPart) &&
+      normalized.supplierPart &&
+      this.looksLikeReferencePartNumber(normalized.supplierPart)
+    ) {
+      normalized.spareName = normalized.location;
+      normalized.location = normalized.manufacturerPart;
+      normalized.manufacturerPart = normalized.supplierPart;
+      normalized.supplierPart = undefined;
+    }
+
+    if (
+      normalized.spareName &&
+      !normalized.quantity &&
+      normalized.location &&
+      /^\d{1,3}$/.test(normalized.location) &&
+      normalized.manufacturerPart &&
+      this.looksLikeReferenceLocation(normalized.manufacturerPart) &&
+      normalized.supplierPart &&
+      this.looksLikeReferencePartNumber(normalized.supplierPart)
+    ) {
+      normalized.quantity = normalized.location;
+      normalized.location = normalized.manufacturerPart;
+      normalized.manufacturerPart = normalized.supplierPart;
+      normalized.supplierPart = undefined;
+    }
+
+    if (
+      normalized.spareName &&
+      this.isInvalidReferenceSpareName(normalized.spareName)
+    ) {
+      normalized.spareName = undefined;
+    }
+
+    if (
+      normalized.location &&
+      /^(manufacturer\s*part#?|supplier\s*part#?)$/i.test(normalized.location)
+    ) {
+      normalized.location = undefined;
+    }
+
+    if (
+      !normalized.spareName &&
+      !normalized.quantity &&
+      !normalized.location &&
+      !normalized.manufacturerPart &&
+      !normalized.supplierPart
+    ) {
+      return null;
+    }
+
+    return normalized;
+  }
+
   private countReferenceSparePartLabels(text: string): number {
     const normalized = this.normalizeReferenceExtractedText(text).toLowerCase();
     const patterns = [
@@ -1174,7 +1812,22 @@ export class ChatReferenceExtractionService {
     }
 
     const compact = normalized.replace(/\s+/g, '');
-    return /^[A-Z0-9-]{5,}$/i.test(compact);
+    if (!/^[A-Z0-9-]{5,}$/i.test(compact)) {
+      return false;
+    }
+
+    return /\d/.test(compact);
+  }
+
+  private looksLikeReferenceLocation(value: string): boolean {
+    const normalized = this.normalizeReferenceExtractedText(value).toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    return /\b(box|bilge|storage|room|filters?|spares?|unit|club|viareggio|oils?\s+and\s+coolants|exhaust|pumps?)\b/i.test(
+      normalized,
+    );
   }
 
   private referenceSparePartCandidatesMatch(
@@ -1227,6 +1880,209 @@ export class ChatReferenceExtractionService {
     return false;
   }
 
+  private shouldResolveToExactMaintenanceRow(query: string): boolean {
+    return /\b(reference\s*id|maintenance|service|next\s+due|last\s+due|tasks?|procedure|steps?|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|parts?|spares?|consumables?)\b/i.test(
+      query,
+    );
+  }
+
+  private scoreMaintenanceRowCandidate(
+    candidate: MaintenanceRowContext,
+    citation: ChatCitation,
+    queryText: string,
+    subjectTerms: string[],
+  ): number {
+    const haystack = this.normalizeReferenceExtractedText(
+      [
+        citation.sourceTitle ?? '',
+        candidate.componentName ?? '',
+        candidate.taskName ?? '',
+        candidate.referenceId ?? '',
+        candidate.interval ?? '',
+        candidate.lastDue ?? '',
+        candidate.nextDue ?? '',
+      ].join(' '),
+    ).toLowerCase();
+
+    let score = 0;
+    score += candidate.referenceId ? 18 : 0;
+    score += candidate.taskName ? 8 : 0;
+    score += candidate.componentName ? 5 : 0;
+    score += candidate.interval ? 2 : 0;
+    score += candidate.lastDue ? 1 : 0;
+    score += candidate.nextDue ? 3 : 0;
+    score += (citation.score ?? 0) * 10;
+
+    if (this.hasExplicitMaintenanceRowEvidence(citation.snippet ?? '')) {
+      score += 10;
+    }
+
+    for (const term of subjectTerms) {
+      if (haystack.includes(term.toLowerCase())) {
+        score += 2;
+      }
+    }
+
+    if (
+      /\b(next\s+maintenance|next\s+service|next\s+due|when\s+is\s+the\s+next|what\s+is\s+the\s+next)\b/i.test(
+        queryText,
+      ) &&
+      candidate.nextDue
+    ) {
+      score += 3;
+    }
+
+    if (
+      /\b(tasks?|procedure|steps?|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done)\b/i.test(
+        queryText,
+      ) &&
+      candidate.taskName
+    ) {
+      score += 2;
+    }
+
+    if (
+      /\b(parts?|spares?|consumables?)\b/i.test(queryText) &&
+      candidate.referenceId
+    ) {
+      score += 2;
+    }
+
+    if (
+      /\b(reference\s*id|task\s*name|component\s*name)\b/i.test(
+        citation.snippet ?? '',
+      )
+    ) {
+      score += 2;
+    }
+
+    return score;
+  }
+
+  private hasExplicitMaintenanceRowEvidence(snippet: string): boolean {
+    return /\b(reference\s*id|component\s*name|task\s*name)\s*:/i.test(snippet);
+  }
+
+  private buildMaintenanceSubjectQuery(
+    context: MaintenanceRowContext & { sourceTitle?: string },
+  ): string {
+    return [
+      this.queryService.normalizeSourceTitleHint(context.sourceTitle) ?? '',
+      context.referenceId ? `Reference ID ${context.referenceId}` : '',
+      context.componentName ?? '',
+      context.taskName ?? '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private parseMaintenanceRowContext(
+    text: string,
+  ): MaintenanceRowContext | null {
+    const componentName = this.extractMaintenanceField(text, 'Component name', [
+      'Task name',
+      'Reference ID',
+      'Responsible',
+      'Interval',
+      'Last due',
+      'Next due',
+      'Costs',
+    ]);
+    const taskName = this.extractMaintenanceField(text, 'Task name', [
+      'Reference ID',
+      'Responsible',
+      'Interval',
+      'Last due',
+      'Next due',
+      'Costs',
+    ]);
+    const referenceId = this.extractMaintenanceRawField(text, 'Reference ID', [
+      'Responsible',
+      'Interval',
+      'Last due',
+      'Next due',
+      'Costs',
+    ]);
+    const responsible = this.extractMaintenanceField(text, 'Responsible', [
+      'Interval',
+      'Last due',
+      'Next due',
+      'Costs',
+    ]);
+    const interval = this.extractMaintenanceField(text, 'Interval', [
+      'Last due',
+      'Next due',
+      'Costs',
+    ]);
+    const lastDue = this.extractMaintenanceField(text, 'Last due', [
+      'Next due',
+      'Costs',
+    ]);
+    const nextDue = this.extractMaintenanceField(text, 'Next due', ['Costs']);
+
+    const normalizedReferenceId =
+      referenceId?.match(/\b1p\d{2,}\b/i)?.[0]?.toUpperCase() ?? null;
+    if (!normalizedReferenceId) {
+      return null;
+    }
+
+    return {
+      referenceId: normalizedReferenceId,
+      componentName: componentName || undefined,
+      taskName: taskName || undefined,
+      responsible: responsible || undefined,
+      interval: interval || undefined,
+      lastDue: lastDue || undefined,
+      nextDue: nextDue || undefined,
+    };
+  }
+
+  private extractMaintenanceField(
+    text: string,
+    label: string,
+    followingLabels: string[],
+  ): string | null {
+    const escapedLabel = label.replace(/\s+/g, '\\s*');
+    const escapedFollowingLabels = followingLabels
+      .map((value) => value.replace(/\s+/g, '\\s*'))
+      .join('|');
+    const pattern = escapedFollowingLabels
+      ? `${escapedLabel}\\s*:\\s*([\\s\\S]*?)(?=(?:${escapedFollowingLabels})\\s*:|$)`
+      : `${escapedLabel}\\s*:\\s*([\\s\\S]*?)$`;
+
+    const match = text.match(new RegExp(pattern, 'i'));
+    if (!match?.[1]) return null;
+
+    const value = this.normalizeReferenceExtractedText(
+      match[1].replace(/\s+/g, ' ').trim(),
+    );
+    return value || null;
+  }
+
+  private extractMaintenanceRawField(
+    text: string,
+    label: string,
+    followingLabels: string[],
+  ): string | null {
+    const escapedLabel = label.replace(/\s+/g, '\\s*');
+    const escapedFollowingLabels = followingLabels
+      .map((value) => value.replace(/\s+/g, '\\s*'))
+      .join('|');
+    const pattern = escapedFollowingLabels
+      ? `${escapedLabel}\\s*:\\s*([\\s\\S]*?)(?=(?:${escapedFollowingLabels})\\s*:|$)`
+      : `${escapedLabel}\\s*:\\s*([\\s\\S]*?)$`;
+
+    const match = text.match(new RegExp(pattern, 'i'));
+    const value = match?.[1]?.replace(/\s+/g, ' ').trim();
+    return value || null;
+  }
+
+  private normalizeMaintenanceField(value?: string): string {
+    return (value ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
   private formatReferenceSparePartSummary(part: {
     spareName?: string;
     quantity?: string;
@@ -1239,12 +2095,19 @@ export class ChatReferenceExtractionService {
       part.quantity ? `Quantity: ${part.quantity}` : '',
       part.location ? `Location: ${part.location}` : '',
       part.manufacturerPart
-        ? `Manufacturer Part#: ${part.manufacturerPart}`
+        ? `Manufacturer Part#: ${this.normalizeReferencePartNumberDisplay(part.manufacturerPart)}`
         : '',
-      part.supplierPart ? `Supplier Part#: ${part.supplierPart}` : '',
+      part.supplierPart
+        ? `Supplier Part#: ${this.normalizeReferencePartNumberDisplay(part.supplierPart)}`
+        : '',
     ]
       .filter(Boolean)
       .join('\n');
+  }
+
+  private normalizeReferencePartNumberDisplay(value: string): string {
+    const compact = value.replace(/\s+/g, '').trim();
+    return this.looksLikeReferencePartNumber(compact) ? compact : value;
   }
 
   private extractReferenceRowSummary(
@@ -1383,6 +2246,9 @@ export class ChatReferenceExtractionService {
       .replace(/&nbsp;/gi, ' ')
       .replace(/VOLVOPENTASPARES/gi, 'VOLVO PENTA SPARES')
       .replace(/VOLVOPENTA/gi, 'VOLVO PENTA')
+      .replace(/PENTAOIL/gi, 'PENTA OIL')
+      .replace(/PENTAFUEL/gi, 'PENTA FUEL')
+      .replace(/PENTAAIR/gi, 'PENTA AIR')
       .replace(
         /\b(REPLACE|INSPECT|CHECK|CLEAN|ADJUST|OVERHAUL|SAMPLE|TEST)(?=[A-Z])/g,
         '$1 ',
@@ -1391,6 +2257,9 @@ export class ChatReferenceExtractionService {
       .replace(/KITIN/gi, 'KIT IN')
       .replace(/WEARKIT/gi, 'WEAR KIT')
       .replace(/SEAWATER/gi, 'SEA WATER')
+      .replace(/OILFILTERS/gi, 'OIL FILTERS')
+      .replace(/FUELFILTER/gi, 'FUEL FILTER')
+      .replace(/AIRFILTER/gi, 'AIR FILTER')
       .replace(/PUIMP/gi, 'PUMP')
       .replace(/WATERPUMP/gi, 'WATER PUMP')
       .replace(/BOX(\d+)(?=[A-Z])/g, 'BOX $1 ')
