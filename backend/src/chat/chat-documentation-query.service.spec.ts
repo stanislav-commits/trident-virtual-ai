@@ -32,6 +32,61 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(false);
   });
 
+  it('does not ask for clarification when a procedure query already names a qualified component target', () => {
+    const userQuery = 'How do I replace the oil filter?';
+
+    expect(
+      service.shouldAskClarifyingQuestion({
+        userQuery,
+        retrievalQuery: userQuery,
+        previousUserQuery: null,
+        pendingClarificationQuery: null,
+      }),
+    ).toBe(false);
+  });
+
+  it('asks for clarification on broad next-due maintenance questions without an asset or task anchor', () => {
+    const userQuery = 'When is the next maintenance due?';
+
+    expect(
+      service.shouldAskClarifyingQuestion({
+        userQuery,
+        retrievalQuery: userQuery,
+        previousUserQuery: null,
+        pendingClarificationQuery: null,
+      }),
+    ).toBe(true);
+    expect(service.buildClarificationQuestion(userQuery)).toContain(
+      'Which exact asset, component, maintenance task, or reference ID',
+    );
+  });
+
+  it('does not ask for clarification on next-due maintenance questions when a concrete asset is already named', () => {
+    const userQuery = 'When is the next maintenance on the port generator due?';
+
+    expect(
+      service.shouldAskClarifyingQuestion({
+        userQuery,
+        retrievalQuery: userQuery,
+        previousUserQuery: null,
+        pendingClarificationQuery: null,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not ask for clarification for broader asset lookups that already name one concrete subject', () => {
+    const userQuery = 'What spare parts do I need for the compressor?';
+
+    expect(
+      service.shouldAskClarifyingQuestion({
+        userQuery,
+        retrievalQuery: userQuery,
+        previousUserQuery: null,
+        pendingClarificationQuery: null,
+      }),
+    ).toBe(false);
+  });
+
   it('reuses the previous vague query when the user replies to a clarification', () => {
     const pendingClarificationQuery = 'How do I change oil?';
     const userReply = 'in the port generator';

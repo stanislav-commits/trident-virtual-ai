@@ -8,6 +8,7 @@ interface MessageListProps {
   onCopy?: (content: string) => void;
   onRegenerate?: (messageId: string) => void;
   onSendMessage?: (text: string) => void;
+  actionsDisabled?: boolean;
 }
 
 /**
@@ -20,6 +21,7 @@ export function MessageList({
   onCopy,
   onRegenerate,
   onSendMessage,
+  actionsDisabled = false,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -47,6 +49,7 @@ export function MessageList({
             onCopy={onCopy}
             onRegenerate={onRegenerate}
             onSendMessage={onSendMessage}
+            actionsDisabled={actionsDisabled}
           />
         ))
       )}

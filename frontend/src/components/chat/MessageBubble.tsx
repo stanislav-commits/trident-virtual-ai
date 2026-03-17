@@ -2,7 +2,11 @@ import { useCallback, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import type { ChatMessageDto, ChatContextReferenceDto } from "../../types/chat";
+import type {
+  ChatMessageDto,
+  ChatContextReferenceDto,
+  ChatSuggestionActionDto,
+} from "../../types/chat";
 import { useAuth } from "../../context/AuthContext";
 import { fetchWithAuth } from "../../api/client";
 import { SourceCitations } from "./SourceCitations";
@@ -13,6 +17,7 @@ interface MessageBubbleProps {
   onCopy?: (content: string) => void;
   onRegenerate?: (messageId: string) => void;
   onSendMessage?: (text: string) => void;
+  actionsDisabled?: boolean;
 }
 
 function formatTime(iso: string): string {
@@ -39,6 +44,12 @@ function normalizeMathLikeFormatting(text: string): string {
     .replace(/\\left/g, "")
     .replace(/\\right/g, "")
     .replace(/[ \t]+\n/g, "\n");
+}
+
+function stripLegacyInteractiveMarkup(text: string): string {
+  return text
+    .replace(/<\/?action-button>/gi, "")
+    .replace(/<\/?high-light>/gi, "");
 }
 
 function CitationBadge({
@@ -106,6 +117,7 @@ export function MessageBubble({
   onCopy,
   onRegenerate,
   onSendMessage,
+  actionsDisabled = false,
 }: MessageBubbleProps) {
   const { token, user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -120,6 +132,17 @@ export function MessageBubble({
         .map((v) => v.trim())
     : [];
   const noDocumentation = ragflowContext?.noDocumentation === true;
+  const clarificationActions = Array.isArray(ragflowContext?.clarificationActions)
+    ? ragflowContext.clarificationActions.filter(
+        (action): action is ChatSuggestionActionDto =>
+          typeof action === "object" &&
+          action !== null &&
+          typeof action.label === "string" &&
+          action.label.trim().length > 0 &&
+          typeof action.message === "string" &&
+          action.message.trim().length > 0,
+      )
+    : [];
 
   const handleCopy = useCallback(() => {
     const text = content.trim();
@@ -156,7 +179,7 @@ export function MessageBubble({
   const mdComponents = useMdComponents(refs, handleOpenDocument);
   const renderedAssistantContent =
     role === "assistant"
-      ? normalizeMathLikeFormatting(content.trim())
+      ? stripLegacyInteractiveMarkup(normalizeMathLikeFormatting(content.trim()))
       : content.trim();
 
   return (
@@ -178,52 +201,7 @@ export function MessageBubble({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw]}
-            components={
-              {
-                ...mdComponents,
-                "action-button": ({ node, children, ...props }: any) => {
-                  if (!onSendMessage) {
-                    return (
-                      <span style={{ color: "#eab308", fontWeight: 500 }} {...props}>
-                        {children}
-                      </span>
-                    );
-                  }
-                  return (
-                    <span
-                      {...props}
-                      style={{
-                        display: "block",
-                        marginTop: "12px",
-                        padding: "8px 12px",
-                        border: "1px solid #eab308",
-                        borderRadius: "6px",
-                        backgroundColor: "rgba(234, 179, 8, 0.1)",
-                        color: "#eab308",
-                        cursor: "pointer",
-                        fontWeight: 500,
-                      }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const textContent = Array.isArray(children)
-                          ? children.join("")
-                          : children?.toString() || "";
-                        if (textContent) {
-                          onSendMessage(textContent);
-                        }
-                      }}
-                    >
-                      {children}
-                    </span>
-                  );
-                },
-                "high-light": ({ node, children, ...props }: any) => (
-                  <span style={{ color: "#3b82f6" }} {...props}>
-                    {children}
-                  </span>
-                ),
-              } as Components
-            }
+            components={mdComponents}
           >
             {refs.length > 0
               ? injectCiteRefs(renderedAssistantContent)
@@ -232,6 +210,27 @@ export function MessageBubble({
         ) : (
           content.trim()
         )}
+
+        {role === "assistant" &&
+          ragflowContext?.awaitingClarification === true &&
+          clarificationActions.length > 0 && (
+            <div
+              className="chat-message__suggestions"
+              aria-label="Suggested clarification actions"
+            >
+              {clarificationActions.map((action, index) => (
+                <button
+                  key={`${action.kind || "suggestion"}-${index}-${action.label}`}
+                  type="button"
+                  className={`chat-suggestion${action.kind === "all" ? " chat-suggestion--all" : ""}`}
+                  onClick={() => onSendMessage?.(action.message)}
+                  disabled={!onSendMessage || actionsDisabled}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
       </div>
 
       {/* Show citations for assistant messages that have them */}

@@ -14,6 +14,12 @@ export interface ChatHistoryMessage {
   ragflowContext?: unknown;
 }
 
+export interface ChatSuggestionAction {
+  label: string;
+  message: string;
+  kind?: 'suggestion' | 'all';
+}
+
 export interface ChatDocumentationContext {
   previousUserQuery?: string;
   retrievalQuery: string;
@@ -24,6 +30,7 @@ export interface ChatDocumentationContext {
   clarificationQuestion?: string;
   clarificationReason?: string;
   pendingClarificationQuery?: string;
+  clarificationActions?: ChatSuggestionAction[];
   compareBySource?: boolean;
   sourceComparisonTitles?: string[];
 }

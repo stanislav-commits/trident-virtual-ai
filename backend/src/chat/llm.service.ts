@@ -413,6 +413,16 @@ Answer style:
       subjectQuery,
     );
     const subjectTerms = this.extractSubjectTerms(subjectQuery);
+
+    if (subjectTerms.length === 0) {
+      return (
+        'Maintenance Calculation Guidance:\n' +
+        '- The question does not identify one exact asset, component, maintenance task, or reference ID.\n' +
+        '- Do not use telemetry hour counters or generic maintenance intervals to calculate a next-due value for this broad question.\n' +
+        '- Ask which exact asset, component, task, or reference row this next-due question is for, or state that the exact next due is not confirmed by the provided documentation.\n\n'
+      );
+    }
+
     const canSafelyDeriveNextDue =
       explicitNextDueValues.length > 0 ||
       this.canSafelyDeriveNextDueFromInterval({
@@ -833,6 +843,22 @@ Answer style:
       'with',
       'from',
       'into',
+      'the',
+      'a',
+      'an',
+      'i',
+      'we',
+      'do',
+      'does',
+      'did',
+      'is',
+      'are',
+      'can',
+      'could',
+      'would',
+      'should',
+      'my',
+      'our',
       'your',
       'you',
     ]);

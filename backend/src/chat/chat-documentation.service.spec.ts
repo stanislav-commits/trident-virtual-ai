@@ -6,6 +6,127 @@ import { ChatReferenceExtractionService } from './chat-reference-extraction.serv
 import { ChatCitation } from './chat.types';
 
 describe('ChatDocumentationService', () => {
+  it('attaches clarification suggestion actions for underspecified queries', async () => {
+    const citations: ChatCitation[] = [
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        score: 0.92,
+        snippet: `Component name: PS ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1P47`,
+      },
+    ];
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, retrievedCitations) => retrievedCitations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation(
+          (_query, _userQuery, retrievedCitations) => retrievedCitations,
+        ),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, retrievedCitations) => retrievedCitations),
+      prepareCitationsForAnswer: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => {
+            citations: ChatCitation[];
+            compareBySource: boolean;
+            sourceComparisonTitles: string[];
+          }
+        >()
+        .mockImplementation((_query, _userQuery, retrievedCitations) => ({
+          citations: retrievedCitations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        })),
+      limitCitationsForLlm: jest
+        .fn<
+          (
+            userQuery: string,
+            citations: ChatCitation[],
+            compareBySource: boolean,
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_userQuery, retrievedCitations) => retrievedCitations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const clarificationActions = [
+      {
+        label: 'A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE (1P47)',
+        message:
+          'How do I change oil for PS ENGINE, A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE, Reference ID 1P47',
+        kind: 'suggestion' as const,
+      },
+      {
+        label: 'All',
+        message:
+          'Please answer all of the following related to "How do I change oil":\n1. How do I change oil for PS ENGINE, A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE, Reference ID 1P47',
+        kind: 'all' as const,
+      },
+    ];
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue(clarificationActions),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'How do I change oil?',
+    });
+
+    expect(result.needsClarification).toBe(true);
+    expect(result.clarificationQuestion).toContain(
+      'Which exact component or system is this fluid-related request for?',
+    );
+    expect(result.pendingClarificationQuery).toBe('How do I change oil?');
+    expect(result.clarificationActions).toEqual(clarificationActions);
+    expect(contextService.findContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'How do I change oil?',
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(
+      (
+        referenceExtractionService.buildClarificationActions as jest.Mock
+      ).mock.calls[0],
+    ).toEqual(['How do I change oil?', citations]);
+  });
+
   it('uses the clarification-resolved query for downstream intent-aware retrieval decisions', async () => {
     const contextService = {
       findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
@@ -90,6 +211,7 @@ describe('ChatDocumentationService', () => {
           ) => string | null
         >()
         .mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
     } as unknown as ChatReferenceExtractionService;
 
     const augmentSpy = jest.spyOn(
