@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
-import { ChatCitation } from './chat.types';
+import { ChatCitation, ChatSuggestionAction } from './chat.types';
 
 interface MaintenanceRowContext {
   referenceId: string;
@@ -19,11 +19,51 @@ interface MaintenanceRowCandidate extends MaintenanceRowContext {
   explicitRowEvidence: boolean;
 }
 
+interface ClarificationSuggestionCandidate {
+  key: string;
+  label: string;
+  message: string;
+  score: number;
+}
+
 @Injectable()
 export class ChatReferenceExtractionService {
   constructor(
     private readonly queryService: ChatDocumentationQueryService,
   ) {}
+
+  buildClarificationActions(
+    userQuery: string,
+    citations: ChatCitation[],
+  ): ChatSuggestionAction[] {
+    const baseQuery = userQuery.trim().replace(/[?!.]+$/g, '');
+    if (!baseQuery || citations.length === 0) {
+      return [];
+    }
+
+    const candidates = this.buildClarificationSuggestionCandidates(
+      baseQuery,
+      citations.slice(0, 12),
+    );
+    const selected = candidates.slice(0, 4).map((candidate) => ({
+      label: candidate.label,
+      message: candidate.message,
+      kind: 'suggestion' as const,
+    }));
+
+    if (selected.length <= 1) {
+      return selected;
+    }
+
+    return [
+      ...selected,
+      {
+        label: 'All',
+        message: this.buildCombinedClarificationMessage(baseQuery, selected),
+        kind: 'all',
+      },
+    ];
+  }
 
   buildResolvedMaintenanceSubjectQuery(
     retrievalQuery: string,
@@ -179,6 +219,292 @@ export class ChatReferenceExtractionService {
     }
 
     return this.buildMaintenanceSubjectQuery(bestCandidate);
+  }
+
+  private buildClarificationSuggestionCandidates(
+    baseQuery: string,
+    citations: ChatCitation[],
+  ): ClarificationSuggestionCandidate[] {
+    const candidates: ClarificationSuggestionCandidate[] = [];
+
+    citations.forEach((citation, citationIndex) => {
+      const context = this.extractMaintenanceRowContext(citation.snippet ?? '');
+      if (context?.referenceId) {
+        const maintenanceCandidate = this.buildMaintenanceClarificationCandidate(
+          baseQuery,
+          citation,
+          context,
+        );
+        if (maintenanceCandidate) {
+          candidates.push(maintenanceCandidate);
+        }
+      }
+
+      const phraseCandidates = this.buildPhraseClarificationCandidates(
+        baseQuery,
+        citation,
+        citationIndex,
+      );
+      candidates.push(...phraseCandidates);
+    });
+
+    const deduped = new Map<string, ClarificationSuggestionCandidate>();
+    for (const candidate of candidates) {
+      const existing = deduped.get(candidate.key);
+      if (!existing || candidate.score > existing.score) {
+        deduped.set(candidate.key, candidate);
+      }
+    }
+
+    const dedupedCandidates = [...deduped.values()];
+    const maintenanceCandidates = dedupedCandidates.filter((candidate) =>
+      candidate.key.startsWith('maintenance:'),
+    );
+    if (maintenanceCandidates.length >= 2) {
+      return maintenanceCandidates.sort((left, right) => right.score - left.score);
+    }
+
+    return dedupedCandidates
+      .filter((candidate) => {
+        if (!candidate.key.startsWith('phrase:')) {
+          return true;
+        }
+
+        return !maintenanceCandidates.some((maintenanceCandidate) =>
+          maintenanceCandidate.message
+            .toLowerCase()
+            .startsWith(`${candidate.message.toLowerCase()},`),
+        );
+      })
+      .filter((candidate) => candidate.message.toLowerCase() !== baseQuery.toLowerCase())
+      .sort((left, right) => right.score - left.score);
+  }
+
+  private buildMaintenanceClarificationCandidate(
+    baseQuery: string,
+    citation: ChatCitation,
+    context: MaintenanceRowContext,
+  ): ClarificationSuggestionCandidate | null {
+    const subjectParts = [
+      context.componentName,
+      context.taskName,
+      context.referenceId ? `Reference ID ${context.referenceId}` : '',
+    ].filter(Boolean) as string[];
+    if (subjectParts.length === 0) {
+      return null;
+    }
+
+    const labelParts: string[] = [];
+    if (context.taskName) {
+      labelParts.push(this.humanizeClarificationText(context.taskName));
+    }
+    if (
+      context.componentName &&
+      !this.containsLoosely(context.taskName, context.componentName)
+    ) {
+      labelParts.push(this.humanizeClarificationText(context.componentName));
+    }
+
+    let label =
+      labelParts.join(' - ') ||
+      this.humanizeClarificationText(
+        context.referenceId ? `Reference ID ${context.referenceId}` : subjectParts[0],
+      );
+    if (
+      context.referenceId &&
+      !label.toLowerCase().includes(context.referenceId.toLowerCase())
+    ) {
+      label = `${label} (${context.referenceId})`;
+    }
+
+    return {
+      key: `maintenance:${context.referenceId.toLowerCase()}`,
+      label: this.truncateClarificationLabel(label),
+      message: this.buildClarificationFollowUpQuery(baseQuery, subjectParts),
+      score:
+        (citation.score ?? 0) * 10 +
+        30 +
+        (context.taskName ? 8 : 0) +
+        (context.componentName ? 5 : 0),
+    };
+  }
+
+  private buildPhraseClarificationCandidates(
+    baseQuery: string,
+    citation: ChatCitation,
+    citationIndex: number,
+  ): ClarificationSuggestionCandidate[] {
+    const text = this.normalizeReferenceExtractedText(
+      this.stripHtmlLikeMarkup(citation.snippet ?? ''),
+    );
+    if (!text) {
+      return [];
+    }
+
+    const phrases = this.extractClarificationSubjectPhrases(text);
+    return phrases.map((phrase, phraseIndex) => ({
+      key: `phrase:${phrase.toLowerCase()}`,
+      label: this.truncateClarificationLabel(
+        this.humanizeClarificationText(phrase),
+      ),
+      message: this.buildClarificationFollowUpQuery(baseQuery, [phrase]),
+      score:
+        (citation.score ?? 0) * 10 +
+        this.scoreClarificationPhrase(phrase) -
+        citationIndex -
+        phraseIndex,
+    }));
+  }
+
+  private extractClarificationSubjectPhrases(text: string): string[] {
+    const matches = text.match(
+      /\b(?:port|starboard|ps|sb|main|aux(?:iliary)?|sea|water|fuel|oil|coolant|air|hydraulic|alternator|engine|generator|genset|pump|filter|gearbox|compressor|watermaker|cooler|tank|valve|thermostat|sensor|battery|exhaust|shaft|impeller|anode|belt|system)(?:[\s/-]+(?:port|starboard|ps|sb|main|aux(?:iliary)?|sea|water|fuel|oil|coolant|air|hydraulic|alternator|engine|generator|genset|pump|filter|gearbox|compressor|watermaker|cooler|tank|valve|thermostat|sensor|battery|exhaust|shaft|impeller|anode|belt|system)){0,4}\b/gi,
+    ) ?? [];
+
+    const unique = new Set<string>();
+    for (const match of matches) {
+      const normalized = this.normalizeReferenceExtractedText(match)
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (
+        normalized &&
+        this.scoreClarificationPhrase(normalized) >= 4 &&
+        !this.isOverlyGenericClarificationPhrase(normalized)
+      ) {
+        unique.add(normalized);
+      }
+    }
+
+    return [...unique].slice(0, 6);
+  }
+
+  private scoreClarificationPhrase(phrase: string): number {
+    const normalized = phrase.toLowerCase();
+    let score = 0;
+
+    if (/\b(port|starboard|ps|sb)\b/i.test(normalized)) {
+      score += 4;
+    }
+    if (
+      /\b(generator|genset|engine|pump|filter|gearbox|compressor|watermaker|cooler|tank|valve|thermostat|sensor|battery|exhaust|shaft|impeller|anode|belt|system)\b/i.test(
+        normalized,
+      )
+    ) {
+      score += 4;
+    }
+    if (normalized.split(/\s+/).length >= 2) {
+      score += 2;
+    }
+
+    return score;
+  }
+
+  private isOverlyGenericClarificationPhrase(phrase: string): boolean {
+    return /^(?:oil|coolant|filter|filters|system|maintenance|service|task|tasks|parts?|spares?)$/i.test(
+      phrase.trim(),
+    );
+  }
+
+  private buildClarificationFollowUpQuery(
+    baseQuery: string,
+    subjectParts: string[],
+  ): string {
+    const subject = subjectParts
+      .map((part) => this.normalizeClarificationSubjectPart(part))
+      .filter(Boolean)
+      .join(', ');
+    if (!subject) {
+      return baseQuery;
+    }
+
+    return `${baseQuery} for ${subject}`.replace(/\s+/g, ' ').trim();
+  }
+
+  private normalizeClarificationSubjectPart(value: string): string {
+    const compacted = value.replace(/\s+/g, ' ').trim();
+    const referenceIdMatch = compacted.match(
+      /^reference\s*id\s+([a-z0-9-]+)$/i,
+    );
+    if (referenceIdMatch?.[1]) {
+      return `Reference ID ${referenceIdMatch[1].replace(/\s+/g, '').toUpperCase()}`;
+    }
+
+    return this.humanizeClarificationText(compacted);
+  }
+
+  private buildCombinedClarificationMessage(
+    baseQuery: string,
+    actions: Array<{ label: string; message: string }>,
+  ): string {
+    return [
+      `Please answer all of the following related to "${baseQuery}":`,
+      ...actions.map((action, index) => `${index + 1}. ${action.message}`),
+    ].join('\n');
+  }
+
+  private humanizeClarificationText(value: string): string {
+    const normalized = this.normalizeReferenceExtractedText(value)
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalized) {
+      return normalized;
+    }
+
+    return normalized
+      .split(' ')
+      .map((token) => this.formatClarificationToken(token))
+      .join(' ');
+  }
+
+  private truncateClarificationLabel(label: string): string {
+    if (label.length <= 84) {
+      return label;
+    }
+
+    return `${label.slice(0, 81).trim()}...`;
+  }
+
+  private formatClarificationToken(token: string): string {
+    return token
+      .split(/([/-])/)
+      .map((segment) => {
+        if (segment === '/' || segment === '-') {
+          return segment;
+        }
+
+        return this.formatClarificationWord(segment);
+      })
+      .join('');
+  }
+
+  private formatClarificationWord(word: string): string {
+    if (!word) {
+      return word;
+    }
+
+    const upper = word.toUpperCase();
+    if (
+      ['PS', 'SB', 'SCR', 'ECU', 'DEF', 'IMO', 'ID'].includes(upper) ||
+      /^[A-Z]+\d+[A-Z0-9-]*$/i.test(word) ||
+      /^\d+[A-Z]+[A-Z0-9-]*$/i.test(word)
+    ) {
+      return upper;
+    }
+
+    if (/^\d+$/.test(word)) {
+      return word;
+    }
+
+    const lower = word.toLowerCase();
+    return `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+  }
+
+  private containsLoosely(value?: string, needle?: string): boolean {
+    if (!value || !needle) return false;
+
+    const left = value.toLowerCase().replace(/\s+/g, ' ').trim();
+    const right = needle.toLowerCase().replace(/\s+/g, ' ').trim();
+    return left.includes(right);
   }
 
   extractMaintenanceRowContext(snippet: string): MaintenanceRowContext | null {

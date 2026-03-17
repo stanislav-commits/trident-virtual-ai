@@ -365,7 +365,6 @@ export class ChatService {
       const session = await this.prisma.chatSession.findUnique({
         where: { id: sessionId },
         include: {
-          user: { select: { name: true } },
           messages: {
             where: { deletedAt: null },
             orderBy: { createdAt: 'asc' },
@@ -373,14 +372,6 @@ export class ChatService {
           },
         },
       });
-
-      if (session?.user?.name) {
-        const mockData = this.getMockResponse(session.user.name, userQuery);
-        if (mockData) {
-          await new Promise((resolve) => setTimeout(resolve, mockData.delayMs));
-          return this.addAssistantMessage(sessionId, mockData.content);
-        }
-      }
 
       const documentationContext =
         await this.documentationService.prepareDocumentationContext({
@@ -420,6 +411,13 @@ export class ChatService {
               documentationContext.pendingClarificationQuery ?? userQuery.trim(),
             clarificationReason:
               documentationContext.clarificationReason ?? 'underspecified_query',
+            ...(documentationContext.clarificationActions &&
+            documentationContext.clarificationActions.length > 0
+              ? {
+                  clarificationActions:
+                    documentationContext.clarificationActions,
+                }
+              : {}),
           },
           [],
         );
@@ -505,205 +503,6 @@ export class ChatService {
     if (session.userId !== userId) {
       throw new ForbiddenException('Cannot access this chat session');
     }
-  }
-
-  private getMockResponse(
-    userName: string,
-    query: string,
-  ): { content: string; delayMs: number } | null {
-    if (userName.trim().toLowerCase() !== 'shaun') {
-      return null;
-    }
-
-    const q = query.trim().toLowerCase();
-
-    const calculateDelay = (text: string) => {
-      const wordCount = text.split(/\s+/).length;
-      return Math.min(Math.max(2000, (wordCount / 25) * 1000), 10000);
-    };
-
-    if (/generator.*running\s*hours/i.test(q)) {
-      const content = `The port generator has 2004 running hours.
-
-Would you like to know:
-
-<action-button>When the next maintenance is due and what this includes</action-button>
-
-<action-button>How to carry out the next maintenance</action-button>
-
-<action-button>Part numbers and locations for the required spares</action-button>
-
-<action-button>Show all</action-button>`;
-      return { content, delayMs: calculateDelay(content) };
-    }
-
-    if (/(when.*next\s*maintenance|what.*includes)/i.test(q) && !/how/i.test(q)) {
-      const content = `The next scheduled service is due at 2200 hours and includes the following:
-
-- Change Engine Oil
-- Replace Engine Oil Filter
-- Replace Air Filter
-- Replace Fuel Filters and Prefilters
-- Replace the Impeller
-- Inspect and Replace Alternator Belt
-- Check Coolant Level
-- Inspect Zincs
-- General routine checks such as signs of fluid or gas leaks.`;
-      return { content, delayMs: calculateDelay(content) };
-    }
-
-    if (/(how.*oil\s*and\s*filter|how.*carry\s*out.*maintenance)/i.test(q)) {
-      const content = `**Tools and Materials Needed:**
-- New engine oil <high-light>(12 litres of 15w40)</high-light>
-- New oil filter
-- Oil filter wrench
-- Oil drain pan
-- Funnel
-- Rags or paper towels
-- Safety gloves
-- Trident Virtual headset for recording of the job
-
-**Step-by-Step Instructions:**
-
-1. Ensure the generator is turned off and has cooled down.
-2. Disconnect the battery to prevent accidental start-up and place a lock out tag.
-3. Drain the oil:
-   - Locate the oil drain plug on the bottom of the oil pan. Refer to the generator's manual if necessary.
-   - Place the oil drain pan under the oil drain plug. Remove the drain plug and allow the old oil to completely drain into the pan. This may take several minutes.
-4. Remove the Old Oil Filter:
-   - Use the oil filter wrench to loosen and remove the old oil filter. Be cautious as it may still contain some oil. Wipe the area around the oil filter mount to remove any debris.
-5. Install the New Oil Filter:
-   - Before installing the new oil filter, apply a small amount of new oil to the rubber gasket on the new filter. This helps create a better seal.
-   - Screw the new oil filter onto the mount by hand until snug. Do not overtighten.
-6. Replace the Drain Plug:
-   - Once all the old oil has drained, replace and tighten the drain plug securely.
-7. Add New Engine Oil:
-   - Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil. This will be approximately <high-light>12 litres</high-light> of 15w40.
-8. Check Oil Level:
-   - After adding oil, wait a few minutes for it to settle, then check the oil level using the dipstick. Add more oil if necessary until it reaches the proper level marked by U A L on the dipstick.
-9. Run the Engine:
-   - Reconnect the battery and start the generator in local. Let it run for a few minutes while checking for leaks around the oil filter and drain plug.
-10. Dispose of Old Oil and Filter:
-    - Properly dispose of the old oil and filter according to MARPOL.
-
-**Safety Warnings:**
-- Always wear gloves and goggles to protect against oil spills and splashes.
-- Ensure the generator is completely cool before starting the oil change to avoid burns.
-- Follow proper disposal methods for used oil and filters in accordance with MARPOL.`;
-      return { content, delayMs: calculateDelay(content) };
-    }
-
-    if (/part\s*number/i.test(q)) {
-      const content = `For the 200 hourly maintenance on the port generator you will require the following:
-
-- **Volvo Penta - Oil Bypass Filter** (Qty: 1) - <high-light>Part number: 21951346</high-light>
-  - Locations: Box 23 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Volvo Penta - Oil Filter Element** (Qty: 2) - <high-light>Part number: 477556</high-light>
-  - Locations: Box 21 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Racor Cartridges - Fuel filter element** (Qty: 1) - <high-light>Part number: 2020PM</high-light>
-  - Locations: Box 20 (Racor Filters) & Box 24 (Volvo Penta Fuel Filter).
-- **Oil - 15W40** (Qty 12 Litres) - <high-light>Part Number: 15W40 Oil</high-light>
-  - Locations: Bilge SB Steering Room.`;
-      return { content, delayMs: calculateDelay(content) };
-    }
-
-    if (/show\s*all/i.test(q)) {
-      const content = `The next scheduled service is due at 2200 hours and includes the following:
-
-- Change Engine Oil
-- Replace Engine Oil Filter
-- Replace Air Filter
-- Replace Fuel Filters and Prefilters
-- Replace the Impeller
-- Inspect and Replace Alternator Belt
-- Check Coolant Level
-- Inspect Zincs
-- General routine checks such as signs of fluid or gas leaks.
-
----
-
-**Tools and Materials Needed:**
-- New engine oil <high-light>(12 litres of 15w40)</high-light>
-- New oil filter
-- Oil filter wrench
-- Oil drain pan
-- Funnel
-- Rags or paper towels
-- Safety gloves
-- Trident Virtual headset for recording of the job
-
-**Step-by-Step Instructions:**
-
-1. Ensure the generator is turned off and has cooled down.
-2. Disconnect the battery to prevent accidental start-up and place a lock out tag.
-3. Drain the oil:
-   - Locate the oil drain plug on the bottom of the oil pan. Refer to the generator's manual if necessary.
-   - Place the oil drain pan under the oil drain plug. Remove the drain plug and allow the old oil to completely drain into the pan. This may take several minutes.
-4. Remove the Old Oil Filter:
-   - Use the oil filter wrench to loosen and remove the old oil filter. Be cautious as it may still contain some oil. Wipe the area around the oil filter mount to remove any debris.
-5. Install the New Oil Filter:
-   - Before installing the new oil filter, apply a small amount of new oil to the rubber gasket on the new filter. This helps create a better seal.
-   - Screw the new oil filter onto the mount by hand until snug. Do not overtighten.
-6. Replace the Drain Plug:
-   - Once all the old oil has drained, replace and tighten the drain plug securely.
-7. Add New Engine Oil:
-   - Locate the oil fill cap on the engine. Remove it and use a funnel to pour in the new engine oil. This will be approximately <high-light>12 litres</high-light> of 15w40.
-8. Check Oil Level:
-   - After adding oil, wait a few minutes for it to settle, then check the oil level using the dipstick. Add more oil if necessary until it reaches the proper level marked by U A L on the dipstick.
-9. Run the Engine:
-   - Reconnect the battery and start the generator in local. Let it run for a few minutes while checking for leaks around the oil filter and drain plug.
-10. Dispose of Old Oil and Filter:
-    - Properly dispose of the old oil and filter according to MARPOL.
-
-**Safety Warnings:**
-- Always wear gloves and goggles to protect against oil spills and splashes.
-- Ensure the generator is completely cool before starting the oil change to avoid burns.
-- Follow proper disposal methods for used oil and filters in accordance with MARPOL.
-
----
-
-For the 200 hourly maintenance on the port generator you will require the following:
-
-- **Volvo Penta - Oil Bypass Filter** (Qty: 1) - <high-light>Part number: 21951346</high-light>
-  - Locations: Box 23 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Volvo Penta - Oil Filter Element** (Qty: 2) - <high-light>Part number: 477556</high-light>
-  - Locations: Box 21 (Volvo Penta Oil Filters) & Box 22 (Volvo Penta Oil Filters).
-- **Racor Cartridges - Fuel filter element** (Qty: 1) - <high-light>Part number: 2020PM</high-light>
-  - Locations: Box 20 (Racor Filters) & Box 24 (Volvo Penta Fuel Filter).
-- **Oil - 15W40** (Qty 12 Litres) - <high-light>Part Number: 15W40 Oil</high-light>
-  - Locations: Bilge SB Steering Room.`;
-
-      return { content, delayMs: calculateDelay(content) };
-    }
-
-    if (
-      /what\s*happened/i.test(q) ||
-      /yacht\s*stopped/i.test(q) ||
-      /generator\s*stopped/i.test(q)
-    ) {
-      const content = `Common causes to check include:
-- Low fuel supply
-- Low battery voltage
-- Overheating
-- Fault alarm or shutdown
-- Low oil pressure
-- Cooling water flow issue
-
-**Start with these quick checks:**
-- Active alarm or fault message
-- Fuel level in the tank
-- Air in the fuel system (vent the filters)
-- Battery voltage, should be a minimum of 24V
-- Cooling water flow, check the sea water system valve configuration and the pump for any air
-- Coolant header tank, check the header tank level
-- Oil level
-- Emergency stop status
-
-If the fault remains, review the last shutdown alarm and contact Trident Virtual for remote assistance.`;
-      return { content, delayMs: calculateDelay(content) };
-    }
-
-    return null;
   }
 
   private formatSessionResponse(session: {

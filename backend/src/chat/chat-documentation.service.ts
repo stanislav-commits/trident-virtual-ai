@@ -54,6 +54,13 @@ export class ChatDocumentationService {
         pendingClarificationQuery,
       })
     ) {
+      const clarificationActions = await this.buildClarificationActions({
+        shipId,
+        role,
+        userQuery,
+        retrievalQuery,
+      });
+
       return {
         previousUserQuery: previousUserQuery ?? undefined,
         retrievalQuery,
@@ -63,6 +70,7 @@ export class ChatDocumentationService {
           this.queryService.buildClarificationQuestion(userQuery),
         clarificationReason: 'underspecified_query',
         pendingClarificationQuery: userQuery.trim(),
+        clarificationActions,
       };
     }
 
@@ -281,5 +289,66 @@ export class ChatDocumentationService {
       retrievalQuery,
       citations,
     };
+  }
+
+  private async buildClarificationActions(params: {
+    shipId: string | null;
+    role: string;
+    userQuery: string;
+    retrievalQuery: string;
+  }) {
+    const { shipId, role, userQuery, retrievalQuery } = params;
+    if (this.queryService.shouldSkipDocumentationRetrieval(userQuery)) {
+      return [];
+    }
+
+    try {
+      const retrievalWindow = this.queryService.getRetrievalWindow(
+        retrievalQuery,
+        userQuery,
+      );
+      const topK = Math.min(Math.max(retrievalWindow.topK, 6), 8);
+      const candidateK = Math.min(
+        Math.max(retrievalWindow.candidateK, topK * 3),
+        24,
+      );
+
+      const search = async (query: string) => {
+        if (role === 'admin' || !shipId) {
+          return this.contextService.findContextForAdminQuery(
+            query,
+            topK,
+            candidateK,
+          );
+        }
+
+        const result = await this.contextService.findContextForQuery(
+          shipId,
+          query,
+          topK,
+          candidateK,
+        );
+        return result.citations;
+      };
+
+      let citations = await search(retrievalQuery);
+      if (citations.length === 0) {
+        const fallbackQuery =
+          this.queryService.buildRagFallbackQuery(retrievalQuery);
+        if (fallbackQuery && fallbackQuery !== retrievalQuery) {
+          citations = await search(fallbackQuery);
+        }
+      }
+
+      return this.referenceExtractionService.buildClarificationActions(
+        userQuery,
+        citations,
+      );
+    } catch (error) {
+      this.logger.debug(
+        `Clarification action generation skipped: ${String(error)}`,
+      );
+      return [];
+    }
   }
 }

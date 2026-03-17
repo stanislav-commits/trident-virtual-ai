@@ -7,6 +7,92 @@ describe('ChatReferenceExtractionService', () => {
     new ChatDocumentationQueryService(),
   );
 
+  it('builds clarification suggestion actions from real maintenance-row citations and adds an All action', () => {
+    const citations: ChatCitation[] = [
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        score: 0.95,
+        snippet: `Component name: PS ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1P47
+Responsible: Chief Engineer
+Interval: 1 Years /500 MAIN GENSET PS
+Last due: 07.07.2025 / 1534
+Next due: 07.07.2026 / 2034`,
+      },
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        score: 0.88,
+        snippet: `Component name: SB ENGINE
+Task name: B MAIN GENERATOR 1000 HOURS/BIANNUAL SERVICE
+Reference ID: 1P48
+Responsible: Chief Engineer
+Interval: 2 Years /1000 MAIN GENSET SB
+Last due: 07.07.2025 / 1750
+Next due: 07.07.2027 / 2750`,
+      },
+    ];
+
+    const actions = service.buildClarificationActions(
+      'How do I change oil?',
+      citations,
+    );
+
+    expect(actions).toHaveLength(3);
+    expect(actions.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'suggestion',
+          label: expect.stringContaining('1P47'),
+          message:
+            'How do I change oil for PS Engine, A Main Generator 500 Hours/Annual Service, Reference ID 1P47',
+        }),
+        expect.objectContaining({
+          kind: 'suggestion',
+          label: expect.stringContaining('1P48'),
+          message:
+            'How do I change oil for SB Engine, B Main Generator 1000 Hours/Biannual Service, Reference ID 1P48',
+        }),
+      ]),
+    );
+    expect(actions[2]).toEqual(
+      expect.objectContaining({
+        label: 'All',
+        kind: 'all',
+      }),
+    );
+    expect(actions[2]?.message).toContain(
+      'Please answer all of the following related to "How do I change oil":',
+    );
+    expect(actions[2]?.message).toContain('Reference ID 1P47');
+    expect(actions[2]?.message).toContain('Reference ID 1P48');
+  });
+
+  it('formats phrase-based clarification labels in a consistent title case', () => {
+    const citations: ChatCitation[] = [
+      {
+        sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+        score: 0.9,
+        snippet:
+          'SEA WATER pump impeller oil filter engine generator maintenance',
+      },
+    ];
+
+    const actions = service.buildClarificationActions(
+      'How do I change oil?',
+      citations,
+    );
+
+    const labels = actions
+      .filter((action) => action.kind !== 'all')
+      .map((action) => action.label);
+
+    expect(labels).toContain('Sea Water Pump Impeller Oil');
+    expect(labels).toContain('Filter Engine Generator');
+    expect(labels).not.toContain('SEA WATER pump');
+    expect(labels).not.toContain('oil filter');
+  });
+
   it('focuses the table block that actually contains the requested reference', () => {
     const snippet = `<table><caption> M/Y Seawolf X - Maintenance Tasks</caption>
 <tr><th  >PGroup name Spare Name SPAREPARTSKITFORACB332 L-23-09457 0212 ENGINES</th><th  >Component name Quantity 11 SB ENGINE</th><th  >Task name ReferenceID [Location BOX11FRESHWATER,BOX04PUMPS B MAIN GENERATOR 1000 HOURS/ 1P55</th></tr>
