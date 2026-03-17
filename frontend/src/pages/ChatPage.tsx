@@ -253,6 +253,7 @@ export function ChatPage({
               isLoadingResponse={isWaitingForResponse || isLoadingMessages}
               onRegenerate={handleRegenerate}
               onSendMessage={(text) => handleSend(text)}
+              actionsDisabled={isDisabled}
             />
             <MessageInput
               value={inputValue}

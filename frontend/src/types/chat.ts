@@ -11,12 +11,28 @@ export interface ChatContextReferenceDto {
   sourceUrl?: string;
 }
 
+export interface ChatSuggestionActionDto {
+  label: string;
+  message: string;
+  kind?: "suggestion" | "all";
+}
+
+export interface ChatRagflowContextDto {
+  telemetryShips?: string[];
+  noDocumentation?: boolean;
+  awaitingClarification?: boolean;
+  pendingClarificationQuery?: string;
+  clarificationReason?: string;
+  clarificationActions?: ChatSuggestionActionDto[];
+  resolvedSubjectQuery?: string;
+}
+
 // Message from backend ChatMessage
 export interface ChatMessageDto {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
-  ragflowContext?: Record<string, unknown> | null;
+  ragflowContext?: ChatRagflowContextDto | null;
   contextReferences: ChatContextReferenceDto[];
   createdAt: string;
   deletedAt?: string | null;
