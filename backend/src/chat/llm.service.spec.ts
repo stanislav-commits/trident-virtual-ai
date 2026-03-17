@@ -78,8 +78,37 @@ describe('LlmService maintenance calculation guard', () => {
     });
 
     expect(prompt).toContain(
-      'Do not derive or round a next-due hour value from a generic interval',
+      'Do not use telemetry hour counters or generic maintenance intervals to calculate a next-due value',
     );
     expect(prompt).not.toContain('Calculated next-due candidates:');
+  });
+
+  it('refuses to calculate next due hours when the question has no asset or task subject', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildMaintenanceCalculationPrompt({
+      userQuery: 'When is the next maintenance due?',
+      citations: [
+        {
+          sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+          pageNumber: 30,
+          snippet:
+            'Reference row: Component name: PS ENGINE Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE Reference ID: 1P47 Interval: 1 Years /500 MAIN GENSET PS Last due: 07.07.2025 / 1534 Next due: 07.07.2026 / 2034',
+        },
+      ],
+      telemetry: {
+        'Port side MASE diesel generator operating hours': 2006,
+      },
+    });
+
+    expect(prompt).toContain(
+      'The question does not identify one exact asset, component, maintenance task, or reference ID.',
+    );
+    expect(prompt).toContain(
+      'Do not use telemetry hour counters or generic maintenance intervals to calculate a next-due value',
+    );
+    expect(prompt).not.toContain('Detected telemetry hour counters:');
+    expect(prompt).not.toContain('Calculated next-due candidates:');
+    expect(prompt).not.toContain('Remaining-hours candidates using explicit next-due values:');
   });
 });

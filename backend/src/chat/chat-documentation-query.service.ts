@@ -203,12 +203,24 @@ export class ChatDocumentationQueryService {
     const disambiguatingTerms =
       this.extractDisambiguatingSubjectTerms(retrievalQuery);
     const broadIntent = this.isBroadActionOrLookupQuery(trimmed);
+    const nextDueLookup = this.isNextDueLookupQuery(trimmed);
+    const qualifiedProcedureTarget =
+      this.isProcedureQuery(trimmed) &&
+      this.hasQualifiedComponentPhrase(retrievalQuery);
+
+    if (qualifiedProcedureTarget) {
+      return false;
+    }
+
+    if (nextDueLookup) {
+      return disambiguatingTerms.length === 0;
+    }
 
     if (broadIntent && disambiguatingTerms.length === 0) {
       return true;
     }
 
-    if (broadIntent && wordCount <= 8 && disambiguatingTerms.length <= 1) {
+    if (broadIntent && wordCount <= 3 && disambiguatingTerms.length <= 1) {
       return true;
     }
 
@@ -221,6 +233,10 @@ export class ChatDocumentationQueryService {
 
   buildClarificationQuestion(userQuery: string): string {
     const lowered = userQuery.toLowerCase();
+
+    if (this.isNextDueLookupQuery(userQuery)) {
+      return 'Which exact asset, component, maintenance task, or reference ID do you want next-due information for? If you can, include the asset name or side so I can match the correct schedule row.';
+    }
 
     if (/\b(oil|coolant|fluid|fluids?)\b/i.test(lowered)) {
       return 'Which exact component or system is this fluid-related request for? If you can, include the asset name or side, the component, task title, or reference ID.';
@@ -759,6 +775,97 @@ export class ChatDocumentationQueryService {
     return false;
   }
 
+  private hasQualifiedComponentPhrase(query: string): boolean {
+    const normalized = query
+      .toLowerCase()
+      .replace(/[^a-z0-9\s/-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!normalized) return false;
+
+    const componentTokens = new Set([
+      'filter',
+      'filters',
+      'pump',
+      'pumps',
+      'impeller',
+      'impellers',
+      'generator',
+      'generators',
+      'genset',
+      'gensets',
+      'engine',
+      'engines',
+      'belt',
+      'belts',
+      'anode',
+      'anodes',
+      'cooler',
+      'coolers',
+      'strainer',
+      'strainers',
+      'compressor',
+      'compressors',
+      'watermaker',
+      'watermakers',
+      'cartridge',
+      'cartridges',
+      'valve',
+      'valves',
+      'sensor',
+      'sensors',
+      'thermostat',
+      'thermostats',
+    ]);
+    const qualifierTokens = new Set([
+      'oil',
+      'fuel',
+      'air',
+      'coolant',
+      'sea',
+      'seawater',
+      'water',
+      'fresh',
+      'freshwater',
+      'raw',
+      'aux',
+      'auxiliary',
+      'alternator',
+      'drive',
+      'intake',
+      'outlet',
+      'suction',
+      'pressure',
+      'temperature',
+      'zinc',
+      'sacrificial',
+      'exhaust',
+      'bypass',
+      'prefilter',
+      'pre-filter',
+    ]);
+    const tokens = normalized.split(/\s+/).filter(Boolean);
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      if (!componentTokens.has(tokens[index])) continue;
+
+      const previous = tokens[index - 1];
+      const previousPrevious = tokens[index - 2];
+      const next = tokens[index + 1];
+
+      if (
+        (previous && qualifierTokens.has(previous)) ||
+        (previousPrevious && qualifierTokens.has(previousPrevious)) ||
+        (next && qualifierTokens.has(next))
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   private looksLikeFreshQuestion(query: string): boolean {
     return (
       query.includes('?') ||
@@ -784,7 +891,7 @@ export class ChatDocumentationQueryService {
   }
 
   private isBroadActionOrLookupQuery(query: string): boolean {
-    return /\b(how\s+to|how\s+do\s+i|what\s+should\s+i\s+do|what\s+do\s+i\s+do|replace|change|clean|inspect|check|adjust|test|sample|overhaul|service|maintain|parts?|spares?|oil|coolant|fluid|filter|filters|troubleshoot|fault|alarm|error|issue|problem|status|telemetry|runtime|running\s+hours)\b/i.test(
+    return /\b(how\s+to|how\s+do\s+i|what\s+should\s+i\s+do|what\s+do\s+i\s+do|replace|change|clean|inspect|check|adjust|test|sample|overhaul|service|maintain|parts?|spares?|oil|coolant|fluid|filter|filters|troubleshoot|fault|alarm|error|issue|problem|status|telemetry|runtime|running\s+hours|next\s+due|when\s+is\s+.*(?:maintenance|service).*\sdue|when\s+should\s+we\s+do\s+next\s+(?:maintenance|service)|remaining\s+hours|hours\s+until\s+next)\b/i.test(
       query,
     );
   }
