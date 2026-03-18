@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  HttpException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InfluxDB } from '@influxdata/influxdb-client';
 
 export interface InfluxMetric {
@@ -18,26 +22,33 @@ export interface InfluxMetricValue {
   time: string;
 }
 
+interface InfluxOrganizationsResponse {
+  orgs?: Array<{ name?: string | null }>;
+}
+
+interface InfluxBucketsResponse {
+  buckets?: Array<{ name?: string | null }>;
+}
+
 @Injectable()
 export class InfluxdbService {
+  private readonly latestValuesBatchSize = 100;
   private readonly influxUrl = process.env.INFLUX_URL;
   private readonly influxToken = process.env.INFLUX_TOKEN;
-  private readonly influxOrg = process.env.INFLUX_ORG;
+  private readonly defaultOrg = process.env.INFLUX_ORG;
+  private readonly configuredOrganizations =
+    process.env.INFLUX_ORGANIZATIONS?.split(',')
+      .map((value) => value.trim())
+      .filter(Boolean) ?? [];
   private readonly schemaLookback =
     process.env.INFLUX_SCHEMA_LOOKBACK ?? '-365d';
 
-  private readonly configuredBuckets =
-    process.env.INFLUX_BUCKETS?.split(',')
-      .map((part) => part.trim())
-      .filter(Boolean) ?? [];
-
   private get influx() {
-    if (!this.influxUrl || !this.influxToken || !this.influxOrg) {
+    if (!this.influxUrl || !this.influxToken) {
       throw new ServiceUnavailableException(
-        'InfluxDB is not configured. Expected INFLUX_URL, INFLUX_TOKEN, INFLUX_ORG',
+        'InfluxDB is not configured. Expected INFLUX_URL and INFLUX_TOKEN',
       );
     }
-    // The SDK constructor is loosely typed in current package typings.
     /* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
     return new InfluxDB({
       url: this.influxUrl,
@@ -47,24 +58,63 @@ export class InfluxdbService {
   }
 
   isConfigured(): boolean {
-    return Boolean(this.influxUrl && this.influxToken && this.influxOrg);
+    return Boolean(this.influxUrl && this.influxToken);
   }
 
-  getBuckets(): string[] {
-    if (this.configuredBuckets.length > 0) {
-      return this.configuredBuckets;
+  async listOrganizations(): Promise<string[]> {
+    try {
+      const response = await this.requestJson<InfluxOrganizationsResponse>(
+        '/api/v2/orgs',
+        { limit: '100' },
+      );
+
+      const organizations = [
+        ...new Set(
+          (response.orgs ?? [])
+            .map((org) => this.toText(org.name))
+            .filter(Boolean),
+        ),
+      ].sort((left, right) => left.localeCompare(right));
+
+      if (organizations.length > 0) {
+        return organizations;
+      }
+    } catch (error) {
+      const fallbackOrganizations = this.getFallbackOrganizations();
+      if (fallbackOrganizations.length > 0) {
+        return fallbackOrganizations;
+      }
+      throw error;
     }
-    return ['Trending', 'NMEA'];
+
+    return this.getFallbackOrganizations();
   }
 
-  async listAllMetrics(): Promise<InfluxMetric[]> {
-    const buckets = this.getBuckets();
+  async listBuckets(orgName: string): Promise<string[]> {
+    const response = await this.requestJson<InfluxBucketsResponse>(
+      '/api/v2/buckets',
+      { org: orgName, limit: '100' },
+    );
+
+    return [
+      ...new Set(
+        (response.buckets ?? [])
+          .map((bucket) => this.toText(bucket.name))
+          .filter(Boolean),
+      ),
+    ]
+      .filter((bucket) => !bucket.startsWith('_'))
+      .sort((left, right) => left.localeCompare(right));
+  }
+
+  async listAllMetrics(orgName: string): Promise<InfluxMetric[]> {
+    const buckets = await this.listBuckets(orgName);
     const allMetrics: InfluxMetric[] = [];
 
     for (const bucket of buckets) {
-      const measurements = await this.listMeasurements(bucket);
+      const measurements = await this.listMeasurements(orgName, bucket);
       for (const measurement of measurements) {
-        const fields = await this.listFieldKeys(bucket, measurement);
+        const fields = await this.listFieldKeys(orgName, bucket, measurement);
         for (const field of fields) {
           allMetrics.push({
             key: `${bucket}::${measurement}::${field}`,
@@ -80,75 +130,94 @@ export class InfluxdbService {
     return allMetrics;
   }
 
-  /**
-   * Fetch the latest value for each metric key.
-   * Keys are in the format "bucket::measurement::field".
-   */
-  async queryLatestValues(keys: string[]): Promise<InfluxMetricValue[]> {
+  async queryLatestValues(
+    keys: string[],
+    orgName?: string,
+  ): Promise<InfluxMetricValue[]> {
     if (!keys.length) return [];
 
-    // Group keys by bucket for efficient queries
+    const effectiveOrg = orgName?.trim() || this.defaultOrg?.trim();
+    if (!effectiveOrg) {
+      throw new ServiceUnavailableException(
+        'InfluxDB organization is not configured for this query',
+      );
+    }
+
     const byBucket = new Map<
       string,
-      { measurement: string; field: string; key: string }[]
+      Map<string, { field: string; key: string }[]>
     >();
     for (const key of keys) {
       const parts = key.split('::');
       if (parts.length !== 3) continue;
       const [bucket, measurement, field] = parts;
-      if (!byBucket.has(bucket)) byBucket.set(bucket, []);
-      byBucket.get(bucket)!.push({ measurement, field, key });
+      if (!byBucket.has(bucket)) {
+        byBucket.set(bucket, new Map());
+      }
+      const byMeasurement = byBucket.get(bucket);
+      if (!byMeasurement?.has(measurement)) {
+        byMeasurement?.set(measurement, []);
+      }
+      byMeasurement?.get(measurement)?.push({ field, key });
     }
 
     const results: InfluxMetricValue[] = [];
 
-    for (const [bucket, metrics] of byBucket) {
-      // Build a combined filter for all measurements+fields in this bucket
-      const filterClauses = metrics
-        .map(
-          (m) =>
-            `(r._measurement == ${this.toFluxString(m.measurement)} and r._field == ${this.toFluxString(m.field)})`,
-        )
-        .join(' or ');
-
-      const flux = [
-        `from(bucket: ${this.toFluxString(bucket)})`,
-        '  |> range(start: -24h)',
-        `  |> filter(fn: (r) => ${filterClauses})`,
-        '  |> last()',
-      ].join('\n');
-
-      const rows = await this.queryRows(flux);
-
-      for (const row of rows) {
-        const measurement = this.toText(row._measurement);
-        const field = this.toText(row._field);
-        const matchedMetric = metrics.find(
-          (m) => m.measurement === measurement && m.field === field,
+    for (const [bucket, byMeasurement] of byBucket) {
+      for (const [measurement, metrics] of byMeasurement) {
+        const metricKeyByField = new Map(
+          metrics.map((metric) => [metric.field, metric.key]),
         );
-        if (!matchedMetric) continue;
 
-        results.push({
-          key: matchedMetric.key,
-          bucket,
-          measurement,
-          field,
-          value: row._value as number | string | boolean | null,
-          time: this.toText(row._time),
-        });
+        for (const metricsBatch of this.chunk(metrics, this.latestValuesBatchSize)) {
+          const fieldFilter =
+            metricsBatch.length === 1
+              ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
+              : `contains(value: r._field, set: [${metricsBatch
+                  .map((metric) => this.toFluxString(metric.field))
+                  .join(', ')}])`;
+
+          const flux = [
+            `from(bucket: ${this.toFluxString(bucket)})`,
+            '  |> range(start: -24h)',
+            `  |> filter(fn: (r) => r._measurement == ${this.toFluxString(measurement)})`,
+            `  |> filter(fn: (r) => ${fieldFilter})`,
+            '  |> last()',
+          ].join('\n');
+
+          const rows = await this.queryRows(flux, effectiveOrg);
+
+          for (const row of rows) {
+            const field = this.toText(row._field);
+            const matchedMetricKey = metricKeyByField.get(field);
+            if (!matchedMetricKey) continue;
+
+            results.push({
+              key: matchedMetricKey,
+              bucket,
+              measurement,
+              field,
+              value: row._value as number | string | boolean | null,
+              time: this.toText(row._time),
+            });
+          }
+        }
       }
     }
 
     return results;
   }
 
-  private async listMeasurements(bucket: string): Promise<string[]> {
+  private async listMeasurements(
+    orgName: string,
+    bucket: string,
+  ): Promise<string[]> {
     const flux = [
       'import "influxdata/influxdb/schema"',
       `schema.measurements(bucket: ${this.toFluxString(bucket)}, start: ${this.schemaLookback})`,
     ].join('\n');
 
-    const rows = await this.queryRows(flux);
+    const rows = await this.queryRows(flux, orgName);
     const measurements = rows
       .map((row) => this.toText(row._value))
       .filter(Boolean);
@@ -157,6 +226,7 @@ export class InfluxdbService {
   }
 
   private async listFieldKeys(
+    orgName: string,
     bucket: string,
     measurement: string,
   ): Promise<string[]> {
@@ -165,18 +235,20 @@ export class InfluxdbService {
       `schema.fieldKeys(bucket: ${this.toFluxString(bucket)}, start: ${this.schemaLookback}, predicate: (r) => r._measurement == ${this.toFluxString(measurement)})`,
     ].join('\n');
 
-    const rows = await this.queryRows(flux);
+    const rows = await this.queryRows(flux, orgName);
     const fields = rows.map((row) => this.toText(row._value)).filter(Boolean);
 
     return [...new Set(fields)];
   }
 
-  private async queryRows(flux: string): Promise<Record<string, unknown>[]> {
+  private async queryRows(
+    flux: string,
+    orgName: string,
+  ): Promise<Record<string, unknown>[]> {
     return new Promise((resolve, reject) => {
       const rows: Record<string, unknown>[] = [];
-      // The upstream client exposes callback metadata loosely typed.
       /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
-      const queryApi = this.influx.getQueryApi(this.influxOrg!);
+      const queryApi = this.influx.getQueryApi(orgName);
 
       queryApi.queryRows(flux, {
         next: (row, tableMeta) => {
@@ -190,6 +262,42 @@ export class InfluxdbService {
     });
   }
 
+  private async requestJson<T>(
+    pathname: string,
+    query?: Record<string, string>,
+  ): Promise<T> {
+    if (!this.influxUrl || !this.influxToken) {
+      throw new ServiceUnavailableException(
+        'InfluxDB is not configured. Expected INFLUX_URL and INFLUX_TOKEN',
+      );
+    }
+
+    const url = new URL(pathname, this.influxUrl);
+    Object.entries(query ?? {}).forEach(([key, value]) => {
+      if (value.trim()) {
+        url.searchParams.set(key, value);
+      }
+    });
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Token ${this.influxToken}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new HttpException(
+        body ||
+          `InfluxDB request failed: ${response.status} ${response.statusText}`,
+        response.status,
+      );
+    }
+
+    return (await response.json()) as T;
+  }
+
   private toFluxString(value: string): string {
     return JSON.stringify(value);
   }
@@ -200,5 +308,27 @@ export class InfluxdbService {
       return String(value);
     }
     return '';
+  }
+
+  private getFallbackOrganizations(): string[] {
+    return [
+      ...new Set(
+        [...this.configuredOrganizations, this.defaultOrg?.trim() ?? ''].filter(
+          Boolean,
+        ),
+      ),
+    ].sort((left, right) => left.localeCompare(right));
+  }
+
+  private chunk<T>(items: T[], size: number): T[][] {
+    if (size <= 0 || items.length <= size) {
+      return [items];
+    }
+
+    const chunks: T[][] = [];
+    for (let index = 0; index < items.length; index += size) {
+      chunks.push(items.slice(index, index + size));
+    }
+    return chunks;
   }
 }

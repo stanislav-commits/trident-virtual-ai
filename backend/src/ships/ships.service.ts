@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { CreateShipDto } from './dto/create-ship.dto';
 import { UpdateShipDto } from './dto/update-ship.dto';
 
@@ -17,6 +18,7 @@ export class ShipsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ragflow: RagflowService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async getMetricDefinitions() {
@@ -36,61 +38,36 @@ export class ShipsService {
     });
   }
 
+  async listOrganizations() {
+    return this.metricsService.listOrganizations();
+  }
+
   async create(dto: CreateShipDto) {
-    if (dto.metricKeys?.length) {
-      const existing = await this.prisma.metricDefinition.findMany({
-        where: { key: { in: dto.metricKeys } },
-        select: { key: true },
-      });
-      const existingKeys = new Set(existing.map((m) => m.key));
-      const invalid = dto.metricKeys.filter((k) => !existingKeys.has(k));
-      if (invalid.length) {
-        throw new BadRequestException(
-          `Unknown metric keys: ${invalid.join(', ')}`,
-        );
-      }
+    const name = dto.name?.trim();
+    if (!name) {
+      throw new BadRequestException('name is required');
     }
 
-    const userIds = dto.userIds ?? [];
-    if (userIds.length) {
-      const users = await this.prisma.user.findMany({
-        where: { id: { in: userIds } },
-        select: { id: true, role: true, shipId: true },
-      });
-      const foundIds = new Set(users.map((u) => u.id));
-      const missing = userIds.filter((id) => !foundIds.has(id));
-      if (missing.length) {
-        throw new BadRequestException(
-          `User(s) not found: ${missing.join(', ')}`,
-        );
-      }
-      const notUserRole = users.filter((u) => u.role !== 'user');
-      if (notUserRole.length) {
-        throw new BadRequestException(
-          'Only users with role "user" can be assigned to a ship',
-        );
-      }
-      const alreadyAssigned = users.filter((u) => u.shipId != null);
-      if (alreadyAssigned.length) {
-        throw new BadRequestException(
-          'Some users are already assigned to another ship',
-        );
-      }
+    const organizationName = dto.organizationName?.trim();
+    if (!organizationName) {
+      throw new BadRequestException('organizationName is required');
     }
+
+    const requestedMetricKeys = this.normalizeMetricKeys(dto.metricKeys);
+    const availableMetrics =
+      await this.metricsService.listOrganizationMetrics(organizationName);
+    this.ensureRequestedMetricKeysExist(
+      requestedMetricKeys,
+      availableMetrics.map((metric) => metric.key),
+    );
+
+    const userIds = dto.userIds ?? [];
+    await this.validateUserAssignments(userIds);
 
     const ship = await this.prisma.ship.create({
       data: {
-        name: dto.name,
-        serialNumber: dto.serialNumber ?? undefined,
-        metricsConfig:
-          dto.metricKeys?.length > 0
-            ? {
-                create: dto.metricKeys.map((metricKey) => ({
-                  metricKey,
-                  isActive: true,
-                })),
-              }
-            : undefined,
+        name,
+        organizationName,
       },
       include: {
         metricsConfig: { select: { metricKey: true, isActive: true } },
@@ -98,12 +75,24 @@ export class ShipsService {
       },
     });
 
+    try {
+      await this.metricsService.syncShipMetrics(ship.id, organizationName, {
+        metrics: availableMetrics,
+        activeMetricKeys:
+          requestedMetricKeys !== undefined ? requestedMetricKeys : undefined,
+      });
+    } catch (error) {
+      await this.prisma.ship.delete({ where: { id: ship.id } });
+      throw error;
+    }
+
     if (userIds.length) {
       await this.prisma.user.updateMany({
         where: { id: { in: userIds } },
         data: { shipId: ship.id },
       });
     }
+
     if (this.ragflow.isConfigured()) {
       try {
         const datasetId = await this.ragflow.createDataset(`ship-${ship.id}`);
@@ -117,6 +106,7 @@ export class ShipsService {
         // leave ragflow_dataset_id null
       }
     }
+
     return this.findOne(ship.id);
   }
 
@@ -177,63 +167,43 @@ export class ShipsService {
     const ship = await this.prisma.ship.findUnique({ where: { id } });
     if (!ship) throw new NotFoundException('Ship not found');
 
-    if (dto.metricKeys !== undefined) {
-      const existing = await this.prisma.metricDefinition.findMany({
-        where: { key: { in: dto.metricKeys } },
-        select: { key: true },
-      });
-      const existingKeys = new Set(existing.map((m) => m.key));
-      const invalid = dto.metricKeys.filter((k) => !existingKeys.has(k));
-      if (invalid.length) {
-        throw new BadRequestException(
-          `Unknown metric keys: ${invalid.join(', ')}`,
-        );
-      }
+    const nextName = dto.name?.trim();
+    const requestedMetricKeys = this.normalizeMetricKeys(dto.metricKeys);
+    const nextOrganizationName = dto.organizationName?.trim();
+
+    let availableMetricKeys: string[] | undefined;
+    let organizationMetrics:
+      | Awaited<ReturnType<MetricsService['listOrganizationMetrics']>>
+      | undefined;
+
+    if (
+      nextOrganizationName &&
+      nextOrganizationName !== ship.organizationName
+    ) {
+      organizationMetrics =
+        await this.metricsService.listOrganizationMetrics(nextOrganizationName);
+      availableMetricKeys = organizationMetrics.map((metric) => metric.key);
+      this.ensureRequestedMetricKeysExist(
+        requestedMetricKeys,
+        availableMetricKeys,
+      );
     }
 
     const userIds = dto.userIds ?? undefined;
-    if (userIds !== undefined && userIds.length > 0) {
-      const users = await this.prisma.user.findMany({
-        where: { id: { in: userIds } },
-        select: { id: true, role: true, shipId: true },
-      });
-      const foundIds = new Set(users.map((u) => u.id));
-      const missing = userIds.filter((uid) => !foundIds.has(uid));
-      if (missing.length) {
-        throw new BadRequestException(
-          `User(s) not found: ${missing.join(', ')}`,
-        );
-      }
-      const notAssignable = users.filter(
-        (u) => u.role !== 'user' || (u.shipId != null && u.shipId !== id),
-      );
-      if (notAssignable.length) {
-        throw new BadRequestException(
-          'Only users with role "user" can be assigned; some are already on another ship',
-        );
-      }
+    if (userIds !== undefined) {
+      await this.validateUserAssignments(userIds, id);
     }
 
     await this.prisma.$transaction(async (tx) => {
       const updateData: Parameters<typeof tx.ship.update>[0]['data'] = {};
-      if (dto.name !== undefined) updateData.name = dto.name;
-      if (dto.serialNumber !== undefined)
-        updateData.serialNumber = dto.serialNumber;
-      if (Object.keys(updateData).length) {
+      if (nextName !== undefined) updateData.name = nextName;
+      if (nextOrganizationName !== undefined) {
+        updateData.organizationName = nextOrganizationName;
+      }
+      if (Object.keys(updateData).length > 0) {
         await tx.ship.update({ where: { id }, data: updateData });
       }
-      if (dto.metricKeys !== undefined) {
-        await tx.shipMetricsConfig.deleteMany({ where: { shipId: id } });
-        if (dto.metricKeys.length) {
-          await tx.shipMetricsConfig.createMany({
-            data: dto.metricKeys.map((metricKey) => ({
-              shipId: id,
-              metricKey,
-              isActive: true,
-            })),
-          });
-        }
-      }
+
       if (userIds !== undefined) {
         await tx.user.updateMany({
           where: { shipId: id },
@@ -248,6 +218,19 @@ export class ShipsService {
       }
     });
 
+    if (
+      nextOrganizationName &&
+      nextOrganizationName !== ship.organizationName
+    ) {
+      await this.metricsService.syncShipMetrics(id, nextOrganizationName, {
+        metrics: organizationMetrics,
+        activeMetricKeys:
+          requestedMetricKeys !== undefined ? requestedMetricKeys : undefined,
+      });
+    } else if (requestedMetricKeys !== undefined) {
+      await this.metricsService.setShipMetricActivity(id, requestedMetricKeys);
+    }
+
     return this.findOne(id);
   }
 
@@ -255,7 +238,6 @@ export class ShipsService {
     const ship = await this.prisma.ship.findUnique({ where: { id } });
     if (!ship) throw new NotFoundException('Ship not found');
 
-    // If ship has RAGFlow dataset, try to delete it from RAGFlow
     if (ship.ragflowDatasetId) {
       if (!this.ragflow.isConfigured()) {
         throw new ServiceUnavailableException(
@@ -265,7 +247,6 @@ export class ShipsService {
       try {
         await this.ragflow.deleteDataset(ship.ragflowDatasetId);
       } catch (error) {
-        // Dataset may already be removed from RAGFlow — log and continue
         this.logger.warn(
           `RAGFlow dataset deletion failed for ship ${id}, proceeding with DB removal: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -273,5 +254,65 @@ export class ShipsService {
     }
 
     await this.prisma.ship.delete({ where: { id } });
+  }
+
+  private normalizeMetricKeys(metricKeys?: string[]) {
+    if (metricKeys === undefined) {
+      return undefined;
+    }
+
+    return [
+      ...new Set(
+        metricKeys.map((metricKey) => metricKey.trim()).filter(Boolean),
+      ),
+    ];
+  }
+
+  private ensureRequestedMetricKeysExist(
+    requestedMetricKeys: string[] | undefined,
+    availableMetricKeys: string[],
+  ) {
+    if (!requestedMetricKeys?.length) return;
+
+    const availableMetricKeySet = new Set(availableMetricKeys);
+    const invalidMetricKeys = requestedMetricKeys.filter(
+      (metricKey) => !availableMetricKeySet.has(metricKey),
+    );
+
+    if (invalidMetricKeys.length > 0) {
+      throw new BadRequestException(
+        `Unknown metric keys: ${invalidMetricKeys.join(', ')}`,
+      );
+    }
+  }
+
+  private async validateUserAssignments(
+    userIds: string[],
+    currentShipId?: string,
+  ) {
+    if (!userIds.length) return;
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, role: true, shipId: true },
+    });
+    const foundIds = new Set(users.map((user) => user.id));
+    const missingUserIds = userIds.filter((userId) => !foundIds.has(userId));
+    if (missingUserIds.length) {
+      throw new BadRequestException(
+        `User(s) not found: ${missingUserIds.join(', ')}`,
+      );
+    }
+
+    const nonAssignableUsers = users.filter(
+      (user) =>
+        user.role !== 'user' ||
+        (user.shipId != null && user.shipId !== currentShipId),
+    );
+    if (nonAssignableUsers.length) {
+      throw new BadRequestException(
+        'Only users with role "user" can be assigned; some are already on another ship',
+      );
+    }
   }
 }

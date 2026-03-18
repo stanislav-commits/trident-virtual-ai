@@ -1,24 +1,23 @@
-import { useState, useRef, useEffect } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   createShip,
-  updateShip,
   deleteShip,
+  updateShip,
   uploadManual,
-  type ShipListItem,
   type MetricDefinitionItem,
+  type ShipListItem,
   type UserListItem,
 } from "../../api/client";
 import {
-  ShipIcon,
-  XIcon,
-  PlusIcon,
   ChevronDownIcon,
+  PlusIcon,
   SearchIcon,
+  ShipIcon,
   UploadIcon,
+  XIcon,
 } from "./AdminPanelIcons";
 
-/* ── Compact multi-select picker ── */
 interface PickerOption {
   key: string;
   label: string;
@@ -32,7 +31,7 @@ function MultiSelectPicker({
   onSelectAll,
   onDeselectAll,
   disabled,
-  placeholder = "Select…",
+  placeholder = "Select...",
 }: {
   options: PickerOption[];
   selected: string[];
@@ -44,23 +43,33 @@ function MultiSelectPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(80);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
+    const handler = (event: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) {
         setOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const filtered = options.filter((o) =>
-    o.label.toLowerCase().includes(search.toLowerCase()),
-  );
+  useEffect(() => {
+    setVisibleCount(80);
+  }, [deferredSearch, open, options.length]);
 
-  const selectedItems = options.filter((o) => selected.includes(o.key));
+  const filtered = options.filter((option) =>
+    option.label.toLowerCase().includes(deferredSearch.toLowerCase()),
+  );
+  const visibleOptions = filtered.slice(0, visibleCount);
+
+  const selectedItems = options.filter((option) =>
+    selected.includes(option.key),
+  );
 
   return (
     <div className="admin-panel__picker" ref={wrapRef}>
@@ -88,8 +97,8 @@ function MultiSelectPicker({
               type="text"
               className="admin-panel__picker-search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search..."
               autoFocus
             />
           </div>
@@ -121,26 +130,41 @@ function MultiSelectPicker({
             {filtered.length === 0 ? (
               <div className="admin-panel__picker-empty">No results</div>
             ) : (
-              filtered.map((opt) => (
-                <label key={opt.key} className="admin-panel__picker-option">
+              visibleOptions.map((option) => (
+                <label key={option.key} className="admin-panel__picker-option">
                   <input
                     type="checkbox"
                     className="admin-panel__picker-check"
-                    checked={selected.includes(opt.key)}
-                    onChange={() => onToggle(opt.key)}
+                    checked={selected.includes(option.key)}
+                    onChange={() => onToggle(option.key)}
                   />
                   <span className="admin-panel__picker-option-label">
-                    {opt.label}
+                    {option.label}
                   </span>
-                  {opt.extra && (
+                  {option.extra && (
                     <span className="admin-panel__picker-option-extra">
-                      {opt.extra}
+                      {option.extra}
                     </span>
                   )}
                 </label>
               ))
             )}
           </div>
+          {filtered.length > visibleOptions.length && (
+            <div className="admin-panel__picker-footer">
+              <button
+                type="button"
+                className="admin-panel__picker-action-btn"
+                onClick={() => setVisibleCount((current) => current + 80)}
+                disabled={disabled}
+              >
+                Load 80 more
+              </button>
+              <span className="admin-panel__picker-footer-meta">
+                Showing {visibleOptions.length} of {filtered.length}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -157,7 +181,7 @@ function MultiSelectPicker({
                 onClick={() => onToggle(item.key)}
                 disabled={disabled}
               >
-                ×
+                x
               </button>
             </span>
           ))}
@@ -171,6 +195,8 @@ interface ShipsSectionProps {
   token: string | null;
   ships: ShipListItem[];
   users: UserListItem[];
+  organizations: string[];
+  organizationsLoading: boolean;
   metricDefinitions: MetricDefinitionItem[];
   loading: boolean;
   error: string;
@@ -183,7 +209,7 @@ interface ShipsSectionProps {
 
 interface ShipForm {
   name: string;
-  serialNumber: string;
+  organizationName: string;
   metricKeys: string[];
   userIds: string[];
 }
@@ -193,10 +219,36 @@ interface DeleteConfirm {
   name: string;
 }
 
+function hasMetricDescription(description: string | null | undefined) {
+  return Boolean(description?.trim());
+}
+
+function getMetricDescriptionStats(
+  metricKeys: string[],
+  definitionMap: Map<string, MetricDefinitionItem>,
+) {
+  const total = metricKeys.length;
+  let described = 0;
+
+  for (const metricKey of metricKeys) {
+    if (hasMetricDescription(definitionMap.get(metricKey)?.description)) {
+      described += 1;
+    }
+  }
+
+  return {
+    total,
+    described,
+    pending: Math.max(total - described, 0),
+  };
+}
+
 export function ShipsSection({
   token,
   ships,
   users,
+  organizations,
+  organizationsLoading,
   metricDefinitions,
   loading,
   onLoadShips,
@@ -206,39 +258,119 @@ export function ShipsSection({
 }: ShipsSectionProps) {
   const [shipForm, setShipForm] = useState<ShipForm>({
     name: "",
-    serialNumber: "",
+    organizationName: "",
     metricKeys: [],
     userIds: [],
   });
   const [showFormModal, setShowFormModal] = useState(false);
   const [creatingShip, setCreatingShip] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState("");
   const [editingShipId, setEditingShipId] = useState<string | null>(null);
+  const [originalOrganizationName, setOriginalOrganizationName] = useState<
+    string | null
+  >(null);
   const [deletingShipId, setDeletingShipId] = useState<string | null>(null);
   const [shipDeleteConfirm, setShipDeleteConfirm] =
     useState<DeleteConfirm | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const editingShip = editingShipId
+    ? (ships.find((ship) => ship.id === editingShipId) ?? null)
+    : null;
+
+  const organizationChanged =
+    editingShipId != null &&
+    shipForm.organizationName.trim() !== (originalOrganizationName ?? "");
+
+  const metricDefinitionMap = useMemo(
+    () =>
+      new Map(
+        metricDefinitions.map((definition) => [definition.key, definition]),
+      ),
+    [metricDefinitions],
+  );
+
+  const editableMetricOptions = useMemo(() => {
+    if (!editingShip) return [];
+
+    return editingShip.metricsConfig
+      .map((config) => {
+        const definition = metricDefinitionMap.get(config.metricKey);
+        return {
+          key: config.metricKey,
+          label: definition?.label ?? config.metricKey,
+          extra: definition?.unit ?? undefined,
+        };
+      })
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [editingShip, metricDefinitionMap]);
+
+  const editingDescriptionStats = useMemo(() => {
+    if (!editingShip) {
+      return { total: 0, described: 0, pending: 0 };
+    }
+
+    return getMetricDescriptionStats(
+      editingShip.metricsConfig.map((config) => config.metricKey),
+      metricDefinitionMap,
+    );
+  }, [editingShip, metricDefinitionMap]);
+
+  const availableOrganizations = useMemo(() => {
+    const values = new Set(organizations);
+    if (shipForm.organizationName.trim()) {
+      values.add(shipForm.organizationName.trim());
+    }
+    return [...values].sort((left, right) => left.localeCompare(right));
+  }, [organizations, shipForm.organizationName]);
+
+  const assignableUsers = useMemo(
+    () =>
+      users.filter(
+        (user) =>
+          user.role === "user" &&
+          (user.shipId == null || user.shipId === editingShipId),
+      ),
+    [editingShipId, users],
+  );
+
+  const footerHint = editingShipId
+    ? organizationChanged
+      ? "Changing the organization refreshes this ship's metric catalog after save."
+      : editingDescriptionStats.pending > 0
+        ? `${editingDescriptionStats.pending.toLocaleString()} metric descriptions are still generating in background.`
+        : "Descriptions continue in background and are not regenerated if they already exist."
+    : "Descriptions start in background after the ship is created.";
+
   const toggleMetricKey = (key: string) => {
-    setShipForm((prev) => ({
-      ...prev,
-      metricKeys: prev.metricKeys.includes(key)
-        ? prev.metricKeys.filter((k) => k !== key)
-        : [...prev.metricKeys, key],
+    setShipForm((previous) => ({
+      ...previous,
+      metricKeys: previous.metricKeys.includes(key)
+        ? previous.metricKeys.filter((metricKey) => metricKey !== key)
+        : [...previous.metricKeys, key],
     }));
   };
 
   const toggleShipUserId = (id: string) => {
-    setShipForm((prev) => ({
-      ...prev,
-      userIds: prev.userIds.includes(id)
-        ? prev.userIds.filter((x) => x !== id)
-        : [...prev.userIds, id],
+    setShipForm((previous) => ({
+      ...previous,
+      userIds: previous.userIds.includes(id)
+        ? previous.userIds.filter((userId) => userId !== id)
+        : [...previous.userIds, id],
     }));
   };
 
   const openCreateModal = () => {
     setEditingShipId(null);
-    setShipForm({ name: "", serialNumber: "", metricKeys: [], userIds: [] });
+    setOriginalOrganizationName(null);
+    setSubmitMessage("");
+    setShipForm({
+      name: "",
+      organizationName: "",
+      metricKeys: [],
+      userIds: [],
+    });
     setPendingFiles([]);
     setShowFormModal(true);
   };
@@ -247,43 +379,71 @@ export function ShipsSection({
     if (creatingShip) return;
     setShowFormModal(false);
     setEditingShipId(null);
-    setShipForm({ name: "", serialNumber: "", metricKeys: [], userIds: [] });
+    setOriginalOrganizationName(null);
+    setSubmitMessage("");
+    setShipForm({
+      name: "",
+      organizationName: "",
+      metricKeys: [],
+      userIds: [],
+    });
     setPendingFiles([]);
   };
 
   const handleShipEdit = (ship: ShipListItem) => {
     setEditingShipId(ship.id);
+    setOriginalOrganizationName(ship.organizationName ?? "");
+    setSubmitMessage("");
     setShipForm({
       name: ship.name,
-      serialNumber: ship.serialNumber ?? "",
-      metricKeys: ship.metricsConfig.map((c) => c.metricKey),
-      userIds: (ship.assignedUsers ?? []).map((u) => u.id),
+      organizationName: ship.organizationName ?? "",
+      metricKeys: ship.metricsConfig
+        .filter((config) => config.isActive)
+        .map((config) => config.metricKey),
+      userIds: (ship.assignedUsers ?? []).map((user) => user.id),
     });
+    setPendingFiles([]);
     setShowFormModal(true);
   };
 
-  const handleShipEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token || !editingShipId || !shipForm.name.trim()) return;
+  const handleShipEditSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = shipForm.name.trim();
+    const organizationName = shipForm.organizationName.trim();
+    if (!token || !editingShipId || !name || !organizationName) return;
+
     setCreatingShip(true);
+    setSubmitMessage(
+      organizationChanged
+        ? "Updating ship and refreshing metrics from the selected organization..."
+        : "Saving ship changes...",
+    );
     onError("");
+
     try {
       await updateShip(
         editingShipId,
         {
-          name: shipForm.name.trim(),
-          serialNumber: shipForm.serialNumber.trim() || null,
-          metricKeys: shipForm.metricKeys,
+          name,
+          organizationName,
+          metricKeys: organizationChanged ? undefined : shipForm.metricKeys,
           userIds: shipForm.userIds,
         },
         token,
       );
       setEditingShipId(null);
+      setOriginalOrganizationName(null);
       setShowFormModal(false);
-      setShipForm({ name: "", serialNumber: "", metricKeys: [], userIds: [] });
+      setSubmitMessage("");
+      setShipForm({
+        name: "",
+        organizationName: "",
+        metricKeys: [],
+        userIds: [],
+      });
       await onLoadShips();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to update ship");
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to update ship");
     } finally {
       setCreatingShip(false);
     }
@@ -291,6 +451,7 @@ export function ShipsSection({
 
   const handleShipDeleteClick = (id: string, name: string) =>
     setShipDeleteConfirm({ id, name });
+
   const handleShipDeleteCancel = () => setShipDeleteConfirm(null);
 
   const handleShipDeleteConfirm = async () => {
@@ -301,37 +462,41 @@ export function ShipsSection({
     try {
       await deleteShip(shipDeleteConfirm.id, token);
       await onLoadShips();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to delete ship");
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to delete ship");
     } finally {
       setDeletingShipId(null);
     }
   };
 
-  const handleShipCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token || !shipForm.name.trim()) return;
+  const handleShipCreate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = shipForm.name.trim();
+    const organizationName = shipForm.organizationName.trim();
+    if (!token || !name || !organizationName) return;
+
     setCreatingShip(true);
+    setSubmitMessage("Creating ship and syncing organization metrics...");
     onError("");
+
     try {
       const created = await createShip(
         {
-          name: shipForm.name.trim(),
-          serialNumber: shipForm.serialNumber.trim() || undefined,
-          metricKeys: shipForm.metricKeys,
+          name,
+          organizationName,
           userIds: shipForm.userIds.length ? shipForm.userIds : undefined,
         },
         token,
       );
-      // Upload queued manuals
+
       if (pendingFiles.length > 0) {
         const uploadErrors: string[] = [];
         for (const file of pendingFiles) {
           try {
             await uploadManual(created.id, file, token);
-          } catch (err) {
+          } catch (error) {
             uploadErrors.push(
-              `${file.name}: ${err instanceof Error ? err.message : "upload failed"}`,
+              `${file.name}: ${error instanceof Error ? error.message : "upload failed"}`,
             );
           }
         }
@@ -341,12 +506,19 @@ export function ShipsSection({
           );
         }
       }
-      setShipForm({ name: "", serialNumber: "", metricKeys: [], userIds: [] });
+
+      setShipForm({
+        name: "",
+        organizationName: "",
+        metricKeys: [],
+        userIds: [],
+      });
       setPendingFiles([]);
       setShowFormModal(false);
+      setSubmitMessage("");
       await onLoadShips();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to create ship");
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to create ship");
     } finally {
       setCreatingShip(false);
     }
@@ -356,10 +528,10 @@ export function ShipsSection({
     <>
       <section className="admin-panel__section">
         <div className="admin-panel__section-head">
-          <div>
+          <div className="admin-panel__section-intro">
             <h2 className="admin-panel__section-title">Ships</h2>
             <p className="admin-panel__section-subtitle">
-              Create and manage ships and their metrics.
+              Bind ships to an organization and sync metrics automatically.
             </p>
           </div>
           <button
@@ -374,7 +546,7 @@ export function ShipsSection({
         {loading ? (
           <div className="admin-panel__state-box">
             <div className="admin-panel__spinner" />
-            <span className="admin-panel__muted">Loading ships…</span>
+            <span className="admin-panel__muted">Loading ships...</span>
           </div>
         ) : ships.length === 0 ? (
           <div className="admin-panel__state-box">
@@ -387,92 +559,110 @@ export function ShipsSection({
               <thead>
                 <tr>
                   <th className="admin-panel__th">Name</th>
-                  <th className="admin-panel__th">Serial</th>
+                  <th className="admin-panel__th">Organization</th>
                   <th className="admin-panel__th">Metrics</th>
                   <th className="admin-panel__th">Users</th>
                   <th className="admin-panel__th">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {ships.map((ship) => (
-                  <tr key={ship.id} className="admin-panel__row">
-                    <td className="admin-panel__td admin-panel__td--name">
-                      {ship.name}
-                    </td>
-                    <td className="admin-panel__td admin-panel__td--serial">
-                      {ship.serialNumber ?? "—"}
-                    </td>
-                    <td className="admin-panel__td admin-panel__td--metrics">
-                      {ship.metricsConfig.length ? (
-                        <button
-                          type="button"
-                          className="admin-panel__btn admin-panel__btn--ghost"
-                          onClick={() => onOpenMetrics?.(ship)}
-                        >
-                          Metrics
-                          <span className="admin-panel__count-badge">
-                            {ship.metricsConfig.length}
-                          </span>
-                        </button>
-                      ) : (
-                        <span className="admin-panel__muted">—</span>
-                      )}
-                    </td>
-                    <td className="admin-panel__td admin-panel__td--metrics">
-                      {(ship.assignedUsers?.length ?? 0) > 0 ? (
-                        <div className="admin-panel__metric-tags">
-                          {(ship.assignedUsers ?? []).map((u) => (
-                            <span
-                              key={u.id}
-                              className="admin-panel__metric-tag"
+                {ships.map((ship) => {
+                  const activeMetricCount = ship.metricsConfig.filter(
+                    (config) => config.isActive,
+                  ).length;
+                  const descriptionStats = getMetricDescriptionStats(
+                    ship.metricsConfig.map((config) => config.metricKey),
+                    metricDefinitionMap,
+                  );
+
+                  return (
+                    <tr key={ship.id} className="admin-panel__row">
+                      <td className="admin-panel__td admin-panel__td--name">
+                        {ship.name}
+                      </td>
+                      <td className="admin-panel__td admin-panel__td--serial">
+                        {ship.organizationName ?? "-"}
+                      </td>
+                      <td className="admin-panel__td admin-panel__td--metrics">
+                        {ship.metricsConfig.length ? (
+                          <div className="admin-panel__ship-metric-cell">
+                            <button
+                              type="button"
+                              className="admin-panel__btn admin-panel__btn--ghost"
+                              onClick={() => onOpenMetrics?.(ship)}
                             >
-                              {u.name?.trim() || u.userId}
-                            </span>
-                          ))}
+                              Metrics
+                              <span className="admin-panel__count-badge">
+                                {activeMetricCount === ship.metricsConfig.length
+                                  ? ship.metricsConfig.length.toLocaleString()
+                                  : `${activeMetricCount}/${ship.metricsConfig.length}`}
+                              </span>
+                            </button>
+                            {descriptionStats.pending > 0 && (
+                              <span className="admin-panel__ship-metric-note">
+                                {descriptionStats.pending.toLocaleString()} descriptions pending
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="admin-panel__muted">-</span>
+                        )}
+                      </td>
+                      <td className="admin-panel__td admin-panel__td--metrics">
+                        {(ship.assignedUsers?.length ?? 0) > 0 ? (
+                          <div className="admin-panel__metric-tags">
+                            {(ship.assignedUsers ?? []).map((user) => (
+                              <span
+                                key={user.id}
+                                className="admin-panel__metric-tag"
+                              >
+                                {user.name?.trim() || user.userId}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="admin-panel__muted">-</span>
+                        )}
+                      </td>
+                      <td className="admin-panel__td">
+                        <div className="admin-panel__actions">
+                          <button
+                            type="button"
+                            className="admin-panel__btn admin-panel__btn--ghost"
+                            onClick={() => onOpenManuals?.(ship.id, ship.name)}
+                            disabled={deletingShipId === ship.id}
+                          >
+                            Manuals
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-panel__btn admin-panel__btn--ghost"
+                            onClick={() => handleShipEdit(ship)}
+                            disabled={deletingShipId === ship.id}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-panel__btn admin-panel__btn--danger"
+                            onClick={() =>
+                              handleShipDeleteClick(ship.id, ship.name)
+                            }
+                            disabled={deletingShipId === ship.id}
+                          >
+                            {deletingShipId === ship.id ? "..." : "Delete"}
+                          </button>
                         </div>
-                      ) : (
-                        <span className="admin-panel__muted">—</span>
-                      )}
-                    </td>
-                    <td className="admin-panel__td">
-                      <div className="admin-panel__actions">
-                        <button
-                          type="button"
-                          className="admin-panel__btn admin-panel__btn--ghost"
-                          onClick={() => onOpenManuals?.(ship.id, ship.name)}
-                          disabled={deletingShipId === ship.id}
-                        >
-                          Manuals
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-panel__btn admin-panel__btn--ghost"
-                          onClick={() => handleShipEdit(ship)}
-                          disabled={deletingShipId === ship.id}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-panel__btn admin-panel__btn--danger"
-                          onClick={() =>
-                            handleShipDeleteClick(ship.id, ship.name)
-                          }
-                          disabled={deletingShipId === ship.id}
-                        >
-                          {deletingShipId === ship.id ? "…" : "Delete"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </section>
 
-      {/* ── Create / Edit ship modal ── */}
       {showFormModal &&
         createPortal(
           <div
@@ -480,11 +670,11 @@ export function ShipsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="ap-ship-form-title"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) closeFormModal();
+            onClick={(event) => {
+              if (event.target === event.currentTarget) closeFormModal();
             }}
           >
-            <div className="admin-panel__modal admin-panel__modal--large">
+            <div className="admin-panel__modal admin-panel__modal--large admin-panel__modal--scrollable">
               <button
                 type="button"
                 className="admin-panel__modal-close"
@@ -493,24 +683,30 @@ export function ShipsSection({
               >
                 <XIcon />
               </button>
-              <div className="admin-panel__modal-icon admin-panel__modal-icon--success">
-                <ShipIcon />
+              <div className="admin-panel__modal-head">
+                <div className="admin-panel__modal-icon admin-panel__modal-icon--success">
+                  <ShipIcon />
+                </div>
+                <h2
+                  id="ap-ship-form-title"
+                  className="admin-panel__modal-title"
+                >
+                  {editingShipId ? "Edit ship" : "Create new ship"}
+                </h2>
+                <p className="admin-panel__modal-desc">
+                  {editingShipId
+                    ? "Update ship details, organization, and active metrics."
+                    : "Bind a ship to an organization and sync all non-system metrics automatically."}
+                </p>
               </div>
-              <h2 id="ap-ship-form-title" className="admin-panel__modal-title">
-                {editingShipId ? "Edit ship" : "Create new ship"}
-              </h2>
-              <p className="admin-panel__modal-desc">
-                {editingShipId
-                  ? "Update ship details, metrics and user assignments."
-                  : "Set up a new ship with its metrics and crew."}
-              </p>
               <form
                 onSubmit={
                   editingShipId ? handleShipEditSubmit : handleShipCreate
                 }
-                className="admin-panel__modal-form"
+                className="admin-panel__modal-form admin-panel__modal-form--fill"
               >
-                <div className="admin-panel__modal-field-row">
+                <div className="admin-panel__modal-body">
+                  <div className="admin-panel__modal-field-row">
                   <div className="admin-panel__modal-field">
                     <label className="admin-panel__field-label">
                       Ship name
@@ -519,8 +715,11 @@ export function ShipsSection({
                       type="text"
                       className="admin-panel__input admin-panel__input--full"
                       value={shipForm.name}
-                      onChange={(e) =>
-                        setShipForm((p) => ({ ...p, name: e.target.value }))
+                      onChange={(event) =>
+                        setShipForm((previous) => ({
+                          ...previous,
+                          name: event.target.value,
+                        }))
                       }
                       placeholder="e.g. Ocean Explorer"
                       required
@@ -530,76 +729,83 @@ export function ShipsSection({
                   </div>
                   <div className="admin-panel__modal-field">
                     <label className="admin-panel__field-label">
-                      Serial number
+                      Organization
                     </label>
-                    <input
-                      type="text"
+                    <select
                       className="admin-panel__input admin-panel__input--full"
-                      value={shipForm.serialNumber}
-                      onChange={(e) =>
-                        setShipForm((p) => ({
-                          ...p,
-                          serialNumber: e.target.value,
+                      value={shipForm.organizationName}
+                      onChange={(event) =>
+                        setShipForm((previous) => ({
+                          ...previous,
+                          organizationName: event.target.value,
                         }))
                       }
-                      placeholder="Optional"
-                      disabled={creatingShip}
-                    />
+                      disabled={creatingShip || organizationsLoading}
+                      required
+                    >
+                      <option value="">
+                        {organizationsLoading
+                          ? "Loading organizations..."
+                          : "Select an organization"}
+                      </option>
+                      {availableOrganizations.map((organization) => (
+                        <option key={organization} value={organization}>
+                          {organization}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-                {metricDefinitions.length > 0 && (
-                  <div className="admin-panel__modal-field">
-                    <span className="admin-panel__field-label">Metrics</span>
-                    <MultiSelectPicker
-                      options={metricDefinitions.map((m) => ({
-                        key: m.key,
-                        label: m.label,
-                        extra: m.unit || undefined,
-                      }))}
-                      selected={shipForm.metricKeys}
-                      onToggle={toggleMetricKey}
-                      onSelectAll={() =>
-                        setShipForm((p) => ({
-                          ...p,
-                          metricKeys: metricDefinitions.map((m) => m.key),
-                        }))
-                      }
-                      onDeselectAll={() =>
-                        setShipForm((p) => ({ ...p, metricKeys: [] }))
-                      }
-                      disabled={creatingShip}
-                      placeholder="Choose metrics…"
-                    />
-                  </div>
-                )}
-                {users.filter(
-                  (u) =>
-                    u.role === "user" &&
-                    (u.shipId == null || u.shipId === editingShipId),
-                ).length > 0 && (
+
+                {editingShipId &&
+                  !organizationChanged &&
+                  editableMetricOptions.length > 0 && (
+                    <div className="admin-panel__modal-field">
+                      <span className="admin-panel__field-label">
+                        Active metrics
+                      </span>
+                      <MultiSelectPicker
+                        options={editableMetricOptions}
+                        selected={shipForm.metricKeys}
+                        onToggle={toggleMetricKey}
+                        onSelectAll={() =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            metricKeys: editableMetricOptions.map(
+                              (option) => option.key,
+                            ),
+                          }))
+                        }
+                        onDeselectAll={() =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            metricKeys: [],
+                          }))
+                        }
+                        disabled={creatingShip}
+                        placeholder="Choose active metrics..."
+                      />
+                    </div>
+                  )}
+
+                {assignableUsers.length > 0 && (
                   <div className="admin-panel__modal-field">
                     <span className="admin-panel__field-label">
                       Assigned users
                     </span>
                     <MultiSelectPicker
-                      options={users
-                        .filter(
-                          (u) =>
-                            u.role === "user" &&
-                            (u.shipId == null || u.shipId === editingShipId),
-                        )
-                        .map((u) => ({
-                          key: u.id,
-                          label: u.name?.trim() || u.userId,
-                        }))}
+                      options={assignableUsers.map((user) => ({
+                        key: user.id,
+                        label: user.name?.trim() || user.userId,
+                      }))}
                       selected={shipForm.userIds}
                       onToggle={toggleShipUserId}
                       disabled={creatingShip}
-                      placeholder="Assign users…"
+                      placeholder="Assign users..."
                     />
                   </div>
                 )}
-                {/* ── Manuals dropzone (create mode only) ── */}
+
                 {!editingShipId && (
                   <div className="admin-panel__modal-field">
                     <span className="admin-panel__field-label">Manuals</span>
@@ -610,28 +816,34 @@ export function ShipsSection({
                       onClick={() =>
                         !creatingShip && fileInputRef.current?.click()
                       }
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.add(
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.currentTarget.classList.add(
                           "admin-panel__dropzone--active",
                         );
                       }}
-                      onDragLeave={(e) =>
-                        e.currentTarget.classList.remove(
+                      onDragLeave={(event) =>
+                        event.currentTarget.classList.remove(
                           "admin-panel__dropzone--active",
                         )
                       }
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.remove(
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        event.currentTarget.classList.remove(
                           "admin-panel__dropzone--active",
                         );
                         if (creatingShip) return;
-                        const dropped = Array.from(e.dataTransfer.files).filter(
-                          (f) => /\.(pdf|doc|docx|txt)$/i.test(f.name),
+                        const dropped = Array.from(
+                          event.dataTransfer.files,
+                        ).filter((file) =>
+                          /\.(pdf|doc|docx|txt)$/i.test(file.name),
                         );
-                        if (dropped.length)
-                          setPendingFiles((prev) => [...prev, ...dropped]);
+                        if (dropped.length) {
+                          setPendingFiles((previous) => [
+                            ...previous,
+                            ...dropped,
+                          ]);
+                        }
                       }}
                     >
                       <input
@@ -640,11 +852,15 @@ export function ShipsSection({
                         multiple
                         accept=".pdf,.doc,.docx,.txt,.md,.csv,.jpg,.jpeg,.png,.bmp,.svg"
                         className="admin-panel__dropzone-input"
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files ?? []);
-                          if (files.length)
-                            setPendingFiles((prev) => [...prev, ...files]);
-                          e.target.value = "";
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? []);
+                          if (files.length) {
+                            setPendingFiles((previous) => [
+                              ...previous,
+                              ...files,
+                            ]);
+                          }
+                          event.target.value = "";
                         }}
                       />
                       <UploadIcon />
@@ -660,25 +876,27 @@ export function ShipsSection({
                     </div>
                     {pendingFiles.length > 0 && (
                       <div className="admin-panel__dropzone-files">
-                        {pendingFiles.map((f, i) => (
+                        {pendingFiles.map((file, index) => (
                           <span
-                            key={`${f.name}-${i}`}
+                            key={`${file.name}-${index}`}
                             className="admin-panel__picker-chip"
                           >
                             <span className="admin-panel__picker-chip-text">
-                              {f.name}
+                              {file.name}
                             </span>
                             <button
                               type="button"
                               className="admin-panel__picker-chip-x"
                               onClick={() =>
-                                setPendingFiles((prev) =>
-                                  prev.filter((_, idx) => idx !== i),
+                                setPendingFiles((previous) =>
+                                  previous.filter(
+                                    (_, currentIndex) => currentIndex !== index,
+                                  ),
                                 )
                               }
                               disabled={creatingShip}
                             >
-                              ×
+                              x
                             </button>
                           </span>
                         ))}
@@ -686,6 +904,17 @@ export function ShipsSection({
                     )}
                   </div>
                 )}
+                </div>
+
+                <div className="admin-panel__modal-footer">
+                  <div className="admin-panel__inline-meta">{footerHint}</div>
+                  {creatingShip && submitMessage && (
+                  <div className="admin-panel__inline-progress">
+                    <div className="admin-panel__spinner" />
+                    <span className="admin-panel__muted">{submitMessage}</span>
+                  </div>
+                )}
+
                 <div className="admin-panel__modal-actions">
                   <button
                     type="button"
@@ -698,14 +927,19 @@ export function ShipsSection({
                   <button
                     type="submit"
                     className="admin-panel__btn admin-panel__btn--primary"
-                    disabled={creatingShip || !shipForm.name.trim()}
+                    disabled={
+                      creatingShip ||
+                      !shipForm.name.trim() ||
+                      !shipForm.organizationName.trim()
+                    }
                   >
                     {creatingShip
-                      ? "Saving…"
+                      ? "Syncing..."
                       : editingShipId
                         ? "Save changes"
                         : "Create ship"}
                   </button>
+                </div>
                 </div>
               </form>
             </div>

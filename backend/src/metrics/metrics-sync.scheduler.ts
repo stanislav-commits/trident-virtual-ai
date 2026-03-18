@@ -16,20 +16,48 @@ export class MetricsSyncScheduler {
 
     if (this.isSyncRunning) {
       this.logger.warn(
-        'Skipping metrics sync: previous run is still in progress',
+        'Skipping values sync: previous sync is still in progress',
       );
       return;
     }
 
     this.isSyncRunning = true;
     try {
-      const result = await this.metricsService.syncFromInflux();
+      const result = await this.metricsService.syncValuesFromInflux();
       this.logger.log(
-        `Metrics sync finished: definitions=${result.metricsSynced}, values=${result.valuesUpdated}, buckets=${result.buckets.join(',')}`,
+        `Metrics value sync finished: ships=${result.shipsSynced}, organizations=${result.organizations.join(',')}, metricsQueried=${result.metricsQueried}, values=${result.valuesUpdated}, buckets=${result.buckets.join(',')}`,
       );
     } catch (error) {
       this.logger.error(
-        'Metrics sync failed',
+        'Metrics value sync failed',
+        error instanceof Error ? error.stack : String(error),
+      );
+    } finally {
+      this.isSyncRunning = false;
+    }
+  }
+
+  @Cron('0 0 3 * * *')
+  async handleCatalogRescan() {
+    const enabled = process.env.METRICS_SYNC_ENABLED !== 'false';
+    if (!enabled) return;
+
+    if (this.isSyncRunning) {
+      this.logger.warn(
+        'Skipping catalog rescan: previous sync is still in progress',
+      );
+      return;
+    }
+
+    this.isSyncRunning = true;
+    try {
+      const result = await this.metricsService.syncCatalogFromInflux();
+      this.logger.log(
+        `Metrics catalog rescan finished: ships=${result.shipsSynced}, organizations=${result.organizations.join(',')}, definitions=${result.metricsSynced}, pendingDescriptions=${result.pendingDescriptions}, buckets=${result.buckets.join(',')}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        'Metrics catalog rescan failed',
         error instanceof Error ? error.stack : String(error),
       );
     } finally {

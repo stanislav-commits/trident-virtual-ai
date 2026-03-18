@@ -24,7 +24,7 @@ export class MetricsController {
 
   @Post('sync')
   syncFromInflux() {
-    return this.metricsService.syncFromInflux();
+    return this.metricsService.syncCatalogFromInflux();
   }
 
   @Get('values')

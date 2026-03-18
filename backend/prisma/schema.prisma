@@ -58,7 +58,7 @@ model MetricDefinition {
 model Ship {
   id               String   @id @default(uuid()) @db.Uuid
   name             String   @db.VarChar(255)
-  serialNumber     String?  @unique @map("serial_number") @db.VarChar(100)
+  organizationName String?  @unique @map("organization_name") @db.VarChar(100)
   lastTelemetry    Json     @default("{}") @map("last_telemetry")
   ragflowDatasetId String?  @map("ragflow_dataset_id") @db.VarChar(255)
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")

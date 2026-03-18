@@ -1,6 +1,6 @@
 export class CreateShipDto {
   name: string;
-  serialNumber?: string;
-  metricKeys: string[];
+  organizationName: string;
+  metricKeys?: string[];
   userIds?: string[];
 }
