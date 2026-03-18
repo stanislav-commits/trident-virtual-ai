@@ -160,7 +160,7 @@ export type ManualStatusItem = ShipManualItem & {
 export type ShipListItem = {
   id: string;
   name: string;
-  serialNumber: string | null;
+  organizationName: string | null;
   lastTelemetry: Record<string, unknown>;
   updatedAt: string;
   metricsConfig: ShipMetricsConfigItem[];
@@ -174,6 +174,12 @@ export async function getMetricDefinitions(
 ): Promise<MetricDefinitionItem[]> {
   const res = await fetchWithAuth("ships/metric-definitions", { token });
   if (!res.ok) throw new Error("Failed to fetch metric definitions");
+  return res.json();
+}
+
+export async function getOrganizations(token: string): Promise<string[]> {
+  const res = await fetchWithAuth("ships/organizations", { token });
+  if (!res.ok) throw new Error("Failed to fetch organizations");
   return res.json();
 }
 
@@ -255,8 +261,8 @@ export async function getShips(token: string): Promise<ShipListItem[]> {
 export async function createShip(
   body: {
     name: string;
-    serialNumber?: string;
-    metricKeys: string[];
+    organizationName: string;
+    metricKeys?: string[];
     userIds?: string[];
   },
   token: string,
@@ -290,7 +296,7 @@ export async function updateShip(
   id: string,
   body: {
     name?: string;
-    serialNumber?: string | null;
+    organizationName?: string;
     metricKeys?: string[];
     userIds?: string[];
   },
