@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getUsers,
   getShips,
   getMetricDefinitions,
+  getOrganizations,
   getManuals,
   type UserListItem,
   type ShipListItem,
@@ -45,6 +46,8 @@ export function AdminPanelPage() {
   // Ships section state
   const [ships, setShips] = useState<ShipListItem[]>([]);
   const [shipsLoading, setShipsLoading] = useState(false);
+  const [organizations, setOrganizations] = useState<string[]>([]);
+  const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [metricDefinitions, setMetricDefinitions] = useState<
     MetricDefinitionItem[]
   >([]);
@@ -81,29 +84,88 @@ export function AdminPanelPage() {
   }, [loadUsers]);
 
   // Load ships
-  const loadShips = useCallback(async () => {
+  const loadShips = useCallback(async (options?: { silent?: boolean }) => {
     if (!token) return;
-    setShipsLoading(true);
-    setError("");
+    if (!options?.silent) {
+      setShipsLoading(true);
+      setOrganizationsLoading(true);
+      setError("");
+    }
     try {
-      const [shipsList, metrics, usersList] = await Promise.all([
-        getShips(token),
-        getMetricDefinitions(token),
-        getUsers(token),
-      ]);
-      setShips(shipsList);
-      setMetricDefinitions(metrics);
-      setUsers(usersList);
+      const [shipsList, metrics, usersList, organizationsResult] =
+        await Promise.allSettled([
+          getShips(token),
+          getMetricDefinitions(token),
+          getUsers(token),
+          getOrganizations(token),
+        ]);
+
+      if (
+        shipsList.status !== "fulfilled" ||
+        metrics.status !== "fulfilled" ||
+        usersList.status !== "fulfilled"
+      ) {
+        throw new Error("Failed to load ships");
+      }
+
+      setShips(shipsList.value);
+      setMetricDefinitions(metrics.value);
+      setUsers(usersList.value);
+
+      if (organizationsResult.status === "fulfilled") {
+        setOrganizations(organizationsResult.value);
+      } else {
+        if (!options?.silent) {
+          setOrganizations([]);
+          setError(
+            organizationsResult.reason instanceof Error
+              ? organizationsResult.reason.message
+              : "Failed to load organizations",
+          );
+        }
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load ships");
+      if (!options?.silent) {
+        setError(e instanceof Error ? e.message : "Failed to load ships");
+      }
     } finally {
-      setShipsLoading(false);
+      if (!options?.silent) {
+        setShipsLoading(false);
+        setOrganizationsLoading(false);
+      }
     }
   }, [token]);
 
   useEffect(() => {
     if (activeSection === "ships") loadShips();
   }, [activeSection, loadShips]);
+
+  const hasPendingMetricDescriptions = useMemo(() => {
+    if (!ships.length || !metricDefinitions.length) return false;
+
+    const definitionMap = new Map(
+      metricDefinitions.map((definition) => [definition.key, definition]),
+    );
+
+    return ships.some((ship) =>
+      ship.metricsConfig.some((config) => {
+        const description = definitionMap.get(config.metricKey)?.description;
+        return !description?.trim();
+      }),
+    );
+  }, [ships, metricDefinitions]);
+
+  useEffect(() => {
+    if (activeSection !== "ships" || !token || !hasPendingMetricDescriptions) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadShips({ silent: true });
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeSection, hasPendingMetricDescriptions, loadShips, token]);
 
   // Load manuals for prompt modal
   useEffect(() => {
@@ -150,7 +212,9 @@ export function AdminPanelPage() {
             aria-hidden
           />
           <div className="admin-panel__brand-text">
-            <span className="admin-panel__brand-name">Trident Intelligence Platform</span>
+            <span className="admin-panel__brand-name">
+              Trident Intelligence Platform
+            </span>
             <span className="admin-panel__brand-sub">Admin Panel</span>
           </div>
         </div>
@@ -223,6 +287,8 @@ export function AdminPanelPage() {
                 token={token}
                 ships={ships}
                 users={users}
+                organizations={organizations}
+                organizationsLoading={organizationsLoading}
                 metricDefinitions={metricDefinitions}
                 loading={shipsLoading}
                 error={error}
