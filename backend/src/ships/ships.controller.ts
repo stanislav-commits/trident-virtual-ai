@@ -37,6 +37,11 @@ export class ShipsController {
     return this.shipsService.getMetricDefinitions();
   }
 
+  @Get('organizations')
+  listOrganizations() {
+    return this.shipsService.listOrganizations();
+  }
+
   @Post()
   create(@Body() dto: CreateShipDto) {
     return this.shipsService.create(dto);

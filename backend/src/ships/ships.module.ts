@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
+import { MetricsModule } from '../metrics/metrics.module';
 import { RagflowModule } from '../ragflow/ragflow.module';
 import { ManualsService } from './manuals.service';
 import { ShipsController } from './ships.controller';
 import { ShipsService } from './ships.service';
 
 @Module({
-  imports: [RagflowModule],
+  imports: [RagflowModule, MetricsModule],
   controllers: [ShipsController],
   providers: [ShipsService, ManualsService],
   exports: [ShipsService],

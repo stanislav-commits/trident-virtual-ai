@@ -1,6 +1,6 @@
 export class UpdateShipDto {
   name?: string;
-  serialNumber?: string | null;
+  organizationName?: string;
   metricKeys?: string[];
   userIds?: string[];
 }
