@@ -155,8 +155,22 @@ export function AdminPanelPage() {
     );
   }, [ships, metricDefinitions]);
 
+  const hasBackgroundShipSync = useMemo(
+    () =>
+      ships.some(
+        (ship) =>
+          ship.metricsSyncStatus === "pending" ||
+          ship.metricsSyncStatus === "running",
+      ),
+    [ships],
+  );
+
   useEffect(() => {
-    if (activeSection !== "ships" || !token || !hasPendingMetricDescriptions) {
+    if (
+      activeSection !== "ships" ||
+      !token ||
+      (!hasPendingMetricDescriptions && !hasBackgroundShipSync)
+    ) {
       return;
     }
 
@@ -165,7 +179,13 @@ export function AdminPanelPage() {
     }, 15000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeSection, hasPendingMetricDescriptions, loadShips, token]);
+  }, [
+    activeSection,
+    hasBackgroundShipSync,
+    hasPendingMetricDescriptions,
+    loadShips,
+    token,
+  ]);
 
   // Load manuals for prompt modal
   useEffect(() => {
