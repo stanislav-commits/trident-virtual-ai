@@ -161,6 +161,9 @@ export type ShipListItem = {
   id: string;
   name: string;
   organizationName: string | null;
+  metricsSyncStatus: string;
+  metricsSyncError: string | null;
+  metricsSyncedAt: string | null;
   lastTelemetry: Record<string, unknown>;
   updatedAt: string;
   metricsConfig: ShipMetricsConfigItem[];

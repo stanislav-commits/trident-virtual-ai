@@ -607,6 +607,14 @@
   line-height: 1.35;
 }
 
+.admin-panel__ship-metric-note--info {
+  color: var(--accent-bright);
+}
+
+.admin-panel__ship-metric-note--error {
+  color: #f87171;
+}
+
 .admin-panel__spinner {
   width: 22px;
   height: 22px;

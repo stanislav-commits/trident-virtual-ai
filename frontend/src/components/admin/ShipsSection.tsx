@@ -243,6 +243,21 @@ function getMetricDescriptionStats(
   };
 }
 
+function getShipSyncNote(
+  ship: Pick<ShipListItem, "metricsSyncStatus" | "metricsSyncError">,
+) {
+  switch (ship.metricsSyncStatus) {
+    case "pending":
+      return "Metric sync queued";
+    case "running":
+      return "Syncing metrics...";
+    case "failed":
+      return ship.metricsSyncError?.trim() || "Metric sync failed";
+    default:
+      return null;
+  }
+}
+
 export function ShipsSection({
   token,
   ships,
@@ -337,11 +352,17 @@ export function ShipsSection({
 
   const footerHint = editingShipId
     ? organizationChanged
-      ? "Changing the organization refreshes this ship's metric catalog after save."
-      : editingDescriptionStats.pending > 0
-        ? `${editingDescriptionStats.pending.toLocaleString()} metric descriptions are still generating in background.`
-        : "Descriptions continue in background and are not regenerated if they already exist."
-    : "Descriptions start in background after the ship is created.";
+      ? "Changing the organization saves immediately and refreshes ship metrics in background."
+      : editingShip?.metricsSyncStatus === "failed"
+        ? editingShip.metricsSyncError?.trim() ||
+          "The last metric sync failed."
+        : editingShip?.metricsSyncStatus === "pending" ||
+            editingShip?.metricsSyncStatus === "running"
+          ? "This ship is already syncing metrics in background."
+          : editingDescriptionStats.pending > 0
+            ? `${editingDescriptionStats.pending.toLocaleString()} metric descriptions are still generating in background.`
+            : "Descriptions continue in background and are not regenerated if they already exist."
+    : "Metrics sync starts after save and continues in background.";
 
   const toggleMetricKey = (key: string) => {
     setShipForm((previous) => ({
@@ -415,7 +436,7 @@ export function ShipsSection({
     setCreatingShip(true);
     setSubmitMessage(
       organizationChanged
-        ? "Updating ship and refreshing metrics from the selected organization..."
+        ? "Saving ship and queuing a background metric sync..."
         : "Saving ship changes...",
     );
     onError("");
@@ -476,7 +497,7 @@ export function ShipsSection({
     if (!token || !name || !organizationName) return;
 
     setCreatingShip(true);
-    setSubmitMessage("Creating ship and syncing organization metrics...");
+    setSubmitMessage("Creating ship and queuing metric sync...");
     onError("");
 
     try {
@@ -574,6 +595,7 @@ export function ShipsSection({
                     ship.metricsConfig.map((config) => config.metricKey),
                     metricDefinitionMap,
                   );
+                  const syncNote = getShipSyncNote(ship);
 
                   return (
                     <tr key={ship.id} className="admin-panel__row">
@@ -598,14 +620,37 @@ export function ShipsSection({
                                   : `${activeMetricCount}/${ship.metricsConfig.length}`}
                               </span>
                             </button>
-                            {descriptionStats.pending > 0 && (
+                            {syncNote ? (
+                              <span
+                                className={`admin-panel__ship-metric-note ${
+                                  ship.metricsSyncStatus === "failed"
+                                    ? "admin-panel__ship-metric-note--error"
+                                    : "admin-panel__ship-metric-note--info"
+                                }`}
+                              >
+                                {syncNote}
+                              </span>
+                            ) : descriptionStats.pending > 0 ? (
                               <span className="admin-panel__ship-metric-note">
                                 {descriptionStats.pending.toLocaleString()} descriptions pending
                               </span>
-                            )}
+                            ) : null}
                           </div>
                         ) : (
-                          <span className="admin-panel__muted">-</span>
+                          <div className="admin-panel__ship-metric-cell">
+                            <span className="admin-panel__muted">-</span>
+                            {syncNote && (
+                              <span
+                                className={`admin-panel__ship-metric-note ${
+                                  ship.metricsSyncStatus === "failed"
+                                    ? "admin-panel__ship-metric-note--error"
+                                    : "admin-panel__ship-metric-note--info"
+                                }`}
+                              >
+                                {syncNote}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="admin-panel__td admin-panel__td--metrics">
