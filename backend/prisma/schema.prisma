@@ -59,6 +59,9 @@ model Ship {
   id               String   @id @default(uuid()) @db.Uuid
   name             String   @db.VarChar(255)
   organizationName String?  @unique @map("organization_name") @db.VarChar(100)
+  metricsSyncStatus String  @default("idle") @map("metrics_sync_status") @db.VarChar(20)
+  metricsSyncError  String? @map("metrics_sync_error") @db.Text
+  metricsSyncedAt   DateTime? @map("metrics_synced_at")
   lastTelemetry    Json     @default("{}") @map("last_telemetry")
   ragflowDatasetId String?  @map("ragflow_dataset_id") @db.VarChar(255)
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
