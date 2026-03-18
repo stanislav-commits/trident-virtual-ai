@@ -54,12 +54,7 @@ export class ShipsService {
     }
 
     const requestedMetricKeys = this.normalizeMetricKeys(dto.metricKeys);
-    const availableMetrics =
-      await this.metricsService.listOrganizationMetrics(organizationName);
-    this.ensureRequestedMetricKeysExist(
-      requestedMetricKeys,
-      availableMetrics.map((metric) => metric.key),
-    );
+    await this.ensureOrganizationExists(organizationName);
 
     const userIds = dto.userIds ?? [];
     await this.validateUserAssignments(userIds);
@@ -68,23 +63,15 @@ export class ShipsService {
       data: {
         name,
         organizationName,
+        metricsSyncStatus: 'pending',
+        metricsSyncError: null,
+        metricsSyncedAt: null,
       },
       include: {
         metricsConfig: { select: { metricKey: true, isActive: true } },
         assignedUsers: { select: { id: true, userId: true, name: true } },
       },
     });
-
-    try {
-      await this.metricsService.syncShipMetrics(ship.id, organizationName, {
-        metrics: availableMetrics,
-        activeMetricKeys:
-          requestedMetricKeys !== undefined ? requestedMetricKeys : undefined,
-      });
-    } catch (error) {
-      await this.prisma.ship.delete({ where: { id: ship.id } });
-      throw error;
-    }
 
     if (userIds.length) {
       await this.prisma.user.updateMany({
@@ -106,6 +93,11 @@ export class ShipsService {
         // leave ragflow_dataset_id null
       }
     }
+
+    await this.metricsService.enqueueShipMetricsSync(ship.id, organizationName, {
+      activeMetricKeys:
+        requestedMetricKeys !== undefined ? requestedMetricKeys : undefined,
+    });
 
     return this.findOne(ship.id);
   }
@@ -171,22 +163,11 @@ export class ShipsService {
     const requestedMetricKeys = this.normalizeMetricKeys(dto.metricKeys);
     const nextOrganizationName = dto.organizationName?.trim();
 
-    let availableMetricKeys: string[] | undefined;
-    let organizationMetrics:
-      | Awaited<ReturnType<MetricsService['listOrganizationMetrics']>>
-      | undefined;
-
     if (
       nextOrganizationName &&
       nextOrganizationName !== ship.organizationName
     ) {
-      organizationMetrics =
-        await this.metricsService.listOrganizationMetrics(nextOrganizationName);
-      availableMetricKeys = organizationMetrics.map((metric) => metric.key);
-      this.ensureRequestedMetricKeysExist(
-        requestedMetricKeys,
-        availableMetricKeys,
-      );
+      await this.ensureOrganizationExists(nextOrganizationName);
     }
 
     const userIds = dto.userIds ?? undefined;
@@ -199,9 +180,23 @@ export class ShipsService {
       if (nextName !== undefined) updateData.name = nextName;
       if (nextOrganizationName !== undefined) {
         updateData.organizationName = nextOrganizationName;
+        if (nextOrganizationName !== ship.organizationName) {
+          updateData.metricsSyncStatus = 'pending';
+          updateData.metricsSyncError = null;
+          updateData.metricsSyncedAt = null;
+        }
       }
       if (Object.keys(updateData).length > 0) {
         await tx.ship.update({ where: { id }, data: updateData });
+      }
+
+      if (
+        nextOrganizationName &&
+        nextOrganizationName !== ship.organizationName
+      ) {
+        await tx.shipMetricsConfig.deleteMany({
+          where: { shipId: id },
+        });
       }
 
       if (userIds !== undefined) {
@@ -222,8 +217,7 @@ export class ShipsService {
       nextOrganizationName &&
       nextOrganizationName !== ship.organizationName
     ) {
-      await this.metricsService.syncShipMetrics(id, nextOrganizationName, {
-        metrics: organizationMetrics,
+      await this.metricsService.enqueueShipMetricsSync(id, nextOrganizationName, {
         activeMetricKeys:
           requestedMetricKeys !== undefined ? requestedMetricKeys : undefined,
       });
@@ -268,20 +262,11 @@ export class ShipsService {
     ];
   }
 
-  private ensureRequestedMetricKeysExist(
-    requestedMetricKeys: string[] | undefined,
-    availableMetricKeys: string[],
-  ) {
-    if (!requestedMetricKeys?.length) return;
-
-    const availableMetricKeySet = new Set(availableMetricKeys);
-    const invalidMetricKeys = requestedMetricKeys.filter(
-      (metricKey) => !availableMetricKeySet.has(metricKey),
-    );
-
-    if (invalidMetricKeys.length > 0) {
+  private async ensureOrganizationExists(organizationName: string) {
+    const organizations = await this.metricsService.listOrganizations();
+    if (!organizations.includes(organizationName)) {
       throw new BadRequestException(
-        `Unknown metric keys: ${invalidMetricKeys.join(', ')}`,
+        `Unknown organization: ${organizationName}`,
       );
     }
   }

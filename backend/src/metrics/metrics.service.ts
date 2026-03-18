@@ -39,11 +39,20 @@ interface SyncShipMetricsOptions {
   syncValues?: boolean;
 }
 
+interface ShipMetricsSyncJob {
+  shipId: string;
+  organizationName: string;
+  activeMetricKeys?: string[];
+}
+
 @Injectable()
 export class MetricsService implements OnModuleInit {
   private readonly logger = new Logger(MetricsService.name);
   private isDescriptionBackfillRunning = false;
   private shouldRerunDescriptionBackfill = false;
+  private isShipSyncRunning = false;
+  private readonly queuedShipSyncs = new Map<string, ShipMetricsSyncJob>();
+  private readonly shipSyncOrder: string[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -53,6 +62,12 @@ export class MetricsService implements OnModuleInit {
 
   onModuleInit() {
     this.scheduleDescriptionBackfill('startup');
+    void this.resumePendingShipSyncs().catch((error) => {
+      this.logger.error(
+        'Failed to resume pending ship metric syncs',
+        error instanceof Error ? error.stack : String(error),
+      );
+    });
   }
 
   async listOrganizations(): Promise<string[]> {
@@ -242,6 +257,29 @@ export class MetricsService implements OnModuleInit {
       ...result,
       valuesUpdated,
     };
+  }
+
+  async enqueueShipMetricsSync(
+    shipId: string,
+    organizationName: string,
+    options: Pick<SyncShipMetricsOptions, 'activeMetricKeys'> = {},
+  ) {
+    const normalizedOrganizationName = organizationName.trim();
+    if (!normalizedOrganizationName) {
+      throw new BadRequestException('organizationName is required');
+    }
+
+    if (!this.queuedShipSyncs.has(shipId)) {
+      this.shipSyncOrder.push(shipId);
+    }
+
+    this.queuedShipSyncs.set(shipId, {
+      shipId,
+      organizationName: normalizedOrganizationName,
+      activeMetricKeys: options.activeMetricKeys,
+    });
+
+    this.ensureShipSyncQueueRunning();
   }
 
   async setShipMetricActivity(
@@ -685,5 +723,104 @@ export class MetricsService implements OnModuleInit {
         dataType: 'numeric',
       },
     });
+  }
+
+  private ensureShipSyncQueueRunning() {
+    if (this.isShipSyncRunning) {
+      return;
+    }
+
+    this.isShipSyncRunning = true;
+    setTimeout(() => {
+      void this.runQueuedShipSyncs();
+    }, 0);
+  }
+
+  private async runQueuedShipSyncs() {
+    try {
+      while (this.shipSyncOrder.length > 0) {
+        const nextShipId = this.shipSyncOrder.shift();
+        if (!nextShipId) continue;
+
+        const job = this.queuedShipSyncs.get(nextShipId);
+        if (!job) continue;
+
+        this.queuedShipSyncs.delete(nextShipId);
+        await this.runShipMetricsSyncJob(job);
+      }
+    } finally {
+      this.isShipSyncRunning = false;
+      if (this.shipSyncOrder.length > 0) {
+        this.ensureShipSyncQueueRunning();
+      }
+    }
+  }
+
+  private async runShipMetricsSyncJob(job: ShipMetricsSyncJob) {
+    const { shipId, organizationName, activeMetricKeys } = job;
+
+    const runningUpdate = await this.prisma.ship.updateMany({
+      where: { id: shipId },
+      data: {
+        metricsSyncStatus: 'running',
+        metricsSyncError: null,
+      },
+    });
+    if (runningUpdate.count === 0) {
+      return;
+    }
+
+    try {
+      await this.syncShipMetrics(shipId, organizationName, {
+        activeMetricKeys,
+        syncValues: false,
+      });
+
+      await this.prisma.ship.updateMany({
+        where: { id: shipId },
+        data: {
+          metricsSyncStatus: 'ready',
+          metricsSyncError: null,
+          metricsSyncedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Ship metric sync failed';
+
+      this.logger.error(
+        `Ship metric sync failed for ${shipId} (${organizationName})`,
+        error instanceof Error ? error.stack : String(error),
+      );
+
+      await this.prisma.ship.updateMany({
+        where: { id: shipId },
+        data: {
+          metricsSyncStatus: 'failed',
+          metricsSyncError: message,
+        },
+      });
+    }
+  }
+
+  private async resumePendingShipSyncs() {
+    const ships = await this.prisma.ship.findMany({
+      where: {
+        organizationName: { not: null },
+        metricsSyncStatus: { in: ['pending', 'running'] },
+      },
+      select: {
+        id: true,
+        organizationName: true,
+      },
+      orderBy: { updatedAt: 'asc' },
+    });
+
+    for (const ship of ships) {
+      const organizationName = ship.organizationName?.trim();
+      if (!organizationName) continue;
+
+      await this.enqueueShipMetricsSync(ship.id, organizationName);
+    }
   }
 }
