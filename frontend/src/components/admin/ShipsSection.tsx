@@ -210,6 +210,12 @@ interface ShipsSectionProps {
 interface ShipForm {
   name: string;
   organizationName: string;
+  imoNumber: string;
+  flag: string;
+  deadweight: string;
+  grossTonnage: string;
+  buildYard: string;
+  shipClass: string;
   metricKeys: string[];
   userIds: string[];
 }
@@ -217,6 +223,36 @@ interface ShipForm {
 interface DeleteConfirm {
   id: string;
   name: string;
+}
+
+function createEmptyShipForm(): ShipForm {
+  return {
+    name: "",
+    organizationName: "",
+    imoNumber: "",
+    flag: "",
+    deadweight: "",
+    grossTonnage: "",
+    buildYard: "",
+    shipClass: "",
+    metricKeys: [],
+    userIds: [],
+  };
+}
+
+function normalizeOptionalTextField(value: string) {
+  const normalized = value.trim();
+  return normalized ? normalized : null;
+}
+
+function normalizeOptionalNumberField(value: string) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function hasMetricDescription(description: string | null | undefined) {
@@ -271,12 +307,7 @@ export function ShipsSection({
   onOpenManuals,
   onOpenMetrics,
 }: ShipsSectionProps) {
-  const [shipForm, setShipForm] = useState<ShipForm>({
-    name: "",
-    organizationName: "",
-    metricKeys: [],
-    userIds: [],
-  });
+  const [shipForm, setShipForm] = useState<ShipForm>(createEmptyShipForm);
   const [showFormModal, setShowFormModal] = useState(false);
   const [creatingShip, setCreatingShip] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
@@ -386,12 +417,7 @@ export function ShipsSection({
     setEditingShipId(null);
     setOriginalOrganizationName(null);
     setSubmitMessage("");
-    setShipForm({
-      name: "",
-      organizationName: "",
-      metricKeys: [],
-      userIds: [],
-    });
+    setShipForm(createEmptyShipForm());
     setPendingFiles([]);
     setShowFormModal(true);
   };
@@ -402,12 +428,7 @@ export function ShipsSection({
     setEditingShipId(null);
     setOriginalOrganizationName(null);
     setSubmitMessage("");
-    setShipForm({
-      name: "",
-      organizationName: "",
-      metricKeys: [],
-      userIds: [],
-    });
+    setShipForm(createEmptyShipForm());
     setPendingFiles([]);
   };
 
@@ -418,6 +439,14 @@ export function ShipsSection({
     setShipForm({
       name: ship.name,
       organizationName: ship.organizationName ?? "",
+      imoNumber: ship.imoNumber ?? "",
+      flag: ship.flag ?? "",
+      deadweight:
+        ship.deadweight != null ? String(ship.deadweight) : "",
+      grossTonnage:
+        ship.grossTonnage != null ? String(ship.grossTonnage) : "",
+      buildYard: ship.buildYard ?? "",
+      shipClass: ship.shipClass ?? "",
       metricKeys: ship.metricsConfig
         .filter((config) => config.isActive)
         .map((config) => config.metricKey),
@@ -447,6 +476,12 @@ export function ShipsSection({
         {
           name,
           organizationName,
+          imoNumber: normalizeOptionalTextField(shipForm.imoNumber),
+          flag: normalizeOptionalTextField(shipForm.flag),
+          deadweight: normalizeOptionalNumberField(shipForm.deadweight),
+          grossTonnage: normalizeOptionalNumberField(shipForm.grossTonnage),
+          buildYard: normalizeOptionalTextField(shipForm.buildYard),
+          shipClass: normalizeOptionalTextField(shipForm.shipClass),
           metricKeys: organizationChanged ? undefined : shipForm.metricKeys,
           userIds: shipForm.userIds,
         },
@@ -456,12 +491,7 @@ export function ShipsSection({
       setOriginalOrganizationName(null);
       setShowFormModal(false);
       setSubmitMessage("");
-      setShipForm({
-        name: "",
-        organizationName: "",
-        metricKeys: [],
-        userIds: [],
-      });
+      setShipForm(createEmptyShipForm());
       await onLoadShips();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to update ship");
@@ -505,6 +535,12 @@ export function ShipsSection({
         {
           name,
           organizationName,
+          imoNumber: normalizeOptionalTextField(shipForm.imoNumber),
+          flag: normalizeOptionalTextField(shipForm.flag),
+          deadweight: normalizeOptionalNumberField(shipForm.deadweight),
+          grossTonnage: normalizeOptionalNumberField(shipForm.grossTonnage),
+          buildYard: normalizeOptionalTextField(shipForm.buildYard),
+          shipClass: normalizeOptionalTextField(shipForm.shipClass),
           userIds: shipForm.userIds.length ? shipForm.userIds : undefined,
         },
         token,
@@ -528,12 +564,7 @@ export function ShipsSection({
         }
       }
 
-      setShipForm({
-        name: "",
-        organizationName: "",
-        metricKeys: [],
-        userIds: [],
-      });
+      setShipForm(createEmptyShipForm());
       setPendingFiles([]);
       setShowFormModal(false);
       setSubmitMessage("");
@@ -752,55 +783,174 @@ export function ShipsSection({
               >
                 <div className="admin-panel__modal-body">
                   <div className="admin-panel__modal-field-row">
-                  <div className="admin-panel__modal-field">
-                    <label className="admin-panel__field-label">
-                      Ship name
-                    </label>
-                    <input
-                      type="text"
-                      className="admin-panel__input admin-panel__input--full"
-                      value={shipForm.name}
-                      onChange={(event) =>
-                        setShipForm((previous) => ({
-                          ...previous,
-                          name: event.target.value,
-                        }))
-                      }
-                      placeholder="e.g. Ocean Explorer"
-                      required
-                      disabled={creatingShip}
-                      autoFocus
-                    />
-                  </div>
-                  <div className="admin-panel__modal-field">
-                    <label className="admin-panel__field-label">
-                      Organization
-                    </label>
-                    <select
-                      className="admin-panel__input admin-panel__input--full"
-                      value={shipForm.organizationName}
-                      onChange={(event) =>
-                        setShipForm((previous) => ({
-                          ...previous,
-                          organizationName: event.target.value,
-                        }))
-                      }
-                      disabled={creatingShip || organizationsLoading}
-                      required
-                    >
-                      <option value="">
-                        {organizationsLoading
-                          ? "Loading organizations..."
-                          : "Select an organization"}
-                      </option>
-                      {availableOrganizations.map((organization) => (
-                        <option key={organization} value={organization}>
-                          {organization}
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">
+                        Ship name
+                      </label>
+                      <input
+                        type="text"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.name}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            name: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Ocean Explorer"
+                        required
+                        disabled={creatingShip}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">
+                        Organization
+                      </label>
+                      <select
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.organizationName}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            organizationName: event.target.value,
+                          }))
+                        }
+                        disabled={creatingShip || organizationsLoading}
+                        required
+                      >
+                        <option value="">
+                          {organizationsLoading
+                            ? "Loading organizations..."
+                            : "Select an organization"}
                         </option>
-                      ))}
-                    </select>
+                        {availableOrganizations.map((organization) => (
+                          <option key={organization} value={organization}>
+                            {organization}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="admin-panel__modal-field-row">
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">
+                        IMO number
+                      </label>
+                      <input
+                        type="text"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.imoNumber}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            imoNumber: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 9781234"
+                        disabled={creatingShip}
+                      />
+                    </div>
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">Flag</label>
+                      <input
+                        type="text"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.flag}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            flag: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Malta"
+                        disabled={creatingShip}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="admin-panel__modal-field-row">
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">
+                        Deadweight
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.deadweight}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            deadweight: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 12500"
+                        disabled={creatingShip}
+                      />
+                    </div>
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">
+                        Gross tonnage
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.grossTonnage}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            grossTonnage: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 9800"
+                        disabled={creatingShip}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="admin-panel__modal-field-row">
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">
+                        Build yard
+                      </label>
+                      <input
+                        type="text"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.buildYard}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            buildYard: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Damen Shipyards"
+                        disabled={creatingShip}
+                      />
+                    </div>
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">Class</label>
+                      <input
+                        type="text"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.shipClass}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            shipClass: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Lloyd's Register"
+                        disabled={creatingShip}
+                      />
+                    </div>
+                  </div>
 
                 {editingShipId &&
                   !organizationChanged &&
