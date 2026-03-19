@@ -161,6 +161,12 @@ export type ShipListItem = {
   id: string;
   name: string;
   organizationName: string | null;
+  imoNumber: string | null;
+  flag: string | null;
+  deadweight: number | null;
+  grossTonnage: number | null;
+  buildYard: string | null;
+  shipClass: string | null;
   metricsSyncStatus: string;
   metricsSyncError: string | null;
   metricsSyncedAt: string | null;
@@ -265,6 +271,12 @@ export async function createShip(
   body: {
     name: string;
     organizationName: string;
+    imoNumber?: string | null;
+    flag?: string | null;
+    deadweight?: number | null;
+    grossTonnage?: number | null;
+    buildYard?: string | null;
+    shipClass?: string | null;
     metricKeys?: string[];
     userIds?: string[];
   },
@@ -300,6 +312,12 @@ export async function updateShip(
   body: {
     name?: string;
     organizationName?: string;
+    imoNumber?: string | null;
+    flag?: string | null;
+    deadweight?: number | null;
+    grossTonnage?: number | null;
+    buildYard?: string | null;
+    shipClass?: string | null;
     metricKeys?: string[];
     userIds?: string[];
   },
