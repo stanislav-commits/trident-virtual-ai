@@ -2,6 +2,7 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type {
@@ -9,7 +10,12 @@ import type {
   ShipMetricsConfigItem,
 } from "../../api/client";
 import { updateMetric } from "../../api/client";
-import { MetricsIcon, SearchIcon, XIcon } from "./AdminPanelIcons";
+import {
+  ChevronDownIcon,
+  MetricsIcon,
+  SearchIcon,
+  XIcon,
+} from "./AdminPanelIcons";
 
 const ROW_BATCH_SIZE = 120;
 
@@ -44,15 +50,20 @@ export function MetricsModal({
   const [activityFilter, setActivityFilter] = useState<
     "all" | "active" | "inactive"
   >("all");
+  const [selectedBuckets, setSelectedBuckets] = useState<string[]>([]);
+  const [bucketPickerOpen, setBucketPickerOpen] = useState(false);
+  const [bucketSearch, setBucketSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(ROW_BATCH_SIZE);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [saving, setSaving] = useState(false);
+  const bucketPickerRef = useRef<HTMLDivElement | null>(null);
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+  const deferredBucketSearch = useDeferredValue(bucketSearch.trim().toLowerCase());
 
   useEffect(() => {
     setVisibleCount(ROW_BATCH_SIZE);
-  }, [activityFilter, deferredSearch, metricsConfig.length]);
+  }, [activityFilter, deferredSearch, metricsConfig.length, selectedBuckets]);
 
   const definitionMap = useMemo(
     () => new Map(metricDefinitions.map((definition) => [definition.key, definition])),
@@ -84,7 +95,7 @@ export function MetricsModal({
     [definitionMap, metricsConfig],
   );
 
-  const filteredRows = useMemo(() => {
+  const preBucketRows = useMemo(() => {
     return rows.filter((row) => {
       if (activityFilter === "active" && !row.isActive) {
         return false;
@@ -107,6 +118,83 @@ export function MetricsModal({
     });
   }, [activityFilter, deferredSearch, rows]);
 
+  const allBucketOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const row of rows) {
+      counts.set(row.bucket, (counts.get(row.bucket) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([bucket, count]) => ({ bucket, count }));
+  }, [rows]);
+
+  const filteredBucketCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const row of preBucketRows) {
+      counts.set(row.bucket, (counts.get(row.bucket) ?? 0) + 1);
+    }
+
+    return counts;
+  }, [preBucketRows]);
+
+  useEffect(() => {
+    const validBuckets = new Set(allBucketOptions.map((option) => option.bucket));
+
+    setSelectedBuckets((previous) => {
+      const next = previous.filter((bucket) => validBuckets.has(bucket));
+      return next.length === previous.length ? previous : next;
+    });
+  }, [allBucketOptions]);
+
+  useEffect(() => {
+    if (!bucketPickerOpen) {
+      setBucketSearch("");
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        bucketPickerRef.current &&
+        !bucketPickerRef.current.contains(event.target as Node)
+      ) {
+        setBucketPickerOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [bucketPickerOpen]);
+
+  const bucketPickerOptions = useMemo(() => {
+    const options = allBucketOptions.map((option) => ({
+      bucket: option.bucket,
+      totalCount: option.count,
+      filteredCount: filteredBucketCounts.get(option.bucket) ?? 0,
+    }));
+
+    if (!deferredBucketSearch) {
+      return options;
+    }
+
+    return options.filter((option) =>
+      option.bucket.toLowerCase().includes(deferredBucketSearch),
+    );
+  }, [allBucketOptions, deferredBucketSearch, filteredBucketCounts]);
+
+  const filteredRows = useMemo(() => {
+    if (selectedBuckets.length === 0) {
+      return preBucketRows;
+    }
+
+    const selectedSet = new Set(selectedBuckets);
+    return preBucketRows.filter((row) => selectedSet.has(row.bucket));
+  }, [preBucketRows, selectedBuckets]);
+
   const visibleRows = useMemo(
     () => filteredRows.slice(0, visibleCount),
     [filteredRows, visibleCount],
@@ -126,6 +214,32 @@ export function MetricsModal({
   const activeCount = rows.filter((row) => row.isActive).length;
   const describedCount = rows.filter((row) => row.description?.trim()).length;
   const pendingCount = Math.max(totalCount - describedCount, 0);
+  const visibleBucketLabel =
+    selectedBuckets.length === 0
+      ? "All buckets"
+      : selectedBuckets.length === 1
+        ? `Bucket: ${selectedBuckets[0]}`
+        : `${selectedBuckets.length} buckets selected`;
+  const visibleBucketMetaLabel =
+    selectedBuckets.length === 0
+      ? "all buckets"
+      : selectedBuckets.length === 1
+        ? selectedBuckets[0]
+        : `${selectedBuckets.length} selected buckets`;
+  const bucketPickerLabel =
+    selectedBuckets.length === 0
+      ? "All buckets"
+      : selectedBuckets.length === 1
+        ? selectedBuckets[0]
+        : `${selectedBuckets.length} buckets selected`;
+  const focusedBucket =
+    selectedBuckets.length === 1 ? selectedBuckets[0] : null;
+  const hasMultipleBuckets = allBucketOptions.length > 1;
+  const hasAnyMetrics = rows.length > 0;
+  const hasActiveFilters =
+    deferredSearch.length > 0 ||
+    activityFilter !== "all" ||
+    selectedBuckets.length > 0;
 
   const handleDescSave = async () => {
     if (!token || !editingKey) return;
@@ -179,55 +293,156 @@ export function MetricsModal({
         </div>
 
         <div className="admin-panel__metrics-toolbar">
-          <div className="admin-panel__metrics-search">
-            <SearchIcon />
-            <input
-              type="text"
-              className="admin-panel__metrics-search-input"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search bucket, measurement, field, or description..."
-            />
-          </div>
+          <div className="admin-panel__metrics-toolbar-main">
+            <div className="admin-panel__metrics-search">
+              <SearchIcon />
+              <input
+                type="text"
+                className="admin-panel__metrics-search-input"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search bucket, measurement, field, or description..."
+              />
+            </div>
 
-          <div
-            className="admin-panel__metrics-filters"
-            role="tablist"
-            aria-label="Metric activity filter"
-          >
-            <button
-              type="button"
-              className={`admin-panel__metrics-filter-btn ${
-                activityFilter === "all"
-                  ? "admin-panel__metrics-filter-btn--active"
-                  : ""
-              }`}
-              onClick={() => setActivityFilter("all")}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              className={`admin-panel__metrics-filter-btn ${
-                activityFilter === "active"
-                  ? "admin-panel__metrics-filter-btn--active"
-                  : ""
-              }`}
-              onClick={() => setActivityFilter("active")}
-            >
-              Active
-            </button>
-            <button
-              type="button"
-              className={`admin-panel__metrics-filter-btn ${
-                activityFilter === "inactive"
-                  ? "admin-panel__metrics-filter-btn--active"
-                  : ""
-              }`}
-              onClick={() => setActivityFilter("inactive")}
-            >
-              Inactive
-            </button>
+            <div className="admin-panel__metrics-toolbar-controls">
+              {hasMultipleBuckets && (
+                <div
+                  className="admin-panel__picker admin-panel__metrics-bucket-picker"
+                  ref={bucketPickerRef}
+                >
+                  <button
+                    type="button"
+                    className="admin-panel__picker-trigger"
+                    onClick={() => setBucketPickerOpen((current) => !current)}
+                  >
+                    {selectedBuckets.length === 0 ? (
+                      <span className="admin-panel__picker-placeholder">
+                        {bucketPickerLabel}
+                      </span>
+                    ) : (
+                      <span className="admin-panel__picker-summary">
+                        {bucketPickerLabel}
+                      </span>
+                    )}
+                    <ChevronDownIcon open={bucketPickerOpen} />
+                  </button>
+
+                  {bucketPickerOpen && (
+                    <div className="admin-panel__picker-panel">
+                      <div className="admin-panel__picker-search-wrap">
+                        <SearchIcon />
+                        <input
+                          type="text"
+                          className="admin-panel__picker-search"
+                          value={bucketSearch}
+                          onChange={(event) => setBucketSearch(event.target.value)}
+                          placeholder="Filter buckets..."
+                          autoFocus
+                        />
+                      </div>
+
+                      <div className="admin-panel__picker-actions">
+                        <button
+                          type="button"
+                          className="admin-panel__picker-action-btn"
+                          onClick={() =>
+                            setSelectedBuckets(
+                              allBucketOptions.map((option) => option.bucket),
+                            )
+                          }
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-panel__picker-action-btn"
+                          onClick={() => setSelectedBuckets([])}
+                        >
+                          Clear
+                        </button>
+                      </div>
+
+                      <div className="admin-panel__picker-list">
+                        {bucketPickerOptions.length === 0 ? (
+                          <div className="admin-panel__picker-empty">
+                            No buckets found
+                          </div>
+                        ) : (
+                          bucketPickerOptions.map((option) => (
+                            <label
+                              key={option.bucket}
+                              className="admin-panel__picker-option"
+                            >
+                              <input
+                                type="checkbox"
+                                className="admin-panel__picker-check"
+                                checked={selectedBuckets.includes(option.bucket)}
+                                onChange={() =>
+                                  setSelectedBuckets((previous) =>
+                                    previous.includes(option.bucket)
+                                      ? previous.filter(
+                                          (bucket) => bucket !== option.bucket,
+                                        )
+                                      : [...previous, option.bucket],
+                                  )
+                                }
+                              />
+                              <span className="admin-panel__picker-option-label">
+                                {option.bucket}
+                              </span>
+                              <span className="admin-panel__picker-option-extra">
+                                {option.filteredCount.toLocaleString()}
+                              </span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div
+                className="admin-panel__metrics-filters"
+                role="tablist"
+                aria-label="Metric activity filter"
+              >
+                <button
+                  type="button"
+                  className={`admin-panel__metrics-filter-btn ${
+                    activityFilter === "all"
+                      ? "admin-panel__metrics-filter-btn--active"
+                      : ""
+                  }`}
+                  onClick={() => setActivityFilter("all")}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className={`admin-panel__metrics-filter-btn ${
+                    activityFilter === "active"
+                      ? "admin-panel__metrics-filter-btn--active"
+                      : ""
+                  }`}
+                  onClick={() => setActivityFilter("active")}
+                >
+                  Active
+                </button>
+                <button
+                  type="button"
+                  className={`admin-panel__metrics-filter-btn ${
+                    activityFilter === "inactive"
+                      ? "admin-panel__metrics-filter-btn--active"
+                      : ""
+                  }`}
+                  onClick={() => setActivityFilter("inactive")}
+                >
+                  Inactive
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="admin-panel__metrics-summary">
@@ -237,6 +452,11 @@ export function MetricsModal({
             <span className="admin-panel__metrics-summary-item">
               {activeCount.toLocaleString()} active
             </span>
+            {hasMultipleBuckets && (
+              <span className="admin-panel__metrics-summary-item">
+                {visibleBucketLabel}
+              </span>
+            )}
             <span
               className={`admin-panel__metrics-summary-item ${
                 pendingCount > 0
@@ -255,26 +475,31 @@ export function MetricsModal({
           {filteredRows.length === 0 ? (
             <div className="admin-panel__state-box">
               <span className="admin-panel__muted">
-                {deferredSearch
-                  ? "No metrics match this filter."
-                  : activityFilter === "active"
-                    ? "No active metrics are connected right now."
-                    : activityFilter === "inactive"
-                      ? "No inactive metrics are available right now."
-                      : "No metrics assigned."}
+                {!hasAnyMetrics
+                  ? "No metrics assigned."
+                  : hasActiveFilters
+                    ? "No metrics found for the current filters. Try changing the search, bucket, or activity filters."
+                    : "No metrics available right now."}
               </span>
             </div>
           ) : (
             <>
               <div className="admin-panel__metrics-results-meta">
                 Showing {visibleRows.length.toLocaleString()} of{" "}
-                {filteredRows.length.toLocaleString()} metrics
+                {filteredRows.length.toLocaleString()} metrics in{" "}
+                {visibleBucketMetaLabel}
               </div>
 
               {visibleGroups.map(([bucket, group]) => (
                 <section key={bucket} className="admin-panel__metrics-group-card">
                   <div className="admin-panel__metrics-group-header">
-                    <span className="admin-panel__metrics-bucket-badge">
+                    <span
+                      className={`admin-panel__metrics-bucket-badge ${
+                        focusedBucket === bucket
+                          ? "admin-panel__metrics-bucket-badge--active"
+                          : ""
+                      }`}
+                    >
                       {bucket}
                     </span>
                     <span className="admin-panel__muted">
