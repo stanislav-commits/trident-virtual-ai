@@ -895,11 +895,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 0 14px;
+  min-height: 44px;
+  height: 44px;
+  border-radius: 10px;
   background: var(--chat-surface);
   border: 1px solid var(--chat-border);
   margin-bottom: 16px;
+  box-sizing: border-box;
 }
 .admin-panel__metrics-search svg {
   flex-shrink: 0;
@@ -923,37 +926,80 @@
   max-width: min(1120px, calc(100vw - 48px));
 }
 
-.admin-panel__metrics-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+.admin-panel__metrics-toolbar > .admin-panel__metrics-search {
+  margin-bottom: 0;
 }
 
-.admin-panel__metrics-toolbar > .admin-panel__metrics-search {
-  flex: 1 1 420px;
-  min-width: min(100%, 320px);
+.admin-panel__metrics-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.admin-panel__metrics-toolbar-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-panel__metrics-toolbar-main > .admin-panel__metrics-search {
+  min-width: 0;
   margin-bottom: 0;
+}
+
+.admin-panel__metrics-toolbar-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 44px;
+}
+
+.admin-panel__metrics-bucket-picker {
+  flex: 0 0 auto;
+  width: clamp(180px, 18vw, 220px);
+  min-width: 180px;
+  max-width: 220px;
+}
+
+.admin-panel__metrics-bucket-picker .admin-panel__picker-trigger {
+  min-height: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  border-radius: 10px;
+}
+
+.admin-panel__metrics-bucket-picker .admin-panel__picker-panel {
+  right: 0;
+  left: auto;
+  width: min(320px, calc(100vw - 48px));
 }
 
 .admin-panel__metrics-filters {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 44px;
   padding: 4px;
   border-radius: 999px;
   border: 1px solid var(--chat-border);
   background: var(--chat-surface);
+  box-sizing: border-box;
 }
 
 .admin-panel__metrics-filter-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 74px;
-  padding: 7px 12px;
+  min-width: 68px;
+  padding: 7px 10px;
   border: none;
   border-radius: 999px;
   background: transparent;
@@ -983,11 +1029,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-start;
 }
 
 .admin-panel__metrics-summary-item {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--chat-border);
@@ -995,6 +1043,33 @@
   color: var(--chat-text-muted);
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+.admin-panel__metrics-summary-item--interactive {
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.admin-panel__metrics-summary-item--interactive:hover {
+  border-color: var(--chat-border-strong);
+  color: var(--chat-text);
+  background: var(--chat-surface-2);
+}
+
+.admin-panel__metrics-summary-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .admin-panel__metrics-summary-item--warning {
@@ -1051,6 +1126,28 @@
   background: rgba(59, 130, 246, 0.12);
   color: var(--accent-bright);
   border: 1px solid rgba(59, 130, 246, 0.25);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.admin-panel__metrics-bucket-badge:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.18);
+}
+
+.admin-panel__metrics-bucket-badge:disabled {
+  cursor: default;
+}
+
+.admin-panel__metrics-bucket-badge--active {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: rgba(59, 130, 246, 0.24);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.18);
 }
 
 /* ── Form card ── */
@@ -1833,6 +1930,33 @@
   .admin-panel__metrics-group-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .admin-panel__metrics-toolbar-main {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-panel__metrics-toolbar-controls {
+    justify-content: stretch;
+    margin-left: 0;
+  }
+
+  .admin-panel__metrics-bucket-picker {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  .admin-panel__metrics-bucket-picker .admin-panel__picker-panel {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+
+  .admin-panel__metrics-summary {
+    justify-content: flex-start;
   }
 
   .admin-panel__modal.admin-panel__metrics-modal {
