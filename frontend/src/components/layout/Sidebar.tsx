@@ -25,7 +25,11 @@ export function Sidebar({
     <aside className="chat-sidebar">
       <div className="chat-sidebar__brand">
         <img src={logoImg} alt="" className="chat-sidebar__brand-logo" aria-hidden />
-        <span className="chat-sidebar__brand-name">Trident Intelligence Platform</span>
+        <span className="chat-sidebar__brand-name">
+          <span className="chat-sidebar__brand-line">Trident</span>
+          <span className="chat-sidebar__brand-line">Intelligence</span>
+          <span className="chat-sidebar__brand-line">Platform</span>
+        </span>
       </div>
       <div className="chat-sidebar__search-wrap">
         <img
