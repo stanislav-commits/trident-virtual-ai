@@ -54,6 +54,30 @@ export class ShipsService {
     }
 
     const requestedMetricKeys = this.normalizeMetricKeys(dto.metricKeys);
+    const imoNumber = this.normalizeOptionalText(
+      dto.imoNumber,
+      'imoNumber',
+      20,
+    );
+    const flag = this.normalizeOptionalText(dto.flag, 'flag', 100);
+    const deadweight = this.normalizeOptionalInteger(
+      dto.deadweight,
+      'deadweight',
+    );
+    const grossTonnage = this.normalizeOptionalInteger(
+      dto.grossTonnage,
+      'grossTonnage',
+    );
+    const buildYard = this.normalizeOptionalText(
+      dto.buildYard,
+      'buildYard',
+      255,
+    );
+    const shipClass = this.normalizeOptionalText(
+      dto.shipClass,
+      'shipClass',
+      255,
+    );
     await this.ensureOrganizationExists(organizationName);
 
     const userIds = dto.userIds ?? [];
@@ -63,6 +87,12 @@ export class ShipsService {
       data: {
         name,
         organizationName,
+        imoNumber: imoNumber ?? null,
+        flag: flag ?? null,
+        deadweight: deadweight ?? null,
+        grossTonnage: grossTonnage ?? null,
+        buildYard: buildYard ?? null,
+        shipClass: shipClass ?? null,
         metricsSyncStatus: 'pending',
         metricsSyncError: null,
         metricsSyncedAt: null,
@@ -162,6 +192,30 @@ export class ShipsService {
     const nextName = dto.name?.trim();
     const requestedMetricKeys = this.normalizeMetricKeys(dto.metricKeys);
     const nextOrganizationName = dto.organizationName?.trim();
+    const nextImoNumber = this.normalizeOptionalText(
+      dto.imoNumber,
+      'imoNumber',
+      20,
+    );
+    const nextFlag = this.normalizeOptionalText(dto.flag, 'flag', 100);
+    const nextDeadweight = this.normalizeOptionalInteger(
+      dto.deadweight,
+      'deadweight',
+    );
+    const nextGrossTonnage = this.normalizeOptionalInteger(
+      dto.grossTonnage,
+      'grossTonnage',
+    );
+    const nextBuildYard = this.normalizeOptionalText(
+      dto.buildYard,
+      'buildYard',
+      255,
+    );
+    const nextShipClass = this.normalizeOptionalText(
+      dto.shipClass,
+      'shipClass',
+      255,
+    );
 
     if (
       nextOrganizationName &&
@@ -186,6 +240,14 @@ export class ShipsService {
           updateData.metricsSyncedAt = null;
         }
       }
+      if (nextImoNumber !== undefined) updateData.imoNumber = nextImoNumber;
+      if (nextFlag !== undefined) updateData.flag = nextFlag;
+      if (nextDeadweight !== undefined) updateData.deadweight = nextDeadweight;
+      if (nextGrossTonnage !== undefined) {
+        updateData.grossTonnage = nextGrossTonnage;
+      }
+      if (nextBuildYard !== undefined) updateData.buildYard = nextBuildYard;
+      if (nextShipClass !== undefined) updateData.shipClass = nextShipClass;
       if (Object.keys(updateData).length > 0) {
         await tx.ship.update({ where: { id }, data: updateData });
       }
@@ -260,6 +322,56 @@ export class ShipsService {
         metricKeys.map((metricKey) => metricKey.trim()).filter(Boolean),
       ),
     ];
+  }
+
+  private normalizeOptionalText(
+    value: unknown,
+    fieldName: string,
+    maxLength: number,
+  ): string | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (value === null) {
+      return null;
+    }
+
+    const normalized = String(value).trim();
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized.length > maxLength) {
+      throw new BadRequestException(
+        `${fieldName} must be ${maxLength} characters or fewer`,
+      );
+    }
+
+    return normalized;
+  }
+
+  private normalizeOptionalInteger(
+    value: unknown,
+    fieldName: string,
+  ): number | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (value === null || value === '') {
+      return null;
+    }
+
+    const parsed =
+      typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+      throw new BadRequestException(
+        `${fieldName} must be a non-negative whole number`,
+      );
+    }
+
+    return parsed;
   }
 
   private async ensureOrganizationExists(organizationName: string) {
