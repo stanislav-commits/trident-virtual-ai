@@ -1,0 +1,7 @@
+ALTER TABLE "Ship"
+ADD COLUMN "imo_number" VARCHAR(20),
+ADD COLUMN "flag" VARCHAR(100),
+ADD COLUMN "deadweight" INTEGER,
+ADD COLUMN "gross_tonnage" INTEGER,
+ADD COLUMN "build_yard" VARCHAR(255),
+ADD COLUMN "class_name" VARCHAR(255);

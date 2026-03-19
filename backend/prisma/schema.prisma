@@ -59,6 +59,12 @@ model Ship {
   id               String   @id @default(uuid()) @db.Uuid
   name             String   @db.VarChar(255)
   organizationName String?  @unique @map("organization_name") @db.VarChar(100)
+  imoNumber        String?  @map("imo_number") @db.VarChar(20)
+  flag             String?  @db.VarChar(100)
+  deadweight       Int?
+  grossTonnage     Int?     @map("gross_tonnage")
+  buildYard        String?  @map("build_yard") @db.VarChar(255)
+  shipClass        String?  @map("class_name") @db.VarChar(255)
   metricsSyncStatus String  @default("idle") @map("metrics_sync_status") @db.VarChar(20)
   metricsSyncError  String? @map("metrics_sync_error") @db.Text
   metricsSyncedAt   DateTime? @map("metrics_synced_at")
