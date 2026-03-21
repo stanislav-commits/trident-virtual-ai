@@ -45,6 +45,26 @@ interface ShipMetricsSyncJob {
   activeMetricKeys?: string[];
 }
 
+interface ShipTelemetryEntry {
+  key: string;
+  label: string;
+  description?: string | null;
+  unit?: string | null;
+  bucket?: string | null;
+  measurement?: string | null;
+  field?: string | null;
+  value: string | number | boolean | null;
+  updatedAt?: Date | null;
+}
+
+interface ShipTelemetryContext {
+  telemetry: Record<string, string | number | boolean | null>;
+  totalActiveMetrics: number;
+  matchedMetrics: number;
+  prefiltered: boolean;
+  matchMode: 'none' | 'sample' | 'exact' | 'direct' | 'related';
+}
+
 @Injectable()
 export class MetricsService implements OnModuleInit {
   private readonly logger = new Logger(MetricsService.name);
@@ -355,32 +375,91 @@ export class MetricsService implements OnModuleInit {
   async getShipTelemetry(
     shipId: string,
   ): Promise<Record<string, string | number | boolean | null>> {
-    const configs = await this.prisma.shipMetricsConfig.findMany({
-      where: { shipId, isActive: true },
-      select: {
-        latestValue: true,
-        metric: {
-          select: {
-            description: true,
-            measurement: true,
-            field: true,
-          },
-        },
-      },
-    });
+    const entries = await this.loadShipTelemetryEntries(shipId);
+    return this.toTelemetryMap(entries);
+  }
 
-    if (!configs.length) return {};
-
-    const telemetry: Record<string, string | number | boolean | null> = {};
-    for (const config of configs) {
-      const label =
-        config.metric?.description ||
-        `${config.metric?.measurement ?? ''} - ${config.metric?.field ?? ''}`;
-      telemetry[label] =
-        (config.latestValue as string | number | boolean | null) ?? null;
+  async getShipTelemetryContextForQuery(
+    shipId: string,
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): Promise<ShipTelemetryContext> {
+    const entries = await this.loadShipTelemetryEntries(shipId);
+    if (!entries.length) {
+      return {
+        telemetry: {},
+        totalActiveMetrics: 0,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+      };
     }
 
-    return telemetry;
+    const requestedSampleSize = this.getRequestedTelemetrySampleSize(
+      query,
+      resolvedSubjectQuery,
+    );
+    if (requestedSampleSize != null) {
+      const sampleEntries = this.pickTelemetrySampleEntries(
+        entries,
+        query,
+        resolvedSubjectQuery,
+        requestedSampleSize,
+      );
+      return {
+        telemetry: this.toTelemetryMap(sampleEntries),
+        totalActiveMetrics: entries.length,
+        matchedMetrics: sampleEntries.length,
+        prefiltered: true,
+        matchMode: 'sample',
+      };
+    }
+
+    const matchedEntries = this.findRelevantTelemetryEntries(
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+
+    if (matchedEntries.length > 0) {
+      return {
+        telemetry: this.toTelemetryMap(matchedEntries),
+        totalActiveMetrics: entries.length,
+        matchedMetrics: matchedEntries.length,
+        prefiltered: true,
+        matchMode: this.determineTelemetryMatchMode(
+          matchedEntries,
+          query,
+          resolvedSubjectQuery,
+        ),
+      };
+    }
+
+    // Preserve current behaviour for small ships while avoiding massive prompt
+    // dumps when thousands of metrics are active.
+    if (entries.length <= 25) {
+      return {
+        telemetry: this.toTelemetryMap(entries),
+        totalActiveMetrics: entries.length,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+      };
+    }
+
+    const fallbackEntries = this.findTelemetryFallbackEntries(
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+
+    return {
+      telemetry: this.toTelemetryMap(fallbackEntries),
+      totalActiveMetrics: entries.length,
+      matchedMetrics: fallbackEntries.length,
+      prefiltered: fallbackEntries.length > 0,
+      matchMode: fallbackEntries.length > 0 ? 'related' : 'none',
+    };
   }
 
   async findOne(key: string) {
@@ -506,6 +585,822 @@ export class MetricsService implements OnModuleInit {
       buckets: [...new Set(metrics.map((metric) => metric.bucket))],
       metricsSynced: metricKeys.length,
     };
+  }
+
+  private async loadShipTelemetryEntries(
+    shipId: string,
+  ): Promise<ShipTelemetryEntry[]> {
+    const configs = await this.prisma.shipMetricsConfig.findMany({
+      where: { shipId, isActive: true },
+      select: {
+        metricKey: true,
+        latestValue: true,
+        valueUpdatedAt: true,
+        metric: {
+          select: {
+            label: true,
+            description: true,
+            unit: true,
+            bucket: true,
+            measurement: true,
+            field: true,
+          },
+        },
+      },
+    });
+
+    return configs.map((config) => ({
+      key: config.metricKey,
+      label: config.metric?.label ?? config.metricKey,
+      description: config.metric?.description,
+      unit: config.metric?.unit,
+      bucket: config.metric?.bucket,
+      measurement: config.metric?.measurement,
+      field: config.metric?.field,
+      value: (config.latestValue as string | number | boolean | null) ?? null,
+      updatedAt: config.valueUpdatedAt,
+    }));
+  }
+
+  private toTelemetryMap(
+    entries: ShipTelemetryEntry[],
+  ): Record<string, string | number | boolean | null> {
+    const telemetry: Record<string, string | number | boolean | null> = {};
+    for (const entry of entries) {
+      telemetry[this.formatTelemetryLabel(entry)] = entry.value;
+    }
+    return telemetry;
+  }
+
+  private formatTelemetryLabel(entry: ShipTelemetryEntry): string {
+    const primary =
+      entry.measurement && entry.field
+        ? `${entry.measurement}.${entry.field}`
+        : entry.label || entry.key;
+
+    const extras = [
+      entry.description,
+      entry.bucket ? `Bucket: ${entry.bucket}` : '',
+      entry.unit ? `Unit: ${entry.unit}` : '',
+    ].filter(
+      (value) =>
+        value &&
+        !this.containsLoosely(primary, value) &&
+        !this.containsLoosely(value, primary),
+    );
+
+    return [primary, ...extras].filter(Boolean).join(' — ');
+  }
+
+  private findRelevantTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryEntry[] {
+    const querySignals = this.buildTelemetryQuerySignals(
+      query,
+      resolvedSubjectQuery,
+    );
+    if (
+      !querySignals.normalizedQuery &&
+      querySignals.tokens.length === 0 &&
+      querySignals.phrases.length === 0
+    ) {
+      return [];
+    }
+
+    const scored = this.getScoredTelemetryEntries(entries, querySignals);
+    const narrowed = this.filterTelemetryCandidatesByQuery(
+      scored,
+      querySignals,
+    );
+
+    if (narrowed.length === 0) {
+      return [];
+    }
+
+    return this.filterScoredTelemetryEntries(narrowed)
+      .slice(0, 12)
+      .map((candidate) => candidate.entry);
+  }
+
+  private findTelemetryFallbackEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryEntry[] {
+    const searchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    const querySignals = this.buildTelemetryQuerySignals(
+      query,
+      resolvedSubjectQuery,
+    );
+    const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
+    const queryKinds = this.extractTelemetryMeasurementKinds(searchSpace);
+    const wantsHours = /\b(hours?|runtime|running|hour\s*meter|operating)\b/i.test(
+      searchSpace,
+    );
+    const wantsCurrentValue = queryKinds.size > 0;
+
+    const filtered = entries.filter((entry) => {
+      const haystack = this.buildTelemetryHaystack(entry);
+      const matchesSubject =
+        subjectTokens.length === 0 ||
+        subjectTokens.some((token) => haystack.includes(token));
+      if (!matchesSubject) {
+        return false;
+      }
+
+      if (wantsHours) {
+        return /\b(hours?|runtime|running|operating|hour\s*meter)\b/i.test(
+          haystack,
+        );
+      }
+      if (wantsCurrentValue) {
+        const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
+        return [...queryKinds].some((kind) => entryKinds.has(kind));
+      }
+      return false;
+    });
+
+    return filtered.slice(0, 8);
+  }
+
+  private getRequestedTelemetrySampleSize(
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): number | null {
+    const normalized = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+
+    if (
+      !/\b(show|list|display|give|return|output)\b/i.test(normalized) ||
+      !/\b(metrics?|telemetry|readings?|values?)\b/i.test(normalized)
+    ) {
+      return null;
+    }
+
+    const countMatch = normalized.match(/\b(\d{1,2})\b/);
+    if (countMatch) {
+      const parsed = Number.parseInt(countMatch[1], 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.min(parsed, 25);
+      }
+    }
+
+    return 10;
+  }
+
+  private buildTelemetryQuerySignals(
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): {
+    normalizedQuery: string;
+    tokens: string[];
+    phrases: string[];
+  } {
+    const normalizedQuery = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    const stopWords = new Set([
+      'all',
+      'am',
+      'and',
+      'at',
+      'be',
+      'been',
+      'what',
+      'which',
+      'when',
+      'where',
+      'why',
+      'how',
+      'the',
+      'a',
+      'an',
+      'is',
+      'are',
+      'do',
+      'does',
+      'did',
+      'done',
+      'display',
+      'displayed',
+      'displaying',
+      'displays',
+      'find',
+      'get',
+      'got',
+      'has',
+      'have',
+      'had',
+      'i',
+      'in',
+      'into',
+      'it',
+      'its',
+      'list',
+      'lookup',
+      'me',
+      'my',
+      'of',
+      'on',
+      'or',
+      'our',
+      'out',
+      'output',
+      'show',
+      'tell',
+      'give',
+      'return',
+      'provide',
+      'current',
+      'status',
+      'value',
+      'reading',
+      'please',
+      'for',
+      'to',
+      'ship',
+      'boat',
+      'sea',
+      'wolf',
+      'x',
+      'based',
+      'any',
+      'action',
+      'actions',
+      'recommended',
+      'recommendation',
+      'related',
+      'latest',
+      'metric',
+      'metrics',
+      'telemetry',
+      'readings',
+      'values',
+      'active',
+      'connected',
+      'enabled',
+      'random',
+      'their',
+      'with',
+      'from',
+      'up',
+      'us',
+      'using',
+      'we',
+      'were',
+      'will',
+      'would',
+      'your',
+      'best',
+      'match',
+      'matches',
+      'this',
+      'that',
+    ]);
+
+    const baseTokens = [
+      ...new Set(
+        normalizedQuery
+          .split(/\s+/)
+          .map((token) => this.normalizeTelemetryToken(token.trim()))
+          .filter(Boolean)
+          .filter((token) => token.length >= 2)
+          .filter((token) => !/^\d+$/.test(token))
+          .filter((token) => !stopWords.has(token)),
+      ),
+    ];
+
+    const tokens = [
+      ...new Set(
+        baseTokens.flatMap((token) => this.expandTelemetryTokenVariants(token)),
+      ),
+    ];
+
+    const phrases = [
+      ...new Set(
+        baseTokens.flatMap((_, index) => {
+          const phrases: string[] = [];
+          const pair = baseTokens.slice(index, index + 2);
+          const triple = baseTokens.slice(index, index + 3);
+          if (pair.length === 2) phrases.push(pair.join(' '));
+          if (triple.length === 3) phrases.push(triple.join(' '));
+          return phrases;
+        }),
+      ),
+    ];
+
+    return {
+      normalizedQuery,
+      tokens,
+      phrases,
+    };
+  }
+
+  private scoreTelemetryEntry(
+    entry: ShipTelemetryEntry,
+    querySignals: { normalizedQuery: string; tokens: string[]; phrases: string[] },
+  ): number {
+    const haystack = this.buildTelemetryHaystack(entry);
+    const query = querySignals.normalizedQuery;
+    const normalizedField = this.normalizeTelemetryText(entry.field ?? '');
+    const normalizedLabel = this.normalizeTelemetryText(entry.label ?? '');
+    const normalizedMeasurement = this.normalizeTelemetryText(
+      entry.measurement ?? '',
+    );
+    const normalizedDescription = this.normalizeTelemetryText(
+      entry.description ?? '',
+    );
+    const queryKinds = this.extractTelemetryMeasurementKinds(query);
+    const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
+    const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
+    const matchedSubjectTokens = subjectTokens.filter((token) =>
+      haystack.includes(token),
+    );
+    const matchedKinds = [...queryKinds].filter((kind) => entryKinds.has(kind));
+
+    let score = 0;
+    const exactCandidates = [
+      entry.field,
+      entry.label,
+      entry.measurement && entry.field
+        ? `${entry.measurement} ${entry.field}`
+        : '',
+      entry.description,
+    ]
+      .map((value) => this.normalizeTelemetryText(value ?? ''))
+      .filter(Boolean);
+
+    for (const candidate of exactCandidates) {
+      if (query && candidate === query) score += 220;
+      if (
+        query &&
+        candidate &&
+        this.isStrongTelemetryCandidate(candidate) &&
+        query.includes(candidate)
+      ) {
+        score += 140;
+      }
+      if (
+        query &&
+        candidate &&
+        this.isStrongTelemetryCandidate(candidate) &&
+        candidate.includes(query) &&
+        query.length >= 4
+      ) {
+        score += 90;
+      }
+    }
+
+    for (const phrase of querySignals.phrases) {
+      if (phrase && haystack.includes(phrase)) {
+        score += phrase.split(' ').length === 3 ? 30 : 18;
+      }
+      if (phrase && normalizedField.includes(phrase)) {
+        score += phrase.split(' ').length === 3 ? 36 : 26;
+      }
+      if (phrase && normalizedLabel.includes(phrase)) {
+        score += phrase.split(' ').length === 3 ? 32 : 22;
+      }
+      if (phrase && normalizedMeasurement.includes(phrase)) {
+        score += phrase.split(' ').length === 3 ? 24 : 16;
+      }
+      if (phrase && normalizedDescription.includes(phrase)) {
+        score += phrase.split(' ').length === 3 ? 18 : 12;
+      }
+    }
+
+    for (const token of querySignals.tokens) {
+      if (!haystack.includes(token)) continue;
+      score += token.length >= 5 ? 8 : 5;
+      if (normalizedField.includes(token)) {
+        score += 8;
+      }
+      if (normalizedLabel.includes(token)) {
+        score += 6;
+      }
+      if (normalizedMeasurement.includes(token)) {
+        score += 5;
+      }
+      if (normalizedDescription.includes(token)) {
+        score += 4;
+      }
+    }
+
+    if (
+      query &&
+      /[a-z0-9]+(?:[_-][a-z0-9]+)+/i.test(query) &&
+      entry.field &&
+      normalizedField === query
+    ) {
+      score += 120;
+    }
+
+    if (entry.value !== null) {
+      score += 2;
+    }
+
+    if (matchedKinds.length > 0) {
+      score += matchedKinds.length * 24;
+    }
+
+    if (matchedSubjectTokens.length > 0) {
+      score += matchedSubjectTokens.length * 6;
+    }
+
+    if (matchedKinds.length > 0 && matchedSubjectTokens.length > 0) {
+      score += 38 + matchedSubjectTokens.length * 8;
+    }
+
+    return score;
+  }
+
+  private pickTelemetrySampleEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery: string | undefined,
+    limit: number,
+  ): ShipTelemetryEntry[] {
+    const cappedLimit = Math.max(1, Math.min(limit, entries.length));
+    const seed = this.createTelemetrySampleSeed(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    const querySignals = this.buildTelemetryQuerySignals(
+      query,
+      resolvedSubjectQuery,
+    );
+    const scored = this.getScoredTelemetryEntries(entries, querySignals);
+    const filteredMatches = this.filterScoredTelemetryEntries(scored).map(
+      (candidate) => candidate.entry,
+    );
+    const samplePool = filteredMatches.length > 0 ? filteredMatches : entries;
+
+    return [...samplePool]
+      .sort((left, right) => {
+        const leftScore = this.rankTelemetryEntryForSample(left, seed);
+        const rightScore = this.rankTelemetryEntryForSample(right, seed);
+        return rightScore - leftScore || left.key.localeCompare(right.key);
+      })
+      .slice(0, cappedLimit);
+  }
+
+  private getScoredTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+    querySignals: { normalizedQuery: string; tokens: string[]; phrases: string[] },
+  ): Array<{ entry: ShipTelemetryEntry; score: number }> {
+    return entries
+      .map((entry) => ({
+        entry,
+        score: this.scoreTelemetryEntry(entry, querySignals),
+      }))
+      .filter((candidate) => candidate.score > 0)
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.entry.key.localeCompare(right.entry.key),
+      );
+  }
+
+  private filterTelemetryCandidatesByQuery(
+    scored: Array<{ entry: ShipTelemetryEntry; score: number }>,
+    querySignals: { normalizedQuery: string; tokens: string[]; phrases: string[] },
+  ): Array<{ entry: ShipTelemetryEntry; score: number }> {
+    if (scored.length === 0) {
+      return [];
+    }
+
+    const queryKinds = this.extractTelemetryMeasurementKinds(
+      querySignals.normalizedQuery,
+    );
+    const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
+
+    if (queryKinds.size === 0 || subjectTokens.length === 0) {
+      return scored;
+    }
+
+    const withSubject = scored.filter((candidate) =>
+      this.matchesTelemetrySubject(candidate.entry, subjectTokens),
+    );
+    const withSubjectAndKind = withSubject.filter((candidate) =>
+      this.matchesTelemetryKinds(candidate.entry, queryKinds),
+    );
+
+    if (withSubjectAndKind.length > 0) {
+      return withSubjectAndKind;
+    }
+
+    if (withSubject.length > 0) {
+      return withSubject;
+    }
+
+    const withKind = scored.filter((candidate) =>
+      this.matchesTelemetryKinds(candidate.entry, queryKinds),
+    );
+    return withKind.length > 0 ? withKind : scored;
+  }
+
+  private filterScoredTelemetryEntries(
+    scored: Array<{ entry: ShipTelemetryEntry; score: number }>,
+  ): Array<{ entry: ShipTelemetryEntry; score: number }> {
+    if (scored.length === 0) {
+      return [];
+    }
+
+    const topScore = scored[0].score;
+    const minimumScore =
+      topScore >= 200 ? 60 : topScore >= 160 ? 40 : topScore >= 90 ? 24 : 14;
+    const relativeMinimum =
+      topScore >= 60 ? Math.ceil(topScore * 0.7) : minimumScore;
+    const cutoff = Math.max(minimumScore, relativeMinimum);
+
+    return scored.filter((candidate) => candidate.score >= cutoff);
+  }
+
+  private createTelemetrySampleSeed(value: string): number {
+    let hash = 0;
+    for (const char of value) {
+      hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    }
+    return hash || 1;
+  }
+
+  private rankTelemetryEntryForSample(
+    entry: ShipTelemetryEntry,
+    seed: number,
+  ): number {
+    const haystack = `${entry.key}|${entry.bucket ?? ''}|${entry.measurement ?? ''}|${entry.field ?? ''}`;
+    let hash = seed;
+    for (const char of haystack) {
+      hash = (hash * 33 + char.charCodeAt(0)) >>> 0;
+    }
+    return hash;
+  }
+
+  private determineTelemetryMatchMode(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): 'exact' | 'direct' | 'related' {
+    const normalizedQuery = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    const first = entries[0];
+    if (!first) return 'related';
+
+    const exactCandidates = [
+      first.field,
+      first.label,
+      first.measurement && first.field
+        ? `${first.measurement} ${first.field}`
+        : '',
+      first.key,
+    ]
+      .map((value) => this.normalizeTelemetryText(value ?? ''))
+      .filter(Boolean);
+
+    if (
+      exactCandidates.some(
+        (candidate) =>
+          candidate === normalizedQuery || normalizedQuery.includes(candidate),
+      )
+    ) {
+      return 'exact';
+    }
+
+    const queryKinds = this.extractTelemetryMeasurementKinds(normalizedQuery);
+    const subjectTokens = this.getTelemetrySubjectTokens(
+      this.buildTelemetryQuerySignals(query, resolvedSubjectQuery).tokens,
+    );
+    if (queryKinds.size === 0) {
+      return 'direct';
+    }
+
+    const hasDirectMeasurementKind = entries.some((entry) => {
+      const entryKinds = this.extractTelemetryMeasurementKinds(
+        this.buildTelemetryHaystack(entry),
+      );
+      return [...queryKinds].some((kind) => entryKinds.has(kind));
+    });
+
+    if (!hasDirectMeasurementKind) {
+      return 'related';
+    }
+
+    if (subjectTokens.length === 0) {
+      return 'direct';
+    }
+
+    const hasDirectSubjectAndKind = entries.some((entry) => {
+      const haystack = this.buildTelemetryHaystack(entry);
+      const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
+      const matchesSubject = subjectTokens.some((token) => haystack.includes(token));
+      return matchesSubject && [...queryKinds].some((kind) => entryKinds.has(kind));
+    });
+
+    return hasDirectSubjectAndKind ? 'direct' : 'related';
+  }
+
+  private extractTelemetryMeasurementKinds(value: string): Set<string> {
+    const kinds = new Set<string>();
+    const checks: Array<[RegExp, string]> = [
+      [/\b(level)\b/i, 'level'],
+      [/\b(temp|temperature)\b/i, 'temperature'],
+      [/\b(pressure)\b/i, 'pressure'],
+      [/\b(voltage)\b/i, 'voltage'],
+      [/\b(amperage|amps?)\b/i, 'current'],
+      [/\b(load)\b/i, 'load'],
+      [/\b(rpm|speed)\b/i, 'speed'],
+      [/\b(flow|rate)\b/i, 'flow'],
+      [/\b(runtime|running|hours?|hour\s*meter)\b/i, 'hours'],
+      [/\b(status|state)\b/i, 'status'],
+    ];
+
+    for (const [pattern, label] of checks) {
+      if (pattern.test(value)) {
+        kinds.add(label);
+      }
+    }
+
+    return kinds;
+  }
+
+  private buildTelemetryHaystack(entry: ShipTelemetryEntry): string {
+    return this.normalizeTelemetryText(
+      [
+        entry.key,
+        entry.label,
+        entry.bucket,
+        entry.measurement,
+        entry.field,
+        entry.description,
+        entry.unit,
+      ]
+        .filter(Boolean)
+      .join(' '),
+    );
+  }
+
+  private matchesTelemetrySubject(
+    entry: ShipTelemetryEntry,
+    subjectTokens: string[],
+  ): boolean {
+    if (subjectTokens.length === 0) {
+      return true;
+    }
+
+    const haystack = this.buildTelemetryHaystack(entry);
+    const matchedCount = subjectTokens.filter((token) =>
+      haystack.includes(token),
+    ).length;
+    const minimumMatches = Math.min(subjectTokens.length, 2);
+    return matchedCount >= minimumMatches;
+  }
+
+  private matchesTelemetryKinds(
+    entry: ShipTelemetryEntry,
+    queryKinds: Set<string>,
+  ): boolean {
+    if (queryKinds.size === 0) {
+      return true;
+    }
+
+    const entryKinds = this.extractTelemetryMeasurementKinds(
+      this.buildTelemetryHaystack(entry),
+    );
+    return [...queryKinds].some((kind) => entryKinds.has(kind));
+  }
+
+  private normalizeTelemetryText(value: string): string {
+    return value
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/[_./:-]+/g, ' ')
+      .replace(/[^a-zA-Z0-9\s]+/g, ' ')
+      .replace(/\btemps?\b/g, ' temperature ')
+      .replace(/\bvolt(s)?\b/g, ' voltage ')
+      .replace(/\bgenerator\s+set\b/g, ' genset ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  private getTelemetrySubjectTokens(tokens: string[]): string[] {
+    return tokens.filter((token) => !this.isTelemetryKindToken(token));
+  }
+
+  private isTelemetryKindToken(token: string): boolean {
+    return new Set([
+      'amp',
+      'amps',
+      'amperage',
+      'current',
+      'flow',
+      'hour',
+      'hours',
+      'level',
+      'load',
+      'pressure',
+      'rate',
+      'reading',
+      'rpm',
+      'runtime',
+      'speed',
+      'state',
+      'status',
+      'temp',
+      'temperature',
+      'value',
+      'voltage',
+    ]).has(token);
+  }
+
+  private isStrongTelemetryCandidate(candidate: string): boolean {
+    const normalized = this.normalizeTelemetryText(candidate);
+    if (!normalized) return false;
+
+    const terms = normalized.split(/\s+/).filter(Boolean);
+    if (terms.length >= 2) return true;
+
+    const [term] = terms;
+    if (!term) return false;
+
+    if (term.length >= 8) return true;
+    if (term.length <= 3) return false;
+
+    return !new Set([
+      'all',
+      'any',
+      'lat',
+      'lon',
+      'rate',
+      'state',
+      'status',
+      'value',
+      'active',
+    ]).has(term);
+  }
+
+  private normalizeTelemetryToken(token: string): string {
+    if (!token) return '';
+
+    const normalized = token.toLowerCase();
+    const aliases: Record<string, string> = {
+      batteries: 'battery',
+      generators: 'generator',
+      gensets: 'genset',
+      volts: 'voltage',
+      volt: 'voltage',
+      temps: 'temperature',
+      temp: 'temperature',
+      readings: 'reading',
+      metrics: 'metric',
+      values: 'value',
+      ships: 'ship',
+    };
+
+    if (aliases[normalized]) {
+      return aliases[normalized];
+    }
+
+    if (normalized.endsWith('ies') && normalized.length > 4) {
+      return `${normalized.slice(0, -3)}y`;
+    }
+
+    if (
+      normalized.endsWith('s') &&
+      normalized.length > 4 &&
+      !normalized.endsWith('ss')
+    ) {
+      return normalized.slice(0, -1);
+    }
+
+    return normalized;
+  }
+
+  private expandTelemetryTokenVariants(token: string): string[] {
+    const variants = new Set([token]);
+    const aliasGroups = [
+      ['generator', 'genset'],
+      ['port', 'ps'],
+      ['starboard', 'sb'],
+      ['temperature', 'temp'],
+    ];
+
+    for (const group of aliasGroups) {
+      if (group.includes(token)) {
+        group.forEach((variant) => variants.add(variant));
+      }
+    }
+
+    return [...variants];
+  }
+
+  private containsLoosely(left: string, right: string): boolean {
+    return this.normalizeTelemetryText(left).includes(
+      this.normalizeTelemetryText(right),
+    );
   }
 
   private async syncLatestValuesForShip(
