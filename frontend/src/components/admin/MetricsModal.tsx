@@ -7,9 +7,10 @@ import {
 } from "react";
 import type {
   MetricDefinitionItem,
+  ShipListItem,
   ShipMetricsConfigItem,
 } from "../../api/client";
-import { updateMetric } from "../../api/client";
+import { updateMetric, updateShipMetricActivity } from "../../api/client";
 import {
   ChevronDownIcon,
   MetricsIcon,
@@ -27,23 +28,108 @@ function parseMetricKey(key: string) {
   return { bucket: "-", measurement: key, field: "-" };
 }
 
+function createActivityMap(metricsConfig: ShipMetricsConfigItem[]) {
+  return Object.fromEntries(
+    metricsConfig.map((config) => [config.metricKey, config.isActive]),
+  );
+}
+
+function getActivitySignature(activityMap: Record<string, boolean>) {
+  return Object.entries(activityMap)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}:${value ? 1 : 0}`)
+    .join("|");
+}
+
+function MetricsActionMenu({
+  label,
+  items,
+}: {
+  label: string;
+  items: Array<{
+    label: string;
+    disabled?: boolean;
+    onSelect: () => void;
+  }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const hasEnabledItems = items.some((item) => !item.disabled);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        wrapRef.current &&
+        !wrapRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="admin-panel__metrics-action-menu" ref={wrapRef}>
+      <button
+        type="button"
+        className="admin-panel__metrics-action-menu-trigger"
+        onClick={() => setOpen((current) => !current)}
+        disabled={!hasEnabledItems}
+      >
+        <span>{label}</span>
+        <ChevronDownIcon open={open} />
+      </button>
+
+      {open && (
+        <div className="admin-panel__metrics-action-menu-panel">
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className="admin-panel__metrics-action-menu-item"
+              onClick={() => {
+                if (item.disabled) return;
+                item.onSelect();
+                setOpen(false);
+              }}
+              disabled={item.disabled}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface MetricsModalProps {
   token: string | null;
+  shipId: string;
   shipName: string;
   metricsConfig: ShipMetricsConfigItem[];
   metricDefinitions: MetricDefinitionItem[];
   onClose: () => void;
   onError: (msg: string) => void;
+  onShipUpdated?: (ship: ShipListItem) => void;
   onDefinitionsChanged?: () => void;
 }
 
 export function MetricsModal({
   token,
+  shipId,
   shipName,
   metricsConfig,
   metricDefinitions,
   onClose,
   onError,
+  onShipUpdated,
   onDefinitionsChanged,
 }: MetricsModalProps) {
   const [search, setSearch] = useState("");
@@ -57,7 +143,15 @@ export function MetricsModal({
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingActivity, setSavingActivity] = useState(false);
+  const [baseActivityMap, setBaseActivityMap] = useState<Record<string, boolean>>(
+    () => createActivityMap(metricsConfig),
+  );
+  const [draftActivity, setDraftActivity] = useState<Record<string, boolean>>(
+    () => createActivityMap(metricsConfig),
+  );
   const bucketPickerRef = useRef<HTMLDivElement | null>(null);
+  const submittedActivitySignatureRef = useRef<string | null>(null);
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
   const deferredBucketSearch = useDeferredValue(bucketSearch.trim().toLowerCase());
 
@@ -70,6 +164,23 @@ export function MetricsModal({
     [metricDefinitions],
   );
 
+  const propActivityMap = useMemo(
+    () => createActivityMap(metricsConfig),
+    [metricsConfig],
+  );
+  const propActivitySignature = useMemo(
+    () => getActivitySignature(propActivityMap),
+    [propActivityMap],
+  );
+  const baseActivitySignature = useMemo(
+    () => getActivitySignature(baseActivityMap),
+    [baseActivityMap],
+  );
+  const draftActivitySignature = useMemo(
+    () => getActivitySignature(draftActivity),
+    [draftActivity],
+  );
+
   const rows = useMemo(
     () =>
       metricsConfig
@@ -78,7 +189,7 @@ export function MetricsModal({
           const parsed = parseMetricKey(config.metricKey);
           return {
             key: config.metricKey,
-            isActive: config.isActive,
+            isActive: draftActivity[config.metricKey] ?? config.isActive,
             bucket: definition?.bucket ?? parsed.bucket,
             measurement: definition?.measurement ?? parsed.measurement,
             field: definition?.field ?? parsed.field,
@@ -92,19 +203,11 @@ export function MetricsModal({
             left.measurement.localeCompare(right.measurement) ||
             left.field.localeCompare(right.field),
         ),
-    [definitionMap, metricsConfig],
+    [definitionMap, draftActivity, metricsConfig],
   );
 
-  const preBucketRows = useMemo(() => {
+  const searchRows = useMemo(() => {
     return rows.filter((row) => {
-      if (activityFilter === "active" && !row.isActive) {
-        return false;
-      }
-
-      if (activityFilter === "inactive" && row.isActive) {
-        return false;
-      }
-
       if (!deferredSearch) {
         return true;
       }
@@ -116,7 +219,7 @@ export function MetricsModal({
         (row.description?.toLowerCase().includes(deferredSearch) ?? false)
       );
     });
-  }, [activityFilter, deferredSearch, rows]);
+  }, [deferredSearch, rows]);
 
   const allBucketOptions = useMemo(() => {
     const counts = new Map<string, number>();
@@ -133,12 +236,20 @@ export function MetricsModal({
   const filteredBucketCounts = useMemo(() => {
     const counts = new Map<string, number>();
 
-    for (const row of preBucketRows) {
+    for (const row of searchRows) {
+      if (activityFilter === "active" && !row.isActive) {
+        continue;
+      }
+
+      if (activityFilter === "inactive" && row.isActive) {
+        continue;
+      }
+
       counts.set(row.bucket, (counts.get(row.bucket) ?? 0) + 1);
     }
 
     return counts;
-  }, [preBucketRows]);
+  }, [activityFilter, searchRows]);
 
   useEffect(() => {
     const validBuckets = new Set(allBucketOptions.map((option) => option.bucket));
@@ -187,13 +298,34 @@ export function MetricsModal({
   }, [allBucketOptions, deferredBucketSearch, filteredBucketCounts]);
 
   const filteredRows = useMemo(() => {
+    let scopedRows = searchRows;
+
+    if (selectedBuckets.length > 0) {
+      const selectedSet = new Set(selectedBuckets);
+      scopedRows = scopedRows.filter((row) => selectedSet.has(row.bucket));
+    }
+
+    return scopedRows.filter((row) => {
+      if (activityFilter === "active") {
+        return row.isActive;
+      }
+
+      if (activityFilter === "inactive") {
+        return !row.isActive;
+      }
+
+      return true;
+    });
+  }, [activityFilter, searchRows, selectedBuckets]);
+
+  const activityScopeRows = useMemo(() => {
     if (selectedBuckets.length === 0) {
-      return preBucketRows;
+      return searchRows;
     }
 
     const selectedSet = new Set(selectedBuckets);
-    return preBucketRows.filter((row) => selectedSet.has(row.bucket));
-  }, [preBucketRows, selectedBuckets]);
+    return searchRows.filter((row) => selectedSet.has(row.bucket));
+  }, [searchRows, selectedBuckets]);
 
   const visibleRows = useMemo(
     () => filteredRows.slice(0, visibleCount),
@@ -211,15 +343,10 @@ export function MetricsModal({
   }, [visibleRows]);
 
   const totalCount = rows.length;
-  const activeCount = rows.filter((row) => row.isActive).length;
+  const activeCount = activityScopeRows.filter((row) => row.isActive).length;
+  const inactiveCount = Math.max(activityScopeRows.length - activeCount, 0);
   const describedCount = rows.filter((row) => row.description?.trim()).length;
   const pendingCount = Math.max(totalCount - describedCount, 0);
-  const visibleBucketLabel =
-    selectedBuckets.length === 0
-      ? "All buckets"
-      : selectedBuckets.length === 1
-        ? `Bucket: ${selectedBuckets[0]}`
-        : `${selectedBuckets.length} buckets selected`;
   const visibleBucketMetaLabel =
     selectedBuckets.length === 0
       ? "all buckets"
@@ -240,6 +367,126 @@ export function MetricsModal({
     deferredSearch.length > 0 ||
     activityFilter !== "all" ||
     selectedBuckets.length > 0;
+  const activeMetricKeys = useMemo(
+    () => rows.filter((row) => row.isActive).map((row) => row.key),
+    [rows],
+  );
+  const hasPendingActivityChanges = baseActivitySignature !== draftActivitySignature;
+  const pendingActivityChangeCount = useMemo(
+    () =>
+      rows.reduce((count, row) => {
+        const initialIsActive = baseActivityMap[row.key] ?? false;
+        return count + (initialIsActive !== row.isActive ? 1 : 0);
+      }, 0),
+    [baseActivityMap, rows],
+  );
+  const canEnableShown = filteredRows.some((row) => !row.isActive);
+  const canDisableShown = filteredRows.some((row) => row.isActive);
+  const resultsMetricLabel =
+    activityFilter === "active"
+      ? "active metrics"
+      : activityFilter === "inactive"
+        ? "inactive metrics"
+        : "metrics";
+  const resultsMetaText =
+    filteredRows.length > visibleRows.length
+      ? `Showing ${visibleRows.length.toLocaleString()} of ${filteredRows.length.toLocaleString()} ${resultsMetricLabel} in ${visibleBucketMetaLabel}`
+      : `Showing ${filteredRows.length.toLocaleString()} ${resultsMetricLabel} in ${visibleBucketMetaLabel}`;
+
+  useEffect(() => {
+    if (
+      submittedActivitySignatureRef.current &&
+      propActivitySignature === submittedActivitySignatureRef.current
+    ) {
+      setBaseActivityMap(propActivityMap);
+      setDraftActivity(propActivityMap);
+      submittedActivitySignatureRef.current = null;
+      return;
+    }
+
+    if (!hasPendingActivityChanges && propActivitySignature !== baseActivitySignature) {
+      setBaseActivityMap(propActivityMap);
+      setDraftActivity(propActivityMap);
+    }
+  }, [
+    baseActivitySignature,
+    hasPendingActivityChanges,
+    propActivityMap,
+    propActivitySignature,
+  ]);
+
+  const setMetricActivityForKeys = (keys: string[], nextActive: boolean) => {
+    if (!keys.length) return;
+
+    setDraftActivity((previous) => {
+      let changed = false;
+      const next = { ...previous };
+
+      for (const key of keys) {
+        const current = previous[key] ?? baseActivityMap[key] ?? false;
+        if (current !== nextActive) {
+          next[key] = nextActive;
+          changed = true;
+        }
+      }
+
+      return changed ? next : previous;
+    });
+  };
+
+  const resetDraftActivity = () => {
+    setDraftActivity(baseActivityMap);
+  };
+
+  const requestClose = () => {
+    if (savingActivity) {
+      return;
+    }
+
+    if (
+      hasPendingActivityChanges &&
+      !window.confirm("Discard unsaved metric activity changes?")
+    ) {
+      return;
+    }
+
+    onClose();
+  };
+
+  const handleActivitySave = async () => {
+    if (!token || savingActivity || !hasPendingActivityChanges) return;
+
+    const submittedActivityMap = Object.fromEntries(
+      rows.map((row) => [row.key, row.isActive]),
+    );
+
+    setSavingActivity(true);
+    try {
+      submittedActivitySignatureRef.current =
+        getActivitySignature(submittedActivityMap);
+      const updatedShip = await updateShipMetricActivity(
+        shipId,
+        activeMetricKeys,
+        token,
+      );
+      if (onShipUpdated) {
+        onShipUpdated(updatedShip);
+      } else {
+        setBaseActivityMap(submittedActivityMap);
+        setDraftActivity(submittedActivityMap);
+        submittedActivitySignatureRef.current = null;
+      }
+    } catch (error) {
+      submittedActivitySignatureRef.current = null;
+      onError(
+        error instanceof Error
+          ? error.message
+          : "Failed to update metric activity",
+      );
+    } finally {
+      setSavingActivity(false);
+    }
+  };
 
   const handleDescSave = async () => {
     if (!token || !editingKey) return;
@@ -266,15 +513,16 @@ export function MetricsModal({
       aria-modal="true"
       aria-labelledby="ap-metrics-modal-title"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) requestClose();
       }}
     >
       <div className="admin-panel__modal admin-panel__modal--wide admin-panel__modal--scrollable admin-panel__metrics-modal">
         <button
           type="button"
           className="admin-panel__modal-close"
-          onClick={onClose}
+          onClick={requestClose}
           aria-label="Close"
+          disabled={savingActivity}
         >
           <XIcon />
         </button>
@@ -287,8 +535,8 @@ export function MetricsModal({
             Metrics for "{shipName}"
           </h2>
           <p className="admin-panel__modal-desc">
-            Review synced metrics, inspect missing descriptions, and update any
-            description manually.
+            Review synced metrics, manage activity, inspect missing
+            descriptions, and update any description manually.
           </p>
         </div>
 
@@ -417,7 +665,10 @@ export function MetricsModal({
                   }`}
                   onClick={() => setActivityFilter("all")}
                 >
-                  All
+                  <span>All</span>
+                  <span className="admin-panel__metrics-filter-count">
+                    {activityScopeRows.length.toLocaleString()}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -428,7 +679,10 @@ export function MetricsModal({
                   }`}
                   onClick={() => setActivityFilter("active")}
                 >
-                  Active
+                  <span>Active</span>
+                  <span className="admin-panel__metrics-filter-count">
+                    {activeCount.toLocaleString()}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -439,35 +693,65 @@ export function MetricsModal({
                   }`}
                   onClick={() => setActivityFilter("inactive")}
                 >
-                  Inactive
+                  <span>Inactive</span>
+                  <span className="admin-panel__metrics-filter-count">
+                    {inactiveCount.toLocaleString()}
+                  </span>
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="admin-panel__metrics-summary">
-            <span className="admin-panel__metrics-summary-item">
-              {totalCount.toLocaleString()} total
-            </span>
-            <span className="admin-panel__metrics-summary-item">
-              {activeCount.toLocaleString()} active
-            </span>
-            {hasMultipleBuckets && (
-              <span className="admin-panel__metrics-summary-item">
-                {visibleBucketLabel}
+          <div className="admin-panel__metrics-toolbar-secondary">
+            <div className="admin-panel__metrics-results-meta">
+              {hasAnyMetrics
+                ? resultsMetaText
+                : "No metrics assigned yet."}
+            </div>
+
+            <div className="admin-panel__metrics-toolbar-status">
+              {hasPendingActivityChanges && (
+                <span className="admin-panel__metrics-summary-item admin-panel__metrics-summary-item--info">
+                  {pendingActivityChangeCount.toLocaleString()} changes pending
+                </span>
+              )}
+              <span
+                className={`admin-panel__metrics-summary-item ${
+                  pendingCount > 0
+                    ? "admin-panel__metrics-summary-item--warning"
+                    : "admin-panel__metrics-summary-item--success"
+                }`}
+              >
+                {pendingCount > 0
+                  ? `${pendingCount.toLocaleString()} pending descriptions`
+                  : "Descriptions ready"}
               </span>
-            )}
-            <span
-              className={`admin-panel__metrics-summary-item ${
-                pendingCount > 0
-                  ? "admin-panel__metrics-summary-item--warning"
-                  : "admin-panel__metrics-summary-item--success"
-              }`}
-            >
-              {pendingCount > 0
-                ? `${pendingCount.toLocaleString()} pending descriptions`
-                : "Descriptions ready"}
-            </span>
+              {filteredRows.length > 0 && (
+                <MetricsActionMenu
+                  label="Bulk actions"
+                  items={[
+                    {
+                      label: "Enable shown",
+                      disabled: !canEnableShown || savingActivity,
+                      onSelect: () =>
+                        setMetricActivityForKeys(
+                          filteredRows.map((row) => row.key),
+                          true,
+                        ),
+                    },
+                    {
+                      label: "Disable shown",
+                      disabled: !canDisableShown || savingActivity,
+                      onSelect: () =>
+                        setMetricActivityForKeys(
+                          filteredRows.map((row) => row.key),
+                          false,
+                        ),
+                    },
+                  ]}
+                />
+              )}
+            </div>
           </div>
         </div>
 
@@ -484,33 +768,60 @@ export function MetricsModal({
             </div>
           ) : (
             <>
-              <div className="admin-panel__metrics-results-meta">
-                Showing {visibleRows.length.toLocaleString()} of{" "}
-                {filteredRows.length.toLocaleString()} metrics in{" "}
-                {visibleBucketMetaLabel}
-              </div>
-
               {visibleGroups.map(([bucket, group]) => (
                 <section key={bucket} className="admin-panel__metrics-group-card">
                   <div className="admin-panel__metrics-group-header">
-                    <span
-                      className={`admin-panel__metrics-bucket-badge ${
-                        focusedBucket === bucket
-                          ? "admin-panel__metrics-bucket-badge--active"
-                          : ""
-                      }`}
-                    >
-                      {bucket}
-                    </span>
-                    <span className="admin-panel__muted">
-                      {group.length.toLocaleString()} shown
-                    </span>
+                    <div className="admin-panel__metrics-group-meta">
+                      <span
+                        className={`admin-panel__metrics-bucket-badge ${
+                          focusedBucket === bucket
+                            ? "admin-panel__metrics-bucket-badge--active"
+                            : ""
+                        }`}
+                      >
+                        {bucket}
+                      </span>
+                      <span className="admin-panel__muted">
+                        {activityFilter === "all"
+                          ? `${group.filter((row) => row.isActive).length.toLocaleString()} active of ${group.length.toLocaleString()} shown`
+                          : `${group.length.toLocaleString()} shown`}
+                      </span>
+                    </div>
+
+                    <MetricsActionMenu
+                      label="Actions"
+                      items={[
+                        {
+                          label: "Enable shown in bucket",
+                          disabled:
+                            savingActivity || !group.some((row) => !row.isActive),
+                          onSelect: () =>
+                            setMetricActivityForKeys(
+                              group.map((row) => row.key),
+                              true,
+                            ),
+                        },
+                        {
+                          label: "Disable shown in bucket",
+                          disabled:
+                            savingActivity || !group.some((row) => row.isActive),
+                          onSelect: () =>
+                            setMetricActivityForKeys(
+                              group.map((row) => row.key),
+                              false,
+                            ),
+                        },
+                      ]}
+                    />
                   </div>
 
                   <div className="admin-panel__metrics-group-table-wrap">
                     <table className="admin-panel__table">
                       <thead>
                         <tr>
+                          <th className="admin-panel__th admin-panel__th--toggle">
+                            Active
+                          </th>
                           <th className="admin-panel__th">Measurement</th>
                           <th className="admin-panel__th">Field</th>
                           <th className="admin-panel__th">Unit</th>
@@ -521,6 +832,21 @@ export function MetricsModal({
                       <tbody>
                         {group.map((row) => (
                           <tr key={row.key} className="admin-panel__row">
+                            <td className="admin-panel__td admin-panel__td--toggle">
+                              <input
+                                type="checkbox"
+                                className="admin-panel__metrics-toggle"
+                                checked={row.isActive}
+                                onChange={(event) =>
+                                  setMetricActivityForKeys(
+                                    [row.key],
+                                    event.target.checked,
+                                  )
+                                }
+                                disabled={savingActivity}
+                                aria-label={`Toggle metric ${row.measurement} ${row.field}`}
+                              />
+                            </td>
                             <td className="admin-panel__td">
                               <code className="admin-panel__code-inline">
                                 {row.measurement}
@@ -570,10 +896,35 @@ export function MetricsModal({
           )}
 
           <div className="admin-panel__modal-actions">
+            {hasPendingActivityChanges && (
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--ghost"
+                onClick={resetDraftActivity}
+                disabled={savingActivity}
+              >
+                Discard changes
+              </button>
+            )}
+            {hasPendingActivityChanges && (
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--primary"
+                onClick={handleActivitySave}
+                disabled={savingActivity}
+              >
+                {savingActivity ? "Saving..." : "Save activity"}
+              </button>
+            )}
             <button
               type="button"
-              className="admin-panel__btn admin-panel__btn--primary admin-panel__btn--full"
-              onClick={onClose}
+              className={`admin-panel__btn ${
+                hasPendingActivityChanges
+                  ? "admin-panel__btn--ghost"
+                  : "admin-panel__btn--primary admin-panel__btn--full"
+              }`}
+              onClick={requestClose}
+              disabled={savingActivity}
             >
               Done
             </button>

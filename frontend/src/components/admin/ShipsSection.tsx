@@ -216,7 +216,6 @@ interface ShipForm {
   grossTonnage: string;
   buildYard: string;
   shipClass: string;
-  metricKeys: string[];
   userIds: string[];
 }
 
@@ -235,7 +234,6 @@ function createEmptyShipForm(): ShipForm {
     grossTonnage: "",
     buildYard: "",
     shipClass: "",
-    metricKeys: [],
     userIds: [],
   };
 }
@@ -337,21 +335,6 @@ export function ShipsSection({
     [metricDefinitions],
   );
 
-  const editableMetricOptions = useMemo(() => {
-    if (!editingShip) return [];
-
-    return editingShip.metricsConfig
-      .map((config) => {
-        const definition = metricDefinitionMap.get(config.metricKey);
-        return {
-          key: config.metricKey,
-          label: definition?.label ?? config.metricKey,
-          extra: definition?.unit ?? undefined,
-        };
-      })
-      .sort((left, right) => left.label.localeCompare(right.label));
-  }, [editingShip, metricDefinitionMap]);
-
   const editingDescriptionStats = useMemo(() => {
     if (!editingShip) {
       return { total: 0, described: 0, pending: 0 };
@@ -392,17 +375,8 @@ export function ShipsSection({
           ? "This ship is already syncing metrics in background."
           : editingDescriptionStats.pending > 0
             ? `${editingDescriptionStats.pending.toLocaleString()} metric descriptions are still generating in background.`
-            : "Descriptions continue in background and are not regenerated if they already exist."
-    : "Metrics sync starts after save and continues in background.";
-
-  const toggleMetricKey = (key: string) => {
-    setShipForm((previous) => ({
-      ...previous,
-      metricKeys: previous.metricKeys.includes(key)
-        ? previous.metricKeys.filter((metricKey) => metricKey !== key)
-        : [...previous.metricKeys, key],
-    }));
-  };
+            : "Descriptions continue in background. Metric activation is managed from the Metrics window."
+    : "Metrics sync starts after save and continues in background. Activation can be adjusted later from the Metrics window.";
 
   const toggleShipUserId = (id: string) => {
     setShipForm((previous) => ({
@@ -447,9 +421,6 @@ export function ShipsSection({
         ship.grossTonnage != null ? String(ship.grossTonnage) : "",
       buildYard: ship.buildYard ?? "",
       shipClass: ship.shipClass ?? "",
-      metricKeys: ship.metricsConfig
-        .filter((config) => config.isActive)
-        .map((config) => config.metricKey),
       userIds: (ship.assignedUsers ?? []).map((user) => user.id),
     });
     setPendingFiles([]);
@@ -482,7 +453,6 @@ export function ShipsSection({
           grossTonnage: normalizeOptionalNumberField(shipForm.grossTonnage),
           buildYard: normalizeOptionalTextField(shipForm.buildYard),
           shipClass: normalizeOptionalTextField(shipForm.shipClass),
-          metricKeys: organizationChanged ? undefined : shipForm.metricKeys,
           userIds: shipForm.userIds,
         },
         token,
@@ -771,8 +741,8 @@ export function ShipsSection({
                 </h2>
                 <p className="admin-panel__modal-desc">
                   {editingShipId
-                    ? "Update ship details, organization, and active metrics."
-                    : "Bind a ship to an organization and sync all non-system metrics automatically."}
+                    ? "Update ship details and organization. Manage metric activation from the Metrics window."
+                    : "Bind a ship to an organization and sync metrics automatically in background after save."}
                 </p>
               </div>
               <form
@@ -951,37 +921,6 @@ export function ShipsSection({
                       />
                     </div>
                   </div>
-
-                {editingShipId &&
-                  !organizationChanged &&
-                  editableMetricOptions.length > 0 && (
-                    <div className="admin-panel__modal-field">
-                      <span className="admin-panel__field-label">
-                        Active metrics
-                      </span>
-                      <MultiSelectPicker
-                        options={editableMetricOptions}
-                        selected={shipForm.metricKeys}
-                        onToggle={toggleMetricKey}
-                        onSelectAll={() =>
-                          setShipForm((previous) => ({
-                            ...previous,
-                            metricKeys: editableMetricOptions.map(
-                              (option) => option.key,
-                            ),
-                          }))
-                        }
-                        onDeselectAll={() =>
-                          setShipForm((previous) => ({
-                            ...previous,
-                            metricKeys: [],
-                          }))
-                        }
-                        disabled={creatingShip}
-                        placeholder="Choose active metrics..."
-                      />
-                    </div>
-                  )}
 
                 {assignableUsers.length > 0 && (
                   <div className="admin-panel__modal-field">

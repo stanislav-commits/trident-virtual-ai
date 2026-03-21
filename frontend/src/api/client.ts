@@ -336,6 +336,20 @@ export async function updateShip(
   return res.json();
 }
 
+export async function updateShipMetricActivity(
+  id: string,
+  metricKeys: string[],
+  token: string,
+): Promise<ShipListItem> {
+  return updateShip(
+    id,
+    {
+      metricKeys,
+    },
+    token,
+  );
+}
+
 export async function deleteShip(id: string, token: string): Promise<void> {
   const res = await fetchWithAuth(`ships/${id}`, {
     token,

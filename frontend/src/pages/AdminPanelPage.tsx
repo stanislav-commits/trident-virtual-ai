@@ -140,6 +140,18 @@ export function AdminPanelPage() {
     if (activeSection === "ships") loadShips();
   }, [activeSection, loadShips]);
 
+  useEffect(() => {
+    if (!metricsModalShip) {
+      return;
+    }
+
+    const latestShip =
+      ships.find((ship) => ship.id === metricsModalShip.id) ?? null;
+    if (latestShip && latestShip !== metricsModalShip) {
+      setMetricsModalShip(latestShip);
+    }
+  }, [metricsModalShip, ships]);
+
   const hasPendingMetricDescriptions = useMemo(() => {
     if (!ships.length || !metricDefinitions.length) return false;
 
@@ -343,11 +355,20 @@ export function AdminPanelPage() {
       {metricsModalShip && (
         <MetricsModal
           token={token}
+          shipId={metricsModalShip.id}
           shipName={metricsModalShip.name}
           metricsConfig={metricsModalShip.metricsConfig}
           metricDefinitions={metricDefinitions}
           onClose={() => setMetricsModalShip(null)}
           onError={setError}
+          onShipUpdated={(updatedShip) => {
+            setShips((current) =>
+              current.map((ship) =>
+                ship.id === updatedShip.id ? updatedShip : ship,
+              ),
+            );
+            setMetricsModalShip(updatedShip);
+          }}
           onDefinitionsChanged={() => {
             if (token) {
               getMetricDefinitions(token)
