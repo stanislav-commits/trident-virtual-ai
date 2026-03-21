@@ -63,6 +63,15 @@ interface ShipTelemetryContext {
   matchedMetrics: number;
   prefiltered: boolean;
   matchMode: 'none' | 'sample' | 'exact' | 'direct' | 'related';
+  clarification: {
+    question: string;
+    pendingQuery: string;
+    actions: Array<{
+      label: string;
+      message: string;
+      kind?: 'suggestion' | 'all';
+    }>;
+  } | null;
 }
 
 @Injectable()
@@ -392,6 +401,7 @@ export class MetricsService implements OnModuleInit {
         matchedMetrics: 0,
         prefiltered: false,
         matchMode: 'none',
+        clarification: null,
       };
     }
 
@@ -412,6 +422,7 @@ export class MetricsService implements OnModuleInit {
         matchedMetrics: sampleEntries.length,
         prefiltered: true,
         matchMode: 'sample',
+        clarification: null,
       };
     }
 
@@ -422,12 +433,19 @@ export class MetricsService implements OnModuleInit {
     );
 
     if (matchedEntries.length > 0) {
+      const matchMode = this.determineTelemetryMatchMode(
+        matchedEntries,
+        query,
+        resolvedSubjectQuery,
+      );
       return {
         telemetry: this.toTelemetryMap(matchedEntries),
         totalActiveMetrics: entries.length,
         matchedMetrics: matchedEntries.length,
         prefiltered: true,
-        matchMode: this.determineTelemetryMatchMode(
+        matchMode,
+        clarification: this.buildTelemetryClarification(
+          matchMode,
           matchedEntries,
           query,
           resolvedSubjectQuery,
@@ -444,6 +462,7 @@ export class MetricsService implements OnModuleInit {
         matchedMetrics: 0,
         prefiltered: false,
         matchMode: 'none',
+        clarification: null,
       };
     }
 
@@ -453,12 +472,22 @@ export class MetricsService implements OnModuleInit {
       resolvedSubjectQuery,
     );
 
+    const fallbackMatchMode = fallbackEntries.length > 0 ? 'related' : 'none';
     return {
       telemetry: this.toTelemetryMap(fallbackEntries),
       totalActiveMetrics: entries.length,
       matchedMetrics: fallbackEntries.length,
       prefiltered: fallbackEntries.length > 0,
-      matchMode: fallbackEntries.length > 0 ? 'related' : 'none',
+      matchMode: fallbackMatchMode,
+      clarification:
+        fallbackEntries.length > 0
+          ? this.buildTelemetryClarification(
+              fallbackMatchMode,
+              fallbackEntries,
+              query,
+              resolvedSubjectQuery,
+            )
+          : null,
     };
   }
 
@@ -803,10 +832,13 @@ export class MetricsService implements OnModuleInit {
       'its',
       'list',
       'lookup',
+      'many',
       'me',
       'my',
+      'much',
       'of',
       'on',
+      'onboard',
       'or',
       'our',
       'out',
@@ -845,9 +877,14 @@ export class MetricsService implements OnModuleInit {
       'connected',
       'enabled',
       'random',
+      'remaining',
+      'right',
+      'now',
       'their',
       'with',
       'from',
+      'left',
+      'available',
       'up',
       'us',
       'using',
@@ -1161,10 +1198,16 @@ export class MetricsService implements OnModuleInit {
       .map((value) => this.normalizeTelemetryText(value ?? ''))
       .filter(Boolean);
 
+    if (exactCandidates.some((candidate) => candidate === normalizedQuery)) {
+      return 'exact';
+    }
+
     if (
       exactCandidates.some(
         (candidate) =>
-          candidate === normalizedQuery || normalizedQuery.includes(candidate),
+          Boolean(candidate) &&
+          this.isStrongTelemetryCandidate(candidate) &&
+          normalizedQuery.includes(candidate),
       )
     ) {
       return 'exact';
@@ -1203,6 +1246,187 @@ export class MetricsService implements OnModuleInit {
     return hasDirectSubjectAndKind ? 'direct' : 'related';
   }
 
+  private buildTelemetryClarification(
+    matchMode: 'none' | 'sample' | 'exact' | 'direct' | 'related',
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryContext['clarification'] {
+    if (matchMode !== 'related') {
+      return null;
+    }
+
+    if (!this.shouldOfferTelemetryClarification(query, resolvedSubjectQuery)) {
+      return null;
+    }
+
+    const actions = this.buildTelemetryClarificationActions(entries, query);
+    if (actions.length === 0) {
+      return null;
+    }
+
+    return {
+      question:
+        "I couldn't find a direct telemetry metric that exactly measures the requested reading, but I did find related metrics for the same topic. Which one do you want to inspect?",
+      pendingQuery: this.buildTelemetryClarificationPendingQuery(query),
+      actions,
+    };
+  }
+
+  private shouldOfferTelemetryClarification(
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): boolean {
+    if (this.getRequestedTelemetrySampleSize(query, resolvedSubjectQuery) != null) {
+      return false;
+    }
+
+    const searchSpace = `${query}\n${resolvedSubjectQuery ?? ''}`;
+    if (
+      /\b(best\s+match|closest|matches?|related\s+metric|related\s+telemetry)\b/i.test(
+        searchSpace,
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      /\b(parts?|spares?|part\s*numbers?|consumables?|filters?)\b/i.test(
+        searchSpace,
+      )
+    ) {
+      return false;
+    }
+
+    const asksForActionFromReading =
+      /\b(based\s+on|depending\s+on|according\s+to)\b[\s\S]{0,120}\b(current|reading|value|level|temperature|temp|pressure|voltage|load|rpm|speed|flow|rate|status)\b/i.test(
+        searchSpace,
+      ) ||
+      (/\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|is\s+any\s+action\s+recommended|any\s+action\s+recommended|next\s+step|next\s+steps)\b/i.test(
+        searchSpace,
+      ) &&
+        /\b(current|reading|value|level|temperature|temp|pressure|voltage|load|rpm|speed|flow|rate|status)\b/i.test(
+          searchSpace,
+        ));
+
+    const isProcedureLike =
+      /\b(how\s+do\s+i|how\s+to|replace|change|install|remove|maintenance|service|procedure|steps?|manual|documentation)\b/i.test(
+        searchSpace,
+      );
+    if (isProcedureLike && !asksForActionFromReading) {
+      return false;
+    }
+
+    const asksForReading =
+      /\b(current|currently|status|reading|value|level|temperature|temp|pressure|voltage|load|rpm|speed|flow|rate|remaining|left|available|onboard)\b/i.test(
+        searchSpace,
+      ) ||
+      /\bhow\s+much\b|\bhow\s+many\b/i.test(searchSpace) ||
+      /\bfrom\s+telemetry\b|\bfrom\s+metrics\b/i.test(searchSpace);
+
+    const mentionsTelemetrySignal =
+      /\b(oil|fuel|coolant|fresh\s*water|seawater|water|tank|battery|depth|rudder|trim|temperature|temp|pressure|voltage|current|load|rpm|speed|level|flow|rate|generator|genset|engine|pump|compressor|sensor|meter)\b/i.test(
+        searchSpace,
+      );
+
+    return mentionsTelemetrySignal && (asksForReading || asksForActionFromReading);
+  }
+
+  private buildTelemetryClarificationActions(
+    entries: ShipTelemetryEntry[],
+    query: string,
+  ): NonNullable<ShipTelemetryContext['clarification']>['actions'] {
+    const selected: NonNullable<
+      ShipTelemetryContext['clarification']
+    >['actions'] = [];
+    const seen = new Set<string>();
+
+    for (const entry of entries) {
+      const label = this.buildTelemetrySuggestionLabel(entry);
+      const normalizedLabel = this.normalizeTelemetryText(label);
+      if (!label || seen.has(normalizedLabel)) {
+        continue;
+      }
+
+      seen.add(normalizedLabel);
+      selected.push({
+        label,
+        message: this.buildTelemetryClarificationActionMessage(query, entry),
+        kind: 'suggestion',
+      });
+
+      if (selected.length >= 4) {
+        break;
+      }
+    }
+
+    if (selected.length <= 1) {
+      return selected;
+    }
+
+    return [
+      ...selected,
+      {
+        label: 'All related',
+        message: this.buildTelemetryClarificationAllMessage(selected),
+        kind: 'all',
+      },
+    ];
+  }
+
+  private buildTelemetrySuggestionLabel(entry: ShipTelemetryEntry): string {
+    if (entry.measurement && entry.field) {
+      return `${entry.measurement}.${entry.field}`;
+    }
+
+    return entry.label || entry.key;
+  }
+
+  private buildTelemetryClarificationActionMessage(
+    query: string,
+    entry: ShipTelemetryEntry,
+  ): string {
+    const label = this.buildTelemetrySuggestionLabel(entry);
+    if (this.isTelemetryActionRecommendationQuery(query)) {
+      return `Based on the current value of ${label}, is any action recommended?`;
+    }
+
+    return `What is the current value of ${label}?`;
+  }
+
+  private buildTelemetryClarificationAllMessage(
+    actions: Array<{ label: string }>,
+  ): string {
+    const labels = actions
+      .map((action) => action.label.trim())
+      .filter(Boolean)
+      .slice(0, 4);
+
+    return `Show the current values of these related metrics: ${labels.join('; ')}.`;
+  }
+
+  private buildTelemetryClarificationPendingQuery(query: string): string {
+    if (this.isTelemetryActionRecommendationQuery(query)) {
+      return 'Based on the current value of';
+    }
+
+    return 'What is the current value of';
+  }
+
+  private isTelemetryActionRecommendationQuery(query: string): boolean {
+    return (
+      /\b(based\s+on|depending\s+on|according\s+to)\b[\s\S]{0,120}\b(current|reading|value|level|temperature|temp|pressure|voltage|load|rpm|speed|flow|rate|status)\b/i.test(
+        query,
+      ) ||
+      (/\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|is\s+any\s+action\s+recommended|any\s+action\s+recommended|next\s+step|next\s+steps)\b/i.test(
+        query,
+      ) &&
+        /\b(current|reading|value|level|temperature|temp|pressure|voltage|load|rpm|speed|flow|rate|status)\b/i.test(
+          query,
+        ))
+    );
+  }
+
   private extractTelemetryMeasurementKinds(value: string): Set<string> {
     const kinds = new Set<string>();
     const checks: Array<[RegExp, string]> = [
@@ -1215,13 +1439,30 @@ export class MetricsService implements OnModuleInit {
       [/\b(rpm|speed)\b/i, 'speed'],
       [/\b(flow|rate)\b/i, 'flow'],
       [/\b(runtime|running|hours?|hour\s*meter)\b/i, 'hours'],
-      [/\b(status|state)\b/i, 'status'],
+      [/\b(status(?:es)?|state(?:s)?)\b/i, 'status'],
     ];
 
     for (const [pattern, label] of checks) {
       if (pattern.test(value)) {
         kinds.add(label);
       }
+    }
+
+    const normalized = this.normalizeTelemetryText(value);
+    const asksForStoredQuantity =
+      /\b(how much|how many|onboard|remaining|left|available)\b/i.test(
+        normalized,
+      ) &&
+      /\b(fuel|oil|coolant|water|tank|def|urea)\b/i.test(normalized);
+    if (asksForStoredQuantity) {
+      kinds.add('level');
+    }
+
+    const hasQuantityUnit =
+      /\b(liters?|litres?|percent|percentage|%)\b/i.test(normalized) &&
+      !/\b(used|consumed|consumption|rate|flow)\b/i.test(normalized);
+    if (hasQuantityUnit) {
+      kinds.add('level');
     }
 
     return kinds;
@@ -1350,6 +1591,9 @@ export class MetricsService implements OnModuleInit {
       batteries: 'battery',
       generators: 'generator',
       gensets: 'genset',
+      status: 'status',
+      statuses: 'status',
+      states: 'state',
       volts: 'voltage',
       volt: 'voltage',
       temps: 'temperature',

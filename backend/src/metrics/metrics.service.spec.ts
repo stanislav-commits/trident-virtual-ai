@@ -235,6 +235,7 @@ describe('MetricsService telemetry matching', () => {
     expect(Object.keys(result.telemetry).length).toBeGreaterThan(0);
     expect(Object.keys(result.telemetry)[0]).toContain('Battery voltage');
     expect(Object.values(result.telemetry)[0]).toBe(26.3);
+    expect(result.clarification).toBeNull();
   });
 
   it('keeps generator telemetry list samples scoped to generator and genset metrics', async () => {
@@ -347,6 +348,15 @@ describe('MetricsService telemetry matching', () => {
     expect(result.prefiltered).toBe(true);
     expect(result.matchMode).toBe('related');
     expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(result.clarification).not.toBeNull();
+    expect(result.clarification?.pendingQuery).toBe(
+      'What is the current value of',
+    );
+    expect(
+      result.clarification?.actions.some((action) =>
+        action.label.includes('Oil Pressure'),
+      ),
+    ).toBe(true);
   });
 
   it("prefers the captain cabin room temperature over captain cabin electrical metrics", async () => {
@@ -419,6 +429,7 @@ describe('MetricsService telemetry matching', () => {
     expect(Object.keys(result.telemetry)).toHaveLength(1);
     expect(Object.keys(result.telemetry)[0]).toContain('Room Temperature');
     expect(Object.values(result.telemetry)[0]).toBe(16.8);
+    expect(result.clarification).toBeNull();
   });
 
   it('does not treat DEF tank level as a direct fuel level reading', async () => {
@@ -479,6 +490,256 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(true);
     expect(
       Object.keys(result.telemetry).some((key) => key.includes('Fuel Pressure')),
+    ).toBe(true);
+    expect(result.clarification).not.toBeNull();
+    expect(result.clarification?.pendingQuery).toBe(
+      'What is the current value of',
+    );
+    expect(
+      result.clarification?.actions.some((action) =>
+        action.label.includes('Fuel Pressure'),
+      ),
+    ).toBe(true);
+    expect(
+      result.clarification?.actions.some((action) =>
+        action.label.includes('Diesel Fuel Rate'),
+      ),
+    ).toBe(true);
+  });
+
+  it('treats onboard fuel quantity questions as related fuel level lookups instead of direct matches', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Diesel Fuel Rate (l/h)',
+        latestValue: 61.4,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Diesel Fuel Rate (l/h)',
+          description:
+            'Monitors the diesel fuel consumption rate of the port genset in liters per hour.',
+          unit: 'l/h',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Diesel Fuel Rate (l/h)',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Fuel Pressure (bar)',
+        latestValue: 0.34,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Fuel Pressure (bar)',
+          description:
+            'Displays the fuel pressure in bars for the port genset.',
+          unit: 'bar',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Fuel Pressure (bar)',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Total Fuel Used (l)',
+        latestValue: 34150,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Total Fuel Used (l)',
+          description:
+            'Displays the total fuel used by the port genset in liters.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Total Fuel Used (l)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'How much fuel is onboard right now?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('related');
+    expect(result.clarification).not.toBeNull();
+    expect(
+      result.clarification?.actions.some((action) =>
+        action.label.includes('Fuel Pressure'),
+      ),
+    ).toBe(true);
+    expect(
+      result.clarification?.actions.some((action) =>
+        action.label.includes('Diesel Fuel Rate'),
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    {
+      query: 'What is the current fuel status?',
+      expectedActionLabel: 'Fuel Pressure',
+    },
+    {
+      query: 'What is the current oil status?',
+      expectedActionLabel: 'Oil Pressure',
+    },
+    {
+      query: 'What is the current battery status?',
+      expectedActionLabel: 'Battery voltage',
+    },
+  ])(
+    'treats broad status queries as related telemetry lookups: $query',
+    async ({ query, expectedActionLabel }) => {
+      const service = buildService([
+        {
+          metricKey: 'HVAC::AFT-GARAGE-HVAC::Status',
+          latestValue: 'Running',
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'AFT-GARAGE-HVAC.Status',
+            description: 'Reports the operating status of the aft garage HVAC.',
+            unit: null,
+            bucket: 'HVAC',
+            measurement: 'AFT-GARAGE-HVAC',
+            field: 'Status',
+          },
+        },
+        {
+          metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Diesel Fuel Rate (l/h)',
+          latestValue: 61.4,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'SIEMENS-MASE-GENSET-PS.Diesel Fuel Rate (l/h)',
+            description:
+              'Monitors the diesel fuel consumption rate of the port genset in liters per hour.',
+            unit: 'l/h',
+            bucket: 'Trending',
+            measurement: 'SIEMENS-MASE-GENSET-PS',
+            field: 'Diesel Fuel Rate (l/h)',
+          },
+        },
+        {
+          metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Fuel Pressure (bar)',
+          latestValue: 0.34,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'SIEMENS-MASE-GENSET-PS.Fuel Pressure (bar)',
+            description:
+              'Displays the fuel pressure in bars for the port genset.',
+            unit: 'bar',
+            bucket: 'Trending',
+            measurement: 'SIEMENS-MASE-GENSET-PS',
+            field: 'Fuel Pressure (bar)',
+          },
+        },
+        {
+          metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Oil Pressure (bar)',
+          latestValue: 4.2,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'SIEMENS-MASE-GENSET-PS.Oil Pressure (bar)',
+            description: 'Displays the oil pressure in bars for the port genset.',
+            unit: 'bar',
+            bucket: 'Trending',
+            measurement: 'SIEMENS-MASE-GENSET-PS',
+            field: 'Oil Pressure (bar)',
+          },
+        },
+        {
+          metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Oil temperature (°C)',
+          latestValue: 82.1,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'SIEMENS-MASE-GENSET-PS.Oil temperature (°C)',
+            description:
+              'Displays the oil temperature in degrees Celsius for the port genset.',
+            unit: '°C',
+            bucket: 'Trending',
+            measurement: 'SIEMENS-MASE-GENSET-PS',
+            field: 'Oil temperature (°C)',
+          },
+        },
+        {
+          metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Battery voltage (V)',
+          latestValue: 26.3,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'SIEMENS-MASE-GENSET-PS.Battery voltage (V)',
+            description:
+              'Displays the battery voltage level for the port genset.',
+            unit: 'V',
+            bucket: 'Trending',
+            measurement: 'SIEMENS-MASE-GENSET-PS',
+            field: 'Battery voltage (V)',
+          },
+        },
+      ]);
+
+      const result = await service.getShipTelemetryContextForQuery('ship-1', query);
+
+      expect(result.prefiltered).toBe(true);
+      expect(result.matchMode).toBe('related');
+      expect(result.clarification).not.toBeNull();
+      expect(result.clarification?.pendingQuery).toBe(
+        'What is the current value of',
+      );
+      expect(
+        Object.keys(result.telemetry).every((key) => !key.includes('.Status')),
+      ).toBe(true);
+      expect(
+        result.clarification?.actions.some((action) =>
+          action.label.includes(expectedActionLabel),
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it('uses action-oriented clarification prompts for recommendation queries without a direct metric', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Fuel Pressure (bar)',
+        latestValue: 0.34,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Fuel Pressure (bar)',
+          description: 'Displays the fuel pressure in bars for the port genset.',
+          unit: 'bar',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Fuel Pressure (bar)',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Total Fuel Used (l)',
+        latestValue: 34150,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Total Fuel Used (l)',
+          description:
+            'Displays the total fuel consumption in liters for the port genset.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Total Fuel Used (l)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'Based on the current fuel level, is any action recommended?',
+    );
+
+    expect(result.matchMode).toBe('related');
+    expect(result.clarification).not.toBeNull();
+    expect(result.clarification?.pendingQuery).toBe(
+      'Based on the current value of',
+    );
+    expect(
+      result.clarification?.actions
+        .filter((action) => action.kind !== 'all')
+        .every((action) =>
+          action.message.startsWith('Based on the current value of '),
+        ),
     ).toBe(true);
   });
 });

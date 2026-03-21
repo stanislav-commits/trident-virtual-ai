@@ -17,6 +17,18 @@ import {
 import { ChatDocumentationService } from './chat-documentation.service';
 import { ChatCitation } from './chat.types';
 
+interface TelemetryClarificationAction {
+  label: string;
+  message: string;
+  kind?: 'suggestion' | 'all';
+}
+
+interface TelemetryClarification {
+  question: string;
+  pendingQuery: string;
+  actions: TelemetryClarificationAction[];
+}
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -431,6 +443,7 @@ export class ChatService {
         | 'exact'
         | 'direct'
         | 'related' = 'none';
+      let telemetryClarification: TelemetryClarification | null = null;
       const telemetryShips: string[] = [];
       try {
         if (shipId) {
@@ -443,6 +456,10 @@ export class ChatService {
           telemetry = telemetryContext.telemetry;
           telemetryPrefiltered = telemetryContext.prefiltered;
           telemetryMatchMode = telemetryContext.matchMode;
+          telemetryClarification = telemetryContext.clarification;
+          this.logger.debug(
+            `Telemetry context for ship ${shipId}: matchMode=${telemetryMatchMode}, prefiltered=${telemetryPrefiltered}, matchedMetrics=${telemetryContext.matchedMetrics}, clarificationActions=${telemetryClarification?.actions.length ?? 0}`,
+          );
           if (shipName) telemetryShips.push(shipName);
         } else if (role === 'admin') {
           const shipsWithMetrics = await this.prisma.ship.findMany({
@@ -470,10 +487,46 @@ export class ChatService {
             Object.entries(shipTelemetry).forEach(([label, value]) => {
               telemetry[`[${ship.name}] ${label}`] = value;
             });
+
+            if (telemetryContext.clarification?.actions.length) {
+              telemetryClarification =
+                this.mergeTelemetryClarificationForAdminShip(
+                  telemetryClarification,
+                  ship.name,
+                  telemetryContext.clarification,
+                );
+            }
           }
         }
-      } catch {
-        // Telemetry is best-effort and must not block the answer.
+      } catch (error) {
+        this.logger.warn(
+          `Telemetry lookup skipped for query="${effectiveUserQuery}": ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      if (telemetryClarification && telemetryClarification.actions.length > 0) {
+        this.logger.debug(
+          `Returning telemetry clarification for query="${effectiveUserQuery}" with ${telemetryClarification.actions.length} actions`,
+        );
+        return this.addAssistantMessage(
+          sessionId,
+          telemetryClarification.question,
+          {
+            awaitingClarification: true,
+            pendingClarificationQuery: telemetryClarification.pendingQuery,
+            clarificationReason: 'related_telemetry_options',
+            clarificationActions: telemetryClarification.actions,
+            ...(telemetryShips.length > 0
+              ? { telemetryShips: [...new Set(telemetryShips)] }
+              : {}),
+            ...(resolvedSubjectQuery
+              ? { resolvedSubjectQuery }
+              : retrievalQuery
+                ? { resolvedSubjectQuery: retrievalQuery }
+                : {}),
+          },
+          [],
+        );
       }
 
       const telemetryOnlyQuery =
@@ -582,6 +635,59 @@ export class ChatService {
       })),
       createdAt: message.createdAt.toISOString(),
       deletedAt: message.deletedAt?.toISOString() ?? null,
+    };
+  }
+
+  private mergeTelemetryClarificationForAdminShip(
+    existing: TelemetryClarification | null,
+    shipName: string,
+    clarification: TelemetryClarification,
+  ): TelemetryClarification {
+    const prefixedActions = clarification.actions
+      .filter((action) => action.kind !== 'all')
+      .map((action) => ({
+        label: `${shipName}: ${action.label}`,
+        message: `For ${shipName}, ${action.message}`,
+        kind: action.kind,
+      }));
+
+    if (!existing) {
+      return {
+        question: clarification.question,
+        pendingQuery: clarification.pendingQuery,
+        actions: prefixedActions,
+      };
+    }
+
+    if (prefixedActions.length === 0) {
+      return existing;
+    }
+
+    const mergedActions: TelemetryClarificationAction[] = [];
+    const seen = new Set<string>();
+    const candidates = [
+      ...existing.actions,
+      ...prefixedActions,
+    ];
+
+    for (const action of candidates) {
+      const normalizedLabel = action.label.trim().toLowerCase();
+      if (!normalizedLabel || seen.has(normalizedLabel)) {
+        continue;
+      }
+
+      seen.add(normalizedLabel);
+      mergedActions.push(action);
+
+      if (mergedActions.length >= 4) {
+        break;
+      }
+    }
+
+    return {
+      question: existing.question || clarification.question,
+      pendingQuery: existing.pendingQuery || clarification.pendingQuery,
+      actions: mergedActions.length > 0 ? mergedActions : prefixedActions,
     };
   }
 }
