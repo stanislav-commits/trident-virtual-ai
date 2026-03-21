@@ -25,6 +25,35 @@ describe('LlmService maintenance calculation guard', () => {
     ).toBe('maintenance_procedure');
   });
 
+  it('classifies current fuel or oil readings as telemetry queries instead of parts lookups', () => {
+    const service = new LlmService();
+
+    expect(
+      (service as any).classifyQueryIntent('what the current fuel level?'),
+    ).toBe('telemetry_status');
+    expect(
+      (service as any).classifyQueryIntent('what the current oil level?'),
+    ).toBe('telemetry_status');
+  });
+
+  it('classifies metric list requests as telemetry list queries', () => {
+    const service = new LlmService();
+
+    expect(
+      (service as any).classifyQueryIntent(
+        'Show 10 random active metrics for this ship.',
+      ),
+    ).toBe('telemetry_list');
+  });
+
+  it('classifies exact telemetry-like metric identifiers as telemetry queries', () => {
+    const service = new LlmService();
+
+    expect((service as any).classifyQueryIntent('Fuel_Tank_4S')).toBe(
+      'telemetry_status',
+    );
+  });
+
   it('treats exact reference ids as direct lookups instead of opaque fragments', () => {
     const service = new LlmService();
 
@@ -41,7 +70,8 @@ describe('LlmService maintenance calculation guard', () => {
 
     const prompt = (service as any).buildUserPrompt({
       userQuery: 'I need the oil change procedure for the port generator.',
-      resolvedSubjectQuery: 'port generator PS ENGINE A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE',
+      resolvedSubjectQuery:
+        'port generator PS ENGINE A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE',
       citations: [
         {
           sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
@@ -56,6 +86,146 @@ describe('LlmService maintenance calculation guard', () => {
     );
     expect(prompt).toContain(
       'Do not infer oil capacity, fill volume, or consumption from spare-parts quantities',
+    );
+  });
+
+  it('marks prefiltered telemetry as the best current metric match in the prompt', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'Fuel_Tank_4S',
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'exact',
+      noDocumentation: true,
+      telemetry: {
+        'Tanks-Temperatures.Fuel_Tank_4S': 18.2,
+      },
+    });
+
+    expect(prompt).toContain('Matched Telemetry:');
+    expect(prompt).toContain(
+      'preselected as the best matches for the current question',
+    );
+    expect(prompt).toContain(
+      'Prefer these matched telemetry readings when they directly answer the request.',
+    );
+    expect(prompt).toContain(
+      'The telemetry below contains an exact metric match for the question.',
+    );
+  });
+
+  it('tells telemetry-status prompts to answer from matched telemetry before documentation', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'what the current fuel level?',
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'direct',
+      telemetry: {
+        'Tanks.Fuel_Level': 63,
+      },
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta operators manual',
+          snippet: 'Fuel level gauge can be shown in vessel view.',
+        },
+      ],
+    });
+
+    expect(prompt).toContain('This is a current telemetry/status question.');
+    expect(prompt).toContain(
+      'Answer from the matched telemetry first when one telemetry item clearly matches the asked metric.',
+    );
+    expect(prompt).toContain(
+      'The telemetry below directly measures the requested current reading.',
+    );
+  });
+
+  it('tells telemetry list prompts to answer from telemetry instead of documentation', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'Show 10 random active metrics for this ship.',
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'sample',
+      telemetry: {
+        'Tanks.Fuel_Level': 63,
+        'Electrical.Battery_Voltage': 26.3,
+      },
+      noDocumentation: true,
+    });
+
+    expect(prompt).toContain(
+      'The user is asking for a list or sample of currently active telemetry metrics.',
+    );
+    expect(prompt).toContain('Answer only from the provided telemetry list.');
+  });
+
+  it('tells mixed telemetry-guidance prompts to anchor the answer in current telemetry first', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'Based on the current oil level, what should I do next?',
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'direct',
+      telemetry: {
+        'CleanOilTank.Level': 9,
+      },
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta operators manual',
+          snippet:
+            'Pull out the dipstick and ensure the oil level is between MAX and MIN markings.',
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      'This question combines a current telemetry reading with a request for guidance or next actions.',
+    );
+    expect(prompt).toContain(
+      'If the matched telemetry already provides one or more direct readings, state those readings explicitly before any recommendation and do not say the reading is unavailable.',
+    );
+    expect(prompt).toContain(
+      'If the documentation does not define an action threshold or recommendation for the matched telemetry reading, say that clearly instead of inventing one.',
+    );
+  });
+
+  it('tells telemetry list prompts to keep the list scoped to the requested subject', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'List 5 current active metrics related to fuel tanks.',
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'sample',
+      telemetry: {
+        'Tanks-Temperatures.Fuel_Tank_1P': 3128,
+        'Tanks-Temperatures.Fuel_Tank_2S': 2374,
+      },
+      noDocumentation: true,
+    });
+
+    expect(prompt).toContain(
+      'If the query narrows the list to a subject such as fuel tanks, generators, or batteries, only use telemetry items that match that subject.',
+    );
+  });
+
+  it('warns when only related telemetry is available for a requested metric', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'oil level from telemetry',
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'related',
+      telemetry: {
+        'SIEMENS-MASE-GENSET-PS.Oil Pressure': 0,
+        'SIEMENS-MASE-GENSET-PS.Oil temperature': 15,
+      },
+      noDocumentation: true,
+    });
+
+    expect(prompt).toContain(
+      'The telemetry below is only related supporting telemetry and may not directly measure the exact value asked for.',
     );
   });
 
@@ -109,6 +279,8 @@ describe('LlmService maintenance calculation guard', () => {
     );
     expect(prompt).not.toContain('Detected telemetry hour counters:');
     expect(prompt).not.toContain('Calculated next-due candidates:');
-    expect(prompt).not.toContain('Remaining-hours candidates using explicit next-due values:');
+    expect(prompt).not.toContain(
+      'Remaining-hours candidates using explicit next-due values:',
+    );
   });
 });

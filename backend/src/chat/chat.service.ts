@@ -424,10 +424,25 @@ export class ChatService {
       }
 
       let telemetry: Record<string, unknown> = {};
+      let telemetryPrefiltered = false;
+      let telemetryMatchMode:
+        | 'none'
+        | 'sample'
+        | 'exact'
+        | 'direct'
+        | 'related' = 'none';
       const telemetryShips: string[] = [];
       try {
         if (shipId) {
-          telemetry = await this.metricsService.getShipTelemetry(shipId);
+          const telemetryContext =
+            await this.metricsService.getShipTelemetryContextForQuery(
+              shipId,
+              effectiveUserQuery,
+              resolvedSubjectQuery,
+            );
+          telemetry = telemetryContext.telemetry;
+          telemetryPrefiltered = telemetryContext.prefiltered;
+          telemetryMatchMode = telemetryContext.matchMode;
           if (shipName) telemetryShips.push(shipName);
         } else if (role === 'admin') {
           const shipsWithMetrics = await this.prisma.ship.findMany({
@@ -437,11 +452,20 @@ export class ChatService {
           });
 
           for (const ship of shipsWithMetrics) {
-            const shipTelemetry = await this.metricsService.getShipTelemetry(
-              ship.id,
-            );
+            const telemetryContext =
+              await this.metricsService.getShipTelemetryContextForQuery(
+                ship.id,
+                effectiveUserQuery,
+                resolvedSubjectQuery,
+              );
+            const shipTelemetry = telemetryContext.telemetry;
             if (Object.keys(shipTelemetry).length > 0) {
               telemetryShips.push(ship.name);
+              telemetryPrefiltered =
+                telemetryPrefiltered || telemetryContext.prefiltered;
+              if (telemetryMatchMode === 'none') {
+                telemetryMatchMode = telemetryContext.matchMode;
+              }
             }
             Object.entries(shipTelemetry).forEach(([label, value]) => {
               telemetry[`[${ship.name}] ${label}`] = value;
@@ -451,6 +475,18 @@ export class ChatService {
       } catch {
         // Telemetry is best-effort and must not block the answer.
       }
+
+      const telemetryOnlyQuery =
+        /\bfrom\s+telemetry\b|\btelemetry\s+only\b|\bfrom\s+metrics\b/i.test(
+          effectiveUserQuery,
+        ) ||
+        telemetryMatchMode === 'sample' ||
+        ((telemetryMatchMode === 'exact' || telemetryMatchMode === 'direct') &&
+          !/\b(based\s+on|recommended|recommendation|action|next\s+step|what\s+should\s+i\s+do|what\s+do\s+i\s+do|procedure|steps?|how\s+to|how\s+do\s+i|manual|documentation|according\s+to)\b/i.test(
+            effectiveUserQuery,
+          ));
+
+      const citationsForAnswer = telemetryOnlyQuery ? [] : citations;
 
       const response = await this.llmService.generateResponse({
         userQuery: effectiveUserQuery,
@@ -463,14 +499,16 @@ export class ChatService {
         resolvedSubjectQuery,
         compareBySource: documentationContext.compareBySource,
         sourceComparisonTitles: documentationContext.sourceComparisonTitles,
-        citations: citations.map((citation) => ({
+        citations: citationsForAnswer.map((citation) => ({
           snippet: citation.snippet || '',
           sourceTitle: citation.sourceTitle || 'Unknown',
           pageNumber: citation.pageNumber,
         })),
-        noDocumentation: citations.length === 0,
+        noDocumentation: citationsForAnswer.length === 0,
         shipName,
         telemetry,
+        telemetryPrefiltered,
+        telemetryMatchMode,
         chatHistory: session?.messages.map((message) => ({
           role: message.role,
           content: message.content,
@@ -485,9 +523,9 @@ export class ChatService {
           ...(telemetryShips.length > 0
             ? { telemetryShips: [...new Set(telemetryShips)] }
             : {}),
-          ...(citations.length === 0 ? { noDocumentation: true } : {}),
+          ...(citationsForAnswer.length === 0 ? { noDocumentation: true } : {}),
         },
-        citations,
+        citationsForAnswer,
       );
     } catch (error) {
       const fallback = `I encountered an issue processing your query: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`;

@@ -14,6 +14,8 @@ export interface LLMContext {
   }>;
   shipName?: string;
   telemetry?: Record<string, unknown>;
+  telemetryPrefiltered?: boolean;
+  telemetryMatchMode?: 'none' | 'sample' | 'exact' | 'direct' | 'related';
   noDocumentation?: boolean;
   chatHistory?: Array<{
     role: 'user' | 'assistant' | 'system';
@@ -41,6 +43,7 @@ interface ExplicitNextDueEntry {
 }
 
 type QueryIntent =
+  | 'telemetry_list'
   | 'telemetry_status'
   | 'maintenance_due_now'
   | 'next_due_calculation'
@@ -157,6 +160,7 @@ Core rules:
 - Answer the user's exact question directly in the first sentence, then add concise supporting details.
 - Base your answer primarily on explicit evidence from the provided documentation. Prefer direct document evidence over inference.
 - Use telemetry only when it is relevant to the user's exact question.
+- If the question asks for the current value, status, level, temperature, pressure, runtime, or reading of a telemetry metric, answer from the provided telemetry first when it directly matches the asked metric.
 - Do not speculate or rely on general marine/mechanical knowledge when the documents do not provide the answer.
 - When referencing provided documentation, use inline citation markers like [1], [2], etc. matching the numbered sources in "Relevant Documentation". Place citations naturally at the end of the sentence or fact they support.
 - Include safety warnings when relevant.
@@ -275,6 +279,62 @@ Answer style:
         'If matching citations from that named manual, handbook, guide, or document are present, answer from that source only and ignore unrelated manuals.\n\n';
     }
 
+    if (
+      intent === 'telemetry_list' &&
+      context.telemetry &&
+      Object.keys(context.telemetry).length > 0
+    ) {
+      prompt +=
+        'Important: The user is asking for a list or sample of currently active telemetry metrics. ' +
+        'Answer only from the provided telemetry list. ' +
+        'Do not replace it with documentation excerpts or say the metrics are unavailable when telemetry is present. ' +
+        'If the user requested a count, return up to that many telemetry items with their latest values. ' +
+        'If the query narrows the list to a subject such as fuel tanks, generators, or batteries, only use telemetry items that match that subject.\n\n';
+    }
+
+    if (
+      intent === 'telemetry_status' &&
+      context.telemetryPrefiltered &&
+      context.telemetry &&
+      Object.keys(context.telemetry).length > 0
+    ) {
+      prompt +=
+        'Important: This is a current telemetry/status question. ' +
+        'Answer from the matched telemetry first when one telemetry item clearly matches the asked metric. ' +
+        'Use documentation only as supporting context, not as a replacement for the current reading.\n\n';
+    }
+
+    if (context.telemetryMatchMode === 'exact') {
+      prompt +=
+        'Important: The telemetry below contains an exact metric match for the question. ' +
+        'State that current metric value directly. ' +
+        'Do not say the value is unavailable or only indirectly related when the matched telemetry already provides it. ' +
+        'If more than one exact matched reading is listed, report those matched readings explicitly instead of saying telemetry is unavailable.\n\n';
+    } else if (context.telemetryMatchMode === 'direct') {
+      prompt +=
+        'Important: The telemetry below directly measures the requested current reading. ' +
+        'Answer from that direct telemetry value first. ' +
+        'If multiple direct matched readings are present, list them explicitly before any interpretation.\n\n';
+    } else if (context.telemetryMatchMode === 'related') {
+      prompt +=
+        'Important: The telemetry below is only related supporting telemetry and may not directly measure the exact value asked for. ' +
+        'Do not present related telemetry such as temperature or pressure as if it were a direct level or direct reading unless the telemetry label clearly matches.\n\n';
+    }
+
+    if (
+      this.isTelemetryGuidedDocumentationQuery(context.userQuery) &&
+      context.telemetryPrefiltered &&
+      context.telemetry &&
+      Object.keys(context.telemetry).length > 0
+    ) {
+      prompt +=
+        'Important: This question combines a current telemetry reading with a request for guidance or next actions. ' +
+        'First identify the matched current telemetry reading. ' +
+        'If the matched telemetry already provides one or more direct readings, state those readings explicitly before any recommendation and do not say the reading is unavailable. ' +
+        'Then use the documentation only to determine whether that reading implies a documented action, threshold, recommendation, or next step for the same metric or system. ' +
+        'If the documentation does not define an action threshold or recommendation for the matched telemetry reading, say that clearly instead of inventing one.\n\n';
+    }
+
     if (this.hasExactReferenceId(context.userQuery, context.resolvedSubjectQuery)) {
       prompt +=
         'Important: The user is asking about an exact reference ID. ' +
@@ -376,7 +436,20 @@ Answer style:
         'Do not speculate. Do not use citation markers like [1], [2].\n\n';
     }
 
+    if (context.noDocumentation && context.telemetryPrefiltered) {
+      prompt +=
+        'Important: The telemetry below was prefiltered as the closest current metric matches for the question. ' +
+        'Prefer these matched telemetry readings when they directly answer the request.\n\n';
+    }
+
     if (context.telemetry && Object.keys(context.telemetry).length > 0) {
+      if (context.telemetryPrefiltered) {
+        prompt +=
+          'Matched Telemetry:\n' +
+          '- The telemetry items below were preselected as the best matches for the current question.\n' +
+          '- If one telemetry item clearly matches the asked metric or current reading, answer from that current value directly.\n' +
+          '- For guidance questions, use these matched readings before deciding whether the documentation supports any action.\n\n';
+      }
       prompt += 'Current Telemetry:\n';
       Object.entries(context.telemetry).forEach(([key, value]) => {
         prompt += `- ${key}: ${value}\n`;
@@ -575,20 +648,16 @@ Answer style:
       return 'next_due_calculation';
     }
 
+    if (this.isTelemetryListQuery(q)) {
+      return 'telemetry_list';
+    }
+
     if (
       /(procedure|steps?|how\s+to|how\s+do\s+i|how\s+can\s+i|instruction|instructions|checklist|perform|replace|clean|inspect|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)/i.test(
         q,
       )
     ) {
       return 'maintenance_procedure';
-    }
-
-    if (
-      /\b(parts?|spare\s*parts?|spares?|consumables?|fluids?|oil|coolant|filter|filters|quantity|quantities|capacity|capacities|part\s*numbers?)\b/i.test(
-        q,
-      )
-    ) {
-      return 'parts_fluids_consumables';
     }
 
     if (
@@ -607,12 +676,16 @@ Answer style:
       return 'maintenance_due_now';
     }
 
+    if (this.isTelemetryValueQuery(q)) {
+      return 'telemetry_status';
+    }
+
     if (
-      /(telemetry|status|current|running\s+hours|hour\s*meter|hours\s*run|runtime)/i.test(
+      /\b(parts?|spare\s*parts?|spares?|consumables?|fluids?|oil|coolant|filter|filters|quantity|quantities|capacity|capacities|part\s*numbers?)\b/i.test(
         q,
       )
     ) {
-      return 'telemetry_status';
+      return 'parts_fluids_consumables';
     }
 
     // Detect short fragment/code/title inputs after explicit task intents.
@@ -691,6 +764,54 @@ Answer style:
     });
 
     return matched.length > 0 ? matched : result;
+  }
+
+  private isTelemetryValueQuery(query: string): boolean {
+    if (
+      /(telemetry|running\s+hours|hour\s*meter|hours\s*run|runtime)\b/i.test(
+        query,
+      )
+    ) {
+      return true;
+    }
+
+    if (/[a-z0-9]+(?:[_-][a-z0-9]+)+/i.test(query)) {
+      return true;
+    }
+
+    const asksForCurrentReading =
+      /\b(current|currently|status|reading|value|temperature|temp|pressure|level|voltage|amperage|current draw|load|rpm|speed|flow|rate)\b/i.test(
+        query,
+      );
+    const mentionsTelemetrySignal =
+      /\b(oil|fuel|coolant|fresh\s*water|seawater|water|tank|battery|depth|rudder|trim|temperature|temp|pressure|voltage|current|load|rpm|speed|level|flow|rate|generator|engine|pump|compressor|sensor|meter)\b/i.test(
+        query,
+      );
+
+    return asksForCurrentReading && mentionsTelemetrySignal;
+  }
+
+  private isTelemetryListQuery(query: string): boolean {
+    return (
+      /\b(show|list|display|give|return|output)\b/i.test(query) &&
+      /\b(metrics?|telemetry|readings?|values?)\b/i.test(query) &&
+      /\b(active|connected|enabled|current|random|\d{1,2})\b/i.test(query)
+    );
+  }
+
+  private isTelemetryGuidedDocumentationQuery(query: string): boolean {
+    const asksForCurrentState =
+      /\b(current|currently|status|reading|value|level|temperature|temp|pressure|voltage|load|rpm|speed|flow|rate)\b/i.test(
+        query,
+      ) && /\b(oil|fuel|coolant|water|tank|battery|depth|temperature|pressure|voltage|load|rpm|speed|flow|rate|generator|engine|pump|compressor|sensor|meter)\b/i.test(
+        query,
+      );
+    const asksForGuidance =
+      /\b(based\s+on|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+should\s+be\s+done|what\s+needs?\s+to\s+be\s+done|recommended|recommendation|action|next\s+step|do\s+next)\b/i.test(
+        query,
+      );
+
+    return asksForCurrentState && asksForGuidance;
   }
 
   private extractDocumentedIntervals(

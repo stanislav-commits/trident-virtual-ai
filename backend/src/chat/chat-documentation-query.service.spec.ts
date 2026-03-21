@@ -224,6 +224,13 @@ describe('ChatDocumentationQueryService', () => {
         'How do I change oil in the port generator',
         'I need the oil change procedure for the port generator.',
       ).some((query) => /replace oil and filters|oil/i.test(query)),
-    ).toBe(true);
+      ).toBe(true);
+  });
+
+  it('skips documentation retrieval for telemetry list requests so manuals do not override live metric samples', () => {
+    const query = 'Show 10 random active metrics for this ship.';
+
+    expect(service.isTelemetryListQuery(query)).toBe(true);
+    expect(service.shouldSkipDocumentationRetrieval(query)).toBe(true);
   });
 });

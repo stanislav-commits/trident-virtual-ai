@@ -32,8 +32,10 @@ export class ChatDocumentationQueryService {
   }
 
   shouldSkipDocumentationRetrieval(userQuery: string): boolean {
-    return /^\s*(hi|hello|hey|thanks|thank you|ok|okay|great)\s*[!.?]*\s*$/i.test(
-      userQuery,
+    return (
+      /^\s*(hi|hello|hey|thanks|thank you|ok|okay|great)\s*[!.?]*\s*$/i.test(
+        userQuery,
+      ) || this.isTelemetryListQuery(userQuery)
     );
   }
 
@@ -349,6 +351,14 @@ export class ChatDocumentationQueryService {
   isProcedureQuery(query: string): boolean {
     return /\b(procedure|steps?|how\s+to|how\s+do\s+i|instruction|instructions|checklist|perform|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)\b/i.test(
       query,
+    );
+  }
+
+  isTelemetryListQuery(query: string): boolean {
+    return (
+      /\b(show|list|display|give|return|output)\b/i.test(query) &&
+      /\b(metrics?|telemetry|readings?|values?)\b/i.test(query) &&
+      /\b(active|connected|enabled|current|random|\d{1,2})\b/i.test(query)
     );
   }
 
