@@ -474,21 +474,37 @@ export class RagflowService implements OnModuleInit {
     if (data.code !== 0) throw new Error('RAGFlow parseDocuments failed');
   }
 
-  async deleteDocument(datasetId: string, documentId: string): Promise<void> {
+  async deleteDocuments(
+    datasetId: string,
+    documentIds: string[],
+  ): Promise<void> {
+    const ids = [...new Set(documentIds.map((id) => id?.trim()).filter(Boolean))];
+    if (!ids.length) return;
+
     const res = await fetch(
       `${this.baseUrl}/api/v1/datasets/${datasetId}/documents`,
       {
         method: 'DELETE',
         headers: this.headers,
-        body: JSON.stringify({ ids: [documentId] }),
+        body: JSON.stringify({ ids }),
       },
     );
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`RAGFlow deleteDocument failed: ${res.status} ${err}`);
+      throw new Error(`RAGFlow deleteDocuments failed: ${res.status} ${err}`);
     }
     const data = (await res.json()) as { code?: number };
-    if (data.code !== 0) throw new Error('RAGFlow deleteDocument failed');
+    if (data.code !== 0) throw new Error('RAGFlow deleteDocuments failed');
+  }
+
+  async deleteDocument(datasetId: string, documentId: string): Promise<void> {
+    try {
+      await this.deleteDocuments(datasetId, [documentId]);
+    } catch (error) {
+      throw new Error(
+        `RAGFlow deleteDocument failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private async fetchDocumentsPage(

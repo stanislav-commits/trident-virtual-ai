@@ -80,6 +80,52 @@ export class ManualsService {
     }
   }
 
+  private async removeManualRecordsBulk(
+    manuals: NonNullable<ManualWithShip>[],
+  ): Promise<void> {
+    if (!manuals.length) return;
+
+    const datasetId = manuals[0]?.ship.ragflowDatasetId;
+    if (!datasetId) return;
+
+    if (!this.ragflow.isConfigured()) {
+      throw new ServiceUnavailableException('RAGFlow service is not available');
+    }
+
+    const documentIds = [
+      ...new Set(
+        manuals
+          .map((manual) => manual.ragflowDocumentId?.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (!documentIds.length) return;
+
+    try {
+      await this.ragflow.deleteDocuments(datasetId, documentIds);
+      return;
+    } catch (error) {
+      this.logger.warn(
+        `Bulk RAGFlow document deletion failed for ship ${manuals[0]?.shipId}, falling back to per-document cleanup: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    const settled = await Promise.allSettled(
+      documentIds.map((documentId) =>
+        this.ragflow.deleteDocument(datasetId, documentId),
+      ),
+    );
+    const failedCount = settled.filter(
+      (result) => result.status === 'rejected',
+    ).length;
+
+    if (failedCount > 0) {
+      this.logger.warn(
+        `RAGFlow fallback document deletion still failed for ${failedCount} manual(s); proceeding with DB cleanup`,
+      );
+    }
+  }
+
   async create(shipId: string, file: RagflowUploadFile) {
     const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
     if (!ship) throw new NotFoundException('Ship not found');
@@ -388,9 +434,7 @@ export class ManualsService {
       return { deletedCount: 0 };
     }
 
-    for (const manual of manuals) {
-      await this.removeManualRecord(manual);
-    }
+    await this.removeManualRecordsBulk(manuals);
 
     const deleted = await this.prisma.shipManual.deleteMany({
       where: {

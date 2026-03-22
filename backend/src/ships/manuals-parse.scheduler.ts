@@ -6,6 +6,11 @@ import { RagflowService } from '../ragflow/ragflow.service';
 @Injectable()
 export class ManualsParseScheduler {
   private readonly logger = new Logger(ManualsParseScheduler.name);
+  private readonly retryableFailurePatterns = [
+    'internal server error while chunking',
+    "coordinate 'lower' is less than 'upper'",
+    'coordinate lower is less than upper',
+  ];
   private readonly batchSize = this.readIntEnv(
     'RAGFLOW_PARSE_DOCUMENT_BATCH_SIZE',
     5,
@@ -24,10 +29,23 @@ export class ManualsParseScheduler {
     1000,
     600000,
   );
+  private readonly failureRetryCooldownMs = this.readIntEnv(
+    'RAGFLOW_PARSE_FAILURE_RETRY_COOLDOWN_MS',
+    120000,
+    1000,
+    3600000,
+  );
+  private readonly failureRetryMaxAttempts = this.readIntEnv(
+    'RAGFLOW_PARSE_FAILURE_MAX_RETRIES',
+    1,
+    0,
+    5,
+  );
 
   private isDraining = false;
   private drainRequested = false;
   private readonly recentlySubmitted = new Map<string, number>();
+  private readonly retryAttempts = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -127,7 +145,14 @@ export class ManualsParseScheduler {
       datasetId,
       manuals.map((manual) => manual.ragflowDocumentId),
     );
+    this.cleanupRetryAttempts(docs);
+
     const runByDocumentId = new Map(docs.map((doc) => [doc.id, doc.run]));
+    const retryableFailureIds = new Set(
+      docs
+        .filter((doc) => this.isRetryableFailure(doc))
+        .map((doc) => doc.id),
+    );
 
     const runningCount = docs.filter((doc) => doc.run === 'RUNNING').length;
     const capacity = Math.max(0, this.maxRunningDocuments - runningCount);
@@ -143,9 +168,28 @@ export class ManualsParseScheduler {
         return isPending && cooldownUntil <= now;
       });
 
-    if (!pendingDocumentIds.length) return;
+    const retryableFailedDocumentIds =
+      this.failureRetryMaxAttempts > 0
+        ? manuals
+            .map((manual) => manual.ragflowDocumentId)
+            .filter((documentId) => {
+              if (!retryableFailureIds.has(documentId)) {
+                return false;
+              }
 
-    const batch = pendingDocumentIds.slice(
+              const attempts = this.retryAttempts.get(documentId) ?? 0;
+              if (attempts >= this.failureRetryMaxAttempts) {
+                return false;
+              }
+
+              const cooldownUntil = this.recentlySubmitted.get(documentId) ?? 0;
+              return cooldownUntil <= now;
+            })
+        : [];
+
+    if (!pendingDocumentIds.length && !retryableFailedDocumentIds.length) return;
+
+    const batch = [...pendingDocumentIds, ...retryableFailedDocumentIds].slice(
       0,
       Math.min(this.batchSize, capacity),
     );
@@ -153,13 +197,59 @@ export class ManualsParseScheduler {
 
     await this.ragflow.parseDocuments(datasetId, batch);
 
-    const cooldownUntil = now + this.resubmitCooldownMs;
     batch.forEach((documentId) => {
+      const cooldownUntil = retryableFailureIds.has(documentId)
+        ? now + this.failureRetryCooldownMs
+        : now + this.resubmitCooldownMs;
       this.recentlySubmitted.set(documentId, cooldownUntil);
+
+      if (retryableFailureIds.has(documentId)) {
+        this.retryAttempts.set(
+          documentId,
+          (this.retryAttempts.get(documentId) ?? 0) + 1,
+        );
+      }
     });
 
     this.logger.debug(
       `Queued manual parsing batch for ship ${shipId}: ${batch.length} document(s) started (running=${runningCount}, capacity=${capacity})`,
+    );
+
+    const retriedDocumentIds = batch.filter((documentId) =>
+      retryableFailureIds.has(documentId),
+    );
+    if (retriedDocumentIds.length > 0) {
+      this.logger.warn(
+        `Retrying ${retriedDocumentIds.length} manual parse failure(s) for ship ${shipId} after known RAGFlow chunking error`,
+      );
+    }
+  }
+
+  private cleanupRetryAttempts(
+    docs: Array<{ id: string; run: string; progress_msg: string }>,
+  ): void {
+    for (const doc of docs) {
+      if (!this.isRetryableFailure(doc)) {
+        this.retryAttempts.delete(doc.id);
+      }
+    }
+  }
+
+  private isRetryableFailure(doc: {
+    run: string;
+    progress_msg: string;
+  }): boolean {
+    if (doc.run !== 'FAIL') {
+      return false;
+    }
+
+    const progress = doc.progress_msg?.trim().toLowerCase();
+    if (!progress) {
+      return false;
+    }
+
+    return this.retryableFailurePatterns.some((pattern) =>
+      progress.includes(pattern),
     );
   }
 }
