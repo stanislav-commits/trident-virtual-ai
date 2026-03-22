@@ -1,0 +1,187 @@
+/* ── Privacy Policy Page ──────────────────────────────────────────── */
+
+.pp-layout {
+  min-height: 100vh;
+  background: var(--chat-bg);
+  display: flex;
+  justify-content: center;
+  padding: 0 16px 60px;
+}
+
+.pp-container {
+  width: 100%;
+  max-width: 720px;
+}
+
+/* Header */
+.pp-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 0 16px;
+  border-bottom: 1px solid var(--chat-border);
+  margin-bottom: 0;
+  position: sticky;
+  top: 0;
+  background: var(--chat-bg);
+  z-index: 10;
+}
+
+.pp-back-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.pp-back-btn:hover {
+  background: var(--chat-surface-3);
+  border-color: var(--chat-border-strong);
+}
+
+.pp-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--chat-text);
+  letter-spacing: 0.2px;
+}
+
+/* Title block */
+.pp-title-block {
+  padding: 32px 0 24px;
+}
+
+.pp-main-title {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--chat-text);
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+  margin: 0 0 10px;
+}
+
+.pp-subtitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--chat-text-muted);
+  letter-spacing: 0.3px;
+  margin: 0 0 20px;
+}
+
+.pp-divider {
+  border: none;
+  border-top: 1px solid var(--chat-border);
+  margin: 0 0 18px;
+}
+
+.pp-preamble {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--chat-text-muted);
+  margin: 0;
+}
+
+/* Sections */
+.pp-section {
+  border-top: 1px solid var(--chat-border);
+  padding: 22px 0;
+}
+
+.pp-section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pp-num-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--overlay-faint);
+  border: 1px solid var(--chat-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--chat-text-muted);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.pp-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--chat-text);
+  line-height: 1.45;
+  letter-spacing: 0.1px;
+  margin: 0;
+}
+
+.pp-body {
+  padding-left: 38px;
+}
+
+.pp-para {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--chat-text-muted);
+  margin: 0 0 10px;
+  white-space: pre-line;
+}
+
+.pp-para:last-child {
+  margin-bottom: 0;
+}
+
+/* Contact block */
+.pp-contact-block {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--overlay-faint);
+  border: 1px solid var(--chat-border);
+  color: var(--chat-text-muted);
+}
+
+.pp-contact-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--chat-text-muted);
+  margin-bottom: 2px;
+}
+
+.pp-contact-email {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+}
+
+.pp-contact-email:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+/* Footer note */
+.pp-footer-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--chat-text-subtle);
+  text-align: center;
+  padding: 24px 32px 0;
+  margin: 0;
+}
