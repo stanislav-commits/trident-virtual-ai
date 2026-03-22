@@ -108,6 +108,11 @@
   --input-placeholder: rgba(232, 234, 237, 0.3);
   --selection-color: #ffffff;
   --focus-ring: rgba(255, 255, 255, 0.3);
+  --inline-code-bg: rgba(255, 255, 255, 0.06);
+  --inline-code-border: rgba(255, 255, 255, 0.12);
+  --inline-code-text: rgba(232, 234, 237, 0.92);
+  --inline-code-shadow: rgba(255, 255, 255, 0.04);
+  --table-row-hover: rgba(255, 255, 255, 0.02);
 }
 
 /* ── Light Theme ── */
@@ -201,6 +206,11 @@
   --input-placeholder: rgba(26, 29, 38, 0.35);
   --selection-color: #000000;
   --focus-ring: rgba(37, 99, 235, 0.4);
+  --inline-code-bg: rgba(26, 29, 38, 0.06);
+  --inline-code-border: rgba(26, 29, 38, 0.1);
+  --inline-code-text: rgba(26, 29, 38, 0.8);
+  --inline-code-shadow: rgba(255, 255, 255, 0.65);
+  --table-row-hover: rgba(26, 29, 38, 0.035);
 }
 
 /* ── Login page: always dark, ignore app theme ── */
@@ -268,6 +278,11 @@
     /* ── Glassmorphism ── */
     --glass-bg: rgba(0, 0, 0, 0.015);
     --glass-border: rgba(0, 0, 0, 0.09);
+    --inline-code-bg: rgba(13, 17, 23, 0.055);
+    --inline-code-border: rgba(13, 17, 23, 0.1);
+    --inline-code-text: rgba(13, 17, 23, 0.8);
+    --inline-code-shadow: rgba(255, 255, 255, 0.72);
+    --table-row-hover: rgba(13, 17, 23, 0.03);
   }
 
   /* Login page: always dark, ignore system theme */
