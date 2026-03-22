@@ -529,15 +529,15 @@ export class ChatService {
         );
       }
 
+      const documentationIntentPattern =
+        /\b(based\s+on|recommended|recommendation|action|next\s+step|what\s+should\s+i\s+do|what\s+do\s+i\s+do|procedure|steps?|how\s+to|how\s+do\s+i|manual|documentation|according\s+to\s+(?:the\s+)?(?:manual|documentation|docs?|handbook|guide|procedure|spec(?:ification)?))\b/i;
       const telemetryOnlyQuery =
         /\bfrom\s+telemetry\b|\btelemetry\s+only\b|\bfrom\s+metrics\b/i.test(
           effectiveUserQuery,
         ) ||
         telemetryMatchMode === 'sample' ||
         ((telemetryMatchMode === 'exact' || telemetryMatchMode === 'direct') &&
-          !/\b(based\s+on|recommended|recommendation|action|next\s+step|what\s+should\s+i\s+do|what\s+do\s+i\s+do|procedure|steps?|how\s+to|how\s+do\s+i|manual|documentation|according\s+to)\b/i.test(
-            effectiveUserQuery,
-          ));
+          !documentationIntentPattern.test(effectiveUserQuery));
 
       const citationsForAnswer = telemetryOnlyQuery ? [] : citations;
 

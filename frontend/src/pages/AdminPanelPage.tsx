@@ -4,11 +4,9 @@ import {
   getShips,
   getMetricDefinitions,
   getOrganizations,
-  getManuals,
   type UserListItem,
   type ShipListItem,
   type MetricDefinitionItem,
-  type ShipManualItem,
 } from "../api/client";
 import { useAdminPanel } from "../context/AdminPanelContext";
 import { useAuth } from "../context/AuthContext";
@@ -52,9 +50,6 @@ export function AdminPanelPage() {
     MetricDefinitionItem[]
   >([]);
 
-  // Manuals modal state
-  const [manuals, setManuals] = useState<ShipManualItem[]>([]);
-  const [manualsLoading, setManualsLoading] = useState(false);
   const [manualsPromptShip, setManualsPromptShip] = useState<{
     id: string;
     name: string;
@@ -199,24 +194,6 @@ export function AdminPanelPage() {
     token,
   ]);
 
-  // Load manuals for prompt modal
-  useEffect(() => {
-    if (!manualsPromptShip || !token) return;
-    setManuals([]);
-    let cancelled = false;
-    setManualsLoading(true);
-    getManuals(manualsPromptShip.id, token)
-      .then((list) => {
-        if (!cancelled) setManuals(list);
-      })
-      .finally(() => {
-        if (!cancelled) setManualsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [manualsPromptShip, token]);
-
   const handleNavClick = (section: "users" | "ships") => {
     setActiveSection(section);
     setIsSidebarOpen(false);
@@ -341,14 +318,10 @@ export function AdminPanelPage() {
           token={token}
           shipId={manualsPromptShip.id}
           shipName={manualsPromptShip.name}
-          manuals={manuals}
-          loading={manualsLoading}
           onClose={() => {
             setManualsPromptShip(null);
-            setManuals([]);
           }}
           onError={setError}
-          onManualsChanged={(list) => setManuals(list)}
         />
       )}
 

@@ -443,6 +443,23 @@ Answer style:
     }
 
     if (context.telemetry && Object.keys(context.telemetry).length > 0) {
+      if (this.isTelemetryAggregateCalculationQuery(context.userQuery)) {
+        prompt +=
+          'Important: The user is asking for a combined total or calculation from multiple current telemetry readings. ' +
+          'If the matched telemetry entries form a coherent set such as fuel-tank readings, use all matching entries needed for that total, calculate the combined result explicitly, and state the total in the answer. ' +
+          'Do not ask for extra clarification when the matched telemetry already contains the needed tank readings. ' +
+          'Do not mix unrelated tanks, fluids, or telemetry subjects into the calculation. ' +
+          'If the matched telemetry entries are dedicated tank identifiers such as Fuel Tank 1P, Fuel_Tank_1P, or Water Tank 10S, treat their numeric values as the current tank readings for this calculation even if some noisy metadata or grouping text mentions temperature. ' +
+          'Do not refuse the calculation just because a selected tank reading has imperfect descriptive text.\n\n';
+      }
+
+      if (this.isLocationTelemetryQuery(context.userQuery)) {
+        prompt +=
+          'Important: If matched telemetry includes latitude and longitude, treat those coordinates together as the vessel\'s current location. ' +
+          'Do not say the location is unavailable when those coordinates are present. ' +
+          'If the user asks for a named place, port, or marina and telemetry only gives coordinates, report the coordinates first and clearly say that telemetry alone does not confirm a specific port name.\n\n';
+      }
+
       if (context.telemetryPrefiltered) {
         prompt +=
           'Matched Telemetry:\n' +
@@ -767,6 +784,10 @@ Answer style:
   }
 
   private isTelemetryValueQuery(query: string): boolean {
+    if (this.isLocationTelemetryQuery(query)) {
+      return true;
+    }
+
     if (
       /(telemetry|running\s+hours|hour\s*meter|hours\s*run|runtime)\b/i.test(
         query,
@@ -789,6 +810,26 @@ Answer style:
       );
 
     return asksForCurrentReading && mentionsTelemetrySignal;
+  }
+
+  private isTelemetryAggregateCalculationQuery(query: string): boolean {
+    return (
+      /\b(how\s+much|how\s+many|total|sum|overall|combined|together|calculate)\b/i.test(
+        query,
+      ) &&
+      /\b(fuel|oil|coolant|water|tank|tanks)\b/i.test(query)
+    );
+  }
+
+  private isLocationTelemetryQuery(query: string): boolean {
+    return (
+      /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location)\b/i.test(
+        query,
+      ) &&
+      !/\b(spare|part|parts|supplier|manufacturer|quantity|reference)\b/i.test(
+        query,
+      )
+    );
   }
 
   private isTelemetryListQuery(query: string): boolean {

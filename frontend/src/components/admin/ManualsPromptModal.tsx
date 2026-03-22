@@ -1,15 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   uploadManual,
   deleteManual,
+  bulkDeleteManuals,
   updateManual,
-  getManuals,
   getManualsStatus,
   fetchWithAuth,
-  type ShipManualItem,
   type ManualStatusItem,
+  type PaginationMeta,
 } from "../../api/client";
 import { ShipIcon, XIcon } from "./AdminPanelIcons";
+
+const MANUALS_PAGE_SIZE_OPTIONS = [25, 50, 100];
+const DEFAULT_PAGE_SIZE = 25;
+
+const EMPTY_PAGINATION: PaginationMeta = {
+  page: 1,
+  pageSize: DEFAULT_PAGE_SIZE,
+  total: 0,
+  totalPages: 1,
+  hasNextPage: false,
+  hasPreviousPage: false,
+};
 
 function ManualStatusBadge({
   run,
@@ -23,10 +35,11 @@ function ManualStatusBadge({
   if (run === null) {
     return (
       <span className="admin-panel__badge admin-panel__badge--manual-unknown">
-        —
+        -
       </span>
     );
   }
+
   switch (run) {
     case "DONE":
       return (
@@ -37,7 +50,7 @@ function ManualStatusBadge({
     case "RUNNING":
       return (
         <span className="admin-panel__badge admin-panel__badge--manual-running">
-          Indexing{progress != null ? ` ${Math.round(progress * 100)}%` : "…"}
+          Indexing{progress != null ? ` ${Math.round(progress * 100)}%` : "..."}
         </span>
       );
     case "UNSTART":
@@ -67,114 +80,223 @@ function ManualStatusBadge({
   }
 }
 
+function SelectionCheckbox({
+  checked,
+  indeterminate = false,
+  disabled = false,
+  ariaLabel,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  disabled?: boolean;
+  ariaLabel: string;
+  onChange: (checked: boolean) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!inputRef.current) return;
+    inputRef.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="checkbox"
+      className="admin-panel__selection-check"
+      checked={checked}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={(event) => onChange(event.target.checked)}
+    />
+  );
+}
+
 interface ManualsPromptModalProps {
   token: string | null;
   shipId: string;
   shipName: string;
-  manuals: ShipManualItem[];
-  loading: boolean;
   onClose: () => void;
   onError: (error: string) => void;
-  onManualsChanged?: (list: ShipManualItem[]) => void;
 }
 
 export function ManualsPromptModal({
   token,
   shipId,
   shipName,
-  manuals,
-  loading,
   onClose,
   onError,
-  onManualsChanged,
 }: ManualsPromptModalProps) {
   const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingManualId, setEditingManualId] = useState<string | null>(null);
   const [editingFilename, setEditingFilename] = useState("");
   const [deletingManualId, setDeletingManualId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [manuals, setManuals] = useState<ManualStatusItem[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>(EMPTY_PAGINATION);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [allManualsSelected, setAllManualsSelected] = useState(false);
+  const [selectedManualIds, setSelectedManualIds] = useState<string[]>([]);
+  const [excludedManualIds, setExcludedManualIds] = useState<string[]>([]);
 
-  // Status polling
-  const [statusMap, setStatusMap] = useState<
-    Map<
-      string,
-      Pick<ManualStatusItem, "run" | "progress" | "progressMsg" | "chunkCount">
-    >
-  >(new Map());
-
-  const hasNonTerminal = useCallback(
-    (map: typeof statusMap) =>
-      Array.from(map.values()).some(
-        (s) =>
-          s.run !== null &&
-          s.run !== "DONE" &&
-          s.run !== "FAIL" &&
-          s.run !== "CANCEL",
+  const hasNonTerminal = useMemo(
+    () =>
+      manuals.some(
+        (manual) =>
+          manual.run !== null &&
+          manual.run !== "DONE" &&
+          manual.run !== "FAIL" &&
+          manual.run !== "CANCEL",
       ),
-    [],
+    [manuals],
   );
 
-  const fetchStatus = useCallback(async () => {
-    if (!token) return;
-    try {
-      const list = await getManualsStatus(shipId, token);
-      const next = new Map(
-        list.map((m) => [
-          m.id,
-          {
-            run: m.run,
-            progress: m.progress,
-            progressMsg: m.progressMsg,
-            chunkCount: m.chunkCount,
-          },
-        ]),
-      );
-      setStatusMap(next);
-    } catch {
-      // status polling is best-effort
+  const selectedManualIdSet = useMemo(
+    () => new Set(selectedManualIds),
+    [selectedManualIds],
+  );
+  const excludedManualIdSet = useMemo(
+    () => new Set(excludedManualIds),
+    [excludedManualIds],
+  );
+
+  const loadManualsPage = useCallback(
+    async (
+      targetPage: number,
+      targetPageSize: number,
+      options?: { silent?: boolean },
+    ) => {
+      if (!token) return;
+
+      if (!options?.silent) {
+        setLoading(true);
+      }
+
+      try {
+        const result = await getManualsStatus(shipId, token, {
+          page: targetPage,
+          pageSize: targetPageSize,
+        });
+        setManuals(result.items);
+        setPagination(result.pagination);
+        setPage(result.pagination.page);
+        setPageSize(result.pagination.pageSize);
+      } catch (err) {
+        if (!options?.silent) {
+          onError(
+            err instanceof Error ? err.message : "Failed to fetch manuals",
+          );
+        }
+      } finally {
+        if (!options?.silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [onError, shipId, token],
+  );
+
+  useEffect(() => {
+    void loadManualsPage(1, pageSize);
+  }, [loadManualsPage, pageSize]);
+
+  useEffect(() => {
+    if (!token || !manuals.length || !hasNonTerminal) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadManualsPage(page, pageSize, { silent: true });
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [hasNonTerminal, loadManualsPage, manuals.length, page, pageSize, token]);
+
+  const clearSelection = useCallback(() => {
+    setAllManualsSelected(false);
+    setSelectedManualIds([]);
+    setExcludedManualIds([]);
+  }, []);
+
+  const isManualSelected = useCallback(
+    (manualId: string) =>
+      allManualsSelected
+        ? !excludedManualIdSet.has(manualId)
+        : selectedManualIdSet.has(manualId),
+    [allManualsSelected, excludedManualIdSet, selectedManualIdSet],
+  );
+
+  const toggleAllManualsSelection = useCallback((checked: boolean) => {
+    if (checked) {
+      setAllManualsSelected(true);
+      setSelectedManualIds([]);
+      setExcludedManualIds([]);
+      return;
     }
-  }, [shipId, token]);
 
-  // Initial status fetch when manuals are available
-  useEffect(() => {
-    if (manuals.length > 0) fetchStatus();
-  }, [manuals, fetchStatus]);
+    setAllManualsSelected(false);
+    setSelectedManualIds([]);
+    setExcludedManualIds([]);
+  }, []);
 
-  // Poll every 5s while there are non-terminal statuses
-  useEffect(() => {
-    if (!hasNonTerminal(statusMap)) return;
-    const id = setInterval(fetchStatus, 5000);
-    return () => clearInterval(id);
-  }, [statusMap, hasNonTerminal, fetchStatus]);
+  const toggleManualSelection = useCallback(
+    (manualId: string, checked: boolean) => {
+      if (allManualsSelected) {
+        setExcludedManualIds((current) => {
+          const next = checked
+            ? current.filter((id) => id !== manualId)
+            : [...new Set([...current, manualId])];
+
+          if (pagination.total - next.length <= 0) {
+            setAllManualsSelected(false);
+            setSelectedManualIds([]);
+            return [];
+          }
+
+          return next;
+        });
+        return;
+      }
+
+      setSelectedManualIds((current) =>
+        checked
+          ? [...new Set([...current, manualId])]
+          : current.filter((id) => id !== manualId),
+      );
+    },
+    [allManualsSelected, pagination.total],
+  );
 
   const handleUploadManual = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!token) return;
+
     const files =
       selectedFiles.length > 0
         ? selectedFiles
         : fileInputRef.current?.files
           ? Array.from(fileInputRef.current.files)
           : [];
+
     if (files.length === 0) return;
+
     setUploading(true);
     onError("");
+
     try {
       for (const file of files) {
         await uploadManual(shipId, file, token);
       }
+
+      clearSelection();
       setSelectedFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      // refresh manuals list
-      try {
-        const list = await getManuals(shipId, token);
-        onManualsChanged?.(list);
-        fetchStatus();
-      } catch {
-        // ignore refresh error here; parent will show if needed
-      }
+      await loadManualsPage(1, pageSize);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to upload manual");
     } finally {
@@ -184,12 +306,16 @@ export function ManualsPromptModal({
 
   const handleDelete = async (manualId: string) => {
     if (!token) return;
+
     setDeletingManualId(manualId);
     onError("");
+
     try {
       await deleteManual(shipId, manualId, token);
-      const list = await getManuals(shipId, token);
-      onManualsChanged?.(list);
+      setSelectedManualIds((current) => current.filter((id) => id !== manualId));
+      setExcludedManualIds((current) => current.filter((id) => id !== manualId));
+      const fallbackPage = manuals.length === 1 && page > 1 ? page - 1 : page;
+      await loadManualsPage(fallbackPage, pageSize);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to delete manual");
     } finally {
@@ -197,9 +323,42 @@ export function ManualsPromptModal({
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (!token) return;
+
+    setBulkDeleting(true);
+    onError("");
+
+    try {
+      await bulkDeleteManuals(
+        shipId,
+        allManualsSelected
+          ? {
+              mode: "all",
+              excludeManualIds: excludedManualIds,
+            }
+          : {
+              mode: "manualIds",
+              manualIds: selectedManualIds,
+            },
+        token,
+      );
+      clearSelection();
+      await loadManualsPage(page, pageSize);
+    } catch (err) {
+      onError(
+        err instanceof Error ? err.message : "Failed to delete selected manuals",
+      );
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const handleEditSave = async (manualId: string) => {
     if (!token) return;
+
     onError("");
+
     try {
       await updateManual(
         shipId,
@@ -207,14 +366,34 @@ export function ManualsPromptModal({
         { filename: editingFilename },
         token,
       );
-      const list = await getManuals(shipId, token);
-      onManualsChanged?.(list);
       setEditingManualId(null);
       setEditingFilename("");
+      await loadManualsPage(page, pageSize, { silent: true });
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to update manual");
     }
   };
+
+  const showingFrom = pagination.total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const showingTo =
+    pagination.total === 0 ? 0 : Math.min(page * pageSize, pagination.total);
+  const hasMultiplePages = pagination.totalPages > 1;
+  const showPageSizeControl =
+    pagination.total > DEFAULT_PAGE_SIZE || hasMultiplePages;
+  const hasSelectedFiles = selectedFiles.length > 0;
+  const selectedManualCount = allManualsSelected
+    ? Math.max(0, pagination.total - excludedManualIds.length)
+    : selectedManualIds.length;
+  const headerCheckboxChecked =
+    pagination.total > 0 &&
+    allManualsSelected &&
+    excludedManualIds.length === 0;
+  const headerCheckboxIndeterminate =
+    selectedManualCount > 0 && !headerCheckboxChecked;
+  const selectionSummary =
+    allManualsSelected && excludedManualIds.length === 0
+      ? `All ${pagination.total.toLocaleString()} manuals selected`
+      : `${selectedManualCount.toLocaleString()} selected`;
 
   return (
     <div
@@ -223,10 +402,7 @@ export function ManualsPromptModal({
       aria-modal="true"
       aria-labelledby="ap-manuals-prompt-title"
     >
-      <div
-        className="admin-panel__modal admin-panel__modal--wide"
-        style={{ maxWidth: 900 }}
-      >
+      <div className="admin-panel__modal admin-panel__modal--wide admin-panel__modal--manuals">
         <div className="admin-panel__modal-icon admin-panel__modal-icon--success">
           <ShipIcon />
         </div>
@@ -237,15 +413,19 @@ export function ManualsPromptModal({
           Add, rename or remove manuals attached to this ship. Files are used by
           RAG and the chat assistant.
         </p>
-        <div style={{ maxHeight: "65vh", overflowY: "auto", paddingRight: 8 }}>
-          <form
-            onSubmit={handleUploadManual}
-            className="admin-panel__ship-form"
-            style={{ marginBottom: 16 }}
-          >
-            <div className="admin-panel__field">
-              <span className="admin-panel__field-label">Upload manual(s)</span>
-              <div className="admin-panel__file-wrap">
+
+        <div className="admin-panel__modal-body admin-panel__manuals-body">
+          <form onSubmit={handleUploadManual} className="admin-panel__manuals-upload">
+            <div className="admin-panel__manuals-upload-head">
+              <span className="admin-panel__field-label">Upload manuals</span>
+              <p className="admin-panel__manuals-upload-hint">
+                Attach files to this ship and queue them for indexing
+                automatically.
+              </p>
+            </div>
+
+            <div className="admin-panel__manuals-upload-controls">
+              <div className="admin-panel__manuals-upload-picker">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -262,106 +442,228 @@ export function ManualsPromptModal({
                 />
                 <button
                   type="button"
-                  className="admin-panel__file-trigger"
+                  className="admin-panel__file-trigger admin-panel__file-trigger--manuals"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
                 >
-                  {selectedFiles.length > 0
-                    ? `${selectedFiles.length} file(s) selected`
-                    : "Select files"}
+                  {hasSelectedFiles ? "Change files" : "Select files"}
                 </button>
-                {selectedFiles.length > 0 && (
-                  <div className="admin-panel__file-list">
-                    {selectedFiles.map((f, i) => (
-                      <span
-                        key={`${f.name}-${i}`}
-                        className="admin-panel__file-list-item"
-                      >
-                        {f.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
-            </div>
-            <div className="admin-panel__form-actions">
+
+              <div className="admin-panel__manuals-upload-summary">
+                <span className="admin-panel__manuals-upload-summary-title">
+                  {hasSelectedFiles
+                    ? `${selectedFiles.length} file(s) ready`
+                    : "No files selected yet"}
+                </span>
+                <span className="admin-panel__manuals-upload-summary-meta">
+                  {hasSelectedFiles
+                    ? "Upload will start indexing after the files are attached."
+                    : "PDF, DOCX, TXT, CSV and common image formats are supported."}
+                </span>
+              </div>
+
               <button
                 type="submit"
-                className="admin-panel__btn admin-panel__btn--primary"
+                className="admin-panel__btn admin-panel__btn--primary admin-panel__btn--manual-upload"
                 disabled={uploading || selectedFiles.length === 0}
               >
-                {uploading ? "Uploading…" : "Upload"}
+                {uploading ? "Uploading..." : "Upload"}
               </button>
             </div>
+
+            {hasSelectedFiles && (
+              <div className="admin-panel__manuals-upload-files">
+                {selectedFiles.map((file, index) => (
+                  <span
+                    key={`${file.name}-${index}`}
+                    className="admin-panel__manuals-upload-file"
+                  >
+                    {file.name}
+                  </span>
+                ))}
+              </div>
+            )}
           </form>
+
           {loading ? (
-            <div
-              className="admin-panel__state-box"
-              style={{ marginBottom: 16 }}
-            >
+            <div className="admin-panel__state-box admin-panel__manuals-state">
               <div className="admin-panel__spinner" />
-              <span className="admin-panel__muted">Loading…</span>
+              <span className="admin-panel__muted">Loading...</span>
             </div>
           ) : manuals.length > 0 ? (
-            <div style={{ marginBottom: 16 }}>
-              <table className="admin-panel__table">
-                <thead>
-                  <tr>
-                    <th className="admin-panel__th">Filename</th>
-                    <th className="admin-panel__th">Status</th>
-                    <th className="admin-panel__th">Uploaded</th>
-                    <th className="admin-panel__th">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {manuals.map((m) => {
-                    const st = statusMap.get(m.id);
-                    return (
-                      <tr key={m.id} className="admin-panel__row">
-                        <td className="admin-panel__td">
-                          {editingManualId === m.id ? (
-                            <input
-                              className="admin-panel__input"
-                              value={editingFilename}
-                              onChange={(e) =>
-                                setEditingFilename(e.target.value)
-                              }
-                            />
-                          ) : (
-                            m.filename
-                          )}
-                        </td>
-                        <td className="admin-panel__td">
-                          <ManualStatusBadge
-                            run={st?.run ?? null}
-                            progress={st?.progress ?? null}
-                            chunkCount={st?.chunkCount ?? null}
+            <div className="admin-panel__manuals-list-card">
+              <div className="admin-panel__manuals-toolbar">
+                <div className="admin-panel__manuals-toolbar-copy">
+                  <span className="admin-panel__manuals-toolbar-title">
+                    {pagination.total.toLocaleString()} manual
+                    {pagination.total === 1 ? "" : "s"}
+                  </span>
+                  <div className="admin-panel__manuals-toolbar-meta">
+                    <span className="admin-panel__muted">
+                      Showing {showingFrom}-{showingTo} of{" "}
+                      {pagination.total.toLocaleString()}
+                    </span>
+                    {selectedManualCount > 0 && (
+                      <span className="admin-panel__manuals-selection-summary">
+                        {selectionSummary}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="admin-panel__manuals-toolbar-actions">
+                  {(showPageSizeControl || hasMultiplePages) && (
+                    <div className="admin-panel__manuals-pager">
+                      {showPageSizeControl && (
+                        <label className="admin-panel__manuals-page-size">
+                          <span className="admin-panel__manuals-page-size-label">
+                            Rows
+                          </span>
+                          <select
+                            className="admin-panel__select admin-panel__select--compact"
+                            value={pageSize}
+                            onChange={(event) => {
+                              const nextPageSize = Number.parseInt(
+                                event.target.value,
+                                10,
+                              );
+                              setPageSize(nextPageSize);
+                            }}
+                          >
+                            {MANUALS_PAGE_SIZE_OPTIONS.map((size) => (
+                              <option key={size} value={size}>
+                                {size} / page
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {hasMultiplePages && (
+                        <>
+                          <button
+                            type="button"
+                            className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                            onClick={() => void loadManualsPage(page - 1, pageSize)}
+                            disabled={!pagination.hasPreviousPage}
+                          >
+                            Prev
+                          </button>
+                          <span className="admin-panel__manuals-page-indicator">
+                            Page {page} / {pagination.totalPages}
+                          </span>
+                          <button
+                            type="button"
+                            className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                            onClick={() => void loadManualsPage(page + 1, pageSize)}
+                            disabled={!pagination.hasNextPage}
+                          >
+                            Next
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="admin-panel__btn admin-panel__btn--danger admin-panel__btn--compact"
+                    onClick={() => setConfirmBulkDelete(true)}
+                    disabled={
+                      selectedManualCount === 0 ||
+                      bulkDeleting ||
+                      deletingManualId !== null
+                    }
+                  >
+                    {bulkDeleting ? "Deleting..." : "Delete selected"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="admin-panel__manuals-table-wrap">
+                <table className="admin-panel__table admin-panel__table--manuals">
+                  <colgroup>
+                    <col className="admin-panel__manuals-col admin-panel__manuals-col--select" />
+                    <col className="admin-panel__manuals-col admin-panel__manuals-col--name" />
+                    <col className="admin-panel__manuals-col admin-panel__manuals-col--status" />
+                    <col className="admin-panel__manuals-col admin-panel__manuals-col--uploaded" />
+                    <col className="admin-panel__manuals-col admin-panel__manuals-col--actions" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th className="admin-panel__th admin-panel__th--select">
+                        <SelectionCheckbox
+                          checked={headerCheckboxChecked}
+                          indeterminate={headerCheckboxIndeterminate}
+                          disabled={pagination.total === 0 || bulkDeleting}
+                          ariaLabel="Select all manuals"
+                          onChange={toggleAllManualsSelection}
+                        />
+                      </th>
+                      <th className="admin-panel__th">Filename</th>
+                      <th className="admin-panel__th">Status</th>
+                      <th className="admin-panel__th">Uploaded</th>
+                      <th className="admin-panel__th admin-panel__th--actions">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {manuals.map((manual) => (
+                      <tr key={manual.id} className="admin-panel__row">
+                        <td className="admin-panel__td admin-panel__td--select">
+                          <SelectionCheckbox
+                            checked={isManualSelected(manual.id)}
+                            disabled={bulkDeleting}
+                            ariaLabel={`Select ${manual.filename}`}
+                            onChange={(checked) =>
+                              toggleManualSelection(manual.id, checked)
+                            }
                           />
                         </td>
-                        <td className="admin-panel__td admin-panel__td--muted">
-                          {new Date(m.uploadedAt).toLocaleDateString()}
+                        <td className="admin-panel__td admin-panel__td--manual-name">
+                          {editingManualId === manual.id ? (
+                            <input
+                              className="admin-panel__input admin-panel__input--full"
+                              value={editingFilename}
+                              onChange={(e) => setEditingFilename(e.target.value)}
+                            />
+                          ) : (
+                            <span className="admin-panel__manual-name-text">
+                              {manual.filename}
+                            </span>
+                          )}
                         </td>
-                        <td className="admin-panel__td">
-                          <div className="admin-panel__actions">
+                        <td className="admin-panel__td admin-panel__td--manual-status">
+                          <ManualStatusBadge
+                            run={manual.run}
+                            progress={manual.progress}
+                            chunkCount={manual.chunkCount}
+                          />
+                        </td>
+                        <td className="admin-panel__td admin-panel__td--muted admin-panel__td--manual-date">
+                          {new Date(manual.uploadedAt).toLocaleDateString()}
+                        </td>
+                        <td className="admin-panel__td admin-panel__td--manual-actions">
+                          <div className="admin-panel__actions admin-panel__actions--manuals">
                             <button
                               type="button"
-                              className="admin-panel__btn admin-panel__btn--ghost"
+                              className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
                               onClick={async () => {
                                 if (!token) return;
                                 try {
                                   const res = await fetchWithAuth(
-                                    `ships/${shipId}/manuals/${m.id}/download`,
+                                    `ships/${shipId}/manuals/${manual.id}/download`,
                                     { token },
                                   );
-                                  if (!res.ok)
+                                  if (!res.ok) {
                                     throw new Error("Download failed");
+                                  }
                                   const blob = await res.blob();
                                   const url = URL.createObjectURL(blob);
                                   window.open(url, "_blank");
-                                  setTimeout(
-                                    () => URL.revokeObjectURL(url),
-                                    60000,
-                                  );
+                                  setTimeout(() => URL.revokeObjectURL(url), 60000);
                                 } catch (err) {
                                   onError(
                                     err instanceof Error
@@ -373,19 +675,20 @@ export function ManualsPromptModal({
                             >
                               View
                             </button>
-                            {editingManualId === m.id ? (
+
+                            {editingManualId === manual.id ? (
                               <>
                                 <button
                                   type="button"
-                                  className="admin-panel__btn admin-panel__btn--primary"
-                                  onClick={() => handleEditSave(m.id)}
-                                  disabled={!editingFilename}
+                                  className="admin-panel__btn admin-panel__btn--primary admin-panel__btn--compact"
+                                  onClick={() => void handleEditSave(manual.id)}
+                                  disabled={!editingFilename.trim()}
                                 >
                                   Save
                                 </button>
                                 <button
                                   type="button"
-                                  className="admin-panel__btn admin-panel__btn--ghost"
+                                  className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
                                   onClick={() => {
                                     setEditingManualId(null);
                                     setEditingFilename("");
@@ -398,35 +701,42 @@ export function ManualsPromptModal({
                               <>
                                 <button
                                   type="button"
-                                  className="admin-panel__btn admin-panel__btn--ghost"
+                                  className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
                                   onClick={() => {
-                                    setEditingManualId(m.id);
-                                    setEditingFilename(m.filename);
+                                    setEditingManualId(manual.id);
+                                    setEditingFilename(manual.filename);
                                   }}
                                 >
                                   Edit
                                 </button>
                                 <button
                                   type="button"
-                                  className="admin-panel__btn admin-panel__btn--danger"
-                                  onClick={() => setConfirmDeleteId(m.id)}
-                                  disabled={deletingManualId === m.id}
+                                  className="admin-panel__btn admin-panel__btn--danger admin-panel__btn--compact"
+                                  onClick={() => setConfirmDeleteId(manual.id)}
+                                  disabled={deletingManualId === manual.id || bulkDeleting}
                                 >
-                                  {deletingManualId === m.id ? "…" : "Delete"}
+                                  {deletingManualId === manual.id ? "..." : "Delete"}
                                 </button>
                               </>
                             )}
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          ) : null}
+          ) : (
+            <div className="admin-panel__state-box admin-panel__manuals-state">
+              <span className="admin-panel__muted">
+                No manuals uploaded for this ship yet.
+              </span>
+            </div>
+          )}
         </div>
-        <div className="admin-panel__modal-actions">
+
+      <div className="admin-panel__modal-actions">
           <button
             type="button"
             className="admin-panel__btn admin-panel__btn--primary admin-panel__btn--full"
@@ -436,6 +746,54 @@ export function ManualsPromptModal({
           </button>
         </div>
       </div>
+
+      {confirmBulkDelete && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.4)",
+            zIndex: 60,
+          }}
+        >
+          <div className="admin-panel__modal" style={{ maxWidth: 520 }}>
+            <div className="admin-panel__modal-icon admin-panel__modal-icon--danger">
+              <XIcon />
+            </div>
+            <h3 className="admin-panel__modal-title">Delete selected manuals?</h3>
+            <p className="admin-panel__modal-desc">
+              This will permanently remove {selectedManualCount} selected manual
+              {selectedManualCount === 1 ? "" : "s"}. This action cannot be
+              undone.
+            </p>
+            <div className="admin-panel__modal-actions">
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--ghost"
+                onClick={() => setConfirmBulkDelete(false)}
+                disabled={bulkDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--danger"
+                onClick={async () => {
+                  setConfirmBulkDelete(false);
+                  await handleBulkDelete();
+                }}
+                disabled={bulkDeleting}
+              >
+                {bulkDeleting ? "Deleting..." : "Delete selected"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmDeleteId && (
         <div
           style={{

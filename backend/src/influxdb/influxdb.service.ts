@@ -1,6 +1,7 @@
 import {
   HttpException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InfluxDB } from '@influxdata/influxdb-client';
@@ -32,7 +33,19 @@ interface InfluxBucketsResponse {
 
 @Injectable()
 export class InfluxdbService {
-  private readonly latestValuesBatchSize = 100;
+  private readonly logger = new Logger(InfluxdbService.name);
+  private readonly latestValuesBatchSize = this.readIntEnv(
+    'INFLUX_LATEST_VALUES_BATCH_SIZE',
+    50,
+    1,
+    500,
+  );
+  private readonly influxTimeoutMs = this.readIntEnv(
+    'INFLUX_TIMEOUT_MS',
+    30000,
+    1000,
+    300000,
+  );
   private readonly influxUrl = process.env.INFLUX_URL;
   private readonly influxToken = process.env.INFLUX_TOKEN;
   private readonly defaultOrg = process.env.INFLUX_ORG;
@@ -42,6 +55,33 @@ export class InfluxdbService {
       .filter(Boolean) ?? [];
   private readonly schemaLookback =
     process.env.INFLUX_SCHEMA_LOOKBACK ?? '-365d';
+
+  private readIntEnv(
+    name: string,
+    fallback: number,
+    min: number,
+    max: number,
+  ): number {
+    const raw = process.env[name];
+    if (!raw) return fallback;
+
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) {
+      this.logger.warn(
+        `Ignoring invalid ${name} value "${raw}", using fallback ${fallback}`,
+      );
+      return fallback;
+    }
+
+    if (parsed < min || parsed > max) {
+      this.logger.warn(
+        `Ignoring out-of-range ${name} value "${raw}", expected ${min}-${max}, using fallback ${fallback}`,
+      );
+      return fallback;
+    }
+
+    return parsed;
+  }
 
   private get influx() {
     if (!this.influxUrl || !this.influxToken) {
@@ -53,6 +93,7 @@ export class InfluxdbService {
     return new InfluxDB({
       url: this.influxUrl,
       token: this.influxToken,
+      timeout: this.influxTimeoutMs,
     });
     /* eslint-enable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
   }

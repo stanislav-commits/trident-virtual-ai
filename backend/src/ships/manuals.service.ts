@@ -7,16 +7,78 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService, RagflowUploadFile } from '../ragflow/ragflow.service';
+import { ManualsParseScheduler } from './manuals-parse.scheduler';
+import { BulkRemoveManualsDto } from './dto/bulk-remove-manuals.dto';
 import { UpdateManualDto } from './dto/update-manual.dto';
+
+export interface ManualRecord {
+  id: string;
+  ragflowDocumentId: string;
+  filename: string;
+  uploadedAt: Date;
+}
+
+export interface ManualsPaginationMeta {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+export interface PaginatedManualsResult<T> {
+  items: T[];
+  pagination: ManualsPaginationMeta;
+}
+
+type ManualWithShip = {
+  id: string;
+  shipId: string;
+  filename: string;
+  ragflowDocumentId: string;
+  uploadedAt: Date;
+  ship: {
+    ragflowDatasetId: string | null;
+  };
+};
 
 @Injectable()
 export class ManualsService {
   private readonly logger = new Logger(ManualsService.name);
+  private readonly defaultPageSize = 25;
+  private readonly maxPageSize = 100;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ragflow: RagflowService,
+    private readonly manualsParseScheduler: ManualsParseScheduler,
   ) {}
+
+  private normalizeManualIds(ids?: string[]): string[] {
+    if (!ids?.length) return [];
+    return [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
+  }
+
+  private async removeManualRecord(manual: NonNullable<ManualWithShip>) {
+    if (!manual.ship.ragflowDatasetId) return;
+
+    if (!this.ragflow.isConfigured()) {
+      throw new ServiceUnavailableException('RAGFlow service is not available');
+    }
+
+    try {
+      await this.ragflow.deleteDocument(
+        manual.ship.ragflowDatasetId,
+        manual.ragflowDocumentId,
+      );
+    } catch (error) {
+      // Document may already be removed from RAGFlow; continue with DB cleanup.
+      this.logger.warn(
+        `RAGFlow document deletion failed for manual ${manual.id}, proceeding with DB removal: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   async create(shipId: string, file: RagflowUploadFile) {
     const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
@@ -90,39 +152,60 @@ export class ManualsService {
       }
     }
 
-    try {
-      await this.ragflow.parseDocuments(
-        ship.ragflowDatasetId,
-        uploaded.map((d) => d.id),
-      );
-    } catch {
-      // manuals are stored; parsing may run async in RAGFlow
-    }
+    this.manualsParseScheduler.notifyPendingDocuments();
     return created.length === 1 ? created[0] : created;
   }
 
-  async findAll(shipId: string) {
-    const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
-    if (!ship) throw new NotFoundException('Ship not found');
-    return this.prisma.shipManual.findMany({
-      where: { shipId },
-      orderBy: { uploadedAt: 'desc' },
-      select: {
-        id: true,
-        ragflowDocumentId: true,
-        filename: true,
-        uploadedAt: true,
-      },
-    });
+  private normalizePagination(page?: number, pageSize?: number) {
+    const normalizedPage = Number.isFinite(page)
+      ? Math.max(1, Math.floor(page as number))
+      : 1;
+    const normalizedPageSize = Number.isFinite(pageSize)
+      ? Math.max(1, Math.min(Math.floor(pageSize as number), this.maxPageSize))
+      : this.defaultPageSize;
+
+    return {
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+    };
   }
 
-  async findAllWithStatus(shipId: string) {
-    const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
-    if (!ship) throw new NotFoundException('Ship not found');
+  private buildPaginationMeta(
+    total: number,
+    page: number,
+    pageSize: number,
+  ): ManualsPaginationMeta {
+    const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+    const currentPage = Math.min(page, totalPages);
+
+    return {
+      page: currentPage,
+      pageSize,
+      total,
+      totalPages,
+      hasNextPage: currentPage < totalPages,
+      hasPreviousPage: currentPage > 1,
+    };
+  }
+
+  private async getManualPage(
+    shipId: string,
+    page?: number,
+    pageSize?: number,
+  ): Promise<PaginatedManualsResult<ManualRecord>> {
+    const pagination = this.normalizePagination(page, pageSize);
+    const total = await this.prisma.shipManual.count({ where: { shipId } });
+    const meta = this.buildPaginationMeta(
+      total,
+      pagination.page,
+      pagination.pageSize,
+    );
 
     const manuals = await this.prisma.shipManual.findMany({
       where: { shipId },
       orderBy: { uploadedAt: 'desc' },
+      skip: (meta.page - 1) * meta.pageSize,
+      take: meta.pageSize,
       select: {
         id: true,
         ragflowDocumentId: true,
@@ -130,46 +213,94 @@ export class ManualsService {
         uploadedAt: true,
       },
     });
+
+    return {
+      items: manuals,
+      pagination: meta,
+    };
+  }
+
+  async findAll(
+    shipId: string,
+    page?: number,
+    pageSize?: number,
+  ): Promise<PaginatedManualsResult<ManualRecord>> {
+    const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
+    if (!ship) throw new NotFoundException('Ship not found');
+    return this.getManualPage(shipId, page, pageSize);
+  }
+
+  async findAllWithStatus(
+    shipId: string,
+    page?: number,
+    pageSize?: number,
+  ): Promise<
+    PaginatedManualsResult<
+      ManualRecord & {
+        run: string | null;
+        progress: number | null;
+        progressMsg: string | null;
+        chunkCount: number | null;
+      }
+    >
+  > {
+    const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
+    if (!ship) throw new NotFoundException('Ship not found');
+
+    const pageResult = await this.getManualPage(shipId, page, pageSize);
+    const manuals = pageResult.items;
 
     if (
       !manuals.length ||
       !ship.ragflowDatasetId ||
       !this.ragflow.isConfigured()
     ) {
-      return manuals.map((m) => ({
-        ...m,
-        run: null as string | null,
-        progress: null as number | null,
-        progressMsg: null as string | null,
-        chunkCount: null as number | null,
-      }));
+      return {
+        items: manuals.map((m) => ({
+          ...m,
+          run: null as string | null,
+          progress: null as number | null,
+          progressMsg: null as string | null,
+          chunkCount: null as number | null,
+        })),
+        pagination: pageResult.pagination,
+      };
     }
 
     try {
-      const docs = await this.ragflow.listDocuments(ship.ragflowDatasetId);
+      const docs = await this.ragflow.listDocuments(
+        ship.ragflowDatasetId,
+        manuals.map((manual) => manual.ragflowDocumentId),
+      );
       const docMap = new Map(docs.map((d) => [d.id, d]));
 
-      return manuals.map((m) => {
-        const doc = docMap.get(m.ragflowDocumentId);
-        return {
-          ...m,
-          run: doc?.run ?? null,
-          progress: doc?.progress ?? null,
-          progressMsg: doc?.progress_msg ?? null,
-          chunkCount: doc?.chunk_count ?? null,
-        };
-      });
+      return {
+        items: manuals.map((m) => {
+          const doc = docMap.get(m.ragflowDocumentId);
+          return {
+            ...m,
+            run: doc?.run ?? null,
+            progress: doc?.progress ?? null,
+            progressMsg: doc?.progress_msg ?? null,
+            chunkCount: doc?.chunk_count ?? null,
+          };
+        }),
+        pagination: pageResult.pagination,
+      };
     } catch (err) {
       this.logger.warn(
         `Failed to fetch RAGFlow document statuses: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return manuals.map((m) => ({
-        ...m,
-        run: null as string | null,
-        progress: null as number | null,
-        progressMsg: null as string | null,
-        chunkCount: null as number | null,
-      }));
+      return {
+        items: manuals.map((m) => ({
+          ...m,
+          run: null as string | null,
+          progress: null as number | null,
+          progressMsg: null as string | null,
+          chunkCount: null as number | null,
+        })),
+        pagination: pageResult.pagination,
+      };
     }
   }
 
@@ -224,6 +355,54 @@ export class ManualsService {
       }));
   }
 
+  async bulkRemove(shipId: string, dto: BulkRemoveManualsDto) {
+    const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
+    if (!ship) throw new NotFoundException('Ship not found');
+
+    const mode = dto.mode === 'all' ? 'all' : 'manualIds';
+    const manualIds = this.normalizeManualIds(dto.manualIds);
+    const excludeManualIds = this.normalizeManualIds(dto.excludeManualIds);
+
+    if (mode === 'manualIds' && manualIds.length === 0) {
+      throw new BadRequestException('No manuals selected');
+    }
+
+    const manuals = await this.prisma.shipManual.findMany({
+      where:
+        mode === 'all'
+          ? {
+              shipId,
+              ...(excludeManualIds.length > 0
+                ? { id: { notIn: excludeManualIds } }
+                : {}),
+            }
+          : {
+              shipId,
+              id: { in: manualIds },
+            },
+      include: { ship: true },
+      orderBy: { uploadedAt: 'desc' },
+    });
+
+    if (!manuals.length) {
+      return { deletedCount: 0 };
+    }
+
+    for (const manual of manuals) {
+      await this.removeManualRecord(manual);
+    }
+
+    const deleted = await this.prisma.shipManual.deleteMany({
+      where: {
+        shipId,
+        id: { in: manuals.map((manual) => manual.id) },
+      },
+    });
+
+    this.manualsParseScheduler.notifyPendingDocuments();
+    return { deletedCount: deleted.count };
+  }
+
   async remove(shipId: string, manualId: string) {
     const manual = await this.prisma.shipManual.findFirst({
       where: { id: manualId, shipId },
@@ -231,26 +410,9 @@ export class ManualsService {
     });
     if (!manual) throw new NotFoundException('Manual not found');
 
-    // If manual is associated with RAGFlow dataset, try to delete from RAGFlow
-    if (manual.ship.ragflowDatasetId) {
-      if (!this.ragflow.isConfigured()) {
-        throw new ServiceUnavailableException(
-          'RAGFlow service is not available',
-        );
-      }
-      try {
-        await this.ragflow.deleteDocument(
-          manual.ship.ragflowDatasetId,
-          manual.ragflowDocumentId,
-        );
-      } catch (error) {
-        // Document may already be removed from RAGFlow — log and continue
-        this.logger.warn(
-          `RAGFlow document deletion failed for manual ${manualId}, proceeding with DB removal: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }
+    await this.removeManualRecord(manual);
 
     await this.prisma.shipManual.delete({ where: { id: manualId } });
+    this.manualsParseScheduler.notifyPendingDocuments();
   }
 }

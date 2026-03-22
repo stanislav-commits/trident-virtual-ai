@@ -210,6 +210,56 @@ describe('LlmService maintenance calculation guard', () => {
     );
   });
 
+  it('tells telemetry prompts to calculate combined totals from matched tank readings', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'Calculate how many fuel onboard according to all fuel tanks',
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'direct',
+      telemetry: {
+        'Tanks-Temperatures.Fuel_Tank_1P': 3142,
+        'Tanks-Temperatures.Fuel_Tank_2S': 2374,
+      },
+      noDocumentation: true,
+    });
+
+    expect(prompt).toContain(
+      'The user is asking for a combined total or calculation from multiple current telemetry readings.',
+    );
+    expect(prompt).toContain(
+      'calculate the combined result explicitly, and state the total in the answer.',
+    );
+    expect(prompt).toContain(
+      'Do not mix unrelated tanks, fluids, or telemetry subjects into the calculation.',
+    );
+    expect(prompt).toContain(
+      'Do not refuse the calculation just because a selected tank reading has imperfect descriptive text.',
+    );
+  });
+
+  it('tells telemetry prompts to treat latitude and longitude as the vessel location', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'What is the yacht location?',
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'direct',
+      telemetry: {
+        'navigation.latitude': 43.53606,
+        'navigation.longitude': 7.006816666666666,
+      },
+      noDocumentation: true,
+    });
+
+    expect(prompt).toContain(
+      'treat those coordinates together as the vessel\'s current location',
+    );
+    expect(prompt).toContain(
+      'Do not say the location is unavailable when those coordinates are present.',
+    );
+  });
+
   it('warns when only related telemetry is available for a requested metric', () => {
     const service = new LlmService();
 
@@ -282,5 +332,16 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).not.toContain(
       'Remaining-hours candidates using explicit next-due values:',
     );
+  });
+
+  it('classifies vessel location questions as telemetry queries', () => {
+    const service = new LlmService();
+
+    expect(
+      (service as any).classifyQueryIntent('What is the yacht location?'),
+    ).toBe('telemetry_status');
+    expect(
+      (service as any).classifyQueryIntent('Latitude and longitude'),
+    ).toBe('telemetry_status');
   });
 });

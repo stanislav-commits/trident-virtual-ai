@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MetricsModule } from '../metrics/metrics.module';
 import { RagflowModule } from '../ragflow/ragflow.module';
+import { ManualsParseScheduler } from './manuals-parse.scheduler';
 import { ManualsService } from './manuals.service';
 import { ShipsController } from './ships.controller';
 import { ShipsService } from './ships.service';
@@ -8,7 +9,7 @@ import { ShipsService } from './ships.service';
 @Module({
   imports: [RagflowModule, MetricsModule],
   controllers: [ShipsController],
-  providers: [ShipsService, ManualsService],
+  providers: [ShipsService, ManualsService, ManualsParseScheduler],
   exports: [ShipsService],
 })
 export class ShipsModule {}

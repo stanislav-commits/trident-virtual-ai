@@ -402,6 +402,11 @@
   border-color: var(--chat-border-strong);
 }
 
+.admin-panel__select--compact {
+  min-width: 112px;
+  padding: 7px 10px;
+}
+
 .admin-panel__select:focus,
 .admin-panel__input:focus {
   border-color: var(--focus-border-md);
@@ -580,6 +585,10 @@
   justify-content: center;
 }
 
+.admin-panel__btn--compact {
+  padding: 7px 12px;
+}
+
 /* ── State boxes ── */
 .admin-panel__state-box {
   display: flex;
@@ -653,6 +662,228 @@
   font-size: 0.875rem;
 }
 
+.admin-panel__manuals-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-right: 8px;
+  padding-bottom: 12px;
+}
+
+.admin-panel__manuals-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--chat-border);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent),
+    var(--chat-surface);
+  flex-shrink: 0;
+}
+
+.admin-panel__manuals-upload-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-panel__manuals-upload-hint {
+  margin: 0;
+  max-width: 560px;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--chat-text-subtle);
+}
+
+.admin-panel__manuals-upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-panel__manuals-upload-picker {
+  flex-shrink: 0;
+}
+
+.admin-panel__file-trigger--manuals {
+  min-width: 136px;
+}
+
+.admin-panel__manuals-upload-summary {
+  flex: 1 1 260px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.admin-panel__manuals-upload-summary-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--chat-text);
+}
+
+.admin-panel__manuals-upload-summary-meta {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--chat-text-subtle);
+}
+
+.admin-panel__btn--manual-upload {
+  min-width: 112px;
+  justify-content: center;
+}
+
+.admin-panel__manuals-upload-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-panel__manuals-upload-file {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-panel__manuals-list-card {
+  border: 1px solid var(--chat-border);
+  border-radius: 14px;
+  background: var(--chat-surface);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.admin-panel__manuals-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--chat-border);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.admin-panel__manuals-toolbar-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-panel__manuals-toolbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-panel__manuals-toolbar-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--chat-text);
+  letter-spacing: -0.02em;
+}
+
+.admin-panel__manuals-selection-summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--accent-bright);
+  font-size: 0.73rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-panel__manuals-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-panel__manuals-pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-panel__manuals-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-panel__manuals-page-size-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--chat-text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-panel__manuals-page-indicator {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.admin-panel__manuals-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-panel__table--manuals .admin-panel__th {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.admin-panel__table--manuals .admin-panel__td {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.admin-panel__manuals-col--select {
+  width: 52px;
+}
+
+.admin-panel__manuals-col--status {
+  width: 180px;
+}
+
+.admin-panel__manuals-col--uploaded {
+  width: 132px;
+}
+
+.admin-panel__manuals-col--actions {
+  width: 218px;
+}
+
 .admin-panel__th {
   padding: 12px 18px;
   text-align: left;
@@ -682,6 +913,24 @@
 
 .admin-panel__row:last-child .admin-panel__td {
   border-bottom: none;
+}
+
+.admin-panel__th--select,
+.admin-panel__td--select {
+  width: 52px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.admin-panel__selection-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.admin-panel__selection-check:disabled {
+  cursor: not-allowed;
 }
 
 .admin-panel__td--userid {
@@ -744,7 +993,6 @@
   background: rgba(59, 130, 246, 0.12);
   color: var(--accent-bright);
   border: 1px solid rgba(59, 130, 246, 0.25);
-  animation: admin-badge-pulse 1.5s ease-in-out infinite;
 }
 
 .admin-panel__badge--manual-pending {
@@ -771,14 +1019,16 @@
   border: 1px solid transparent;
 }
 
-@keyframes admin-badge-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
+.admin-panel__badge--manual-done,
+.admin-panel__badge--manual-running,
+.admin-panel__badge--manual-pending,
+.admin-panel__badge--manual-fail,
+.admin-panel__badge--manual-cancel,
+.admin-panel__badge--manual-unknown {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 0.73rem;
+  letter-spacing: 0.025em;
 }
 
 /* ── Actions cell ── */
@@ -787,6 +1037,36 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+.admin-panel__actions--manuals {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.admin-panel__td--manual-name {
+  min-width: 0;
+}
+
+.admin-panel__manual-name-text {
+  display: block;
+  font-weight: 600;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.admin-panel__td--manual-status,
+.admin-panel__td--manual-date {
+  white-space: nowrap;
+}
+
+.admin-panel__th--actions,
+.admin-panel__td--manual-actions {
+  text-align: right;
+}
+
+.admin-panel__manuals-state {
+  margin-bottom: 4px;
 }
 
 /* ── Password reveal ── */
@@ -1391,6 +1671,12 @@
   max-width: 500px;
 }
 
+.admin-panel__modal--manuals {
+  max-width: 980px;
+  width: min(980px, calc(100vw - 48px));
+  overflow-y: auto;
+}
+
 .admin-panel__modal-icon {
   width: 44px;
   height: 44px;
@@ -1432,6 +1718,12 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.admin-panel__modal--manuals .admin-panel__modal-actions {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--chat-border);
 }
 
 .admin-panel__modal--large {
@@ -2050,6 +2342,52 @@
     min-height: auto;
   }
 
+  .admin-panel__modal--manuals {
+    max-width: calc(100vw - 24px);
+    width: calc(100vw - 24px);
+  }
+
+  .admin-panel__manuals-body {
+    padding-right: 0;
+  }
+
+  .admin-panel__manuals-upload {
+    padding: 14px;
+  }
+
+  .admin-panel__manuals-upload-controls {
+    align-items: stretch;
+  }
+
+  .admin-panel__manuals-upload-picker,
+  .admin-panel__btn--manual-upload {
+    width: 100%;
+  }
+
+  .admin-panel__file-trigger--manuals {
+    width: 100%;
+  }
+
+  .admin-panel__manuals-toolbar {
+    align-items: stretch;
+  }
+
+  .admin-panel__manuals-toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .admin-panel__manuals-pager {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .admin-panel__manuals-page-size {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .admin-panel__modal-field-row {
     flex-direction: column;
   }
@@ -2120,6 +2458,26 @@
   .admin-panel__th:nth-child(2),
   .admin-panel__td:nth-child(2) {
     display: none;
+  }
+
+  .admin-panel__table--manuals .admin-panel__th:nth-child(2),
+  .admin-panel__table--manuals .admin-panel__td:nth-child(2) {
+    display: table-cell;
+  }
+
+  .admin-panel__table--manuals .admin-panel__th:nth-child(3),
+  .admin-panel__table--manuals .admin-panel__td:nth-child(3) {
+    display: table-cell;
+  }
+
+  .admin-panel__table--manuals .admin-panel__th:nth-child(4),
+  .admin-panel__table--manuals .admin-panel__td:nth-child(4) {
+    display: none;
+  }
+
+  .admin-panel__actions--manuals {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .admin-panel__metrics-group-table-wrap .admin-panel__th:nth-child(2),

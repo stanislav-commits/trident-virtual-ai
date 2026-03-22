@@ -662,21 +662,25 @@ export class MetricsService implements OnModuleInit {
   }
 
   private formatTelemetryLabel(entry: ShipTelemetryEntry): string {
+    const dedicatedTankLabel = this.getDedicatedTankDisplayLabel(entry);
     const primary =
-      entry.measurement && entry.field
+      dedicatedTankLabel ??
+      (entry.measurement && entry.field
         ? `${entry.measurement}.${entry.field}`
-        : entry.label || entry.key;
+        : entry.label || entry.key);
 
-    const extras = [
-      entry.description,
-      entry.bucket ? `Bucket: ${entry.bucket}` : '',
-      entry.unit ? `Unit: ${entry.unit}` : '',
-    ].filter(
-      (value) =>
-        value &&
-        !this.containsLoosely(primary, value) &&
-        !this.containsLoosely(value, primary),
-    );
+    const extras = dedicatedTankLabel
+      ? [entry.unit ? `Unit: ${entry.unit}` : ''].filter(Boolean)
+      : [
+          entry.description,
+          entry.bucket ? `Bucket: ${entry.bucket}` : '',
+          entry.unit ? `Unit: ${entry.unit}` : '',
+        ].filter(
+          (value) =>
+            value &&
+            !this.containsLoosely(primary, value) &&
+            !this.containsLoosely(value, primary),
+        );
 
     return [primary, ...extras].filter(Boolean).join(' — ');
   }
@@ -686,6 +690,24 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): ShipTelemetryEntry[] {
+    const aggregateTankEntries = this.findAggregateTankTelemetryEntries(
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (aggregateTankEntries.length > 0) {
+      return aggregateTankEntries;
+    }
+
+    const locationEntries = this.findLocationTelemetryEntries(
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (locationEntries.length > 0) {
+      return locationEntries;
+    }
+
     const querySignals = this.buildTelemetryQuerySignals(
       query,
       resolvedSubjectQuery,
@@ -711,6 +733,99 @@ export class MetricsService implements OnModuleInit {
     return this.filterScoredTelemetryEntries(narrowed)
       .slice(0, 12)
       .map((candidate) => candidate.entry);
+  }
+
+  private findAggregateTankTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryEntry[] {
+    const searchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    const fluid = this.detectStoredFluidSubject(searchSpace);
+    if (!fluid || !this.isAggregateStoredFluidQuery(searchSpace, fluid)) {
+      return [];
+    }
+
+    const selected = entries
+      .filter((entry) => this.isDirectTankStorageEntry(entry, fluid))
+      .sort((left, right) => {
+        const tankRank =
+          this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
+        return tankRank || left.key.localeCompare(right.key);
+      });
+
+    return selected.slice(0, 16);
+  }
+
+  private findLocationTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryEntry[] {
+    const searchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    if (!this.isTelemetryLocationQuery(searchSpace)) {
+      return [];
+    }
+
+    const querySignals = this.buildTelemetryQuerySignals(
+      query,
+      resolvedSubjectQuery,
+    );
+    const scored = this.getScoredTelemetryEntries(entries, querySignals)
+      .filter((candidate) => this.getTelemetryCoordinateKinds(candidate.entry).size > 0)
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.entry.key.localeCompare(right.entry.key),
+      );
+
+    if (scored.length === 0) {
+      return [];
+    }
+
+    const wantsLatitude = /\b(latitude|lat)\b/i.test(searchSpace);
+    const wantsLongitude = /\b(longitude|lon)\b/i.test(searchSpace);
+
+    if (wantsLatitude && !wantsLongitude) {
+      return scored
+        .filter((candidate) =>
+          this.getTelemetryCoordinateKinds(candidate.entry).has('latitude'),
+        )
+        .slice(0, 1)
+        .map((candidate) => candidate.entry);
+    }
+
+    if (wantsLongitude && !wantsLatitude) {
+      return scored
+        .filter((candidate) =>
+          this.getTelemetryCoordinateKinds(candidate.entry).has('longitude'),
+        )
+        .slice(0, 1)
+        .map((candidate) => candidate.entry);
+    }
+
+    const selected: ShipTelemetryEntry[] = [];
+    const seen = new Set<'latitude' | 'longitude'>();
+
+    for (const candidate of scored) {
+      const kinds = this.getTelemetryCoordinateKinds(candidate.entry);
+      if (kinds.has('latitude') && !seen.has('latitude')) {
+        selected.push(candidate.entry);
+        seen.add('latitude');
+      }
+      if (kinds.has('longitude') && !seen.has('longitude')) {
+        selected.push(candidate.entry);
+        seen.add('longitude');
+      }
+      if (seen.has('latitude') && seen.has('longitude')) {
+        break;
+      }
+    }
+
+    return selected;
   }
 
   private findTelemetryFallbackEntries(
@@ -843,6 +958,8 @@ export class MetricsService implements OnModuleInit {
       'our',
       'out',
       'output',
+      'vessel',
+      'yacht',
       'show',
       'tell',
       'give',
@@ -864,8 +981,10 @@ export class MetricsService implements OnModuleInit {
       'any',
       'action',
       'actions',
+      'according',
       'recommended',
       'recommendation',
+      'calculate',
       'related',
       'latest',
       'metric',
@@ -1187,6 +1306,25 @@ export class MetricsService implements OnModuleInit {
     const first = entries[0];
     if (!first) return 'related';
 
+    const aggregateFluid = this.detectStoredFluidSubject(normalizedQuery);
+    if (
+      aggregateFluid &&
+      this.isAggregateStoredFluidQuery(normalizedQuery, aggregateFluid) &&
+      entries.length > 0 &&
+      entries.every((entry) => this.isDirectTankStorageEntry(entry, aggregateFluid))
+    ) {
+      return 'direct';
+    }
+
+    if (this.isTelemetryLocationQuery(normalizedQuery)) {
+      const coordinateKinds = new Set(
+        entries.flatMap((entry) => [...this.getTelemetryCoordinateKinds(entry)]),
+      );
+      if (coordinateKinds.size > 0) {
+        return 'direct';
+      }
+    }
+
     const exactCandidates = [
       first.field,
       first.label,
@@ -1440,6 +1578,7 @@ export class MetricsService implements OnModuleInit {
       [/\b(flow|rate)\b/i, 'flow'],
       [/\b(runtime|running|hours?|hour\s*meter)\b/i, 'hours'],
       [/\b(status(?:es)?|state(?:s)?)\b/i, 'status'],
+      [/\b(latitude|longitude|coordinates?|position|gps|location|lat|lon)\b/i, 'location'],
     ];
 
     for (const [pattern, label] of checks) {
@@ -1458,8 +1597,30 @@ export class MetricsService implements OnModuleInit {
       kinds.add('level');
     }
 
+    if (/\b(volume|quantity|contents?)\b/i.test(normalized)) {
+      kinds.add('level');
+    }
+
+    const looksLikeTankQuantity =
+      /\btank\b/i.test(normalized) &&
+      /\b(fuel|oil|coolant|water|def|urea)\b/i.test(normalized) &&
+      (
+        /\b(l|lt|ltr|liters?|litres?|gal|gallons?|m3|m 3)\b/i.test(normalized) ||
+        /\b(volume|quantity|contents?|remaining|available|onboard)\b/i.test(
+          normalized,
+        )
+      ) &&
+      !/\b(used|consumed|consumption|rate|flow|pressure|temp|temperature)\b/i.test(
+        normalized,
+      );
+    if (looksLikeTankQuantity) {
+      kinds.add('level');
+    }
+
     const hasQuantityUnit =
-      /\b(liters?|litres?|percent|percentage|%)\b/i.test(normalized) &&
+      /\b(l|lt|ltr|liters?|litres?|percent|percentage|%|gal|gallons?|m3|m 3)\b/i.test(
+        normalized,
+      ) &&
       !/\b(used|consumed|consumption|rate|flow)\b/i.test(normalized);
     if (hasQuantityUnit) {
       kinds.add('level');
@@ -1540,9 +1701,15 @@ export class MetricsService implements OnModuleInit {
       'flow',
       'hour',
       'hours',
+      'lat',
+      'latitude',
       'level',
+      'location',
       'load',
+      'lon',
+      'longitude',
       'pressure',
+      'position',
       'rate',
       'reading',
       'rpm',
@@ -1554,6 +1721,9 @@ export class MetricsService implements OnModuleInit {
       'temperature',
       'value',
       'voltage',
+      'coordinate',
+      'coordinates',
+      'gps',
     ]).has(token);
   }
 
@@ -1630,6 +1800,9 @@ export class MetricsService implements OnModuleInit {
       ['port', 'ps'],
       ['starboard', 'sb'],
       ['temperature', 'temp'],
+      ['latitude', 'lat'],
+      ['longitude', 'lon'],
+      ['location', 'position', 'coordinates', 'coordinate', 'gps'],
     ];
 
     for (const group of aliasGroups) {
@@ -1645,6 +1818,174 @@ export class MetricsService implements OnModuleInit {
     return this.normalizeTelemetryText(left).includes(
       this.normalizeTelemetryText(right),
     );
+  }
+
+  private detectStoredFluidSubject(
+    normalizedQuery: string,
+  ): 'fuel' | 'oil' | 'water' | 'coolant' | 'def' | null {
+    if (/\bfuel\b/i.test(normalizedQuery)) return 'fuel';
+    if (/\boil\b/i.test(normalizedQuery)) return 'oil';
+    if (/\bcoolant\b/i.test(normalizedQuery)) return 'coolant';
+    if (/\b(def|urea)\b/i.test(normalizedQuery)) return 'def';
+    if (/\b(water|fresh water|seawater)\b/i.test(normalizedQuery)) return 'water';
+    return null;
+  }
+
+  private isAggregateStoredFluidQuery(
+    normalizedQuery: string,
+    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+  ): boolean {
+    const asksForQuantity =
+      /\b(how much|how many|total|sum|overall|combined|together|calculate)\b/i.test(
+        normalizedQuery,
+      ) ||
+      /\b(onboard|remaining|left|available)\b/i.test(normalizedQuery);
+    if (!asksForQuantity) {
+      return false;
+    }
+
+    const mentionsTankContext =
+      /\b(tank|tanks)\b/i.test(normalizedQuery) ||
+      (fluid === 'fuel' && /\bonboard\b/i.test(normalizedQuery));
+
+    return mentionsTankContext;
+  }
+
+  private isDirectTankStorageEntry(
+    entry: ShipTelemetryEntry,
+    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+  ): boolean {
+    const haystack = this.buildTelemetryHaystack(entry);
+    const kinds = this.extractTelemetryMeasurementKinds(haystack);
+    const fluidPattern =
+      fluid === 'water'
+        ? /\b(water|fresh water|seawater)\b/i
+        : fluid === 'def'
+            ? /\b(def|urea)\b/i
+            : new RegExp(`\\b${fluid}\\b`, 'i');
+
+    if (this.isDedicatedTankStorageField(entry, fluid)) {
+      return true;
+    }
+
+    if (!kinds.has('level')) {
+      return false;
+    }
+
+    return (
+      /\btank\b/i.test(haystack) &&
+      fluidPattern.test(haystack) &&
+      !/\b(used|consumed|consumption|rate|flow|pressure)\b/i.test(haystack)
+    );
+  }
+
+  private getDedicatedTankDisplayLabel(entry: ShipTelemetryEntry): string | null {
+    const fieldText = this.getDedicatedTankFieldText(entry);
+    if (!fieldText) {
+      return null;
+    }
+
+    return fieldText.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private getDedicatedTankFieldText(entry: ShipTelemetryEntry): string | null {
+    const rawField =
+      entry.field?.trim() ||
+      entry.label?.split('.').slice(-1)[0]?.trim() ||
+      '';
+    if (!rawField) {
+      return null;
+    }
+
+    const fieldText = this.normalizeTelemetryText(rawField);
+    if (!fieldText || !/\btank\b/i.test(fieldText)) {
+      return null;
+    }
+
+    if (
+      /\b(pump|filter|room|scupper|sensor|switch|alarm|temperature|temp|pressure|rate|flow|used|consumed|consumption|power|voltage|current|energy|factor)\b/i.test(
+        fieldText,
+      )
+    ) {
+      return null;
+    }
+
+    const looksLikeDedicatedTankField =
+      /^((fresh|dirty|clean|black|grey|bilge)\s+)*(fuel|oil|water|coolant|def|urea)\s+tank(\s+\d{1,3}[a-z]?)?(\s+liters?)?$/i.test(
+        fieldText,
+      ) ||
+      /^((fresh|dirty|clean|black|grey|bilge)\s+)*(fuel|oil|water|coolant|def|urea)\s+tank\s+[a-z0-9]+$/i.test(
+        fieldText,
+      );
+
+    return looksLikeDedicatedTankField ? rawField : null;
+  }
+
+  private isDedicatedTankStorageField(
+    entry: ShipTelemetryEntry,
+    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+  ): boolean {
+    const fieldText = this.normalizeTelemetryText(
+      this.getDedicatedTankFieldText(entry) ?? '',
+    );
+    if (!fieldText) {
+      return false;
+    }
+
+    const fluidPattern =
+      fluid === 'water'
+        ? /\b(water|fresh water|seawater)\b/i
+        : fluid === 'def'
+          ? /\b(def|urea)\b/i
+          : new RegExp(`\\b${fluid}\\b`, 'i');
+    if (!fluidPattern.test(fieldText)) {
+      return false;
+    }
+
+    if (!/\btank\b/i.test(fieldText)) {
+      return false;
+    }
+    return true;
+  }
+
+  private getTelemetryTankOrder(entry: ShipTelemetryEntry): number {
+    const haystack = this.buildTelemetryHaystack(entry);
+    const match = haystack.match(/\btank\s+(\d{1,3})([a-z])?\b/i);
+    if (!match) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    const number = Number.parseInt(match[1], 10);
+    const side = match[2]?.toLowerCase() ?? '';
+    const sideOffset = side === 'p' ? 1 : side === 's' ? 2 : 3;
+    return number * 10 + sideOffset;
+  }
+
+  private isTelemetryLocationQuery(normalizedQuery: string): boolean {
+    return (
+      /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location)\b/i.test(
+        normalizedQuery,
+      ) &&
+      !/\b(spare|part|parts|supplier|manufacturer|quantity|reference)\b/i.test(
+        normalizedQuery,
+      )
+    );
+  }
+
+  private getTelemetryCoordinateKinds(
+    entry: ShipTelemetryEntry,
+  ): Set<'latitude' | 'longitude'> {
+    const kinds = new Set<'latitude' | 'longitude'>();
+    const haystack = this.buildTelemetryHaystack(entry);
+
+    if (/\b(latitude|lat)\b/i.test(haystack)) {
+      kinds.add('latitude');
+    }
+    if (/\b(longitude|lon)\b/i.test(haystack)) {
+      kinds.add('longitude');
+    }
+
+    return kinds;
   }
 
   private async syncLatestValuesForShip(
@@ -1687,13 +2028,29 @@ export class MetricsService implements OnModuleInit {
         },
         data: {
           latestValue: value.value != null ? value.value : undefined,
-          valueUpdatedAt: now,
+          valueUpdatedAt: this.resolveInfluxValueUpdatedAt(value.time, now),
         },
       });
       updated++;
     }
 
     return updated;
+  }
+
+  private resolveInfluxValueUpdatedAt(
+    sourceTime: string | null | undefined,
+    fallback: Date,
+  ): Date {
+    if (!sourceTime?.trim()) {
+      return fallback;
+    }
+
+    const parsed = new Date(sourceTime);
+    if (Number.isNaN(parsed.getTime())) {
+      return fallback;
+    }
+
+    return parsed;
   }
 
   private async reconcileShipMetrics(shipId: string, metricKeys: string[]) {

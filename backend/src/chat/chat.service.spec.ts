@@ -110,4 +110,58 @@ describe('ChatService telemetry clarification', () => {
     );
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
+
+  it('keeps direct aggregate telemetry queries telemetry-only when phrased as according to all fuel tanks', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'calculate how many fuel onboard according to all fuel tanks',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta operators manual',
+          snippet: 'Fuel tank calibration procedure.',
+          pageNumber: 163,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'calculate how many fuel onboard according to all fuel tanks',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Fuel Tank 1P': 3142,
+        'Fuel Tank 2S': 2374,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 2,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+    llmService.generateResponse.mockResolvedValue('Total fuel onboard is 5516 liters.');
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'calculate how many fuel onboard according to all fuel tanks',
+      'Simens',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userQuery: 'calculate how many fuel onboard according to all fuel tanks',
+        telemetryMatchMode: 'direct',
+        noDocumentation: true,
+        citations: [],
+      }),
+    );
+  });
 });

@@ -75,7 +75,7 @@ describe('MetricsService telemetry matching', () => {
     expect(result.matchMode).toBe('exact');
     expect(result.totalActiveMetrics).toBe(3);
     expect(Object.keys(result.telemetry)).toHaveLength(1);
-    expect(Object.keys(result.telemetry)[0]).toContain('Fuel_Tank_4S');
+    expect(Object.keys(result.telemetry)[0]).toContain('Fuel Tank 4S');
     expect(Object.values(result.telemetry)[0]).toBe(18.2);
   });
 
@@ -188,7 +188,7 @@ describe('MetricsService telemetry matching', () => {
     expect(result.matchMode).toBe('sample');
     expect(Object.keys(result.telemetry)).toHaveLength(5);
     expect(
-      Object.keys(result.telemetry).every((key) => key.includes('Fuel_Tank')),
+      Object.keys(result.telemetry).every((key) => /fuel tank/i.test(key)),
     ).toBe(true);
   });
 
@@ -573,6 +573,259 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(true);
   });
 
+  it('uses direct fuel tank readings for onboard fuel total questions when tank quantities are available', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+        latestValue: 3142,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel_Tank_1P',
+          description: 'Displays the volume of Fuel Tank 1P in liters.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_1P',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+        latestValue: 2374,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel_Tank_2S',
+          description: 'Displays the volume of Fuel Tank 2S in liters.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_2S',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Diesel Fuel Rate (l/h)',
+        latestValue: 61.4,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Diesel Fuel Rate (l/h)',
+          description:
+            'Monitors the diesel fuel consumption rate of the port genset in liters per hour.',
+          unit: 'l/h',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Diesel Fuel Rate (l/h)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'Calculate how many fuel onboard according to all fuel tanks',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /fuel tank/i.test(key)),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).some((key) => key.includes('Fuel Tank 1P')),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).some((key) => key.includes('Fuel Tank 2S')),
+    ).toBe(true);
+  });
+
+  it('treats onboard fuel quantity questions as direct tank lookups when volume-based tank readings exist', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+        latestValue: 3142,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel_Tank_1P',
+          description: 'Displays the volume of Fuel Tank 1P in trending data.',
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_1P',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+        latestValue: 2374,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel_Tank_2S',
+          description: 'Displays the volume of Fuel Tank 2S in trending data.',
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_2S',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Total Fuel Used (l)',
+        latestValue: 34150,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Total Fuel Used (l)',
+          description: 'Displays the total fuel used by the port genset in liters.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Total Fuel Used (l)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'How many fuel onboard?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /fuel tank/i.test(key)),
+    ).toBe(true);
+  });
+
+  it('treats dedicated fuel tank identifiers as direct storage readings even when metadata is noisy', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+        latestValue: 3142,
+        valueUpdatedAt: new Date('2026-03-22T11:16:45.223Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel_Tank_1P',
+          description: 'Displays the temperature of Fuel Tank 1P in trending data.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_1P',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+        latestValue: 2381,
+        valueUpdatedAt: new Date('2026-03-22T11:16:45.223Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel_Tank_2S',
+          description: 'Displays the temperature of Fuel Tank 2S in trending data.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_2S',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Total Fuel Used (l)',
+        latestValue: 85,
+        valueUpdatedAt: new Date('2026-03-22T11:16:45.223Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Total Fuel Used (l)',
+          description: 'Shows total fuel used by the port genset.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Total Fuel Used (l)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'calculate how many fuel onboard according to all fuel tanks',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /fuel tank/i.test(key)),
+    ).toBe(true);
+
+    const shortResult = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'How many fuel onboard?',
+    );
+
+    expect(shortResult.prefiltered).toBe(true);
+    expect(shortResult.matchMode).toBe('direct');
+    expect(shortResult.clarification).toBeNull();
+    expect(Object.keys(shortResult.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(shortResult.telemetry).every(
+        (key) => !/temperature/i.test(key),
+      ),
+    ).toBe(true);
+  });
+
+  it('returns latitude and longitude telemetry for vessel location questions', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation::latitude',
+        latestValue: 43.53606,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.latitude',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation',
+          field: 'latitude',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation::longitude',
+        latestValue: 7.006816666666666,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.longitude',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation',
+          field: 'longitude',
+        },
+      },
+      {
+        metricKey: 'Trending::Electrical::Battery voltage (V)',
+        latestValue: 26.3,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Electrical.Battery voltage (V)',
+          description: 'Current battery voltage.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'Electrical',
+          field: 'Battery voltage (V)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'What is the yacht location?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).some((key) => key.includes('latitude')),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).some((key) => key.includes('longitude')),
+    ).toBe(true);
+  });
+
   it.each([
     {
       query: 'What is the current fuel status?',
@@ -741,5 +994,66 @@ describe('MetricsService telemetry matching', () => {
           action.message.startsWith('Based on the current value of '),
         ),
     ).toBe(true);
+  });
+});
+
+describe('MetricsService value sync', () => {
+  it('stores the source timestamp returned by Influx for synced metric values', async () => {
+    const shipFindMany = jest.fn().mockResolvedValue([
+      {
+        id: 'ship-1',
+        organizationName: 'SeaWolfX',
+        metricsConfig: [{ metricKey: 'Trending::Tanks::Fuel_Level' }],
+      },
+    ]);
+    const shipMetricsConfigUpdate = jest.fn().mockResolvedValue({});
+
+    const prisma = {
+      ship: {
+        findMany: shipFindMany,
+      },
+      shipMetricsConfig: {
+        update: shipMetricsConfigUpdate,
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryLatestValues: jest.fn().mockResolvedValue([
+        {
+          key: 'Trending::Tanks::Fuel_Level',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fuel_Level',
+          value: 63,
+          time: '2026-03-22T12:34:56.000Z',
+        },
+      ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    await service.syncValuesFromInflux();
+
+    expect(influxdb.queryLatestValues).toHaveBeenCalledWith(
+      ['Trending::Tanks::Fuel_Level'],
+      'SeaWolfX',
+    );
+    expect(shipMetricsConfigUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          latestValue: 63,
+          valueUpdatedAt: new Date('2026-03-22T12:34:56.000Z'),
+        }),
+      }),
+    );
   });
 });

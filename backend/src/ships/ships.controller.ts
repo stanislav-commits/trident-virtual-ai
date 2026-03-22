@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UploadedFile,
   UseGuards,
@@ -18,6 +19,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateShipDto } from './dto/create-ship.dto';
+import { BulkRemoveManualsDto } from './dto/bulk-remove-manuals.dto';
 import { UpdateManualDto } from './dto/update-manual.dto';
 import { UpdateShipDto } from './dto/update-ship.dto';
 import { ManualsService } from './manuals.service';
@@ -31,6 +33,13 @@ export class ShipsController {
     private readonly shipsService: ShipsService,
     private readonly manualsService: ManualsService,
   ) {}
+
+  private parsePositiveInt(value: string | undefined, fallback?: number) {
+    if (!value) return fallback;
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    return parsed;
+  }
 
   @Get('metric-definitions')
   getMetricDefinitions() {
@@ -53,8 +62,16 @@ export class ShipsController {
   }
 
   @Get(':id/manuals/status')
-  findAllManualsWithStatus(@Param('id') id: string) {
-    return this.manualsService.findAllWithStatus(id);
+  findAllManualsWithStatus(
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.manualsService.findAllWithStatus(
+      id,
+      this.parsePositiveInt(page),
+      this.parsePositiveInt(pageSize),
+    );
   }
 
   @Get(':id/manuals/:manualId/download')
@@ -92,9 +109,25 @@ export class ShipsController {
     return this.manualsService.remove(id, manualId);
   }
 
+  @Post(':id/manuals/bulk-delete')
+  bulkRemoveManuals(
+    @Param('id') id: string,
+    @Body() dto: BulkRemoveManualsDto,
+  ) {
+    return this.manualsService.bulkRemove(id, dto);
+  }
+
   @Get(':id/manuals')
-  findAllManuals(@Param('id') id: string) {
-    return this.manualsService.findAll(id);
+  findAllManuals(
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.manualsService.findAll(
+      id,
+      this.parsePositiveInt(page),
+      this.parsePositiveInt(pageSize),
+    );
   }
 
   @Post(':id/manuals')

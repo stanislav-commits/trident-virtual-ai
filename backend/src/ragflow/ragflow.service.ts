@@ -491,23 +491,24 @@ export class RagflowService implements OnModuleInit {
     if (data.code !== 0) throw new Error('RAGFlow deleteDocument failed');
   }
 
-  async listDocuments(
+  private async fetchDocumentsPage(
     datasetId: string,
-    documentIds?: string[],
-  ): Promise<
-    Array<{
-      id: string;
-      name: string;
-      run: string;
-      progress: number;
-      progress_msg: string;
-      chunk_count: number;
-      token_count: number;
-    }>
-  > {
-    if (!this.isConfigured()) return [];
-    const params = new URLSearchParams();
-    if (documentIds?.length) params.set('id', documentIds.join(','));
+    params: URLSearchParams,
+  ): Promise<{
+    code?: number;
+    data?: {
+      docs?: Array<{
+        id: string;
+        name: string;
+        run: string;
+        progress: number;
+        progress_msg: string;
+        chunk_count: number;
+        token_count: number;
+      }>;
+      total?: number;
+    };
+  }> {
     const res = await fetch(
       `${this.baseUrl}/api/v1/datasets/${datasetId}/documents?${params}`,
       { headers: this.headers },
@@ -532,7 +533,61 @@ export class RagflowService implements OnModuleInit {
       };
     };
     if (data.code !== 0) throw new Error('RAGFlow listDocuments failed');
-    return data.data?.docs ?? [];
+    return data;
+  }
+
+  async listDocuments(
+    datasetId: string,
+    documentIds?: string[],
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      run: string;
+      progress: number;
+      progress_msg: string;
+      chunk_count: number;
+      token_count: number;
+    }>
+  > {
+    if (!this.isConfigured()) return [];
+
+    const pageSize = 200;
+    const docs: Array<{
+      id: string;
+      name: string;
+      run: string;
+      progress: number;
+      progress_msg: string;
+      chunk_count: number;
+      token_count: number;
+    }> = [];
+
+    let page = 1;
+    let total = Number.POSITIVE_INFINITY;
+
+    while (docs.length < total) {
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('page_size', String(pageSize));
+
+      const data = await this.fetchDocumentsPage(datasetId, params);
+      const pageDocs = data.data?.docs ?? [];
+      docs.push(...pageDocs);
+
+      total = Math.max(data.data?.total ?? pageDocs.length, pageDocs.length);
+      if (pageDocs.length === 0 || pageDocs.length < pageSize) {
+        break;
+      }
+      page += 1;
+    }
+
+    if (!documentIds?.length) {
+      return docs;
+    }
+
+    const documentIdSet = new Set(documentIds);
+    return docs.filter((doc) => documentIdSet.has(doc.id));
   }
 
   async downloadDocument(

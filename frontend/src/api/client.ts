@@ -150,12 +150,45 @@ export type ShipManualItem = {
   uploadedAt: string;
 };
 
+export type PaginationMeta = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
+export type PaginatedListResult<T> = {
+  items: T[];
+  pagination: PaginationMeta;
+};
+
 export type ManualStatusItem = ShipManualItem & {
   run: string | null;
   progress: number | null;
   progressMsg: string | null;
   chunkCount: number | null;
 };
+
+type PaginationParams = {
+  page?: number;
+  pageSize?: number;
+};
+
+function withPaginationQuery(
+  path: string,
+  params?: PaginationParams,
+): string {
+  if (!params?.page && !params?.pageSize) {
+    return path;
+  }
+
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
+  return `${path}?${query.toString()}`;
+}
 
 export type ShipListItem = {
   id: string;
@@ -383,8 +416,11 @@ export async function uploadManual(
 export async function getManuals(
   shipId: string,
   token: string,
-): Promise<ShipManualItem[]> {
-  const res = await fetchWithAuth(`ships/${shipId}/manuals`, { token });
+  params?: PaginationParams,
+): Promise<PaginatedListResult<ShipManualItem>> {
+  const res = await fetchWithAuth(withPaginationQuery(`ships/${shipId}/manuals`, params), {
+    token,
+  });
   if (!res.ok) throw new Error("Failed to fetch manuals");
   return res.json();
 }
@@ -392,8 +428,12 @@ export async function getManuals(
 export async function getManualsStatus(
   shipId: string,
   token: string,
-): Promise<ManualStatusItem[]> {
-  const res = await fetchWithAuth(`ships/${shipId}/manuals/status`, { token });
+  params?: PaginationParams,
+): Promise<PaginatedListResult<ManualStatusItem>> {
+  const res = await fetchWithAuth(
+    withPaginationQuery(`ships/${shipId}/manuals/status`, params),
+    { token },
+  );
   if (!res.ok) throw new Error("Failed to fetch manuals status");
   return res.json();
 }
@@ -411,6 +451,34 @@ export async function deleteManual(
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to delete manual");
   }
+}
+
+export type BulkDeleteManualsBody =
+  | {
+      mode: "manualIds";
+      manualIds: string[];
+    }
+  | {
+      mode: "all";
+      excludeManualIds?: string[];
+    };
+
+export async function bulkDeleteManuals(
+  shipId: string,
+  body: BulkDeleteManualsBody,
+  token: string,
+): Promise<{ deletedCount: number }> {
+  const res = await fetchWithAuth(`ships/${shipId}/manuals/bulk-delete`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to delete selected manuals");
+  }
+  return res.json();
 }
 
 export async function updateManual(
