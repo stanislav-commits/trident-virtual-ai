@@ -2,7 +2,11 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import logoImg from "../assets/logo-home.png";
 
-export function LoginPage() {
+interface Props {
+  onOpenPrivacy: () => void;
+}
+
+export function LoginPage({ onOpenPrivacy }: Props) {
   const { login } = useAuth();
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
@@ -75,6 +79,13 @@ export function LoginPage() {
             disabled={loading}
           >
             {loading ? "…" : "Continue"}
+          </button>
+          <button
+            type="button"
+            className="login-form__privacy-link"
+            onClick={onOpenPrivacy}
+          >
+            Privacy Policy & Terms of Use
           </button>
         </form>
       </div>

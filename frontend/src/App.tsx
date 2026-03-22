@@ -8,6 +8,7 @@ import { HomePage } from "./pages/HomePage";
 import { ChatPage } from "./pages/ChatPage";
 import { DatasetPage } from "./pages/DatasetPage";
 import { LoginPage } from "./pages/LoginPage";
+import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 
 function AuthenticatedContent() {
   const { isOpen } = useAdminPanel();
@@ -52,9 +53,13 @@ function AuthenticatedContent() {
 
 function AppContent() {
   const { isAuthenticated } = useAuth();
+  const [page, setPage] = useState<"login" | "privacy">("login");
 
   if (!isAuthenticated) {
-    return <LoginPage />;
+    if (page === "privacy") {
+      return <PrivacyPolicyPage onBack={() => setPage("login")} />;
+    }
+    return <LoginPage onOpenPrivacy={() => setPage("privacy")} />;
   }
 
   return (
