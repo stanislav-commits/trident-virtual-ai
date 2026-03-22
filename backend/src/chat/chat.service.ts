@@ -29,6 +29,13 @@ interface TelemetryClarification {
   actions: TelemetryClarificationAction[];
 }
 
+type TelemetryMatchMode =
+  | 'none'
+  | 'sample'
+  | 'exact'
+  | 'direct'
+  | 'related';
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -437,12 +444,7 @@ export class ChatService {
 
       let telemetry: Record<string, unknown> = {};
       let telemetryPrefiltered = false;
-      let telemetryMatchMode:
-        | 'none'
-        | 'sample'
-        | 'exact'
-        | 'direct'
-        | 'related' = 'none';
+      let telemetryMatchMode: TelemetryMatchMode = 'none';
       let telemetryClarification: TelemetryClarification | null = null;
       const telemetryShips: string[] = [];
       try {
@@ -540,6 +542,27 @@ export class ChatService {
           !documentationIntentPattern.test(effectiveUserQuery));
 
       const citationsForAnswer = telemetryOnlyQuery ? [] : citations;
+
+      const deterministicTelemetryAnswer = this.buildDeterministicTelemetryAnswer(
+        effectiveUserQuery,
+        telemetry,
+        telemetryPrefiltered,
+        telemetryMatchMode,
+      );
+      if (deterministicTelemetryAnswer) {
+        return this.addAssistantMessage(
+          sessionId,
+          deterministicTelemetryAnswer,
+          {
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            ...(telemetryShips.length > 0
+              ? { telemetryShips: [...new Set(telemetryShips)] }
+              : {}),
+            ...(citationsForAnswer.length === 0 ? { noDocumentation: true } : {}),
+          },
+          citationsForAnswer,
+        );
+      }
 
       const response = await this.llmService.generateResponse({
         userQuery: effectiveUserQuery,
@@ -689,5 +712,277 @@ export class ChatService {
       pendingQuery: existing.pendingQuery || clarification.pendingQuery,
       actions: mergedActions.length > 0 ? mergedActions : prefixedActions,
     };
+  }
+
+  private buildDeterministicTelemetryAnswer(
+    userQuery: string,
+    telemetry: Record<string, unknown>,
+    telemetryPrefiltered: boolean,
+    telemetryMatchMode: TelemetryMatchMode,
+  ): string | null {
+    if (!telemetryPrefiltered) {
+      return null;
+    }
+
+    if (telemetryMatchMode !== 'exact' && telemetryMatchMode !== 'direct') {
+      return null;
+    }
+
+    return this.buildDeterministicAggregateTelemetryAnswer(userQuery, telemetry);
+  }
+
+  private buildDeterministicAggregateTelemetryAnswer(
+    userQuery: string,
+    telemetry: Record<string, unknown>,
+  ): string | null {
+    const operation = this.detectTelemetryCalculationOperation(userQuery);
+    if (!operation) {
+      return null;
+    }
+
+    const entries = Object.entries(telemetry)
+      .map(([label, value]) => this.parseNumericTelemetryEntry(label, value))
+      .filter(
+        (
+          entry,
+        ): entry is {
+          label: string;
+          value: number;
+          normalizedLabel: string;
+          unit: string | null;
+        } => entry !== null,
+      );
+
+    if (entries.length < 2) {
+      return null;
+    }
+
+    const unit = this.getConsistentAggregateUnit(entries);
+    const normalizedQuery = this.normalizeAggregateTelemetryText(userQuery);
+    if (!unit && this.hasExplicitUnitExpectation(normalizedQuery, entries)) {
+      return null;
+    }
+
+    const fluid = this.detectAggregateFluid(userQuery);
+    const orderedEntries = [...entries].sort((left, right) => {
+      const tankRank =
+        this.getAggregateTankOrder(left.normalizedLabel) -
+        this.getAggregateTankOrder(right.normalizedLabel);
+      return tankRank || left.label.localeCompare(right.label);
+    });
+    const valuesList = orderedEntries
+      .map((entry) => `${entry.label}: ${this.formatAggregateNumber(entry.value)}`)
+      .join('\n');
+    const unitSuffix = unit ? ` ${unit}` : '';
+
+    if (operation === 'sum') {
+      const total = orderedEntries.reduce((sum, entry) => sum + entry.value, 0);
+      const totalValue = this.formatAggregateNumber(total);
+      const formula = orderedEntries
+        .map((entry) => this.formatAggregateNumber(entry.value))
+        .join(' + ');
+      const subject = this.buildAggregateSubjectLabel(normalizedQuery, fluid);
+      return [
+        `The ${subject} from the current matched telemetry readings is ${totalValue}${unitSuffix}.`,
+        '',
+        valuesList,
+        `Total = ${formula} = ${totalValue}${unitSuffix}.`,
+      ].join('\n');
+    }
+
+    if (operation === 'average') {
+      const total = orderedEntries.reduce((sum, entry) => sum + entry.value, 0);
+      const average = total / orderedEntries.length;
+      const averageValue = this.formatAggregateNumber(average);
+      const formula = orderedEntries
+        .map((entry) => this.formatAggregateNumber(entry.value))
+        .join(' + ');
+      return [
+        `The average of the current matched telemetry readings is ${averageValue}${unitSuffix}.`,
+        '',
+        valuesList,
+        `Average = (${formula}) / ${orderedEntries.length} = ${averageValue}${unitSuffix}.`,
+      ].join('\n');
+    }
+
+    const selectedEntry =
+      operation === 'max'
+        ? orderedEntries.reduce((best, entry) =>
+            entry.value > best.value ? entry : best,
+          )
+        : orderedEntries.reduce((best, entry) =>
+            entry.value < best.value ? entry : best,
+          );
+    const qualifier = operation === 'max' ? 'highest' : 'lowest';
+    return [
+      `The ${qualifier} current matched telemetry reading is ${selectedEntry.label}: ${this.formatAggregateNumber(selectedEntry.value)}${unitSuffix}.`,
+      '',
+      valuesList,
+    ].join('\n');
+  }
+
+  private detectAggregateFluid(
+    query: string,
+  ): 'fuel' | 'oil' | 'water' | 'coolant' | 'def' | null {
+    const normalized = this.normalizeAggregateTelemetryText(query);
+    if (/\bfuel\b/.test(normalized)) return 'fuel';
+    if (/\boil\b/.test(normalized)) return 'oil';
+    if (/\bcoolant\b/.test(normalized)) return 'coolant';
+    if (/\b(def|urea)\b/.test(normalized)) return 'def';
+    if (/\b(water|fresh water|seawater)\b/.test(normalized)) return 'water';
+    return null;
+  }
+
+  private detectTelemetryCalculationOperation(
+    query: string,
+  ): 'sum' | 'average' | 'min' | 'max' | null {
+    const normalized = this.normalizeAggregateTelemetryText(query);
+
+    if (/\b(average|avg|mean)\b/.test(normalized)) {
+      return 'average';
+    }
+
+    if (/\b(max|maximum|highest|peak|largest|greatest)\b/.test(normalized)) {
+      return 'max';
+    }
+
+    if (/\b(min|minimum|lowest|smallest|least)\b/.test(normalized)) {
+      return 'min';
+    }
+
+    if (
+      /\b(how much|how many|total|sum|overall|combined|together|calculate)\b/.test(
+        normalized,
+      ) ||
+      /\b(onboard|remaining|left|available)\b/.test(normalized)
+    ) {
+      return 'sum';
+    }
+
+    return null;
+  }
+
+  private parseNumericTelemetryEntry(
+    label: string,
+    value: unknown,
+  ): {
+    label: string;
+    value: number;
+    normalizedLabel: string;
+    unit: string | null;
+  } | null {
+    const numericValue =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? Number.parseFloat(value)
+          : Number.NaN;
+    if (!Number.isFinite(numericValue)) {
+      return null;
+    }
+
+    const primaryLabel = label.split(' — ')[0]?.trim() ?? label.trim();
+    const normalizedLabel = this.normalizeAggregateTelemetryText(primaryLabel);
+    const unitMatch = label.match(/Unit:\s*([^\n\r—]+)/i);
+    return {
+      label: primaryLabel,
+      value: numericValue,
+      normalizedLabel,
+      unit: unitMatch?.[1]?.trim() ?? null,
+    };
+  }
+
+  private buildAggregateSubjectLabel(
+    normalizedQuery: string,
+    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def' | null,
+  ): string {
+    if (fluid === 'fuel' && /\bonboard\b/.test(normalizedQuery)) {
+      return 'total fuel onboard';
+    }
+
+    if (fluid === 'oil' && /\bonboard\b/.test(normalizedQuery)) {
+      return 'total oil onboard';
+    }
+
+    if (fluid === 'coolant' && /\bonboard\b/.test(normalizedQuery)) {
+      return 'total coolant onboard';
+    }
+
+    if (fluid === 'def' && /\bonboard\b/.test(normalizedQuery)) {
+      return 'total DEF onboard';
+    }
+
+    return 'combined total';
+  }
+
+  private getAggregateTankOrder(normalizedLabel: string): number {
+    const match = normalizedLabel.match(/\btank\s+(\d{1,3})([a-z])?\b/i);
+    if (!match) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    const number = Number.parseInt(match[1], 10);
+    const side = match[2]?.toLowerCase() ?? '';
+    const sideOffset = side === 'p' ? 1 : side === 's' ? 2 : 3;
+    return number * 10 + sideOffset;
+  }
+
+  private getConsistentAggregateUnit(
+    entries: Array<{ unit: string | null }>,
+  ): string | null {
+    const units = [...new Set(entries.map((entry) => entry.unit).filter(Boolean))];
+    if (units.length === 0) {
+      return null;
+    }
+    if (units.length !== 1) {
+      return null;
+    }
+
+    const [unit] = units;
+    if (!unit) {
+      return null;
+    }
+
+    return /^\s*l\s*$/i.test(unit) || /^lit(er|re)s?$/i.test(unit)
+      ? 'liters'
+      : unit;
+  }
+
+  private hasExplicitUnitExpectation(
+    normalizedQuery: string,
+    entries: Array<{ normalizedLabel: string }>,
+  ): boolean {
+    const expectsPhysicalQuantity =
+      /\b(temperature|temp|pressure|voltage|current|amps?|amp|load|rpm|speed|flow|rate|hours?|runtime|level|quantity|volume)\b/.test(
+        normalizedQuery,
+      );
+    if (!expectsPhysicalQuantity) {
+      return false;
+    }
+
+    return entries.some((entry) =>
+      /\b(temperature|temp|pressure|voltage|current|amps?|amp|load|rpm|speed|flow|rate|hours?|runtime|level|quantity|volume)\b/.test(
+        entry.normalizedLabel,
+      ),
+    );
+  }
+
+  private formatAggregateNumber(value: number): string {
+    return Number.isInteger(value)
+      ? value.toLocaleString('en-US')
+      : value.toLocaleString('en-US', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        });
+  }
+
+  private normalizeAggregateTelemetryText(value: string): string {
+    return value
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/[_./:-]+/g, ' ')
+      .replace(/[^a-zA-Z0-9\s]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
   }
 }
