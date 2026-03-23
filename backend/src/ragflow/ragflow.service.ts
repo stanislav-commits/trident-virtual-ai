@@ -8,6 +8,10 @@ export interface RagflowUploadFile {
   originalname?: string;
 }
 
+export interface RagflowUploadDocumentOptions {
+  parentPath?: string;
+}
+
 export type RagflowChunkMethod =
   | 'manual'
   | 'naive'
@@ -34,7 +38,15 @@ interface RagflowConfigPayload {
   parser_config: RagflowManualParserConfig | Record<string, never>;
 }
 
-interface RagflowDocumentUpdatePayload extends RagflowConfigPayload {}
+interface RagflowDocumentUpdatePayload extends RagflowConfigPayload {
+  meta_fields?: Record<string, string>;
+  name?: string;
+}
+
+export interface RagflowUpdateDocumentOptions {
+  metaFields?: Record<string, string>;
+  name?: string;
+}
 
 /** Optional retrieval / reranker settings built from environment variables. */
 interface RagflowRetrievalConfig {
@@ -294,7 +306,7 @@ export class RagflowService implements OnModuleInit {
     const ext = this.getFileExtension(filename);
     const isTableHeavyPdf = this.isTableHeavyPdfFilename(filename);
 
-    if (['pdf', 'docx'].includes(ext)) {
+    if (['pdf', 'doc', 'docx'].includes(ext)) {
       return {
         chunk_method: 'manual',
         parser_config:
@@ -384,8 +396,13 @@ export class RagflowService implements OnModuleInit {
     datasetId: string,
     documentId: string,
     filename: string,
+    options?: RagflowUpdateDocumentOptions,
   ): Promise<void> {
-    const payload = this.buildDocumentConfigForFilename(filename);
+    const payload: RagflowDocumentUpdatePayload = {
+      ...this.buildDocumentConfigForFilename(filename),
+      ...(options?.metaFields ? { meta_fields: options.metaFields } : {}),
+      ...(options?.name ? { name: options.name } : {}),
+    };
     const res = await fetch(
       `${this.baseUrl}/api/v1/datasets/${datasetId}/documents/${documentId}`,
       {
@@ -422,6 +439,7 @@ export class RagflowService implements OnModuleInit {
   async uploadDocument(
     datasetId: string,
     file: RagflowUploadFile,
+    options?: RagflowUploadDocumentOptions,
   ): Promise<{ id: string; name: string }[]> {
     const form = new FormData();
     form.append(
@@ -429,6 +447,9 @@ export class RagflowService implements OnModuleInit {
       new Blob([new Uint8Array(file.buffer)]),
       file.originalname || 'document.pdf',
     );
+    if (options?.parentPath?.trim()) {
+      form.append('parent_path', options.parentPath.trim());
+    }
     const res = await fetch(
       `${this.baseUrl}/api/v1/datasets/${datasetId}/documents`,
       {

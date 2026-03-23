@@ -8,8 +8,15 @@ import {
   fetchWithAuth,
   type ManualStatusItem,
   type PaginationMeta,
+  type ShipManualCategory,
 } from "../../api/client";
 import { ShipIcon, XIcon } from "./AdminPanelIcons";
+import {
+  DEFAULT_KNOWLEDGE_BASE_CATEGORY,
+  KNOWLEDGE_BASE_CATEGORIES,
+  getKnowledgeBaseCategoryConfig,
+  type KnowledgeBaseCategory,
+} from "./knowledge-base";
 
 const MANUALS_PAGE_SIZE_OPTIONS = [25, 50, 100];
 const DEFAULT_PAGE_SIZE = 25;
@@ -128,10 +135,14 @@ export function ManualsPromptModal({
   onClose,
   onError,
 }: ManualsPromptModalProps) {
+  const [activeCategory, setActiveCategory] = useState<KnowledgeBaseCategory>(
+    DEFAULT_KNOWLEDGE_BASE_CATEGORY,
+  );
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const latestLoadRequestRef = useRef(0);
   const [editingManualId, setEditingManualId] = useState<string | null>(null);
   const [editingFilename, setEditingFilename] = useState("");
   const [deletingManualId, setDeletingManualId] = useState<string | null>(null);
@@ -166,14 +177,21 @@ export function ManualsPromptModal({
     () => new Set(excludedManualIds),
     [excludedManualIds],
   );
+  const activeCategoryConfig = useMemo(
+    () => getKnowledgeBaseCategoryConfig(activeCategory),
+    [activeCategory],
+  );
 
   const loadManualsPage = useCallback(
     async (
+      category: KnowledgeBaseCategory,
       targetPage: number,
       targetPageSize: number,
       options?: { silent?: boolean },
     ) => {
       if (!token) return;
+      const requestId = latestLoadRequestRef.current + 1;
+      latestLoadRequestRef.current = requestId;
 
       if (!options?.silent) {
         setLoading(true);
@@ -183,19 +201,25 @@ export function ManualsPromptModal({
         const result = await getManualsStatus(shipId, token, {
           page: targetPage,
           pageSize: targetPageSize,
+          category,
         });
+        if (requestId !== latestLoadRequestRef.current) {
+          return;
+        }
         setManuals(result.items);
         setPagination(result.pagination);
         setPage(result.pagination.page);
         setPageSize(result.pagination.pageSize);
       } catch (err) {
-        if (!options?.silent) {
+        if (!options?.silent && requestId === latestLoadRequestRef.current) {
           onError(
-            err instanceof Error ? err.message : "Failed to fetch manuals",
+            err instanceof Error
+              ? err.message
+              : "Failed to fetch knowledge base files",
           );
         }
       } finally {
-        if (!options?.silent) {
+        if (!options?.silent && requestId === latestLoadRequestRef.current) {
           setLoading(false);
         }
       }
@@ -204,24 +228,62 @@ export function ManualsPromptModal({
   );
 
   useEffect(() => {
-    void loadManualsPage(1, pageSize);
-  }, [loadManualsPage, pageSize]);
+    if (!token) return;
+    void loadManualsPage(activeCategory, 1, pageSize);
+  }, [activeCategory, loadManualsPage, pageSize, token]);
 
   useEffect(() => {
     if (!token || !manuals.length || !hasNonTerminal) return;
 
     const intervalId = window.setInterval(() => {
-      void loadManualsPage(page, pageSize, { silent: true });
+      void loadManualsPage(activeCategory, page, pageSize, { silent: true });
     }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, [hasNonTerminal, loadManualsPage, manuals.length, page, pageSize, token]);
+  }, [
+    activeCategory,
+    hasNonTerminal,
+    loadManualsPage,
+    manuals.length,
+    page,
+    pageSize,
+    token,
+  ]);
 
   const clearSelection = useCallback(() => {
     setAllManualsSelected(false);
     setSelectedManualIds([]);
     setExcludedManualIds([]);
   }, []);
+
+  const resetInteractionState = useCallback(() => {
+    clearSelection();
+    setSelectedFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    setEditingManualId(null);
+    setEditingFilename("");
+    setDeletingManualId(null);
+    setConfirmDeleteId(null);
+    setConfirmBulkDelete(false);
+  }, [clearSelection]);
+
+  const handleCategoryChange = useCallback(
+    (nextCategory: KnowledgeBaseCategory) => {
+      if (nextCategory === activeCategory) {
+        return;
+      }
+      onError("");
+      resetInteractionState();
+      setManuals([]);
+      setPagination(EMPTY_PAGINATION);
+      setPage(1);
+      setLoading(true);
+      setActiveCategory(nextCategory);
+    },
+    [activeCategory, onError, resetInteractionState],
+  );
 
   const isManualSelected = useCallback(
     (manualId: string) =>
@@ -290,15 +352,15 @@ export function ManualsPromptModal({
 
     try {
       for (const file of files) {
-        await uploadManual(shipId, file, token);
+        await uploadManual(shipId, file, token, activeCategory as ShipManualCategory);
       }
 
-      clearSelection();
-      setSelectedFiles([]);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      await loadManualsPage(1, pageSize);
+      resetInteractionState();
+      await loadManualsPage(activeCategory, 1, pageSize);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to upload manual");
+      onError(
+        err instanceof Error ? err.message : "Failed to upload knowledge base file",
+      );
     } finally {
       setUploading(false);
     }
@@ -315,9 +377,9 @@ export function ManualsPromptModal({
       setSelectedManualIds((current) => current.filter((id) => id !== manualId));
       setExcludedManualIds((current) => current.filter((id) => id !== manualId));
       const fallbackPage = manuals.length === 1 && page > 1 ? page - 1 : page;
-      await loadManualsPage(fallbackPage, pageSize);
+      await loadManualsPage(activeCategory, fallbackPage, pageSize);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to delete manual");
+      onError(err instanceof Error ? err.message : "Failed to delete file");
     } finally {
       setDeletingManualId(null);
     }
@@ -335,19 +397,21 @@ export function ManualsPromptModal({
         allManualsSelected
           ? {
               mode: "all",
+              category: activeCategory as ShipManualCategory,
               excludeManualIds: excludedManualIds,
             }
           : {
               mode: "manualIds",
+              category: activeCategory as ShipManualCategory,
               manualIds: selectedManualIds,
             },
         token,
       );
       clearSelection();
-      await loadManualsPage(page, pageSize);
+      await loadManualsPage(activeCategory, page, pageSize);
     } catch (err) {
       onError(
-        err instanceof Error ? err.message : "Failed to delete selected manuals",
+        err instanceof Error ? err.message : "Failed to delete selected files",
       );
     } finally {
       setBulkDeleting(false);
@@ -368,9 +432,9 @@ export function ManualsPromptModal({
       );
       setEditingManualId(null);
       setEditingFilename("");
-      await loadManualsPage(page, pageSize, { silent: true });
+      await loadManualsPage(activeCategory, page, pageSize, { silent: true });
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Failed to update manual");
+      onError(err instanceof Error ? err.message : "Failed to update file");
     }
   };
 
@@ -390,9 +454,12 @@ export function ManualsPromptModal({
     excludedManualIds.length === 0;
   const headerCheckboxIndeterminate =
     selectedManualCount > 0 && !headerCheckboxChecked;
+  const totalFilesLabel = `${pagination.total.toLocaleString()} file${
+    pagination.total === 1 ? "" : "s"
+  }`;
   const selectionSummary =
     allManualsSelected && excludedManualIds.length === 0
-      ? `All ${pagination.total.toLocaleString()} manuals selected`
+      ? `All ${pagination.total.toLocaleString()} files selected`
       : `${selectedManualCount.toLocaleString()} selected`;
 
   return (
@@ -407,20 +474,56 @@ export function ManualsPromptModal({
           <ShipIcon />
         </div>
         <h2 id="ap-manuals-prompt-title" className="admin-panel__modal-title">
-          Manuals for "{shipName}"
+          Knowledge Base for "{shipName}"
         </h2>
         <p className="admin-panel__modal-desc">
-          Add, rename or remove manuals attached to this ship. Files are used by
-          RAG and the chat assistant.
+          Manage ship files by category. All folders stay in the same ship
+          dataset and are used by RAG plus the chat assistant.
         </p>
 
         <div className="admin-panel__modal-body admin-panel__manuals-body">
+          <div className="admin-panel__knowledge-base-tabs-sticky">
+            <div
+              className="admin-panel__knowledge-base-tabs"
+              role="tablist"
+              aria-label="Knowledge base categories"
+            >
+              {KNOWLEDGE_BASE_CATEGORIES.map((category) => {
+                const isActive = activeCategory === category.id;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`admin-panel__knowledge-base-tab${
+                      isActive
+                        ? " admin-panel__knowledge-base-tab--active"
+                        : ""
+                    }`}
+                    onClick={() => handleCategoryChange(category.id)}
+                  >
+                    <span className="admin-panel__knowledge-base-tab-label">
+                      {category.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <form onSubmit={handleUploadManual} className="admin-panel__manuals-upload">
             <div className="admin-panel__manuals-upload-head">
-              <span className="admin-panel__field-label">Upload manuals</span>
+              <div className="admin-panel__knowledge-base-upload-head">
+                <span className="admin-panel__field-label">
+                  {activeCategoryConfig.uploadHeading}
+                </span>
+                <span className="admin-panel__knowledge-base-extensions">
+                  {activeCategoryConfig.acceptedExtensionsLabel}
+                </span>
+              </div>
               <p className="admin-panel__manuals-upload-hint">
-                Attach files to this ship and queue them for indexing
-                automatically.
+                {activeCategoryConfig.description}
               </p>
             </div>
 
@@ -429,7 +532,7 @@ export function ManualsPromptModal({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.doc,.docx,.txt,.md,.csv,.jpg,.jpeg,.png,.bmp,.svg"
+                  accept={activeCategoryConfig.accept}
                   className="admin-panel__file-input"
                   multiple
                   disabled={uploading}
@@ -459,7 +562,7 @@ export function ManualsPromptModal({
                 <span className="admin-panel__manuals-upload-summary-meta">
                   {hasSelectedFiles
                     ? "Upload will start indexing after the files are attached."
-                    : "PDF, DOCX, TXT, CSV and common image formats are supported."}
+                    : `${activeCategoryConfig.acceptedExtensionsLabel} supported.`}
                 </span>
               </div>
 
@@ -496,13 +599,13 @@ export function ManualsPromptModal({
               <div className="admin-panel__manuals-toolbar">
                 <div className="admin-panel__manuals-toolbar-copy">
                   <span className="admin-panel__manuals-toolbar-title">
-                    {pagination.total.toLocaleString()} manual
-                    {pagination.total === 1 ? "" : "s"}
+                    {totalFilesLabel}
                   </span>
                   <div className="admin-panel__manuals-toolbar-meta">
                     <span className="admin-panel__muted">
                       Showing {showingFrom}-{showingTo} of{" "}
-                      {pagination.total.toLocaleString()}
+                      {pagination.total.toLocaleString()} in{" "}
+                      {activeCategoryConfig.folderLabel}
                     </span>
                     {selectedManualCount > 0 && (
                       <span className="admin-panel__manuals-selection-summary">
@@ -545,7 +648,9 @@ export function ManualsPromptModal({
                           <button
                             type="button"
                             className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
-                            onClick={() => void loadManualsPage(page - 1, pageSize)}
+                            onClick={() =>
+                              void loadManualsPage(activeCategory, page - 1, pageSize)
+                            }
                             disabled={!pagination.hasPreviousPage}
                           >
                             Prev
@@ -556,7 +661,9 @@ export function ManualsPromptModal({
                           <button
                             type="button"
                             className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
-                            onClick={() => void loadManualsPage(page + 1, pageSize)}
+                            onClick={() =>
+                              void loadManualsPage(activeCategory, page + 1, pageSize)
+                            }
                             disabled={!pagination.hasNextPage}
                           >
                             Next
@@ -597,7 +704,7 @@ export function ManualsPromptModal({
                           checked={headerCheckboxChecked}
                           indeterminate={headerCheckboxIndeterminate}
                           disabled={pagination.total === 0 || bulkDeleting}
-                          ariaLabel="Select all manuals"
+                          ariaLabel={`Select all files in ${activeCategoryConfig.folderLabel}`}
                           onChange={toggleAllManualsSelection}
                         />
                       </th>
@@ -668,7 +775,7 @@ export function ManualsPromptModal({
                                   onError(
                                     err instanceof Error
                                       ? err.message
-                                      : "Failed to view manual",
+                                      : "Failed to view file",
                                   );
                                 }
                               }}
@@ -730,13 +837,13 @@ export function ManualsPromptModal({
           ) : (
             <div className="admin-panel__state-box admin-panel__manuals-state">
               <span className="admin-panel__muted">
-                No manuals uploaded for this ship yet.
+                {activeCategoryConfig.emptyState}
               </span>
             </div>
           )}
         </div>
 
-      <div className="admin-panel__modal-actions">
+        <div className="admin-panel__modal-actions">
           <button
             type="button"
             className="admin-panel__btn admin-panel__btn--primary admin-panel__btn--full"
@@ -763,11 +870,11 @@ export function ManualsPromptModal({
             <div className="admin-panel__modal-icon admin-panel__modal-icon--danger">
               <XIcon />
             </div>
-            <h3 className="admin-panel__modal-title">Delete selected manuals?</h3>
+            <h3 className="admin-panel__modal-title">Delete selected files?</h3>
             <p className="admin-panel__modal-desc">
-              This will permanently remove {selectedManualCount} selected manual
-              {selectedManualCount === 1 ? "" : "s"}. This action cannot be
-              undone.
+              This will permanently remove {selectedManualCount} selected file
+              {selectedManualCount === 1 ? "" : "s"} from{" "}
+              {activeCategoryConfig.folderLabel}. This action cannot be undone.
             </p>
             <div className="admin-panel__modal-actions">
               <button
@@ -810,10 +917,10 @@ export function ManualsPromptModal({
             <div className="admin-panel__modal-icon admin-panel__modal-icon--danger">
               <XIcon />
             </div>
-            <h3 className="admin-panel__modal-title">Delete manual?</h3>
+            <h3 className="admin-panel__modal-title">Delete file?</h3>
             <p className="admin-panel__modal-desc">
-              This will permanently remove the manual file. This action cannot
-              be undone.
+              This will permanently remove the file from{" "}
+              {activeCategoryConfig.folderLabel}. This action cannot be undone.
             </p>
             <div className="admin-panel__modal-actions">
               <button

@@ -678,7 +678,7 @@ export function ShipsSection({
                             onClick={() => onOpenManuals?.(ship.id, ship.name)}
                             disabled={deletingShipId === ship.id}
                           >
-                            Manuals
+                            Knowledge Base
                           </button>
                           <button
                             type="button"

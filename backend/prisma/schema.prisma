@@ -83,12 +83,14 @@ model ShipManual {
   shipId            String   @map("ship_id") @db.Uuid
   ragflowDocumentId String   @map("ragflow_document_id") @db.VarChar(255)
   filename          String   @db.VarChar(500)
+  category          String   @default("MANUALS") @db.VarChar(32)
   uploadedAt        DateTime @default(now()) @map("uploaded_at")
 
   ship              Ship                   @relation(fields: [shipId], references: [id], onDelete: Cascade)
   contextReferences ChatContextReference[]
 
   @@unique([shipId, ragflowDocumentId])
+  @@index([shipId, category])
   @@map("ship_manuals")
 }
 

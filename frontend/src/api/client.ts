@@ -147,8 +147,15 @@ export type ShipManualItem = {
   id: string;
   ragflowDocumentId: string;
   filename: string;
+  category: ShipManualCategory;
   uploadedAt: string;
 };
+
+export type ShipManualCategory =
+  | "MANUALS"
+  | "HISTORY_PROCEDURES"
+  | "CERTIFICATES"
+  | "REGULATION";
 
 export type PaginationMeta = {
   page: number;
@@ -176,17 +183,22 @@ type PaginationParams = {
   pageSize?: number;
 };
 
+type ManualPaginationParams = PaginationParams & {
+  category?: ShipManualCategory;
+};
+
 function withPaginationQuery(
   path: string,
-  params?: PaginationParams,
+  params?: ManualPaginationParams,
 ): string {
-  if (!params?.page && !params?.pageSize) {
+  if (!params?.page && !params?.pageSize && !params?.category) {
     return path;
   }
 
   const query = new URLSearchParams();
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("pageSize", String(params.pageSize));
+  if (params.category) query.set("category", params.category);
   return `${path}?${query.toString()}`;
 }
 
@@ -398,9 +410,11 @@ export async function uploadManual(
   shipId: string,
   file: File,
   token: string,
+  category?: ShipManualCategory,
 ): Promise<ShipManualItem | ShipManualItem[]> {
   const form = new FormData();
   form.append("file", file);
+  if (category) form.append("category", category);
   const res = await fetchWithAuth(`ships/${shipId}/manuals`, {
     token,
     method: "POST",
@@ -416,7 +430,7 @@ export async function uploadManual(
 export async function getManuals(
   shipId: string,
   token: string,
-  params?: PaginationParams,
+  params?: ManualPaginationParams,
 ): Promise<PaginatedListResult<ShipManualItem>> {
   const res = await fetchWithAuth(withPaginationQuery(`ships/${shipId}/manuals`, params), {
     token,
@@ -428,7 +442,7 @@ export async function getManuals(
 export async function getManualsStatus(
   shipId: string,
   token: string,
-  params?: PaginationParams,
+  params?: ManualPaginationParams,
 ): Promise<PaginatedListResult<ManualStatusItem>> {
   const res = await fetchWithAuth(
     withPaginationQuery(`ships/${shipId}/manuals/status`, params),
@@ -457,10 +471,12 @@ export type BulkDeleteManualsBody =
   | {
       mode: "manualIds";
       manualIds: string[];
+      category?: ShipManualCategory;
     }
   | {
       mode: "all";
       excludeManualIds?: string[];
+      category?: ShipManualCategory;
     };
 
 export async function bulkDeleteManuals(
@@ -484,7 +500,7 @@ export async function bulkDeleteManuals(
 export async function updateManual(
   shipId: string,
   manualId: string,
-  body: { filename?: string },
+  body: { filename?: string; category?: ShipManualCategory },
   token: string,
 ): Promise<ShipManualItem> {
   const res = await fetchWithAuth(`ships/${shipId}/manuals/${manualId}`, {

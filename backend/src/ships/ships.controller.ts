@@ -22,6 +22,11 @@ import { CreateShipDto } from './dto/create-ship.dto';
 import { BulkRemoveManualsDto } from './dto/bulk-remove-manuals.dto';
 import { UpdateManualDto } from './dto/update-manual.dto';
 import { UpdateShipDto } from './dto/update-ship.dto';
+import {
+  DEFAULT_SHIP_MANUAL_CATEGORY,
+  parseShipManualCategory,
+  type ShipManualCategory,
+} from './manual-category';
 import { ManualsService } from './manuals.service';
 import { ShipsService } from './ships.service';
 
@@ -39,6 +44,18 @@ export class ShipsController {
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed) || parsed < 1) return fallback;
     return parsed;
+  }
+
+  private parseManualCategory(
+    value: string | undefined,
+    fallback?: ShipManualCategory,
+  ) {
+    if (!value?.trim()) return fallback;
+    const category = parseShipManualCategory(value);
+    if (!category) {
+      throw new BadRequestException('Invalid knowledge base category');
+    }
+    return category;
   }
 
   @Get('metric-definitions')
@@ -66,11 +83,13 @@ export class ShipsController {
     @Param('id') id: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('category') category?: string,
   ) {
     return this.manualsService.findAllWithStatus(
       id,
       this.parsePositiveInt(page),
       this.parsePositiveInt(pageSize),
+      this.parseManualCategory(category),
     );
   }
 
@@ -122,11 +141,13 @@ export class ShipsController {
     @Param('id') id: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('category') category?: string,
   ) {
     return this.manualsService.findAll(
       id,
       this.parsePositiveInt(page),
       this.parsePositiveInt(pageSize),
+      this.parseManualCategory(category),
     );
   }
 
@@ -136,11 +157,17 @@ export class ShipsController {
     @Param('id') id: string,
     @UploadedFile()
     file: { buffer?: Buffer; originalname?: string } | undefined,
+    @Body('category') category?: string,
   ) {
     if (!file?.buffer) throw new BadRequestException('File is required');
     return this.manualsService.create(id, {
       buffer: file.buffer,
       originalname: file.originalname,
+    }, {
+      category: this.parseManualCategory(
+        category,
+        DEFAULT_SHIP_MANUAL_CATEGORY,
+      ),
     });
   }
 

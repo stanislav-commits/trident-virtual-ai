@@ -10,11 +10,19 @@ import { RagflowService, RagflowUploadFile } from '../ragflow/ragflow.service';
 import { ManualsParseScheduler } from './manuals-parse.scheduler';
 import { BulkRemoveManualsDto } from './dto/bulk-remove-manuals.dto';
 import { UpdateManualDto } from './dto/update-manual.dto';
+import {
+  DEFAULT_SHIP_MANUAL_CATEGORY,
+  SHIP_MANUAL_CATEGORY_DETAILS,
+  parseShipManualCategory,
+  resolveShipManualCategory,
+  type ShipManualCategory,
+} from './manual-category';
 
 export interface ManualRecord {
   id: string;
   ragflowDocumentId: string;
   filename: string;
+  category: ShipManualCategory;
   uploadedAt: Date;
 }
 
@@ -36,6 +44,7 @@ type ManualWithShip = {
   id: string;
   shipId: string;
   filename: string;
+  category: string;
   ragflowDocumentId: string;
   uploadedAt: Date;
   ship: {
@@ -58,6 +67,17 @@ export class ManualsService {
   private normalizeManualIds(ids?: string[]): string[] {
     if (!ids?.length) return [];
     return [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
+  }
+
+  private getCategoryMetadata(category: ShipManualCategory) {
+    const details =
+      SHIP_MANUAL_CATEGORY_DETAILS[category] ??
+      SHIP_MANUAL_CATEGORY_DETAILS[DEFAULT_SHIP_MANUAL_CATEGORY];
+    return {
+      category,
+      categoryLabel: details.label,
+      ragflowParentPath: details.ragflowParentPath,
+    };
   }
 
   private async removeManualRecord(manual: NonNullable<ManualWithShip>) {
@@ -126,7 +146,13 @@ export class ManualsService {
     }
   }
 
-  async create(shipId: string, file: RagflowUploadFile) {
+  async create(
+    shipId: string,
+    file: RagflowUploadFile,
+    options?: { category?: ShipManualCategory },
+  ) {
+    const category = resolveShipManualCategory(options?.category);
+    const categoryMeta = this.getCategoryMetadata(category);
     const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
     if (!ship) throw new NotFoundException('Ship not found');
     if (!ship.ragflowDatasetId) {
@@ -160,10 +186,12 @@ export class ManualsService {
     const uploaded = await this.ragflow.uploadDocument(
       ship.ragflowDatasetId,
       file,
+      { parentPath: categoryMeta.ragflowParentPath },
     );
     const created: {
       id: string;
       filename: string;
+      category: ShipManualCategory;
       ragflowDocumentId: string;
       uploadedAt: Date;
     }[] = [];
@@ -173,11 +201,13 @@ export class ManualsService {
           shipId,
           ragflowDocumentId: doc.id,
           filename: doc.name,
+          category,
         },
       });
       created.push({
         id: manual.id,
         filename: manual.filename,
+        category: manual.category as ShipManualCategory,
         ragflowDocumentId: manual.ragflowDocumentId,
         uploadedAt: manual.uploadedAt,
       });
@@ -190,6 +220,12 @@ export class ManualsService {
           ship.ragflowDatasetId,
           doc.id,
           filenameForConfig,
+          {
+            metaFields: {
+              category,
+              category_label: categoryMeta.categoryLabel,
+            },
+          },
         );
       } catch (err) {
         this.logger.warn(
@@ -238,9 +274,14 @@ export class ManualsService {
     shipId: string,
     page?: number,
     pageSize?: number,
+    category?: ShipManualCategory,
   ): Promise<PaginatedManualsResult<ManualRecord>> {
     const pagination = this.normalizePagination(page, pageSize);
-    const total = await this.prisma.shipManual.count({ where: { shipId } });
+    const where = {
+      shipId,
+      ...(category ? { category } : {}),
+    };
+    const total = await this.prisma.shipManual.count({ where });
     const meta = this.buildPaginationMeta(
       total,
       pagination.page,
@@ -248,7 +289,7 @@ export class ManualsService {
     );
 
     const manuals = await this.prisma.shipManual.findMany({
-      where: { shipId },
+      where,
       orderBy: { uploadedAt: 'desc' },
       skip: (meta.page - 1) * meta.pageSize,
       take: meta.pageSize,
@@ -256,12 +297,16 @@ export class ManualsService {
         id: true,
         ragflowDocumentId: true,
         filename: true,
+        category: true,
         uploadedAt: true,
       },
     });
 
     return {
-      items: manuals,
+      items: manuals.map((manual) => ({
+        ...manual,
+        category: manual.category as ShipManualCategory,
+      })),
       pagination: meta,
     };
   }
@@ -270,16 +315,18 @@ export class ManualsService {
     shipId: string,
     page?: number,
     pageSize?: number,
+    category?: ShipManualCategory,
   ): Promise<PaginatedManualsResult<ManualRecord>> {
     const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
     if (!ship) throw new NotFoundException('Ship not found');
-    return this.getManualPage(shipId, page, pageSize);
+    return this.getManualPage(shipId, page, pageSize, category);
   }
 
   async findAllWithStatus(
     shipId: string,
     page?: number,
     pageSize?: number,
+    category?: ShipManualCategory,
   ): Promise<
     PaginatedManualsResult<
       ManualRecord & {
@@ -293,7 +340,7 @@ export class ManualsService {
     const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
     if (!ship) throw new NotFoundException('Ship not found');
 
-    const pageResult = await this.getManualPage(shipId, page, pageSize);
+    const pageResult = await this.getManualPage(shipId, page, pageSize, category);
     const manuals = pageResult.items;
 
     if (
@@ -357,11 +404,15 @@ export class ManualsService {
         id: true,
         ragflowDocumentId: true,
         filename: true,
+        category: true,
         uploadedAt: true,
       },
     });
     if (!manual) throw new NotFoundException('Manual not found');
-    return manual;
+    return {
+      ...manual,
+      category: manual.category as ShipManualCategory,
+    };
   }
 
   async download(shipId: string, manualId: string) {
@@ -387,16 +438,29 @@ export class ManualsService {
       where: { id: manualId, shipId },
     });
     if (!manual) throw new NotFoundException('Manual not found');
-    if (dto.filename === undefined) return this.findOne(shipId, manualId);
+    let category: ShipManualCategory | undefined;
+    if (dto.category !== undefined) {
+      category = parseShipManualCategory(dto.category);
+      if (!category) {
+        throw new BadRequestException('Invalid knowledge base category');
+      }
+    }
+    if (dto.filename === undefined && category === undefined) {
+      return this.findOne(shipId, manualId);
+    }
     return this.prisma.shipManual
       .update({
         where: { id: manualId },
-        data: { filename: dto.filename },
+        data: {
+          ...(dto.filename !== undefined ? { filename: dto.filename } : {}),
+          ...(category !== undefined ? { category } : {}),
+        },
       })
       .then((m) => ({
         id: m.id,
         ragflowDocumentId: m.ragflowDocumentId,
         filename: m.filename,
+        category: m.category as ShipManualCategory,
         uploadedAt: m.uploadedAt,
       }));
   }
@@ -408,6 +472,13 @@ export class ManualsService {
     const mode = dto.mode === 'all' ? 'all' : 'manualIds';
     const manualIds = this.normalizeManualIds(dto.manualIds);
     const excludeManualIds = this.normalizeManualIds(dto.excludeManualIds);
+    let category: ShipManualCategory | undefined;
+    if (dto.category !== undefined) {
+      category = parseShipManualCategory(dto.category);
+      if (!category) {
+        throw new BadRequestException('Invalid knowledge base category');
+      }
+    }
 
     if (mode === 'manualIds' && manualIds.length === 0) {
       throw new BadRequestException('No manuals selected');
@@ -418,6 +489,7 @@ export class ManualsService {
         mode === 'all'
           ? {
               shipId,
+              ...(category ? { category } : {}),
               ...(excludeManualIds.length > 0
                 ? { id: { notIn: excludeManualIds } }
                 : {}),

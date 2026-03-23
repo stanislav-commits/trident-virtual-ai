@@ -15,6 +15,7 @@ describe('ManualsService bulk removal', () => {
             id: 'manual-1',
             shipId: 'ship-1',
             filename: 'manual-1.pdf',
+            category: 'MANUALS',
             ragflowDocumentId: 'doc-1',
             uploadedAt: new Date('2026-03-22T10:00:00.000Z'),
             ship: { ragflowDatasetId: 'dataset-1' },
@@ -23,6 +24,7 @@ describe('ManualsService bulk removal', () => {
             id: 'manual-2',
             shipId: 'ship-1',
             filename: 'manual-2.pdf',
+            category: 'MANUALS',
             ragflowDocumentId: 'doc-2',
             uploadedAt: new Date('2026-03-22T10:01:00.000Z'),
             ship: { ragflowDatasetId: 'dataset-1' },
@@ -98,5 +100,31 @@ describe('ManualsService bulk removal', () => {
       'dataset-1',
       'doc-2',
     );
+  });
+
+  it('limits mode=all removal to the requested knowledge base category', async () => {
+    const { service, prisma } = buildService();
+
+    await expect(
+      service.bulkRemove('ship-1', {
+        mode: 'all',
+        category: 'CERTIFICATES',
+      }),
+    ).resolves.toEqual({
+      deletedCount: 2,
+    });
+
+    expect(prisma.shipManual.findMany).toHaveBeenCalledWith({
+      where: {
+        shipId: 'ship-1',
+        category: 'CERTIFICATES',
+      },
+      include: {
+        ship: true,
+      },
+      orderBy: {
+        uploadedAt: 'desc',
+      },
+    });
   });
 });
