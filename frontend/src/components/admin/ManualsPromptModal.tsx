@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   uploadManual,
   deleteManual,
@@ -10,7 +17,7 @@ import {
   type PaginationMeta,
   type ShipManualCategory,
 } from "../../api/client";
-import { ShipIcon, XIcon } from "./AdminPanelIcons";
+import { SearchIcon, ShipIcon, XIcon } from "./AdminPanelIcons";
 import {
   DEFAULT_KNOWLEDGE_BASE_CATEGORY,
   KNOWLEDGE_BASE_CATEGORIES,
@@ -152,10 +159,13 @@ export function ManualsPromptModal({
   const [pagination, setPagination] = useState<PaginationMeta>(EMPTY_PAGINATION);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState("");
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [allManualsSelected, setAllManualsSelected] = useState(false);
   const [selectedManualIds, setSelectedManualIds] = useState<string[]>([]);
   const [excludedManualIds, setExcludedManualIds] = useState<string[]>([]);
+  const deferredSearchQuery = useDeferredValue(searchQuery.trim());
 
   const hasNonTerminal = useMemo(
     () =>
@@ -182,12 +192,20 @@ export function ManualsPromptModal({
     [activeCategory],
   );
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setAppliedSearchQuery(deferredSearchQuery);
+    }, 220);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [deferredSearchQuery]);
+
   const loadManualsPage = useCallback(
     async (
       category: KnowledgeBaseCategory,
       targetPage: number,
       targetPageSize: number,
-      options?: { silent?: boolean },
+      options?: { silent?: boolean; search?: string },
     ) => {
       if (!token) return;
       const requestId = latestLoadRequestRef.current + 1;
@@ -202,6 +220,7 @@ export function ManualsPromptModal({
           page: targetPage,
           pageSize: targetPageSize,
           category,
+          search: options?.search,
         });
         if (requestId !== latestLoadRequestRef.current) {
           return;
@@ -229,14 +248,27 @@ export function ManualsPromptModal({
 
   useEffect(() => {
     if (!token) return;
-    void loadManualsPage(activeCategory, 1, pageSize);
-  }, [activeCategory, loadManualsPage, pageSize, token]);
+    onError("");
+    setAllManualsSelected(false);
+    setSelectedManualIds([]);
+    setExcludedManualIds([]);
+    setEditingManualId(null);
+    setEditingFilename("");
+    setConfirmDeleteId(null);
+    setConfirmBulkDelete(false);
+    void loadManualsPage(activeCategory, 1, pageSize, {
+      search: appliedSearchQuery,
+    });
+  }, [activeCategory, appliedSearchQuery, loadManualsPage, onError, pageSize, token]);
 
   useEffect(() => {
     if (!token || !manuals.length || !hasNonTerminal) return;
 
     const intervalId = window.setInterval(() => {
-      void loadManualsPage(activeCategory, page, pageSize, { silent: true });
+      void loadManualsPage(activeCategory, page, pageSize, {
+        silent: true,
+        search: appliedSearchQuery,
+      });
     }, 5000);
 
     return () => window.clearInterval(intervalId);
@@ -247,6 +279,7 @@ export function ManualsPromptModal({
     manuals.length,
     page,
     pageSize,
+    appliedSearchQuery,
     token,
   ]);
 
@@ -356,7 +389,9 @@ export function ManualsPromptModal({
       }
 
       resetInteractionState();
-      await loadManualsPage(activeCategory, 1, pageSize);
+      await loadManualsPage(activeCategory, 1, pageSize, {
+        search: appliedSearchQuery,
+      });
     } catch (err) {
       onError(
         err instanceof Error ? err.message : "Failed to upload knowledge base file",
@@ -377,7 +412,9 @@ export function ManualsPromptModal({
       setSelectedManualIds((current) => current.filter((id) => id !== manualId));
       setExcludedManualIds((current) => current.filter((id) => id !== manualId));
       const fallbackPage = manuals.length === 1 && page > 1 ? page - 1 : page;
-      await loadManualsPage(activeCategory, fallbackPage, pageSize);
+      await loadManualsPage(activeCategory, fallbackPage, pageSize, {
+        search: appliedSearchQuery,
+      });
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to delete file");
     } finally {
@@ -399,6 +436,7 @@ export function ManualsPromptModal({
               mode: "all",
               category: activeCategory as ShipManualCategory,
               excludeManualIds: excludedManualIds,
+              search: appliedSearchQuery || undefined,
             }
           : {
               mode: "manualIds",
@@ -408,7 +446,9 @@ export function ManualsPromptModal({
         token,
       );
       clearSelection();
-      await loadManualsPage(activeCategory, page, pageSize);
+      await loadManualsPage(activeCategory, page, pageSize, {
+        search: appliedSearchQuery,
+      });
     } catch (err) {
       onError(
         err instanceof Error ? err.message : "Failed to delete selected files",
@@ -432,7 +472,10 @@ export function ManualsPromptModal({
       );
       setEditingManualId(null);
       setEditingFilename("");
-      await loadManualsPage(activeCategory, page, pageSize, { silent: true });
+      await loadManualsPage(activeCategory, page, pageSize, {
+        silent: true,
+        search: appliedSearchQuery,
+      });
     } catch (err) {
       onError(err instanceof Error ? err.message : "Failed to update file");
     }
@@ -454,13 +497,22 @@ export function ManualsPromptModal({
     excludedManualIds.length === 0;
   const headerCheckboxIndeterminate =
     selectedManualCount > 0 && !headerCheckboxChecked;
-  const totalFilesLabel = `${pagination.total.toLocaleString()} file${
-    pagination.total === 1 ? "" : "s"
-  }`;
+  const isSearching = appliedSearchQuery.length > 0;
+  const totalFilesLabel = `${pagination.total.toLocaleString()} ${
+    isSearching ? "matching " : ""
+  }file${pagination.total === 1 ? "" : "s"}`;
   const selectionSummary =
     allManualsSelected && excludedManualIds.length === 0
-      ? `All ${pagination.total.toLocaleString()} files selected`
+      ? `All ${pagination.total.toLocaleString()}${
+          isSearching ? " matching" : ""
+        } files selected`
       : `${selectedManualCount.toLocaleString()} selected`;
+  const resultsSummary = isSearching
+    ? `Showing ${showingFrom}-${showingTo} of ${pagination.total.toLocaleString()} matching ${activeCategoryConfig.rowLabel}`
+    : `Showing ${showingFrom}-${showingTo} of ${pagination.total.toLocaleString()} in ${activeCategoryConfig.folderLabel}`;
+  const emptyStateMessage = isSearching
+    ? `No ${activeCategoryConfig.rowLabel} found for "${appliedSearchQuery}".`
+    : activeCategoryConfig.emptyState;
 
   return (
     <div
@@ -483,32 +535,48 @@ export function ManualsPromptModal({
 
         <div className="admin-panel__modal-body admin-panel__manuals-body">
           <div className="admin-panel__knowledge-base-tabs-sticky">
-            <div
-              className="admin-panel__knowledge-base-tabs"
-              role="tablist"
-              aria-label="Knowledge base categories"
-            >
-              {KNOWLEDGE_BASE_CATEGORIES.map((category) => {
-                const isActive = activeCategory === category.id;
-                return (
-                  <button
-                    key={category.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    className={`admin-panel__knowledge-base-tab${
-                      isActive
-                        ? " admin-panel__knowledge-base-tab--active"
-                        : ""
-                    }`}
-                    onClick={() => handleCategoryChange(category.id)}
-                  >
-                    <span className="admin-panel__knowledge-base-tab-label">
-                      {category.label}
-                    </span>
-                  </button>
-                );
-              })}
+            <div className="admin-panel__knowledge-base-nav">
+              <div
+                className="admin-panel__knowledge-base-tabs"
+                role="tablist"
+                aria-label="Knowledge base categories"
+              >
+                {KNOWLEDGE_BASE_CATEGORIES.map((category) => {
+                  const isActive = activeCategory === category.id;
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      className={`admin-panel__knowledge-base-tab${
+                        isActive
+                          ? " admin-panel__knowledge-base-tab--active"
+                          : ""
+                      }`}
+                      onClick={() => handleCategoryChange(category.id)}
+                    >
+                      <span className="admin-panel__knowledge-base-tab-label">
+                        {category.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <label className="admin-panel__knowledge-base-search">
+                <SearchIcon />
+                <input
+                  type="search"
+                  className="admin-panel__knowledge-base-search-input"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={`Search ${activeCategoryConfig.folderLabel}`}
+                  aria-label={`Search ${activeCategoryConfig.folderLabel}`}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
             </div>
           </div>
 
@@ -602,11 +670,7 @@ export function ManualsPromptModal({
                     {totalFilesLabel}
                   </span>
                   <div className="admin-panel__manuals-toolbar-meta">
-                    <span className="admin-panel__muted">
-                      Showing {showingFrom}-{showingTo} of{" "}
-                      {pagination.total.toLocaleString()} in{" "}
-                      {activeCategoryConfig.folderLabel}
-                    </span>
+                    <span className="admin-panel__muted">{resultsSummary}</span>
                     {selectedManualCount > 0 && (
                       <span className="admin-panel__manuals-selection-summary">
                         {selectionSummary}
@@ -649,7 +713,9 @@ export function ManualsPromptModal({
                             type="button"
                             className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
                             onClick={() =>
-                              void loadManualsPage(activeCategory, page - 1, pageSize)
+                              void loadManualsPage(activeCategory, page - 1, pageSize, {
+                                search: appliedSearchQuery,
+                              })
                             }
                             disabled={!pagination.hasPreviousPage}
                           >
@@ -662,7 +728,9 @@ export function ManualsPromptModal({
                             type="button"
                             className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
                             onClick={() =>
-                              void loadManualsPage(activeCategory, page + 1, pageSize)
+                              void loadManualsPage(activeCategory, page + 1, pageSize, {
+                                search: appliedSearchQuery,
+                              })
                             }
                             disabled={!pagination.hasNextPage}
                           >
@@ -836,9 +904,7 @@ export function ManualsPromptModal({
             </div>
           ) : (
             <div className="admin-panel__state-box admin-panel__manuals-state">
-              <span className="admin-panel__muted">
-                {activeCategoryConfig.emptyState}
-              </span>
+              <span className="admin-panel__muted">{emptyStateMessage}</span>
             </div>
           )}
         </div>

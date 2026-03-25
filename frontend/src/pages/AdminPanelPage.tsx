@@ -14,24 +14,32 @@ import logoImg from "../assets/logo-home.png";
 import {
   UsersIcon,
   ShipIcon,
+  PromptIcon,
   ChevronLeftIcon,
   MenuIcon,
   XIcon,
 } from "../components/admin/AdminPanelIcons";
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
+import { SystemPromptSection } from "../components/admin/SystemPromptSection";
 import { ManualsPromptModal } from "../components/admin/ManualsPromptModal";
 import { MetricsModal } from "../components/admin/MetricsModal";
 import { Toast } from "../components/layout/Toast";
+
+type AdminSection = "users" | "ships" | "prompt";
+
+const SECTION_TITLES: Record<AdminSection, string> = {
+  users: "Users",
+  ships: "Ships",
+  prompt: "System Prompt",
+};
 
 export function AdminPanelPage() {
   const { close } = useAdminPanel();
   const { token } = useAuth();
 
   // Navigation state
-  const [activeSection, setActiveSection] = useState<"users" | "ships">(
-    "users",
-  );
+  const [activeSection, setActiveSection] = useState<AdminSection>("users");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Common state
@@ -194,7 +202,7 @@ export function AdminPanelPage() {
     token,
   ]);
 
-  const handleNavClick = (section: "users" | "ships") => {
+  const handleNavClick = (section: AdminSection) => {
     setActiveSection(section);
     setIsSidebarOpen(false);
   };
@@ -222,7 +230,9 @@ export function AdminPanelPage() {
           />
           <div className="admin-panel__brand-text">
             <span className="admin-panel__brand-name">
-              Trident Intelligence Platform
+              <span className="admin-panel__brand-line">Trident</span>
+              <span className="admin-panel__brand-line">Intelligence</span>
+              <span className="admin-panel__brand-line">Platform</span>
             </span>
             <span className="admin-panel__brand-sub">Admin Panel</span>
           </div>
@@ -249,6 +259,16 @@ export function AdminPanelPage() {
             </span>
             <span className="admin-panel__nav-label">Ships</span>
           </button>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "prompt" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("prompt")}
+          >
+            <span className="admin-panel__nav-icon">
+              <PromptIcon />
+            </span>
+            <span className="admin-panel__nav-label">System Prompt</span>
+          </button>
         </nav>
 
         <div className="admin-panel__sidebar-footer">
@@ -270,7 +290,7 @@ export function AdminPanelPage() {
             {isSidebarOpen ? <XIcon /> : <MenuIcon />}
           </button>
           <span className="admin-panel__topbar-title">
-            {activeSection === "users" ? "Users" : "Ships"}
+            {SECTION_TITLES[activeSection]}
           </span>
         </header>
 
@@ -307,6 +327,14 @@ export function AdminPanelPage() {
                   setManualsPromptShip({ id: shipId, name: shipName });
                 }}
                 onOpenMetrics={(ship) => setMetricsModalShip(ship)}
+              />
+            )}
+
+            {activeSection === "prompt" && (
+              <SystemPromptSection
+                token={token}
+                error={error}
+                onError={setError}
               />
             )}
           </div>

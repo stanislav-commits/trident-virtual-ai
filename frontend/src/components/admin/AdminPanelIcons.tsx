@@ -35,6 +35,24 @@ export const ShipIcon = () => (
   </svg>
 );
 
+export const PromptIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M4 7h16" />
+    <path d="M4 12h10" />
+    <path d="M4 17h8" />
+    <path d="M15 15l2 2 4-4" />
+  </svg>
+);
+
 export const MetricsIcon = () => (
   <svg
     width="16"

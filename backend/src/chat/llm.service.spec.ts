@@ -65,6 +65,42 @@ describe('LlmService maintenance calculation guard', () => {
     ).toBe(true);
   });
 
+  it('fills ship placeholders in editable system prompt templates', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildSystemPrompt(
+      'Aurora',
+      'Support {{shipName}}|{{shipNameWithParens}}',
+    );
+
+    expect(prompt).toBe('Support Aurora| (Aurora)');
+  });
+
+  it('labels documentation sources with category-aware inline source tags', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'When is the next maintenance due?',
+      citations: [
+        {
+          sourceTitle: 'Main Engine Maintenance Tasks.pdf',
+          sourceCategory: 'MANUALS',
+          snippet: 'Next due: 2200 hours.',
+        },
+        {
+          sourceTitle: 'Flag Survey Due Dates.pdf',
+          sourceCategory: 'CERTIFICATES',
+          snippet: 'Annual survey due 2026-10-01.',
+        },
+      ],
+    });
+
+    expect(prompt).toContain('[1] [PMS] Main Engine Maintenance Tasks.pdf');
+    expect(prompt).toContain(
+      '[2] [Certificate: Flag Survey Due Dates.pdf]',
+    );
+  });
+
   it('warns the procedure prompt not to invent drain-fill steps or derive oil quantity from parts rows', () => {
     const service = new LlmService();
 

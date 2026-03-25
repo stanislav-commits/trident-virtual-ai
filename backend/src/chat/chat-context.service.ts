@@ -45,6 +45,7 @@ interface ContextCitation {
   pageNumber?: number;
   snippet?: string;
   sourceTitle?: string;
+  sourceCategory?: string;
 }
 
 @Injectable()
@@ -67,7 +68,12 @@ export class ChatContextService {
       where: { id: shipId },
       include: {
         manuals: {
-          select: { id: true, ragflowDocumentId: true, filename: true },
+          select: {
+            id: true,
+            ragflowDocumentId: true,
+            filename: true,
+            category: true,
+          },
         },
       },
     });
@@ -113,6 +119,7 @@ export class ChatContextService {
             score: result.similarity ?? undefined,
             snippet,
             sourceTitle: result.doc_name || manual?.filename || 'Document',
+            sourceCategory: manual?.category,
             pageNumber: (result.meta?.page_num as number) ?? undefined,
           };
         }),
@@ -141,7 +148,12 @@ export class ChatContextService {
       },
       include: {
         manuals: {
-          select: { id: true, ragflowDocumentId: true, filename: true },
+          select: {
+            id: true,
+            ragflowDocumentId: true,
+            filename: true,
+            category: true,
+          },
         },
       },
     });
@@ -182,6 +194,7 @@ export class ChatContextService {
             score: result.similarity ?? undefined,
             snippet,
             sourceTitle: `${docName} (${ship.name})`,
+            sourceCategory: manual?.category,
             pageNumber: (result.meta?.page_num as number) ?? undefined,
           });
         });

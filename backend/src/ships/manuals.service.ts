@@ -69,6 +69,42 @@ export class ManualsService {
     return [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
   }
 
+  private normalizeSearchTerm(search?: string): string | undefined {
+    const normalized = search?.trim();
+    return normalized ? normalized : undefined;
+  }
+
+  private buildManualWhere(
+    shipId: string,
+    options?: {
+      category?: ShipManualCategory;
+      search?: string;
+      includeManualIds?: string[];
+      excludeManualIds?: string[];
+    },
+  ) {
+    const normalizedSearch = this.normalizeSearchTerm(options?.search);
+
+    return {
+      shipId,
+      ...(options?.category ? { category: options.category } : {}),
+      ...(normalizedSearch
+        ? {
+            filename: {
+              contains: normalizedSearch,
+              mode: 'insensitive' as const,
+            },
+          }
+        : {}),
+      ...(options?.includeManualIds?.length
+        ? { id: { in: options.includeManualIds } }
+        : {}),
+      ...(options?.excludeManualIds?.length
+        ? { id: { notIn: options.excludeManualIds } }
+        : {}),
+    };
+  }
+
   private getCategoryMetadata(category: ShipManualCategory) {
     const details =
       SHIP_MANUAL_CATEGORY_DETAILS[category] ??
@@ -275,12 +311,13 @@ export class ManualsService {
     page?: number,
     pageSize?: number,
     category?: ShipManualCategory,
+    search?: string,
   ): Promise<PaginatedManualsResult<ManualRecord>> {
     const pagination = this.normalizePagination(page, pageSize);
-    const where = {
-      shipId,
-      ...(category ? { category } : {}),
-    };
+    const where = this.buildManualWhere(shipId, {
+      category,
+      search,
+    });
     const total = await this.prisma.shipManual.count({ where });
     const meta = this.buildPaginationMeta(
       total,
@@ -316,10 +353,11 @@ export class ManualsService {
     page?: number,
     pageSize?: number,
     category?: ShipManualCategory,
+    search?: string,
   ): Promise<PaginatedManualsResult<ManualRecord>> {
     const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
     if (!ship) throw new NotFoundException('Ship not found');
-    return this.getManualPage(shipId, page, pageSize, category);
+    return this.getManualPage(shipId, page, pageSize, category, search);
   }
 
   async findAllWithStatus(
@@ -327,6 +365,7 @@ export class ManualsService {
     page?: number,
     pageSize?: number,
     category?: ShipManualCategory,
+    search?: string,
   ): Promise<
     PaginatedManualsResult<
       ManualRecord & {
@@ -340,7 +379,13 @@ export class ManualsService {
     const ship = await this.prisma.ship.findUnique({ where: { id: shipId } });
     if (!ship) throw new NotFoundException('Ship not found');
 
-    const pageResult = await this.getManualPage(shipId, page, pageSize, category);
+    const pageResult = await this.getManualPage(
+      shipId,
+      page,
+      pageSize,
+      category,
+      search,
+    );
     const manuals = pageResult.items;
 
     if (
@@ -472,6 +517,7 @@ export class ManualsService {
     const mode = dto.mode === 'all' ? 'all' : 'manualIds';
     const manualIds = this.normalizeManualIds(dto.manualIds);
     const excludeManualIds = this.normalizeManualIds(dto.excludeManualIds);
+    const search = this.normalizeSearchTerm(dto.search);
     let category: ShipManualCategory | undefined;
     if (dto.category !== undefined) {
       category = parseShipManualCategory(dto.category);
@@ -487,17 +533,14 @@ export class ManualsService {
     const manuals = await this.prisma.shipManual.findMany({
       where:
         mode === 'all'
-          ? {
-              shipId,
-              ...(category ? { category } : {}),
-              ...(excludeManualIds.length > 0
-                ? { id: { notIn: excludeManualIds } }
-                : {}),
-            }
-          : {
-              shipId,
-              id: { in: manualIds },
-            },
+          ? this.buildManualWhere(shipId, {
+              category,
+              search,
+              excludeManualIds,
+            })
+          : this.buildManualWhere(shipId, {
+              includeManualIds: manualIds,
+            }),
       include: { ship: true },
       orderBy: { uploadedAt: 'desc' },
     });

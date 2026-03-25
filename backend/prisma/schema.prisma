@@ -34,8 +34,20 @@ model User {
 
   ship         Ship?         @relation(fields: [shipId], references: [id], onDelete: SetNull)
   chatSessions ChatSession[]
+  updatedAppSettings AppSetting[] @relation("AppSettingUpdatedBy")
 
   @@map("users")
+}
+
+model AppSetting {
+  key         String   @id @db.VarChar(100)
+  value       String   @db.Text
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id")
+
+  updatedBy User? @relation("AppSettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("app_settings")
 }
 
 model MetricDefinition {
@@ -61,6 +73,9 @@ model Ship {
   organizationName String?  @unique @map("organization_name") @db.VarChar(100)
   imoNumber        String?  @map("imo_number") @db.VarChar(20)
   flag             String?  @db.VarChar(100)
+  buildYear        Int?     @map("build_year")
+  lengthOverall    Float?   @map("length_overall")
+  beam             Float?
   deadweight       Int?
   grossTonnage     Int?     @map("gross_tonnage")
   buildYard        String?  @map("build_yard") @db.VarChar(255)
@@ -123,6 +138,7 @@ model ChatSession {
   title     String?   @db.VarChar(500)
   userId    String    @map("user_id")
   shipId    String?   @map("ship_id") @db.Uuid
+  pinnedAt  DateTime? @map("pinned_at")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -133,6 +149,7 @@ model ChatSession {
   ship Ship? @relation(fields: [shipId], references: [id], onDelete: SetNull)
 
   @@index([userId, updatedAt])
+  @@index([userId, pinnedAt])
   @@index([shipId])
   @@index([createdAt])
   @@map("chat_sessions")

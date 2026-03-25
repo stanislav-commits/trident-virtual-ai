@@ -3,4 +3,5 @@ export class BulkRemoveManualsDto {
   manualIds?: string[];
   excludeManualIds?: string[];
   category?: string;
+  search?: string;
 }

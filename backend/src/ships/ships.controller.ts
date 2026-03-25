@@ -58,6 +58,11 @@ export class ShipsController {
     return category;
   }
 
+  private parseSearchQuery(value: string | undefined) {
+    const normalized = value?.trim();
+    return normalized ? normalized : undefined;
+  }
+
   @Get('metric-definitions')
   getMetricDefinitions() {
     return this.shipsService.getMetricDefinitions();
@@ -84,12 +89,14 @@ export class ShipsController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('category') category?: string,
+    @Query('search') search?: string,
   ) {
     return this.manualsService.findAllWithStatus(
       id,
       this.parsePositiveInt(page),
       this.parsePositiveInt(pageSize),
       this.parseManualCategory(category),
+      this.parseSearchQuery(search),
     );
   }
 
@@ -142,12 +149,14 @@ export class ShipsController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('category') category?: string,
+    @Query('search') search?: string,
   ) {
     return this.manualsService.findAll(
       id,
       this.parsePositiveInt(page),
       this.parsePositiveInt(pageSize),
       this.parseManualCategory(category),
+      this.parseSearchQuery(search),
     );
   }
 

@@ -11,9 +11,10 @@ import { ChatReferenceExtractionService } from './chat-reference-extraction.serv
 import { PrismaModule } from '../prisma/prisma.module';
 import { RagflowModule } from '../ragflow/ragflow.module';
 import { MetricsModule } from '../metrics/metrics.module';
+import { SystemPromptModule } from '../system-prompt/system-prompt.module';
 
 @Module({
-  imports: [PrismaModule, RagflowModule, MetricsModule],
+  imports: [PrismaModule, RagflowModule, MetricsModule, SystemPromptModule],
   controllers: [ChatController],
   providers: [
     ChatService,

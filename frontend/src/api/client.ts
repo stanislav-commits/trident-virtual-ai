@@ -36,6 +36,48 @@ export async function fetchWithAuth(
   });
 }
 
+export type SystemPromptPlaceholder = {
+  token: string;
+  description: string;
+};
+
+export type SystemPromptConfig = {
+  prompt: string;
+  isDefault: boolean;
+  updatedAt: string | null;
+  updatedBy: {
+    id: string;
+    userId: string;
+    name: string | null;
+  } | null;
+  placeholders: SystemPromptPlaceholder[];
+};
+
+export async function getSystemPrompt(
+  token: string,
+): Promise<SystemPromptConfig> {
+  const res = await fetchWithAuth("system-prompt", { token });
+  if (!res.ok) throw new Error("Failed to fetch system prompt");
+  return res.json();
+}
+
+export async function updateSystemPrompt(
+  prompt: string,
+  token: string,
+): Promise<SystemPromptConfig> {
+  const res = await fetchWithAuth("system-prompt", {
+    token,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to update system prompt");
+  }
+  return res.json();
+}
+
 export type UserListItem = {
   id: string;
   userId: string;
@@ -185,13 +227,19 @@ type PaginationParams = {
 
 type ManualPaginationParams = PaginationParams & {
   category?: ShipManualCategory;
+  search?: string;
 };
 
 function withPaginationQuery(
   path: string,
   params?: ManualPaginationParams,
 ): string {
-  if (!params?.page && !params?.pageSize && !params?.category) {
+  if (
+    !params?.page &&
+    !params?.pageSize &&
+    !params?.category &&
+    !params?.search?.trim()
+  ) {
     return path;
   }
 
@@ -199,6 +247,7 @@ function withPaginationQuery(
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("pageSize", String(params.pageSize));
   if (params.category) query.set("category", params.category);
+  if (params.search?.trim()) query.set("search", params.search.trim());
   return `${path}?${query.toString()}`;
 }
 
@@ -208,6 +257,9 @@ export type ShipListItem = {
   organizationName: string | null;
   imoNumber: string | null;
   flag: string | null;
+  buildYear: number | null;
+  lengthOverall: number | null;
+  beam: number | null;
   deadweight: number | null;
   grossTonnage: number | null;
   buildYard: string | null;
@@ -318,6 +370,9 @@ export async function createShip(
     organizationName: string;
     imoNumber?: string | null;
     flag?: string | null;
+    buildYear?: number | null;
+    lengthOverall?: number | null;
+    beam?: number | null;
     deadweight?: number | null;
     grossTonnage?: number | null;
     buildYard?: string | null;
@@ -359,6 +414,9 @@ export async function updateShip(
     organizationName?: string;
     imoNumber?: string | null;
     flag?: string | null;
+    buildYear?: number | null;
+    lengthOverall?: number | null;
+    beam?: number | null;
     deadweight?: number | null;
     grossTonnage?: number | null;
     buildYard?: string | null;
@@ -472,11 +530,13 @@ export type BulkDeleteManualsBody =
       mode: "manualIds";
       manualIds: string[];
       category?: ShipManualCategory;
+      search?: string;
     }
   | {
       mode: "all";
       excludeManualIds?: string[];
       category?: ShipManualCategory;
+      search?: string;
     };
 
 export async function bulkDeleteManuals(

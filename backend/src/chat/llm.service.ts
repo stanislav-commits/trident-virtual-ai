@@ -1,5 +1,12 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import OpenAI from 'openai';
+import { DEFAULT_SYSTEM_PROMPT_TEMPLATE } from '../system-prompt/system-prompt.constants';
+import { SystemPromptService } from '../system-prompt/system-prompt.service';
 
 export interface LLMContext {
   userQuery: string;
@@ -10,6 +17,7 @@ export interface LLMContext {
   citations?: Array<{
     snippet: string;
     sourceTitle: string;
+    sourceCategory?: string;
     pageNumber?: number;
   }>;
   shipName?: string;
@@ -55,12 +63,15 @@ type QueryIntent =
 
 @Injectable()
 export class LlmService {
+  private readonly logger = new Logger(LlmService.name);
   private client: OpenAI;
   private model: string;
   private temperature: number;
   private maxTokens: number;
 
-  constructor() {
+  constructor(
+    @Optional() private readonly systemPromptService?: SystemPromptService,
+  ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY is not set');
@@ -74,7 +85,11 @@ export class LlmService {
 
   async generateResponse(context: LLMContext): Promise<string> {
     try {
-      const systemPrompt = this.buildSystemPrompt(context.shipName);
+      const promptTemplate = await this.getSystemPromptTemplate();
+      const systemPrompt = this.buildSystemPrompt(
+        context.shipName,
+        promptTemplate,
+      );
       const userPrompt = this.buildUserPrompt(context);
 
       // Build messages array with optional chat history
@@ -151,93 +166,30 @@ export class LlmService {
     }
   }
 
-  private buildSystemPrompt(shipName?: string): string {
-    const name = shipName ? ` (${shipName})` : '';
-    return `You are a technical support assistant for yacht operations and maintenance${name}.
-Your role is to provide accurate, actionable answers based only on the provided manuals, maintenance schedules, parts lists, procedures, and telemetry.
+  private async getSystemPromptTemplate(): Promise<string> {
+    if (!this.systemPromptService) {
+      return DEFAULT_SYSTEM_PROMPT_TEMPLATE;
+    }
 
-Core rules:
-- Answer the user's exact question directly in the first sentence, then add concise supporting details.
-- Base your answer primarily on explicit evidence from the provided documentation. Prefer direct document evidence over inference.
-- Use telemetry only when it is relevant to the user's exact question.
-- If the question asks for the current value, status, level, temperature, pressure, runtime, or reading of a telemetry metric, answer from the provided telemetry first when it directly matches the asked metric.
-- Do not speculate or rely on general marine/mechanical knowledge when the documents do not provide the answer.
-- When referencing provided documentation, use inline citation markers like [1], [2], etc. matching the numbered sources in "Relevant Documentation". Place citations naturally at the end of the sentence or fact they support.
-- Include safety warnings when relevant.
-- Keep responses concise, practical, and focused.
-- Use technical terminology appropriately, but explain complex points briefly.
-- Do not use LaTeX, TeX delimiters, or escaped math syntax like \\( \\), \\[ \\], \\frac, or \\text in the final answer.
+    try {
+      return await this.systemPromptService.getPromptTemplate();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to load editable system prompt, using default template instead: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return DEFAULT_SYSTEM_PROMPT_TEMPLATE;
+    }
+  }
 
-Intent handling:
-- Treat each new user question as a fresh retrieval task unless the user explicitly refers to a previous answer.
-- Do not reuse a previous maintenance-hours calculation for a new question unless the user explicitly asks to continue or reuse it.
-- First determine the user's intent before answering. Typical intents include:
-  - telemetry or current status
-  - maintenance due now
-  - next maintenance due calculation
-  - spare parts / consumables / fluids
-  - maintenance procedure
-  - troubleshooting / fault finding
-- Clearly distinguish intent:
-  - "what maintenance is due?" / "what service is due now?" => identify named due or next-due task(s) from maintenance records
-  - "when is the next maintenance due?" => provide due threshold/time and calculate only if needed
-- Do not switch to maintenance interval calculations unless the user explicitly asks for a due-time calculation, such as:
-  "when is the next maintenance due",
-  "how many hours left",
-  "remaining hours",
-  "next service at what hour"
-- If the user asks "what maintenance is due?" or "what service is due now?", look for explicitly named due tasks, next-due tasks, or last-due records in the provided documentation. Report only those named items. Do not answer with a calculated hour threshold. Do not list or enumerate task names that are not present in the provided documentation.
-- If no maintenance task information is present in the provided documentation for a due-task query, clearly state that the documentation does not identify any due tasks for the asset. Do not guess or use general knowledge to fill in task names.
-- Do not convert a due-task question into a due-hours calculation unless no identifiable task information is available in the provided documentation.
-- If the user asks about spare parts, consumables, filters, oil, coolant, or fluid quantities, answer only from explicit parts lists, service procedures, specifications, or capacities found in the provided documentation.
-- If the user asks about a procedure, provide the documented steps or summarize the documented procedure. Do not replace a procedure answer with a due-hours calculation.
-- If the user message is only a short opaque label, code, or fragment, ask a short clarifying question instead of inferring a full maintenance answer.
-- If the user message is a concrete task title, service title, component name, or maintenance item, treat it as a lookup request for that named item instead of asking the user to restate the same subject.
-- If the user asks for a named task, service, component, or reference ID, do not substitute a nearby but different task just because it has a similar interval or wording. If the exact asked item is not clearly present in the provided snippets, say so.
-- If the current question is a short follow-up and prior user context is provided, treat it as continuing the previous subject. Do not ask the user to repeat the same subject unless the previous subject is still genuinely ambiguous.
-- If the retrieved snippets mix multiple unrelated components, tasks, or manuals, do not merge them into one answer. Use only the snippets that clearly match the asked subject. If no single subject match is clear, say the retrieved context is ambiguous and ask a short clarification.
-- If multiple manuals are relevant, clearly separate maintenance-schedule facts from operator-manual guidance. Say which source identifies the due task or task list, and which source only gives general procedure or safety information.
-- If one source directly answers the exact asked subject and other snippets are only approximate, nearby, duplicate, or weaker matches, answer from the exact source only and do not pad the answer with the weaker sources.
-- If multiple sources describe the same subject but materially differ in documented facts such as interval, due timing, fluid specification, quantity, capacity, or part number, present the answer separately by source and attribute each differing fact to its source. Do not merge conflicting values into one blended answer.
-- If the user explicitly asks "according to" a named manual, handbook, guide, or document, answer from that named source when matching citations from it are present. Do not switch to a different document just because it has more detailed but unrelated content.
-- If the user asks about one exact reference ID, use only the snippets tied to that exact reference ID plus obvious continuation lines from the same row/page. Do not borrow tasks, parts, or part numbers from nearby reference rows.
-- If the user asks for "all details", "list all", "do not omit any row", or asks how many spare-part rows exist, treat the relevant parts table as exhaustive. Merge wrapped lines that clearly belong to the same row, and do not stop early when more rows remain in the provided context.
+  private buildSystemPrompt(
+    shipName?: string,
+    template = DEFAULT_SYSTEM_PROMPT_TEMPLATE,
+  ): string {
+    const normalizedShipName = shipName?.trim() ?? '';
 
-Maintenance and calculation rules:
-- Never assume a maintenance interval unless that exact interval is stated in the provided documentation for the same component or task.
-- Only perform a next-due or remaining-hours calculation when both conditions are true:
-  1) the user explicitly asked for a calculation, and
-  2) the exact interval is stated in the provided documentation for the same task or component.
-- If a maintenance table already contains fields such as "Due", "Next due", "Last due", "Status", or equivalent, use those values directly instead of recalculating.
-- If both "Last due" and "Next due" are present, answer from the "Next due" field when the user asks what is next due. Never report the "Last due" value as the next due value.
-- If multiple documented intervals exist, use the one that matches the specific task or component asked about.
-- If the matching task or component is ambiguous, briefly state the ambiguity and ask a short clarifying question or explain which task you matched.
-
-Calculation format:
-- Only show calculations when they are necessary to answer the user's question.
-- Keep calculations short and in plain text.
-- When calculation is needed, use:
-  next_due_hours = ceil(current_hours / interval_hours) * interval_hours
-  remaining_hours = next_due_hours - current_hours
-- When an explicit next-due value is already present in the documentation, prefer that value over a calculation.
-- If multiple different hour-based intervals appear in the provided snippets and they are not clearly tied to the same asked component or task, do not choose one. State that the available documentation context is ambiguous.
-
-Parts / fluids / consumables rules:
-- For spare parts, consumables, and fluid quantities, provide exact part names, part numbers, filter references, oil grades, and capacities only when they are explicitly present in the provided documentation.
-- Do not infer "typical" parts or quantities from general knowledge.
-- Do not present maintenance actions such as "replace oil filter" or "inspect belts" as spare parts unless the documentation explicitly names a spare item, consumable, quantity, or part number.
-- If the provided documents do not include exact spare parts or fluid quantities, clearly state that the information is not available in the provided documentation.
-- If the user asks for parts for a named maintenance task or component and the retrieved snippets show the task but not a parts list for that same task or component, state that the parts are not shown in the provided documentation for that item.
-
-Telemetry rules:
-- Use telemetry to report current readings or support a calculation only when relevant.
-- Do not let telemetry override explicit maintenance records, schedules, procedures, or parts information found in the documentation.
-
-Answer style:
-- If the answer is directly available in the documents, state it clearly and cite it.
-- If the answer is partially available, say what is confirmed and what is missing.
-- If the documents do not contain the answer, state that clearly and do not speculate.
-- Do not answer a parts, fluid, or procedure question with a maintenance-due calculation unless the user explicitly asked for that calculation.`;
+    return template
+      .replaceAll('{{shipNameWithParens}}', normalizedShipName ? ` (${normalizedShipName})` : '')
+      .replaceAll('{{shipName}}', normalizedShipName);
   }
 
   private buildUserPrompt(context: LLMContext): string {
@@ -424,7 +376,8 @@ Answer style:
         const pageInfo = citation.pageNumber
           ? ` (Page ${citation.pageNumber})`
           : '';
-        prompt += `[${idx + 1}] ${citation.sourceTitle}${pageInfo}:\n`;
+        const sourceLabel = this.formatCitationSourceLabel(citation);
+        prompt += `[${idx + 1}] ${sourceLabel}${pageInfo}:\n`;
         prompt += `${citation.snippet}\n\n`;
       });
     } else if (context.noDocumentation) {
@@ -433,7 +386,7 @@ Answer style:
         'If this query relates to maintenance tasks or due service items, do NOT list or invent maintenance items — they are not confirmed by the provided documentation. ' +
         'Use telemetry only if it directly answers the question. ' +
         'If the answer is not supported by the provided context, clearly state that the documentation does not confirm it. ' +
-        'Do not speculate. Do not use citation markers like [1], [2].\n\n';
+        'Do not speculate. Do not invent source markers when no supporting source was provided.\n\n';
     }
 
     if (context.noDocumentation && context.telemetryPrefiltered) {
@@ -610,6 +563,43 @@ Answer style:
 
     prompt += '\n';
     return prompt;
+  }
+
+  private formatCitationSourceLabel(citation: {
+    sourceTitle: string;
+    sourceCategory?: string;
+  }): string {
+    const sourceType = this.getCitationSourceType(citation);
+    if (sourceType === 'PMS') {
+      return `[PMS] ${citation.sourceTitle}`;
+    }
+
+    return `[${sourceType}: ${citation.sourceTitle}]`;
+  }
+
+  private getCitationSourceType(citation: {
+    sourceTitle: string;
+    sourceCategory?: string;
+  }): 'Manual' | 'History' | 'Certificate' | 'Regulation' | 'PMS' {
+    const sourceTitle = citation.sourceTitle.toLowerCase();
+    if (
+      /maintenance\s+tasks|planned\s+maintenance|pms|maintenance\s+schedule/.test(
+        sourceTitle,
+      )
+    ) {
+      return 'PMS';
+    }
+
+    switch (citation.sourceCategory) {
+      case 'HISTORY_PROCEDURES':
+        return 'History';
+      case 'CERTIFICATES':
+        return 'Certificate';
+      case 'REGULATION':
+        return 'Regulation';
+      default:
+        return 'Manual';
+    }
   }
 
   private isMaintenanceCalculationQuery(query: string): boolean {
