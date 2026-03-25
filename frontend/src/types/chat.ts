@@ -44,6 +44,8 @@ export interface ChatSessionDto {
   title?: string;
   userId: string;
   shipId: string | null;
+  pinnedAt: string | null;
+  isPinned: boolean;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -60,5 +62,7 @@ export interface ChatSession {
   id: string;
   title: string;
   messageCount: number;
+  pinnedAt: string | null;
+  isPinned: boolean;
   updatedAt: string;
 }

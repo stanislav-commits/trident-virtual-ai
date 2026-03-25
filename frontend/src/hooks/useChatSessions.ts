@@ -5,12 +5,26 @@ import {
   createChatSession,
   deleteChatSession,
   renameChatSession,
+  setChatSessionPinned,
 } from "../api/chatApi";
+import { sortChatSessions } from "../utils/chatSessionOrder";
 
 interface UseChatSessionsState {
   sessions: ChatSessionDto[];
   isLoading: boolean;
   error: string | null;
+}
+
+function mergeSessionUpdate(
+  current: ChatSessionDto,
+  updated: ChatSessionDto,
+): ChatSessionDto {
+  return {
+    ...current,
+    ...updated,
+    messageCount: updated.messageCount ?? current.messageCount,
+    messages: updated.messages ?? current.messages,
+  };
 }
 
 export function useChatSessions(token: string | null) {
@@ -31,7 +45,11 @@ export function useChatSessions(token: string | null) {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
       try {
         const data = await getChatSessions(token);
-        setState({ sessions: data, isLoading: false, error: null });
+        setState({
+          sessions: sortChatSessions(data),
+          isLoading: false,
+          error: null,
+        });
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to load sessions";
@@ -50,7 +68,7 @@ export function useChatSessions(token: string | null) {
       const newSession = await createChatSession(shipId, token, title);
       setState((prev) => ({
         ...prev,
-        sessions: [newSession, ...prev.sessions],
+        sessions: sortChatSessions([newSession, ...prev.sessions]),
         isLoading: false,
         error: null,
       }));
@@ -87,8 +105,10 @@ export function useChatSessions(token: string | null) {
       const updated = await renameChatSession(sessionId, title, token);
       setState((prev) => ({
         ...prev,
-        sessions: prev.sessions.map((s) =>
-          s.id === sessionId ? { ...s, title: updated.title } : s,
+        sessions: sortChatSessions(
+          prev.sessions.map((s) =>
+            s.id === sessionId ? mergeSessionUpdate(s, updated) : s,
+          ),
         ),
       }));
     } catch (err) {
@@ -99,11 +119,37 @@ export function useChatSessions(token: string | null) {
     }
   };
 
+  const pinSession = async (sessionId: string, isPinned: boolean) => {
+    if (!token) throw new Error("No authentication token");
+
+    try {
+      const updated = await setChatSessionPinned(sessionId, isPinned, token);
+      setState((prev) => ({
+        ...prev,
+        sessions: sortChatSessions(
+          prev.sessions.map((s) =>
+            s.id === sessionId ? mergeSessionUpdate(s, updated) : s,
+          ),
+        ),
+      }));
+      return updated;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update chat pin";
+      setState((prev) => ({ ...prev, error: message }));
+      throw err;
+    }
+  };
+
   const refreshSessions = async () => {
     if (!token) return;
     try {
       const data = await getChatSessions(token);
-      setState((prev) => ({ ...prev, sessions: data, error: null }));
+      setState((prev) => ({
+        ...prev,
+        sessions: sortChatSessions(data),
+        error: null,
+      }));
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to refresh sessions";
@@ -116,6 +162,7 @@ export function useChatSessions(token: string | null) {
     createSession,
     deleteSession,
     renameSession,
+    pinSession,
     refreshSessions,
   };
 }

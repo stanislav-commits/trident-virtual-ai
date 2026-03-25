@@ -98,6 +98,24 @@ export async function renameChatSession(
   return res.json();
 }
 
+export async function setChatSessionPinned(
+  sessionId: string,
+  isPinned: boolean,
+  token: string,
+): Promise<ChatSessionDto> {
+  const res = await fetchWithAuth(`chat/sessions/${sessionId}/pin`, {
+    token,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isPinned }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to update chat pin state");
+  }
+  return res.json();
+}
+
 export async function deleteChatSession(
   sessionId: string,
   token: string,

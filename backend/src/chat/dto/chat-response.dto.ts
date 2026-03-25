@@ -25,6 +25,8 @@ export class ChatSessionResponseDto {
   title?: string;
   userId: string;
   shipId: string | null;
+  pinnedAt: string | null;
+  isPinned: boolean;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

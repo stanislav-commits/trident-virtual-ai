@@ -52,6 +52,37 @@ function stripLegacyInteractiveMarkup(text: string): string {
     .replace(/<\/?high-light>/gi, "");
 }
 
+function extractInlineButtonActions(text: string): {
+  cleanedText: string;
+  actions: ChatSuggestionActionDto[];
+} {
+  const matches = [...text.matchAll(/\[BUTTON:\s*([^\]]+?)\s*\]/gi)];
+  const seen = new Set<string>();
+  const actions: ChatSuggestionActionDto[] = [];
+
+  matches.forEach((match) => {
+    const label = match[1]?.trim();
+    const normalizedLabel = label?.toLowerCase();
+    if (!label || !normalizedLabel || seen.has(normalizedLabel)) {
+      return;
+    }
+
+    seen.add(normalizedLabel);
+    actions.push({
+      label,
+      message: label,
+    });
+  });
+
+  const cleanedText = text
+    .replace(/\[BUTTON:\s*[^\]]+?\s*\]/gi, "")
+    .replace(/Would you like to:\s*/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return { cleanedText, actions };
+}
+
 function CitationBadge({
   idx,
   citations,
@@ -143,6 +174,19 @@ export function MessageBubble({
           action.message.trim().length > 0,
       )
     : [];
+  const normalizedAssistantContent =
+    role === "assistant"
+      ? stripLegacyInteractiveMarkup(normalizeMathLikeFormatting(content.trim()))
+      : content.trim();
+  const {
+    cleanedText: renderedAssistantContent,
+    actions: inlineButtonActions,
+  } =
+    role === "assistant"
+      ? extractInlineButtonActions(normalizedAssistantContent)
+      : { cleanedText: content.trim(), actions: [] };
+  const suggestionActions =
+    clarificationActions.length > 0 ? clarificationActions : inlineButtonActions;
 
   const handleCopy = useCallback(() => {
     const text = content.trim();
@@ -175,12 +219,7 @@ export function MessageBubble({
     },
     [token],
   );
-
   const mdComponents = useMdComponents(refs, handleOpenDocument);
-  const renderedAssistantContent =
-    role === "assistant"
-      ? stripLegacyInteractiveMarkup(normalizeMathLikeFormatting(content.trim()))
-      : content.trim();
 
   return (
     <div className={`chat-message chat-message--${role}`}>
@@ -211,14 +250,12 @@ export function MessageBubble({
           content.trim()
         )}
 
-        {role === "assistant" &&
-          ragflowContext?.awaitingClarification === true &&
-          clarificationActions.length > 0 && (
+        {role === "assistant" && suggestionActions.length > 0 && (
             <div
               className="chat-message__suggestions"
               aria-label="Suggested clarification actions"
             >
-              {clarificationActions.map((action, index) => (
+              {suggestionActions.map((action, index) => (
                 <button
                   key={`${action.kind || "suggestion"}-${index}-${action.label}`}
                   type="button"
@@ -259,8 +296,8 @@ export function MessageBubble({
             <line x1="12" y1="16" x2="12" y2="12" />
             <line x1="12" y1="8" x2="12.01" y2="8" />
           </svg>
-          No matching manual chunk for this query — answered from telemetry
-          &amp; general knowledge
+          No matching manual chunk for this query — answered without
+          supporting manual context
         </div>
       )}
 

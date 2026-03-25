@@ -16,6 +16,7 @@ import {
 } from './dto/chat-response.dto';
 import { ChatDocumentationService } from './chat-documentation.service';
 import { ChatCitation } from './chat.types';
+import { sortChatSessions } from './chat-session-order';
 
 interface TelemetryClarificationAction {
   label: string;
@@ -84,7 +85,7 @@ export class ChatService {
       },
     });
 
-    return sessions.map((session) => ({
+    return sortChatSessions(sessions).map((session) => ({
       ...this.formatSessionResponse(session),
       messageCount: session.messages.length,
     }));
@@ -202,7 +203,15 @@ export class ChatService {
           : null,
         contextReferences: contextReferences
           ? {
-              create: contextReferences,
+              create: contextReferences.map((reference) => ({
+                shipManualId: reference.shipManualId,
+                chunkId: reference.chunkId,
+                score: reference.score,
+                pageNumber: reference.pageNumber,
+                snippet: reference.snippet,
+                sourceTitle: reference.sourceTitle,
+                sourceUrl: reference.sourceUrl,
+              })),
             }
           : undefined,
       },
@@ -237,6 +246,27 @@ export class ChatService {
     const updated = await this.prisma.chatSession.update({
       where: { id: sessionId },
       data: { title: title || session.title },
+    });
+
+    return this.formatSessionResponse(updated);
+  }
+
+  async setSessionPinned(
+    sessionId: string,
+    userId: string,
+    role: string,
+    isPinned: boolean,
+  ): Promise<ChatSessionResponseDto> {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) throw new NotFoundException('Chat session not found');
+    this.validateAccess(session, userId, role);
+
+    const updated = await this.prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { pinnedAt: isPinned ? new Date() : null },
     });
 
     return this.formatSessionResponse(updated);
@@ -578,6 +608,7 @@ export class ChatService {
         citations: citationsForAnswer.map((citation) => ({
           snippet: citation.snippet || '',
           sourceTitle: citation.sourceTitle || 'Unknown',
+          sourceCategory: citation.sourceCategory,
           pageNumber: citation.pageNumber,
         })),
         noDocumentation: citationsForAnswer.length === 0,
@@ -624,6 +655,7 @@ export class ChatService {
     title: string | null;
     userId: string;
     shipId: string | null;
+    pinnedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
     deletedAt: Date | null;
@@ -633,6 +665,8 @@ export class ChatService {
       title: session.title ?? undefined,
       userId: session.userId,
       shipId: session.shipId,
+      pinnedAt: session.pinnedAt?.toISOString() ?? null,
+      isPinned: !!session.pinnedAt,
       createdAt: session.createdAt.toISOString(),
       updatedAt: session.updatedAt.toISOString(),
       deletedAt: session.deletedAt?.toISOString() ?? null,

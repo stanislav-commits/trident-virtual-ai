@@ -7,6 +7,26 @@ interface ChatListItemProps {
   onClick: () => void;
   onDelete?: (id: string) => void;
   onRename?: (id: string, title: string) => void;
+  onTogglePin?: (id: string, isPinned: boolean) => void;
+}
+
+function PinIcon({ filled = false }: { filled?: boolean }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 17v5" />
+      <path d="M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6z" />
+    </svg>
+  );
 }
 
 export function ChatListItem({
@@ -15,6 +35,7 @@ export function ChatListItem({
   onClick,
   onDelete,
   onRename,
+  onTogglePin,
 }: ChatListItemProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -57,6 +78,12 @@ export function ChatListItem({
     setIsRenaming(true);
   };
 
+  const handlePinClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    onTogglePin?.(session.id, !session.isPinned);
+  };
+
   const handleRenameSubmit = () => {
     const trimmed = renameValue.trim();
     if (trimmed && trimmed !== session.title) {
@@ -95,7 +122,18 @@ export function ChatListItem({
         </div>
       ) : (
         <button type="button" className="chat-list-item__btn" onClick={onClick}>
-          <span className="chat-list-item__title">{session.title}</span>
+          <span className="chat-list-item__title-row">
+            {session.isPinned && (
+              <span
+                className="chat-list-item__pin-badge"
+                title="Pinned chat"
+                aria-label="Pinned chat"
+              >
+                <PinIcon filled />
+              </span>
+            )}
+            <span className="chat-list-item__title">{session.title}</span>
+          </span>
         </button>
       )}
 
@@ -122,6 +160,14 @@ export function ChatListItem({
 
         {menuOpen && (
           <div className="chat-list-item__dropdown">
+            <button
+              type="button"
+              className="chat-list-item__dropdown-item"
+              onClick={handlePinClick}
+            >
+              <PinIcon />
+              {session.isPinned ? "Unpin chat" : "Pin chat"}
+            </button>
             <button
               type="button"
               className="chat-list-item__dropdown-item"

@@ -17,6 +17,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ChatService } from './chat.service';
 import { CreateChatSessionDto } from './dto/create-chat-session.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { SetChatSessionPinDto } from './dto/set-chat-session-pin.dto';
 import {
   ChatSessionResponseDto,
   ChatMessageResponseDto,
@@ -72,6 +73,20 @@ export class ChatController {
       user.id,
       user.role,
       body.title,
+    );
+  }
+
+  @Patch('sessions/:id/pin')
+  async setSessionPinned(
+    @Param('id') sessionId: string,
+    @Body() dto: SetChatSessionPinDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<ChatSessionResponseDto> {
+    return this.chatService.setSessionPinned(
+      sessionId,
+      user.id,
+      user.role,
+      dto.isPinned,
     );
   }
 

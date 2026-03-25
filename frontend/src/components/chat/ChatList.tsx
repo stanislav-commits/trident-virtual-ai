@@ -7,6 +7,7 @@ interface ChatListProps {
   onSelect: (id: string) => void;
   onDelete?: (id: string) => void;
   onRename?: (id: string, title: string) => void;
+  onTogglePin?: (id: string, isPinned: boolean) => void;
 }
 
 export function ChatList({
@@ -15,6 +16,7 @@ export function ChatList({
   onSelect,
   onDelete,
   onRename,
+  onTogglePin,
 }: ChatListProps) {
   return (
     <>
@@ -26,6 +28,7 @@ export function ChatList({
           onClick={() => onSelect(session.id)}
           onDelete={onDelete}
           onRename={onRename}
+          onTogglePin={onTogglePin}
         />
       ))}
     </>

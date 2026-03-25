@@ -34,6 +34,7 @@ export function ChatPage({
     createSession,
     deleteSession,
     renameSession,
+    pinSession,
     refreshSessions,
   } = useChatSessions(token);
 
@@ -185,6 +186,17 @@ export function ChatPage({
     [renameSession],
   );
 
+  const handleTogglePin = useCallback(
+    async (sessionId: string, isPinned: boolean) => {
+      try {
+        await pinSession(sessionId, isPinned);
+      } catch (err) {
+        console.error("Failed to update pin state:", err);
+      }
+    },
+    [pinSession],
+  );
+
   const handleNewChat = useCallback(() => {
     setActiveSessionId(null);
     setIsNewChatMode(true);
@@ -225,12 +237,15 @@ export function ChatPage({
             id: s.id,
             title: s.title || "New Chat",
             messageCount: s.messageCount || 0,
+            pinnedAt: s.pinnedAt ?? null,
+            isPinned: s.isPinned ?? Boolean(s.pinnedAt),
             updatedAt: s.updatedAt,
           }))}
           activeId={activeSessionId}
           onSelect={handleSelectSession}
           onDelete={handleDeleteSession}
           onRename={handleRenameSession}
+          onTogglePin={handleTogglePin}
         />
       }
       onNewChat={handleNewChat}
