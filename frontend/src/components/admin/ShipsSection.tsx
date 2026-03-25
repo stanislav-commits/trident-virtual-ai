@@ -212,6 +212,9 @@ interface ShipForm {
   organizationName: string;
   imoNumber: string;
   flag: string;
+  buildYear: string;
+  lengthOverall: string;
+  beam: string;
   deadweight: string;
   grossTonnage: string;
   buildYard: string;
@@ -230,6 +233,9 @@ function createEmptyShipForm(): ShipForm {
     organizationName: "",
     imoNumber: "",
     flag: "",
+    buildYear: "",
+    lengthOverall: "",
+    beam: "",
     deadweight: "",
     grossTonnage: "",
     buildYard: "",
@@ -243,7 +249,21 @@ function normalizeOptionalTextField(value: string) {
   return normalized ? normalized : null;
 }
 
-function normalizeOptionalNumberField(value: string) {
+function normalizeOptionalIntegerField(value: string) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function normalizeOptionalDecimalField(value: string) {
   const normalized = value.trim();
   if (!normalized) {
     return null;
@@ -415,6 +435,10 @@ export function ShipsSection({
       organizationName: ship.organizationName ?? "",
       imoNumber: ship.imoNumber ?? "",
       flag: ship.flag ?? "",
+      buildYear: ship.buildYear != null ? String(ship.buildYear) : "",
+      lengthOverall:
+        ship.lengthOverall != null ? String(ship.lengthOverall) : "",
+      beam: ship.beam != null ? String(ship.beam) : "",
       deadweight:
         ship.deadweight != null ? String(ship.deadweight) : "",
       grossTonnage:
@@ -449,8 +473,13 @@ export function ShipsSection({
           organizationName,
           imoNumber: normalizeOptionalTextField(shipForm.imoNumber),
           flag: normalizeOptionalTextField(shipForm.flag),
-          deadweight: normalizeOptionalNumberField(shipForm.deadweight),
-          grossTonnage: normalizeOptionalNumberField(shipForm.grossTonnage),
+          buildYear: normalizeOptionalIntegerField(shipForm.buildYear),
+          lengthOverall: normalizeOptionalDecimalField(
+            shipForm.lengthOverall,
+          ),
+          beam: normalizeOptionalDecimalField(shipForm.beam),
+          deadweight: normalizeOptionalIntegerField(shipForm.deadweight),
+          grossTonnage: normalizeOptionalIntegerField(shipForm.grossTonnage),
           buildYard: normalizeOptionalTextField(shipForm.buildYard),
           shipClass: normalizeOptionalTextField(shipForm.shipClass),
           userIds: shipForm.userIds,
@@ -507,8 +536,13 @@ export function ShipsSection({
           organizationName,
           imoNumber: normalizeOptionalTextField(shipForm.imoNumber),
           flag: normalizeOptionalTextField(shipForm.flag),
-          deadweight: normalizeOptionalNumberField(shipForm.deadweight),
-          grossTonnage: normalizeOptionalNumberField(shipForm.grossTonnage),
+          buildYear: normalizeOptionalIntegerField(shipForm.buildYear),
+          lengthOverall: normalizeOptionalDecimalField(
+            shipForm.lengthOverall,
+          ),
+          beam: normalizeOptionalDecimalField(shipForm.beam),
+          deadweight: normalizeOptionalIntegerField(shipForm.deadweight),
+          grossTonnage: normalizeOptionalIntegerField(shipForm.grossTonnage),
           buildYard: normalizeOptionalTextField(shipForm.buildYard),
           shipClass: normalizeOptionalTextField(shipForm.shipClass),
           userIds: shipForm.userIds.length ? shipForm.userIds : undefined,
@@ -880,6 +914,73 @@ export function ShipsSection({
                           }))
                         }
                         placeholder="e.g. 9800"
+                        disabled={creatingShip}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="admin-panel__modal-field-row">
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">
+                        Build year
+                      </label>
+                      <input
+                        type="number"
+                        min="1800"
+                        max="3000"
+                        step="1"
+                        inputMode="numeric"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.buildYear}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            buildYear: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 2018"
+                        disabled={creatingShip}
+                      />
+                    </div>
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">
+                        Length overall (m)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        inputMode="decimal"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.lengthOverall}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            lengthOverall: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 32.8"
+                        disabled={creatingShip}
+                      />
+                    </div>
+                    <div className="admin-panel__modal-field">
+                      <label className="admin-panel__field-label">
+                        Beam (m)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        inputMode="decimal"
+                        className="admin-panel__input admin-panel__input--full"
+                        value={shipForm.beam}
+                        onChange={(event) =>
+                          setShipForm((previous) => ({
+                            ...previous,
+                            beam: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 7.4"
                         disabled={creatingShip}
                       />
                     </div>

@@ -60,6 +60,12 @@ export class ShipsService {
       20,
     );
     const flag = this.normalizeOptionalText(dto.flag, 'flag', 100);
+    const buildYear = this.normalizeOptionalBuildYear(dto.buildYear);
+    const lengthOverall = this.normalizeOptionalMeasurement(
+      dto.lengthOverall,
+      'lengthOverall',
+    );
+    const beam = this.normalizeOptionalMeasurement(dto.beam, 'beam');
     const deadweight = this.normalizeOptionalInteger(
       dto.deadweight,
       'deadweight',
@@ -89,6 +95,9 @@ export class ShipsService {
         organizationName,
         imoNumber: imoNumber ?? null,
         flag: flag ?? null,
+        buildYear: buildYear ?? null,
+        lengthOverall: lengthOverall ?? null,
+        beam: beam ?? null,
         deadweight: deadweight ?? null,
         grossTonnage: grossTonnage ?? null,
         buildYard: buildYard ?? null,
@@ -198,6 +207,12 @@ export class ShipsService {
       20,
     );
     const nextFlag = this.normalizeOptionalText(dto.flag, 'flag', 100);
+    const nextBuildYear = this.normalizeOptionalBuildYear(dto.buildYear);
+    const nextLengthOverall = this.normalizeOptionalMeasurement(
+      dto.lengthOverall,
+      'lengthOverall',
+    );
+    const nextBeam = this.normalizeOptionalMeasurement(dto.beam, 'beam');
     const nextDeadweight = this.normalizeOptionalInteger(
       dto.deadweight,
       'deadweight',
@@ -242,6 +257,11 @@ export class ShipsService {
       }
       if (nextImoNumber !== undefined) updateData.imoNumber = nextImoNumber;
       if (nextFlag !== undefined) updateData.flag = nextFlag;
+      if (nextBuildYear !== undefined) updateData.buildYear = nextBuildYear;
+      if (nextLengthOverall !== undefined) {
+        updateData.lengthOverall = nextLengthOverall;
+      }
+      if (nextBeam !== undefined) updateData.beam = nextBeam;
       if (nextDeadweight !== undefined) updateData.deadweight = nextDeadweight;
       if (nextGrossTonnage !== undefined) {
         updateData.grossTonnage = nextGrossTonnage;
@@ -368,6 +388,46 @@ export class ShipsService {
     if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
       throw new BadRequestException(
         `${fieldName} must be a non-negative whole number`,
+      );
+    }
+
+    return parsed;
+  }
+
+  private normalizeOptionalBuildYear(
+    value: unknown,
+  ): number | null | undefined {
+    const parsed = this.normalizeOptionalInteger(value, 'buildYear');
+    if (parsed == null) {
+      return parsed;
+    }
+
+    if (parsed < 1800 || parsed > 3000) {
+      throw new BadRequestException(
+        'buildYear must be a valid four-digit year',
+      );
+    }
+
+    return parsed;
+  }
+
+  private normalizeOptionalMeasurement(
+    value: unknown,
+    fieldName: string,
+  ): number | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (value === null || value === '') {
+      return null;
+    }
+
+    const parsed =
+      typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new BadRequestException(
+        `${fieldName} must be a non-negative number`,
       );
     }
 
