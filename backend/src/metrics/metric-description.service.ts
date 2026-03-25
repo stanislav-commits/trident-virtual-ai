@@ -1,66 +1,62 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
+import { GrafanaLlmService } from '../grafana-llm/grafana-llm.service';
 import type { InfluxMetric } from '../influxdb/influxdb.service';
+import {
+  buildMetricDescriptionPrompt,
+  normalizeMetricDescriptionResponse,
+} from './metric-description.prompts';
+
+type MetricDescriptionProvider = 'auto' | 'grafana' | 'openai';
 
 @Injectable()
 export class MetricDescriptionService {
   private readonly logger = new Logger(MetricDescriptionService.name);
-  private readonly model = process.env.LLM_MODEL || 'gpt-4o-mini';
-  private readonly client = process.env.OPENAI_API_KEY
+  private readonly provider = this.readProvider();
+  private readonly openAiModel = process.env.LLM_MODEL || 'gpt-4o-mini';
+  private readonly openAiClient = process.env.OPENAI_API_KEY
     ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
     : null;
 
+  constructor(private readonly grafanaLlm: GrafanaLlmService) {}
+
   isConfigured(): boolean {
-    return Boolean(this.client);
+    if (this.provider === 'grafana') {
+      return this.grafanaLlm.isConfigured();
+    }
+
+    if (this.provider === 'openai') {
+      return Boolean(this.openAiClient);
+    }
+
+    return this.grafanaLlm.isConfigured() || Boolean(this.openAiClient);
   }
 
   async generateDescription(metric: InfluxMetric): Promise<string | null> {
+    if (this.provider === 'grafana') {
+      return this.generateViaGrafana(metric);
+    }
+
+    if (this.provider === 'openai') {
+      return this.generateViaOpenAi(metric);
+    }
+
     const deterministic = this.buildDeterministicDescription(metric);
     if (deterministic) {
       return deterministic;
     }
 
-    if (!this.client) {
-      return this.buildFallbackDescription(metric);
+    for (const provider of this.getProviderOrder()) {
+      const description =
+        provider === 'grafana'
+          ? await this.generateViaGrafana(metric)
+          : await this.generateViaOpenAi(metric);
+      if (description) {
+        return description;
+      }
     }
 
-    try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        temperature: 0.2,
-        max_tokens: 80,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You write concise telemetry metric descriptions for marine dashboards. ' +
-              'Use the provided key, bucket, measurement, field, and label. ' +
-              'Treat bucket and measurement as grouping context only; prefer field and label when they conflict. ' +
-              'Do not infer temperature, pressure, level, or status from a grouping name alone. ' +
-              'If the field or label looks like a dedicated tank identifier such as Fuel_Tank_1P, describe it as a tank reading unless the field or label explicitly says temperature. ' +
-              'Do not mention InfluxDB. Do not overclaim when meaning is unclear. ' +
-              'Return plain text only, one short sentence, maximum 18 words.',
-          },
-          {
-            role: 'user',
-            content: JSON.stringify({
-              key: metric.key,
-              bucket: metric.bucket,
-              measurement: metric.measurement,
-              field: metric.field,
-              label: metric.label,
-            }),
-          },
-        ],
-      });
-
-      return response.choices[0]?.message?.content?.trim() || null;
-    } catch (error) {
-      this.logger.warn(
-        `Metric description generation failed for ${metric.key}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return null;
-    }
+    return this.buildFallbackDescription(metric);
   }
 
   private buildDeterministicDescription(metric: InfluxMetric): string | null {
@@ -124,6 +120,68 @@ export class MetricDescriptionService {
     }
 
     return `Displays the current ${subject} reading.`;
+  }
+
+  private readProvider(): MetricDescriptionProvider {
+    const value =
+      process.env.METRIC_DESCRIPTION_PROVIDER?.trim().toLowerCase() || 'auto';
+
+    if (value === 'auto' || value === 'grafana' || value === 'openai') {
+      return value;
+    }
+
+    this.logger.warn(
+      `Ignoring unsupported METRIC_DESCRIPTION_PROVIDER="${value}", using "auto"`,
+    );
+    return 'auto';
+  }
+
+  private getProviderOrder(): Array<Exclude<MetricDescriptionProvider, 'auto'>> {
+    return ['grafana', 'openai'];
+  }
+
+  private async generateViaGrafana(metric: InfluxMetric): Promise<string | null> {
+    if (!this.grafanaLlm.isConfigured()) {
+      return null;
+    }
+
+    const prompt = buildMetricDescriptionPrompt(metric);
+    const raw = await this.grafanaLlm.createChatCompletion({
+      systemPrompt: prompt.systemPrompt,
+      userPrompt: prompt.userPrompt,
+      temperature: prompt.temperature,
+      maxTokens: prompt.maxTokens,
+    });
+    return normalizeMetricDescriptionResponse(raw);
+  }
+
+  private async generateViaOpenAi(metric: InfluxMetric): Promise<string | null> {
+    if (!this.openAiClient) {
+      return null;
+    }
+
+    const prompt = buildMetricDescriptionPrompt(metric);
+
+    try {
+      const response = await this.openAiClient.chat.completions.create({
+        model: this.openAiModel,
+        temperature: prompt.temperature,
+        max_tokens: prompt.maxTokens,
+        messages: [
+          { role: 'system', content: prompt.systemPrompt },
+          { role: 'user', content: prompt.userPrompt },
+        ],
+      });
+
+      return normalizeMetricDescriptionResponse(
+        response.choices[0]?.message?.content?.trim() || null,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Metric description generation failed for ${metric.key}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
   private extractPrimarySubject(metric: InfluxMetric): string | null {
