@@ -39,6 +39,11 @@ interface SyncShipMetricsOptions {
   syncValues?: boolean;
 }
 
+interface DescriptionBackfillBatchResult {
+  generated: number;
+  cooldownMs: number;
+}
+
 interface ShipMetricsSyncJob {
   shipId: string;
   organizationName: string;
@@ -79,6 +84,9 @@ export class MetricsService implements OnModuleInit {
   private readonly logger = new Logger(MetricsService.name);
   private isDescriptionBackfillRunning = false;
   private shouldRerunDescriptionBackfill = false;
+  private descriptionBackfillResumeTimer: ReturnType<typeof setTimeout> | null =
+    null;
+  private descriptionBackfillResumeAt = 0;
   private isShipSyncRunning = false;
   private readonly queuedShipSyncs = new Map<string, ShipMetricsSyncJob>();
   private readonly shipSyncOrder: string[] = [];
@@ -155,8 +163,8 @@ export class MetricsService implements OnModuleInit {
         ship.id,
         organizationName,
         {
-        metrics,
-        scheduleDescriptions: false,
+          metrics,
+          scheduleDescriptions: false,
         },
       );
 
@@ -223,9 +231,7 @@ export class MetricsService implements OnModuleInit {
     for (const [organizationName, organizationShips] of shipsByOrganization) {
       const organizationMetricKeys = [
         ...new Set(
-          organizationShips.flatMap((ship) =>
-            ship.metricKeys.filter(Boolean),
-          ),
+          organizationShips.flatMap((ship) => ship.metricKeys.filter(Boolean)),
         ),
       ];
       if (!organizationMetricKeys.length) continue;
@@ -269,10 +275,14 @@ export class MetricsService implements OnModuleInit {
     const metrics =
       options.metrics ??
       (await this.listOrganizationMetrics(normalizedOrganizationName));
-    const result = await this.syncShipMetricCatalog(shipId, normalizedOrganizationName, {
-      ...options,
-      metrics,
-    });
+    const result = await this.syncShipMetricCatalog(
+      shipId,
+      normalizedOrganizationName,
+      {
+        ...options,
+        metrics,
+      },
+    );
 
     let valuesUpdated = 0;
     if (options.syncValues !== false) {
@@ -668,11 +678,14 @@ export class MetricsService implements OnModuleInit {
       (entry.measurement && entry.field
         ? `${entry.measurement}.${entry.field}`
         : entry.label || entry.key);
+    const descriptionSummary = this.getTelemetryDescriptionSummary(
+      entry.description,
+    );
 
     const extras = dedicatedTankLabel
       ? [entry.unit ? `Unit: ${entry.unit}` : ''].filter(Boolean)
       : [
-          entry.description,
+          descriptionSummary,
           entry.bucket ? `Bucket: ${entry.bucket}` : '',
           entry.unit ? `Unit: ${entry.unit}` : '',
         ].filter(
@@ -683,6 +696,29 @@ export class MetricsService implements OnModuleInit {
         );
 
     return [primary, ...extras].filter(Boolean).join(' — ');
+  }
+
+  private getTelemetryDescriptionSummary(
+    description?: string | null,
+  ): string | null {
+    if (!description?.trim()) {
+      return null;
+    }
+
+    const firstLine = description
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .find(Boolean);
+    if (!firstLine) {
+      return null;
+    }
+
+    if (firstLine.length <= 160) {
+      return firstLine;
+    }
+
+    return `${firstLine.slice(0, 157).trimEnd()}...`;
   }
 
   private findRelevantTelemetryEntries(
@@ -776,10 +812,14 @@ export class MetricsService implements OnModuleInit {
       resolvedSubjectQuery,
     );
     const scored = this.getScoredTelemetryEntries(entries, querySignals)
-      .filter((candidate) => this.getTelemetryCoordinateKinds(candidate.entry).size > 0)
+      .filter(
+        (candidate) =>
+          this.getTelemetryCoordinateKinds(candidate.entry).size > 0,
+      )
       .sort(
         (left, right) =>
-          right.score - left.score || left.entry.key.localeCompare(right.entry.key),
+          right.score - left.score ||
+          left.entry.key.localeCompare(right.entry.key),
       );
 
     if (scored.length === 0) {
@@ -842,9 +882,8 @@ export class MetricsService implements OnModuleInit {
     );
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
     const queryKinds = this.extractTelemetryMeasurementKinds(searchSpace);
-    const wantsHours = /\b(hours?|runtime|running|hour\s*meter|operating)\b/i.test(
-      searchSpace,
-    );
+    const wantsHours =
+      /\b(hours?|runtime|running|hour\s*meter|operating)\b/i.test(searchSpace);
     const wantsCurrentValue = queryKinds.size > 0;
 
     const filtered = entries.filter((entry) => {
@@ -1059,7 +1098,11 @@ export class MetricsService implements OnModuleInit {
 
   private scoreTelemetryEntry(
     entry: ShipTelemetryEntry,
-    querySignals: { normalizedQuery: string; tokens: string[]; phrases: string[] },
+    querySignals: {
+      normalizedQuery: string;
+      tokens: string[];
+      phrases: string[];
+    },
   ): number {
     const haystack = this.buildTelemetryHaystack(entry);
     const query = querySignals.normalizedQuery;
@@ -1206,7 +1249,11 @@ export class MetricsService implements OnModuleInit {
 
   private getScoredTelemetryEntries(
     entries: ShipTelemetryEntry[],
-    querySignals: { normalizedQuery: string; tokens: string[]; phrases: string[] },
+    querySignals: {
+      normalizedQuery: string;
+      tokens: string[];
+      phrases: string[];
+    },
   ): Array<{ entry: ShipTelemetryEntry; score: number }> {
     return entries
       .map((entry) => ({
@@ -1216,13 +1263,18 @@ export class MetricsService implements OnModuleInit {
       .filter((candidate) => candidate.score > 0)
       .sort(
         (left, right) =>
-          right.score - left.score || left.entry.key.localeCompare(right.entry.key),
+          right.score - left.score ||
+          left.entry.key.localeCompare(right.entry.key),
       );
   }
 
   private filterTelemetryCandidatesByQuery(
     scored: Array<{ entry: ShipTelemetryEntry; score: number }>,
-    querySignals: { normalizedQuery: string; tokens: string[]; phrases: string[] },
+    querySignals: {
+      normalizedQuery: string;
+      tokens: string[];
+      phrases: string[];
+    },
   ): Array<{ entry: ShipTelemetryEntry; score: number }> {
     if (scored.length === 0) {
       return [];
@@ -1311,14 +1363,18 @@ export class MetricsService implements OnModuleInit {
       aggregateFluid &&
       this.isAggregateStoredFluidQuery(normalizedQuery, aggregateFluid) &&
       entries.length > 0 &&
-      entries.every((entry) => this.isDirectTankStorageEntry(entry, aggregateFluid))
+      entries.every((entry) =>
+        this.isDirectTankStorageEntry(entry, aggregateFluid),
+      )
     ) {
       return 'direct';
     }
 
     if (this.isTelemetryLocationQuery(normalizedQuery)) {
       const coordinateKinds = new Set(
-        entries.flatMap((entry) => [...this.getTelemetryCoordinateKinds(entry)]),
+        entries.flatMap((entry) => [
+          ...this.getTelemetryCoordinateKinds(entry),
+        ]),
       );
       if (coordinateKinds.size > 0) {
         return 'direct';
@@ -1377,8 +1433,12 @@ export class MetricsService implements OnModuleInit {
     const hasDirectSubjectAndKind = entries.some((entry) => {
       const haystack = this.buildTelemetryHaystack(entry);
       const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
-      const matchesSubject = subjectTokens.some((token) => haystack.includes(token));
-      return matchesSubject && [...queryKinds].some((kind) => entryKinds.has(kind));
+      const matchesSubject = subjectTokens.some((token) =>
+        haystack.includes(token),
+      );
+      return (
+        matchesSubject && [...queryKinds].some((kind) => entryKinds.has(kind))
+      );
     });
 
     return hasDirectSubjectAndKind ? 'direct' : 'related';
@@ -1415,7 +1475,9 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): boolean {
-    if (this.getRequestedTelemetrySampleSize(query, resolvedSubjectQuery) != null) {
+    if (
+      this.getRequestedTelemetrySampleSize(query, resolvedSubjectQuery) != null
+    ) {
       return false;
     }
 
@@ -1467,7 +1529,9 @@ export class MetricsService implements OnModuleInit {
         searchSpace,
       );
 
-    return mentionsTelemetrySignal && (asksForReading || asksForActionFromReading);
+    return (
+      mentionsTelemetrySignal && (asksForReading || asksForActionFromReading)
+    );
   }
 
   private buildTelemetryClarificationActions(
@@ -1578,7 +1642,10 @@ export class MetricsService implements OnModuleInit {
       [/\b(flow|rate)\b/i, 'flow'],
       [/\b(runtime|running|hours?|hour\s*meter)\b/i, 'hours'],
       [/\b(status(?:es)?|state(?:s)?)\b/i, 'status'],
-      [/\b(latitude|longitude|coordinates?|position|gps|location|lat|lon)\b/i, 'location'],
+      [
+        /\b(latitude|longitude|coordinates?|position|gps|location|lat|lon)\b/i,
+        'location',
+      ],
     ];
 
     for (const [pattern, label] of checks) {
@@ -1591,8 +1658,7 @@ export class MetricsService implements OnModuleInit {
     const asksForStoredQuantity =
       /\b(how much|how many|onboard|remaining|left|available)\b/i.test(
         normalized,
-      ) &&
-      /\b(fuel|oil|coolant|water|tank|def|urea)\b/i.test(normalized);
+      ) && /\b(fuel|oil|coolant|water|tank|def|urea)\b/i.test(normalized);
     if (asksForStoredQuantity) {
       kinds.add('level');
     }
@@ -1604,12 +1670,10 @@ export class MetricsService implements OnModuleInit {
     const looksLikeTankQuantity =
       /\btank\b/i.test(normalized) &&
       /\b(fuel|oil|coolant|water|def|urea)\b/i.test(normalized) &&
-      (
-        /\b(l|lt|ltr|liters?|litres?|gal|gallons?|m3|m 3)\b/i.test(normalized) ||
+      (/\b(l|lt|ltr|liters?|litres?|gal|gallons?|m3|m 3)\b/i.test(normalized) ||
         /\b(volume|quantity|contents?|remaining|available|onboard)\b/i.test(
           normalized,
-        )
-      ) &&
+        )) &&
       !/\b(used|consumed|consumption|rate|flow|pressure|temp|temperature)\b/i.test(
         normalized,
       );
@@ -1620,8 +1684,7 @@ export class MetricsService implements OnModuleInit {
     const hasQuantityUnit =
       /\b(l|lt|ltr|liters?|litres?|percent|percentage|%|gal|gallons?|m3|m 3)\b/i.test(
         normalized,
-      ) &&
-      !/\b(used|consumed|consumption|rate|flow)\b/i.test(normalized);
+      ) && !/\b(used|consumed|consumption|rate|flow)\b/i.test(normalized);
     if (hasQuantityUnit) {
       kinds.add('level');
     }
@@ -1641,7 +1704,7 @@ export class MetricsService implements OnModuleInit {
         entry.unit,
       ]
         .filter(Boolean)
-      .join(' '),
+        .join(' '),
     );
   }
 
@@ -1827,7 +1890,8 @@ export class MetricsService implements OnModuleInit {
     if (/\boil\b/i.test(normalizedQuery)) return 'oil';
     if (/\bcoolant\b/i.test(normalizedQuery)) return 'coolant';
     if (/\b(def|urea)\b/i.test(normalizedQuery)) return 'def';
-    if (/\b(water|fresh water|seawater)\b/i.test(normalizedQuery)) return 'water';
+    if (/\b(water|fresh water|seawater)\b/i.test(normalizedQuery))
+      return 'water';
     return null;
   }
 
@@ -1838,8 +1902,7 @@ export class MetricsService implements OnModuleInit {
     const asksForQuantity =
       /\b(how much|how many|total|sum|overall|combined|together|calculate)\b/i.test(
         normalizedQuery,
-      ) ||
-      /\b(onboard|remaining|left|available)\b/i.test(normalizedQuery);
+      ) || /\b(onboard|remaining|left|available)\b/i.test(normalizedQuery);
     if (!asksForQuantity) {
       return false;
     }
@@ -1861,8 +1924,8 @@ export class MetricsService implements OnModuleInit {
       fluid === 'water'
         ? /\b(water|fresh water|seawater)\b/i
         : fluid === 'def'
-            ? /\b(def|urea)\b/i
-            : new RegExp(`\\b${fluid}\\b`, 'i');
+          ? /\b(def|urea)\b/i
+          : new RegExp(`\\b${fluid}\\b`, 'i');
 
     if (this.isDedicatedTankStorageField(entry, fluid)) {
       return true;
@@ -1879,7 +1942,9 @@ export class MetricsService implements OnModuleInit {
     );
   }
 
-  private getDedicatedTankDisplayLabel(entry: ShipTelemetryEntry): string | null {
+  private getDedicatedTankDisplayLabel(
+    entry: ShipTelemetryEntry,
+  ): string | null {
     const fieldText = this.getDedicatedTankFieldText(entry);
     if (!fieldText) {
       return null;
@@ -1890,9 +1955,7 @@ export class MetricsService implements OnModuleInit {
 
   private getDedicatedTankFieldText(entry: ShipTelemetryEntry): string | null {
     const rawField =
-      entry.field?.trim() ||
-      entry.label?.split('.').slice(-1)[0]?.trim() ||
-      '';
+      entry.field?.trim() || entry.label?.split('.').slice(-1)[0]?.trim() || '';
     if (!rawField) {
       return null;
     }
@@ -2109,6 +2172,12 @@ export class MetricsService implements OnModuleInit {
       return;
     }
 
+    const cooldownMs = this.metricDescriptions.getBackfillCooldownMs();
+    if (cooldownMs > 0) {
+      this.scheduleDescriptionBackfillResume(cooldownMs, trigger);
+      return;
+    }
+
     if (this.isDescriptionBackfillRunning) {
       this.shouldRerunDescriptionBackfill = true;
       return;
@@ -2122,12 +2191,16 @@ export class MetricsService implements OnModuleInit {
 
   private async runDescriptionBackfill(trigger: string): Promise<void> {
     let generated = 0;
+    let cooldownMs = 0;
 
     try {
       do {
         this.shouldRerunDescriptionBackfill = false;
-        generated += await this.generateMissingDescriptionsSequentially();
-      } while (this.shouldRerunDescriptionBackfill);
+        const batchResult =
+          await this.generateMissingDescriptionsSequentially();
+        generated += batchResult.generated;
+        cooldownMs = batchResult.cooldownMs;
+      } while (this.shouldRerunDescriptionBackfill && cooldownMs === 0);
 
       if (generated > 0) {
         this.logger.log(
@@ -2141,15 +2214,23 @@ export class MetricsService implements OnModuleInit {
       );
     } finally {
       this.isDescriptionBackfillRunning = false;
+      if (cooldownMs > 0) {
+        this.scheduleDescriptionBackfillResume(cooldownMs, trigger);
+      }
       if (this.shouldRerunDescriptionBackfill) {
         this.scheduleDescriptionBackfill('rerun');
       }
     }
   }
 
-  private async generateMissingDescriptionsSequentially(): Promise<number> {
+  private async generateMissingDescriptionsSequentially(): Promise<DescriptionBackfillBatchResult> {
     if (!this.metricDescriptions.isConfigured()) {
-      return 0;
+      return { generated: 0, cooldownMs: 0 };
+    }
+
+    const initialCooldownMs = this.metricDescriptions.getBackfillCooldownMs();
+    if (initialCooldownMs > 0) {
+      return { generated: 0, cooldownMs: initialCooldownMs };
     }
 
     const definitions = await this.prisma.metricDefinition.findMany({
@@ -2165,23 +2246,31 @@ export class MetricsService implements OnModuleInit {
         bucket: true,
         measurement: true,
         field: true,
+        unit: true,
       },
       orderBy: [{ lastSeenAt: 'desc' }, { key: 'asc' }],
     });
-    if (!definitions.length) return 0;
+    if (!definitions.length) return { generated: 0, cooldownMs: 0 };
 
     let generated = 0;
 
     for (const definition of definitions) {
-      const description =
-        await this.metricDescriptions.generateDescription({
-          key: definition.key,
-          label: definition.label,
-          bucket: definition.bucket ?? '',
-          measurement: definition.measurement ?? '',
-          field: definition.field ?? '',
-        });
-      if (!description) continue;
+      const description = await this.metricDescriptions.generateDescription({
+        key: definition.key,
+        label: definition.label,
+        bucket: definition.bucket ?? '',
+        measurement: definition.measurement ?? '',
+        field: definition.field ?? '',
+        unit: definition.unit,
+      });
+      if (!description) {
+        const cooldownMs = this.metricDescriptions.getBackfillCooldownMs();
+        if (cooldownMs > 0) {
+          return { generated, cooldownMs };
+        }
+
+        continue;
+      }
 
       const result = await this.prisma.metricDefinition.updateMany({
         where: {
@@ -2193,7 +2282,37 @@ export class MetricsService implements OnModuleInit {
       generated += result.count;
     }
 
-    return generated;
+    return { generated, cooldownMs: 0 };
+  }
+
+  private scheduleDescriptionBackfillResume(
+    cooldownMs: number,
+    trigger: string,
+  ) {
+    const resumeAt = Date.now() + cooldownMs;
+    if (
+      this.descriptionBackfillResumeTimer &&
+      this.descriptionBackfillResumeAt >= resumeAt
+    ) {
+      return;
+    }
+
+    if (this.descriptionBackfillResumeTimer) {
+      clearTimeout(this.descriptionBackfillResumeTimer);
+    }
+
+    this.descriptionBackfillResumeAt = resumeAt;
+    this.descriptionBackfillResumeTimer = setTimeout(() => {
+      this.descriptionBackfillResumeTimer = null;
+      this.descriptionBackfillResumeAt = 0;
+      this.scheduleDescriptionBackfill(`${trigger}:cooldown-expired`);
+    }, cooldownMs);
+
+    this.logger.log(
+      `Metric description backfill paused for ${Math.ceil(
+        cooldownMs / 1000,
+      )}s due to Grafana LLM cooldown (trigger=${trigger}).`,
+    );
   }
 
   private async upsertSyncedMetric(metric: InfluxMetric, now: Date) {

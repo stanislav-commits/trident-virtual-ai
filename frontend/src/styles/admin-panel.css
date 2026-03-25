@@ -458,6 +458,13 @@
   font-size: 0.85rem;
   color: var(--chat-text-muted);
   line-height: 1.4;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.admin-panel__metric-description-text {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .admin-panel__select option {
@@ -738,7 +745,11 @@
   border-radius: 20px;
   border: 1px solid var(--chat-border);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.006)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.018),
+      rgba(255, 255, 255, 0.006)
+    ),
     var(--chat-surface);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
@@ -866,7 +877,8 @@
   scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
 }
 
-[data-theme="light"] .admin-panel__knowledge-base-tabs::-webkit-scrollbar-thumb {
+[data-theme="light"]
+  .admin-panel__knowledge-base-tabs::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.5);
 }
 
@@ -883,7 +895,11 @@
 [data-theme="light"] .admin-panel__knowledge-base-nav {
   border-color: rgba(203, 213, 225, 0.92);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(248, 250, 252, 0.94)
+    ),
     rgba(255, 255, 255, 0.92);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.92),
@@ -2225,8 +2241,12 @@
   border-radius: 14px;
 }
 
-.admin-panel__metrics-group-table-wrap .admin-panel__td:first-child .admin-panel__code-inline,
-.admin-panel__metrics-group-table-wrap .admin-panel__td:nth-child(2) .admin-panel__code-inline {
+.admin-panel__metrics-group-table-wrap
+  .admin-panel__td:first-child
+  .admin-panel__code-inline,
+.admin-panel__metrics-group-table-wrap
+  .admin-panel__td:nth-child(2)
+  .admin-panel__code-inline {
   max-width: min(100%, 22rem);
 }
 
@@ -2234,7 +2254,10 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
-[data-theme="light"] .admin-panel__metrics-group-table-wrap .admin-panel__row:hover .admin-panel__td {
+[data-theme="light"]
+  .admin-panel__metrics-group-table-wrap
+  .admin-panel__row:hover
+  .admin-panel__td {
   background: rgba(37, 99, 235, 0.045);
 }
 

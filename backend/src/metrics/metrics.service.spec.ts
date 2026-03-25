@@ -31,7 +31,8 @@ describe('MetricsService telemetry matching', () => {
         valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
         metric: {
           label: 'Tanks-Temperatures.Fuel_Tank_4S',
-          description: 'Displays the temperature of Fuel Tank 4S in trending data.',
+          description:
+            'Displays the temperature of Fuel Tank 4S in trending data.',
           unit: 'C',
           bucket: 'Trending',
           measurement: 'Tanks-Temperatures',
@@ -77,6 +78,41 @@ describe('MetricsService telemetry matching', () => {
     expect(Object.keys(result.telemetry)).toHaveLength(1);
     expect(Object.keys(result.telemetry)[0]).toContain('Fuel Tank 4S');
     expect(Object.values(result.telemetry)[0]).toBe(18.2);
+  });
+
+  it('uses only the first rich description line in telemetry labels', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::performance::velocityMadeGood',
+        latestValue: 12.6,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'performance.velocityMadeGood.value',
+          description:
+            'Velocity Made Good (VMG) is a standard marine navigation metric defined by the NMEA specification.\n' +
+            "What it measures: The vessel's effective speed toward the active waypoint.\n" +
+            'Unit: Knots (kn)',
+          unit: null,
+          bucket: 'NMEA',
+          measurement: 'performance.velocityMadeGood',
+          field: 'value',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'velocity made good',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    const [telemetryLabel] = Object.keys(result.telemetry);
+    expect(telemetryLabel).toContain(
+      'Velocity Made Good (VMG) is a standard marine navigation metric defined by the NMEA specification.',
+    );
+    expect(telemetryLabel).not.toContain('What it measures:');
+    expect(telemetryLabel).not.toContain('Unit: Knots (kn)');
   });
 
   it('matches current level questions by description terms instead of returning the whole telemetry dump', async () => {
@@ -359,7 +395,7 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(true);
   });
 
-  it("prefers the captain cabin room temperature over captain cabin electrical metrics", async () => {
+  it('prefers the captain cabin room temperature over captain cabin electrical metrics', async () => {
     const service = buildService([
       {
         metricKey: 'Trending::CAPTAIN-CABIN::Active power on phase A',
@@ -395,8 +431,7 @@ describe('MetricsService telemetry matching', () => {
         valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
         metric: {
           label: 'HVAC-Captain.Room Temperature',
-          description:
-            'This is the Captains cabin room temperature (temp).',
+          description: 'This is the Captains cabin room temperature (temp).',
           unit: 'C',
           bucket: 'Trending',
           measurement: 'HVAC-Captain',
@@ -486,10 +521,14 @@ describe('MetricsService telemetry matching', () => {
     expect(result.prefiltered).toBe(true);
     expect(result.matchMode).toBe('related');
     expect(
-      Object.keys(result.telemetry).every((key) => !key.includes('DEF Tank level')),
+      Object.keys(result.telemetry).every(
+        (key) => !key.includes('DEF Tank level'),
+      ),
     ).toBe(true);
     expect(
-      Object.keys(result.telemetry).some((key) => key.includes('Fuel Pressure')),
+      Object.keys(result.telemetry).some((key) =>
+        key.includes('Fuel Pressure'),
+      ),
     ).toBe(true);
     expect(result.clarification).not.toBeNull();
     expect(result.clarification?.pendingQuery).toBe(
@@ -671,7 +710,8 @@ describe('MetricsService telemetry matching', () => {
         valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
         metric: {
           label: 'SIEMENS-MASE-GENSET-PS.Total Fuel Used (l)',
-          description: 'Displays the total fuel used by the port genset in liters.',
+          description:
+            'Displays the total fuel used by the port genset in liters.',
           unit: 'l',
           bucket: 'Trending',
           measurement: 'SIEMENS-MASE-GENSET-PS',
@@ -702,7 +742,8 @@ describe('MetricsService telemetry matching', () => {
         valueUpdatedAt: new Date('2026-03-22T11:16:45.223Z'),
         metric: {
           label: 'Tanks-Temperatures.Fuel_Tank_1P',
-          description: 'Displays the temperature of Fuel Tank 1P in trending data.',
+          description:
+            'Displays the temperature of Fuel Tank 1P in trending data.',
           unit: null,
           bucket: 'Trending',
           measurement: 'Tanks-Temperatures',
@@ -715,7 +756,8 @@ describe('MetricsService telemetry matching', () => {
         valueUpdatedAt: new Date('2026-03-22T11:16:45.223Z'),
         metric: {
           label: 'Tanks-Temperatures.Fuel_Tank_2S',
-          description: 'Displays the temperature of Fuel Tank 2S in trending data.',
+          description:
+            'Displays the temperature of Fuel Tank 2S in trending data.',
           unit: null,
           bucket: 'Trending',
           measurement: 'Tanks-Temperatures',
@@ -890,7 +932,8 @@ describe('MetricsService telemetry matching', () => {
           valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
           metric: {
             label: 'SIEMENS-MASE-GENSET-PS.Oil Pressure (bar)',
-            description: 'Displays the oil pressure in bars for the port genset.',
+            description:
+              'Displays the oil pressure in bars for the port genset.',
             unit: 'bar',
             bucket: 'Trending',
             measurement: 'SIEMENS-MASE-GENSET-PS',
@@ -927,7 +970,10 @@ describe('MetricsService telemetry matching', () => {
         },
       ]);
 
-      const result = await service.getShipTelemetryContextForQuery('ship-1', query);
+      const result = await service.getShipTelemetryContextForQuery(
+        'ship-1',
+        query,
+      );
 
       expect(result.prefiltered).toBe(true);
       expect(result.matchMode).toBe('related');
@@ -954,7 +1000,8 @@ describe('MetricsService telemetry matching', () => {
         valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
         metric: {
           label: 'SIEMENS-MASE-GENSET-PS.Fuel Pressure (bar)',
-          description: 'Displays the fuel pressure in bars for the port genset.',
+          description:
+            'Displays the fuel pressure in bars for the port genset.',
           unit: 'bar',
           bucket: 'Trending',
           measurement: 'SIEMENS-MASE-GENSET-PS',

@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { GrafanaLlmService } from '../grafana-llm/grafana-llm.service';
-import type { InfluxMetric } from '../influxdb/influxdb.service';
 import {
   buildMetricDescriptionPrompt,
+  type MetricDescriptionInput,
   normalizeMetricDescriptionResponse,
 } from './metric-description.prompts';
 
@@ -32,7 +32,21 @@ export class MetricDescriptionService {
     return this.grafanaLlm.isConfigured() || Boolean(this.openAiClient);
   }
 
-  async generateDescription(metric: InfluxMetric): Promise<string | null> {
+  getBackfillCooldownMs(): number {
+    if (this.provider === 'grafana') {
+      return this.grafanaLlm.getCooldownRemainingMs();
+    }
+
+    if (this.provider === 'openai') {
+      return 0;
+    }
+
+    return this.openAiClient ? 0 : this.grafanaLlm.getCooldownRemainingMs();
+  }
+
+  async generateDescription(
+    metric: MetricDescriptionInput,
+  ): Promise<string | null> {
     if (this.provider === 'grafana') {
       return this.generateViaGrafana(metric);
     }
@@ -59,7 +73,9 @@ export class MetricDescriptionService {
     return this.buildFallbackDescription(metric);
   }
 
-  private buildDeterministicDescription(metric: InfluxMetric): string | null {
+  private buildDeterministicDescription(
+    metric: MetricDescriptionInput,
+  ): string | null {
     const primaryText = this.normalizeText(
       [metric.field, metric.label, metric.key].filter(Boolean).join(' '),
     );
@@ -94,7 +110,11 @@ export class MetricDescriptionService {
     if (/\b(current|amperage|amps?|amp)\b/.test(primaryText)) {
       return `Displays the current ${subject} current.`;
     }
-    if (/\b(level|quantity|volume|contents?|remaining|available)\b/.test(primaryText)) {
+    if (
+      /\b(level|quantity|volume|contents?|remaining|available)\b/.test(
+        primaryText,
+      )
+    ) {
       return `Displays the current ${subject} level.`;
     }
     if (/\b(rate|flow|consumption|used)\b/.test(primaryText)) {
@@ -113,7 +133,9 @@ export class MetricDescriptionService {
     return null;
   }
 
-  private buildFallbackDescription(metric: InfluxMetric): string | null {
+  private buildFallbackDescription(
+    metric: MetricDescriptionInput,
+  ): string | null {
     const subject = this.extractPrimarySubject(metric);
     if (!subject) {
       return null;
@@ -136,11 +158,15 @@ export class MetricDescriptionService {
     return 'auto';
   }
 
-  private getProviderOrder(): Array<Exclude<MetricDescriptionProvider, 'auto'>> {
+  private getProviderOrder(): Array<
+    Exclude<MetricDescriptionProvider, 'auto'>
+  > {
     return ['grafana', 'openai'];
   }
 
-  private async generateViaGrafana(metric: InfluxMetric): Promise<string | null> {
+  private async generateViaGrafana(
+    metric: MetricDescriptionInput,
+  ): Promise<string | null> {
     if (!this.grafanaLlm.isConfigured()) {
       return null;
     }
@@ -155,7 +181,9 @@ export class MetricDescriptionService {
     return normalizeMetricDescriptionResponse(raw);
   }
 
-  private async generateViaOpenAi(metric: InfluxMetric): Promise<string | null> {
+  private async generateViaOpenAi(
+    metric: MetricDescriptionInput,
+  ): Promise<string | null> {
     if (!this.openAiClient) {
       return null;
     }
@@ -184,7 +212,7 @@ export class MetricDescriptionService {
     }
   }
 
-  private extractPrimarySubject(metric: InfluxMetric): string | null {
+  private extractPrimarySubject(metric: MetricDescriptionInput): string | null {
     const rawSubject =
       this.pickPrimaryMetricText(metric.field) ??
       this.pickPrimaryMetricText(metric.label) ??
@@ -203,11 +231,7 @@ export class MetricDescriptionService {
       .trim();
 
     const display = normalized || this.normalizeText(rawSubject);
-    const limited = display
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 4)
-      .join(' ');
+    const limited = display.split(/\s+/).filter(Boolean).slice(0, 4).join(' ');
 
     return limited || null;
   }
@@ -225,7 +249,9 @@ export class MetricDescriptionService {
     return value.trim();
   }
 
-  private getDedicatedTankDisplayLabel(metric: InfluxMetric): string | null {
+  private getDedicatedTankDisplayLabel(
+    metric: MetricDescriptionInput,
+  ): string | null {
     const rawField =
       metric.field?.trim() ||
       metric.label?.split('.').slice(-1)[0]?.trim() ||

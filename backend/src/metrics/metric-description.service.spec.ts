@@ -98,7 +98,7 @@ describe('MetricDescriptionService', () => {
     const createChatCompletion = jest
       .fn()
       .mockResolvedValue(
-        'VMG is the vessel speed made good toward the waypoint. It accounts for heading and speed.',
+        'Velocity Made Good (VMG) is a standard marine navigation metric defined by the NMEA specification.\n\nWhat it measures: The vessel speed made good toward the active waypoint.\nUnit: Knots (kn)',
       );
     const service = new MetricDescriptionService({
       isConfigured: () => true,
@@ -112,8 +112,13 @@ describe('MetricDescriptionService', () => {
         measurement: 'performance',
         field: 'velocityMadeGood',
         label: 'performance.velocityMadeGood',
+        unit: 'kn',
       }),
-    ).resolves.toBe('VMG is the vessel speed made good toward the waypoint.');
+    ).resolves.toBe(
+      'Velocity Made Good (VMG) is a standard marine navigation metric defined by the NMEA specification.\n' +
+        'What it measures: The vessel speed made good toward the active waypoint.\n' +
+        'Unit: Knots (kn)',
+    );
 
     expect(createChatCompletion).toHaveBeenCalledTimes(1);
   });
@@ -123,7 +128,9 @@ describe('MetricDescriptionService', () => {
 
     const createChatCompletion = jest
       .fn()
-      .mockResolvedValue('Reports the vessel latitude used for navigation fixes.');
+      .mockResolvedValue(
+        'Reports the vessel latitude used for navigation fixes.',
+      );
     const service = new MetricDescriptionService({
       isConfigured: () => true,
       createChatCompletion,
@@ -140,6 +147,32 @@ describe('MetricDescriptionService', () => {
     ).resolves.toBe('Reports the vessel latitude used for navigation fixes.');
 
     expect(createChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalizes inline sections into structured rich descriptions', async () => {
+    const createChatCompletion = jest
+      .fn()
+      .mockResolvedValue(
+        "Velocity Made Good (VMG) is a standard marine navigation metric defined by the NMEA specification. What it measures: The vessel's effective speed toward its destination. Unit: Knots (kn)",
+      );
+    const service = new MetricDescriptionService({
+      isConfigured: () => true,
+      createChatCompletion,
+    } as unknown as GrafanaLlmService);
+
+    await expect(
+      service.generateDescription({
+        key: 'NMEA::performance::velocityMadeGood',
+        bucket: 'NMEA',
+        measurement: 'performance',
+        field: 'velocityMadeGood',
+        label: 'performance.velocityMadeGood',
+      }),
+    ).resolves.toBe(
+      'Velocity Made Good (VMG) is a standard marine navigation metric defined by the NMEA specification.\n' +
+        "What it measures: The vessel's effective speed toward its destination.\n" +
+        'Unit: Knots (kn)',
+    );
   });
 
   it('does not treat OpenAI as configured when provider=grafana', () => {
