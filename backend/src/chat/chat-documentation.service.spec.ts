@@ -664,4 +664,121 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     ).toBe(true);
     expect(result.resolvedSubjectQuery).toBe(resolvedSubjectQuery);
   });
+
+  it('preserves broad certificate analysis citations before later intent narrowing', async () => {
+    const initialCitations: ChatCitation[] = [
+      {
+        sourceTitle: 'FA170_OME44900J.pdf',
+        sourceCategory: 'MANUALS',
+        snippet:
+          'bearing to a target are updated. However, target order is not updated.',
+        score: 0.91,
+      },
+    ];
+    const certificateScanCitations: ChatCitation[] = [
+      {
+        sourceTitle: '26.03.04 Renewal Radio Licence COMMERCIAL.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet: 'This Licence expires on: 15 January 2027.',
+        score: 0.84,
+      },
+      {
+        sourceTitle: 'JMS Crew MLC Certificate Feb 2023.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet: 'This certificate is valid until 03 February 2028.',
+        score: 0.8,
+      },
+    ];
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: initialCitations }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue(initialCitations),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => [citations[0]]),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => {
+            citations: ChatCitation[];
+            compareBySource: boolean;
+            sourceComparisonTitles: string[];
+          }
+        >()
+        .mockImplementation((_query, _userQuery, citations) => ({
+          citations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        })),
+      limitCitationsForLlm: jest
+        .fn<
+          (
+            userQuery: string,
+            citations: ChatCitation[],
+            compareBySource: boolean,
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue(certificateScanCitations),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: null,
+      role: 'admin',
+      userQuery: 'Show me the nearest upcoming certificate expiries',
+    });
+
+    expect(result.citations).toHaveLength(1);
+    expect(result.citations[0].sourceTitle).toBe('FA170_OME44900J.pdf');
+    expect(result.analysisCitations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: '26.03.04 Renewal Radio Licence COMMERCIAL.pdf',
+        }),
+        expect.objectContaining({
+          sourceTitle: 'JMS Crew MLC Certificate Feb 2023.pdf',
+        }),
+      ]),
+    );
+  });
 });

@@ -30,6 +30,7 @@ export class ChatDocumentationService {
   }): Promise<ChatDocumentationContext> {
     const { shipId, role, userQuery, messageHistory } = params;
     let citations: ChatCitation[] = [];
+    let analysisCitations: ChatCitation[] | undefined;
     const previousUserQuery =
       this.queryService.getPreviousResolvedUserQuery(messageHistory);
     const pendingClarificationQuery =
@@ -280,6 +281,9 @@ export class ChatDocumentationService {
         citations,
         certificateDocumentFallbackCitations,
       );
+      if (this.isBroadCertificateSoonQuery(effectiveUserQuery)) {
+        analysisCitations = [...citations];
+      }
 
       citations = this.citationService.pruneCitationsForResolvedSubject(
         retrievalQuery,
@@ -374,7 +378,7 @@ export class ChatDocumentationService {
             resolvedSubjectQuery;
         }
       }
-      const analysisCitations = citations;
+      const finalAnalysisCitations = analysisCitations ?? citations;
       const preparedAnswerCitations =
         this.citationService.prepareCitationsForAnswer(
           resolvedSubjectQuery ?? retrievalQuery,
@@ -397,7 +401,7 @@ export class ChatDocumentationService {
             : undefined,
         resolvedSubjectQuery,
         citations,
-        analysisCitations,
+        analysisCitations: finalAnalysisCitations,
         compareBySource: preparedAnswerCitations.compareBySource,
         sourceComparisonTitles: preparedAnswerCitations.sourceComparisonTitles,
       };
