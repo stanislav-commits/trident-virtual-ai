@@ -972,19 +972,41 @@ export class ChatDocumentationCitationService {
     );
   }
 
-  private isStandaloneCertificateLikeCitation(citation: ChatCitation): boolean {
-    const explicitCategory = citation.sourceCategory?.trim().toUpperCase();
-    if (explicitCategory === 'CERTIFICATES') {
-      return true;
-    }
+  private isCertificateSupportDocumentTitle(sourceTitle?: string): boolean {
+    return /\b(guideline|guidelines|report|record|records|checklist|history|details|administration|form|list)\b/i.test(
+      sourceTitle ?? '',
+    );
+  }
 
+  private isStandaloneCertificateLikeCitation(citation: ChatCitation): boolean {
     const title = citation.sourceTitle ?? '';
+    const haystack = `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`;
     if (this.isManualLikeCitationTitle(title)) {
       return false;
     }
 
-    return /\b(certificate|survey|registry|renewal|class\b|inspection)\b/i.test(
-      title,
+    const strongTitleSignal =
+      /\b(certificate|certificato|approval|license|licence|declaration|registry|renewal|cor\b|class\b)\b/i.test(
+        title,
+      ) ||
+      (/\bsurvey\b/i.test(title) &&
+        !this.isCertificateSupportDocumentTitle(title));
+    const strongSnippetSignal =
+      /\b(this\s+certificate|certificate\s+no\.?|certificateof|certificate\s+of|ec\s+type-?examination|type\s+approval|product\s+design\s+assessment|manufacturing\s+assessment|declaration\s+of\s+conformity|radio\s+station\s+communication\s+license|valid\s+until|expiration\s+date|expiry\s+date|expires?\s+on|expiring:)\b/i.test(
+        haystack,
+      );
+
+    const explicitCategory = citation.sourceCategory?.trim().toUpperCase();
+    if (explicitCategory === 'CERTIFICATES') {
+      return (
+        strongSnippetSignal ||
+        (strongTitleSignal && !this.isCertificateSupportDocumentTitle(title))
+      );
+    }
+
+    return (
+      strongSnippetSignal ||
+      (strongTitleSignal && !this.isCertificateSupportDocumentTitle(title))
     );
   }
 
@@ -1003,8 +1025,10 @@ export class ChatDocumentationCitationService {
   private isBroadCertificateSoonQuery(query: string): boolean {
     return (
       /\bcertificates?\b/i.test(query) &&
-      /\b(expire|expiry|expiring|valid\s+until)\b/i.test(query) &&
-      /\b(soon|upcoming|next)\b/i.test(query)
+      /\b(expire|expiry|expiries|expiring|valid\s+until|due\s+to\s+expire)\b/i.test(
+        query,
+      ) &&
+      /\b(soon|upcoming|next|nearest)\b/i.test(query)
     );
   }
 
@@ -1022,7 +1046,7 @@ export class ChatDocumentationCitationService {
   ): number | null {
     const plainText = this.stripHtmlLikeMarkup(citation.snippet ?? '');
     const patterns = [
-      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/i,
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/i,
     ];
 
     for (const pattern of patterns) {
@@ -1082,7 +1106,7 @@ export class ChatDocumentationCitationService {
     }
 
     const monthNameMatch = normalized.match(
-      /^(\d{1,2})(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
+      /^(\d{1,2})(?:st|nd|rd|th)?(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
     );
     if (monthNameMatch) {
       const day = Number.parseInt(monthNameMatch[1], 10);
@@ -1991,7 +2015,7 @@ export class ChatDocumentationCitationService {
     plainText: string,
   ): number[] {
     const patterns = [
-      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi,
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi,
     ];
 
     const timestamps = new Set<number>();
@@ -2148,6 +2172,36 @@ export class ChatDocumentationCitationService {
       );
     }
 
+    const embeddedApprovalProfiles = profiles.filter((profile) =>
+      profile.citations.some((citation) =>
+        this.isEmbeddedProductApprovalCitation(citation),
+      ),
+    );
+    const futureEmbeddedProfiles = embeddedApprovalProfiles
+      .filter((profile) => profile.expiryTimestamps.some((timestamp) => timestamp >= now))
+      .sort((left, right) => {
+        const leftSoonest =
+          left.expiryTimestamps.find((timestamp) => timestamp >= now) ??
+          Number.MAX_SAFE_INTEGER;
+        const rightSoonest =
+          right.expiryTimestamps.find((timestamp) => timestamp >= now) ??
+          Number.MAX_SAFE_INTEGER;
+        if (leftSoonest !== rightSoonest) {
+          return leftSoonest - rightSoonest;
+        }
+
+        return right.explicitEvidenceScore - left.explicitEvidenceScore;
+      });
+    if (futureEmbeddedProfiles.length > 0) {
+      return this.balanceCitationsAcrossSources(
+        citations,
+        new Set(
+          futureEmbeddedProfiles.slice(0, 5).map((profile) => profile.sourceKey),
+        ),
+        2,
+      );
+    }
+
     const datedProfiles = certificateProfiles.filter(
       (profile) => profile.expiryTimestamps.length > 0,
     );
@@ -2155,6 +2209,19 @@ export class ChatDocumentationCitationService {
       return this.balanceCitationsAcrossSources(
         citations,
         new Set(datedProfiles.slice(0, 5).map((profile) => profile.sourceKey)),
+        2,
+      );
+    }
+
+    const datedEmbeddedProfiles = embeddedApprovalProfiles.filter(
+      (profile) => profile.expiryTimestamps.length > 0,
+    );
+    if (datedEmbeddedProfiles.length > 0) {
+      return this.balanceCitationsAcrossSources(
+        citations,
+        new Set(
+          datedEmbeddedProfiles.slice(0, 5).map((profile) => profile.sourceKey),
+        ),
         2,
       );
     }
