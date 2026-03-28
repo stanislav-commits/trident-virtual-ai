@@ -686,6 +686,81 @@ describe('ChatService telemetry clarification', () => {
     }
   });
 
+  it('deduplicates registry-style certificate expiries in broad upcoming answers', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 28));
+    try {
+      prisma.chatSession.findUnique.mockResolvedValue({
+        messages: [
+          {
+            role: 'user',
+            content: 'Which certificates will expire soon?',
+            ragflowContext: null,
+          },
+        ],
+      });
+      documentationService.prepareDocumentationContext.mockResolvedValue({
+        citations: [
+          {
+            sourceTitle:
+              '26.01.13 SEAWOLF X Renewal Certificate of Reg. (exp 27.01.15).pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'CERTIFICATE OF MALTA REGISTRY. Renewing Certificate dated 06 January 2025. This certificate expires on 15 January 2027.',
+            pageNumber: 1,
+          },
+          {
+            sourceTitle: '040326 COR Commercial use SEAWOLF X.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'CERTIFICATE OF MALTA REGISTRY. Official and IMO No. Name of Ship SEAWOLF X. This certificate expires on 15 January 2027.',
+            pageNumber: 1,
+          },
+          {
+            sourceTitle: 'Fire Equipment Type Approval.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'Product Design Assessment. Expiry Date 22-DEC-2027.',
+            pageNumber: 12,
+          },
+        ],
+        previousUserQuery: undefined,
+        retrievalQuery: 'Which certificates will expire soon?',
+        resolvedSubjectQuery: undefined,
+        answerQuery: undefined,
+      });
+      metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+        telemetry: {},
+        totalActiveMetrics: 0,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+        clarification: null,
+      });
+
+      await (service as any).generateAssistantResponse(
+        'ship-1',
+        'session-1',
+        'Which certificates will expire soon?',
+        'Sea Wolf X',
+        'user',
+      );
+
+      expect(llmService.generateResponse).not.toHaveBeenCalled();
+      const assistantCall = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1);
+      expect(assistantCall?.[1]).toContain(
+        'The nearest upcoming certificate expiries I found are:',
+      );
+      expect(assistantCall?.[1]).not.toContain(
+        'within the next 180 days',
+      );
+      expect((assistantCall?.[1].match(/15 January 2027/g) ?? []).length).toBe(1);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('does not let broad certificate expiry questions fall back to LLM when snippets lack explicit expiry dates', async () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
