@@ -1363,10 +1363,15 @@ export class ChatService {
         .join(' + ');
       const subject = this.buildAggregateSubjectLabel(normalizedQuery, fluid);
       return [
-        `The ${subject} from the current matched telemetry readings is ${totalValue}${unitSuffix}.`,
+        `The ${subject} from the current matched telemetry readings is ${totalValue}${unitSuffix} [Telemetry].`,
         '',
-        valuesList,
-        `Total = ${formula} = ${totalValue}${unitSuffix}.`,
+        'Matched telemetry:',
+        ...orderedEntries.map(
+          (entry) =>
+            `- ${entry.label}: ${this.formatAggregateNumber(entry.value)}${unitSuffix}`,
+        ),
+        'Calculation:',
+        `- Total = ${formula} = ${totalValue}${unitSuffix}`,
       ].join('\n');
     }
 
@@ -1378,10 +1383,12 @@ export class ChatService {
         .map((entry) => this.formatAggregateNumber(entry.value))
         .join(' + ');
       return [
-        `The average of the current matched telemetry readings is ${averageValue}${unitSuffix}.`,
+        `The average of the current matched telemetry readings is ${averageValue}${unitSuffix} [Telemetry].`,
         '',
+        'Matched telemetry:',
         valuesList,
-        `Average = (${formula}) / ${orderedEntries.length} = ${averageValue}${unitSuffix}.`,
+        'Calculation:',
+        `- Average = (${formula}) / ${orderedEntries.length} = ${averageValue}${unitSuffix}`,
       ].join('\n');
     }
 
@@ -1395,8 +1402,9 @@ export class ChatService {
           );
     const qualifier = operation === 'max' ? 'highest' : 'lowest';
     return [
-      `The ${qualifier} current matched telemetry reading is ${selectedEntry.label}: ${this.formatAggregateNumber(selectedEntry.value)}${unitSuffix}.`,
+      `The ${qualifier} current matched telemetry reading is ${selectedEntry.label}: ${this.formatAggregateNumber(selectedEntry.value)}${unitSuffix} [Telemetry].`,
       '',
+      'Matched telemetry:',
       valuesList,
     ].join('\n');
   }
@@ -1441,11 +1449,11 @@ export class ChatService {
         return `I found the matched telemetry metric, but its current value is unavailable: ${entry.label}.`;
       }
 
-      return `The current matched telemetry reading is ${entry.label}: ${entry.valueText}.`;
+      return `The current matched telemetry reading is ${entry.label}: ${entry.valueText} [Telemetry].`;
     }
 
     const lead = entries.some((entry) => entry.available)
-      ? 'The current matched telemetry readings are:'
+      ? 'The current matched telemetry readings are [Telemetry]:'
       : 'I found the matched telemetry metrics, but their current values are unavailable:';
 
     return [

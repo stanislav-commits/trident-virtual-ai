@@ -213,6 +213,7 @@ export class LlmService {
       `Question: ${context.userQuery}\n` +
       this.buildOperationalContextPrompt(queryPlan);
     prompt += this.buildPlannerSpecificGuidance(queryPlan, context);
+    prompt += this.buildAnswerFormattingGuidance(queryPlan);
 
     if (context.previousUserQuery) {
       prompt +=
@@ -559,6 +560,56 @@ export class LlmService {
       default:
         return '';
     }
+  }
+
+  private buildAnswerFormattingGuidance(queryPlan: ChatQueryPlan): string {
+    let prompt =
+      'Answer formatting:\n' +
+      '- First sentence: answer the exact question directly.\n' +
+      '- Keep the answer concise, practical, and easy to scan.\n' +
+      '- Add short inline source tags after confirmed factual statements whenever the evidence clearly supports them.\n' +
+      '- Do not add a separate "Sources" section unless the user asks for sources explicitly.\n';
+
+    switch (queryPlan.primaryIntent) {
+      case 'maintenance_procedure':
+        prompt +=
+          '- Use this structure when the documentation supports it:\n' +
+          '  Tools and Materials Needed:\n' +
+          '  Step-by-Step Instructions:\n' +
+          '  Safety Warnings:\n';
+        break;
+      case 'troubleshooting':
+        prompt +=
+          '- Use this structure when the documentation supports it:\n' +
+          '  Common causes to check:\n' +
+          '  Start with these quick checks:\n' +
+          '  If the fault remains:\n';
+        break;
+      case 'analytics_forecast':
+        prompt +=
+          '- Use this structure when the evidence supports it:\n' +
+          '  Based on [data range] from [History/Telemetry]:\n' +
+          '  Key figures:\n' +
+          '  Result:\n' +
+          '  Practical note:\n';
+        break;
+      case 'parts_fluids_consumables':
+        prompt +=
+          '- For parts or consumables, list each item on its own bullet in this style:\n' +
+          '  - Part name (Qty: x) - Part number: [number]\n' +
+          '    Location: [location]\n';
+        break;
+      case 'next_due_calculation':
+      case 'maintenance_due_now':
+        prompt +=
+          '- State the due timing in the first sentence.\n' +
+          '- If you list included tasks, put each documented task on its own bullet.\n';
+        break;
+      default:
+        break;
+    }
+
+    return `${prompt}\n`;
   }
 
   private buildMaintenanceCalculationPrompt(

@@ -198,6 +198,9 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toContain(
       'Do not infer oil capacity, fill volume, or consumption from spare-parts quantities',
     );
+    expect(prompt).toContain('Tools and Materials Needed:');
+    expect(prompt).toContain('Step-by-Step Instructions:');
+    expect(prompt).toContain('Safety Warnings:');
   });
 
   it('marks prefiltered telemetry as the best current metric match in the prompt', () => {
@@ -300,6 +303,26 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toContain(
       'If the documentation does not define an action threshold or recommendation for the matched telemetry reading, say that clearly instead of inventing one.',
     );
+  });
+
+  it('adds troubleshooting output structure guidance to the prompt', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery:
+        'The port generator has a high coolant temperature alarm, what checks should I do first?',
+      citations: [
+        {
+          sourceTitle: 'Volvo Generator Manual.pdf',
+          snippet:
+            'Coolant Temperature Possible cause: The coolant temperature is too high. Corrective Action: Check the coolant level. Check the seawater filter.',
+        },
+      ],
+    });
+
+    expect(prompt).toContain('Common causes to check:');
+    expect(prompt).toContain('Start with these quick checks:');
+    expect(prompt).toContain('If the fault remains:');
   });
 
   it('tells telemetry list prompts to keep the list scoped to the requested subject', () => {

@@ -439,7 +439,7 @@ describe('ChatService telemetry clarification', () => {
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
       expect.stringContaining(
-        'The total fuel onboard from the current matched telemetry readings is 15,381.',
+        'The total fuel onboard from the current matched telemetry readings is 15,381',
       ),
       expect.objectContaining({
         resolvedSubjectQuery: 'calculate how many fuel onboard according to all fuel tanks',
@@ -493,7 +493,7 @@ describe('ChatService telemetry clarification', () => {
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
       expect.stringContaining(
-        'The total fuel onboard from the current matched telemetry readings is 5,516.',
+        'The total fuel onboard from the current matched telemetry readings is 5,516',
       ),
       expect.objectContaining({
         resolvedSubjectQuery: 'how many fuel onboard?',
@@ -543,7 +543,7 @@ describe('ChatService telemetry clarification', () => {
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
       expect.stringContaining(
-        'The average of the current matched telemetry readings is 150 kW.',
+        'The average of the current matched telemetry readings is 150 kW',
       ),
       expect.objectContaining({
         resolvedSubjectQuery: 'What is the average generator load?',
@@ -593,7 +593,7 @@ describe('ChatService telemetry clarification', () => {
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
       expect.stringContaining(
-        'The highest current matched telemetry reading is Battery 2 Voltage: 24.8 V.',
+        'The highest current matched telemetry reading is Battery 2 Voltage: 24.8 V',
       ),
       expect.objectContaining({
         resolvedSubjectQuery: 'Which battery has the highest voltage?',
@@ -641,7 +641,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      'The current matched telemetry reading is Tanks.Fuel_Level: 63 %.',
+      'The current matched telemetry reading is Tanks.Fuel_Level: 63 % [Telemetry].',
       expect.objectContaining({
         resolvedSubjectQuery: 'What is the current fuel level?',
       }),
@@ -690,7 +690,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('The current matched telemetry readings are:'),
+      expect.stringContaining('The current matched telemetry readings are [Telemetry]:'),
       expect.objectContaining({
         resolvedSubjectQuery: 'What is the current water depth?',
       }),
