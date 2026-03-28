@@ -17,6 +17,10 @@ import {
 import { ChatDocumentationService } from './chat-documentation.service';
 import { ChatCitation } from './chat.types';
 import { sortChatSessions } from './chat-session-order';
+import {
+  ChatQueryPlan,
+  ChatQueryPlannerService,
+} from './chat-query-planner.service';
 
 interface TelemetryClarificationAction {
   label: string;
@@ -40,6 +44,7 @@ type TelemetryMatchMode =
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
+  private readonly queryPlanner = new ChatQueryPlannerService();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -446,6 +451,19 @@ export class ChatService {
         exactResolvedSubjectQuery ??
         (retrievalQuery !== userQuery ? retrievalQuery : undefined);
       const effectiveUserQuery = answerQuery ?? userQuery;
+      this.logger.debug(
+        `Chat query context session=${sessionId} ship=${shipId ?? 'none'} userQuery="${this.truncateForLog(
+          userQuery,
+        )}" effectiveUserQuery="${this.truncateForLog(
+          effectiveUserQuery,
+        )}" resolvedSubjectQuery="${this.truncateForLog(
+          resolvedSubjectQuery ?? '',
+        )}"`,
+      );
+      const queryPlan = this.queryPlanner.planQuery(
+        effectiveUserQuery,
+        resolvedSubjectQuery,
+      );
 
       if (
         documentationContext.needsClarification &&
@@ -470,6 +488,70 @@ export class ChatService {
           },
           [],
         );
+      }
+
+      const historicalTelemetryMatch =
+        await this.resolveHistoricalTelemetryForContext({
+          shipId,
+          role,
+          sessionId,
+          userQuery,
+          effectiveUserQuery,
+          resolvedSubjectQuery,
+        });
+
+      if (historicalTelemetryMatch) {
+        const { resolution: historicalTelemetryResolution } =
+          historicalTelemetryMatch;
+
+        if (
+          historicalTelemetryResolution.kind === 'clarification' &&
+          historicalTelemetryResolution.clarificationQuestion
+        ) {
+          return this.addAssistantMessage(
+            sessionId,
+            historicalTelemetryResolution.clarificationQuestion,
+            {
+              awaitingClarification: true,
+              pendingClarificationQuery:
+                historicalTelemetryResolution.pendingQuery ?? userQuery.trim(),
+              clarificationReason: 'historical_telemetry_query',
+              ...(historicalTelemetryResolution.clarificationActions?.length
+                ? {
+                    clarificationActions:
+                      historicalTelemetryResolution.clarificationActions,
+                  }
+                : {}),
+              ...(historicalTelemetryMatch.shipName
+                ? { telemetryShips: [historicalTelemetryMatch.shipName] }
+                : {}),
+              ...(resolvedSubjectQuery
+                ? { resolvedSubjectQuery }
+                : retrievalQuery
+                  ? { resolvedSubjectQuery: retrievalQuery }
+                  : {}),
+            },
+            [],
+          );
+        }
+
+        if (
+          historicalTelemetryResolution.kind === 'answer' &&
+          historicalTelemetryResolution.content
+        ) {
+          return this.addAssistantMessage(
+            sessionId,
+            historicalTelemetryResolution.content,
+            {
+              historicalTelemetry: true,
+              ...(historicalTelemetryMatch.shipName
+                ? { telemetryShips: [historicalTelemetryMatch.shipName] }
+                : {}),
+              resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            },
+            [],
+          );
+        }
       }
 
       let telemetry: Record<string, unknown> = {};
@@ -562,7 +644,7 @@ export class ChatService {
       }
 
       const documentationIntentPattern =
-        /\b(based\s+on|recommended|recommendation|action|next\s+step|what\s+should\s+i\s+do|what\s+do\s+i\s+do|procedure|steps?|how\s+to|how\s+do\s+i|manual|documentation|according\s+to\s+(?:the\s+)?(?:manual|documentation|docs?|handbook|guide|procedure|spec(?:ification)?))\b/i;
+        /\b(based\s+on|recommended|recommendation|action|next\s+step|what\s+should\s+i\s+do|what\s+do\s+i\s+do|procedure|steps?|how\s+to|how\s+do\s+i|manual|documentation|according\s+to\s+(?:the\s+)?(?:manual|documentation|docs?|handbook|guide|procedure|spec(?:ification)?)|normal|range|limit|limits|specified|operating)\b/i;
       const telemetryOnlyQuery =
         /\bfrom\s+telemetry\b|\btelemetry\s+only\b|\bfrom\s+metrics\b/i.test(
           effectiveUserQuery,
@@ -572,6 +654,55 @@ export class ChatService {
           !documentationIntentPattern.test(effectiveUserQuery));
 
       const citationsForAnswer = telemetryOnlyQuery ? [] : citations;
+      const llmTelemetryContext = this.selectTelemetryContextForLlm(
+        queryPlan,
+        effectiveUserQuery,
+        telemetry,
+        telemetryPrefiltered,
+        telemetryMatchMode,
+      );
+
+      const deterministicDocumentationAnswer =
+        this.buildDeterministicDocumentationAnswer(
+          effectiveUserQuery,
+          queryPlan.primaryIntent,
+          citationsForAnswer,
+        );
+      if (deterministicDocumentationAnswer) {
+        return this.addAssistantMessage(
+          sessionId,
+          deterministicDocumentationAnswer,
+          {
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            ...(telemetryShips.length > 0
+              ? { telemetryShips: [...new Set(telemetryShips)] }
+              : {}),
+          },
+          citationsForAnswer,
+        );
+      }
+
+      const deterministicTelemetryUnavailableAnswer =
+        this.buildDeterministicTelemetryUnavailableAnswer(
+          effectiveUserQuery,
+          queryPlan.primaryIntent,
+          telemetryPrefiltered,
+          telemetryMatchMode,
+          citationsForAnswer,
+        );
+      if (deterministicTelemetryUnavailableAnswer) {
+        return this.addAssistantMessage(
+          sessionId,
+          deterministicTelemetryUnavailableAnswer.content,
+          {
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            ...(telemetryShips.length > 0
+              ? { telemetryShips: [...new Set(telemetryShips)] }
+              : {}),
+          },
+          deterministicTelemetryUnavailableAnswer.citations,
+        );
+      }
 
       const deterministicTelemetryAnswer = this.buildDeterministicTelemetryAnswer(
         effectiveUserQuery,
@@ -588,7 +719,9 @@ export class ChatService {
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
-            ...(citationsForAnswer.length === 0 ? { noDocumentation: true } : {}),
+            ...(citationsForAnswer.length === 0 && !telemetryOnlyQuery
+              ? { noDocumentation: true }
+              : {}),
           },
           citationsForAnswer,
         );
@@ -613,9 +746,9 @@ export class ChatService {
         })),
         noDocumentation: citationsForAnswer.length === 0,
         shipName,
-        telemetry,
-        telemetryPrefiltered,
-        telemetryMatchMode,
+        telemetry: llmTelemetryContext.telemetry,
+        telemetryPrefiltered: llmTelemetryContext.telemetryPrefiltered,
+        telemetryMatchMode: llmTelemetryContext.telemetryMatchMode,
         chatHistory: session?.messages.map((message) => ({
           role: message.role,
           content: message.content,
@@ -630,7 +763,9 @@ export class ChatService {
           ...(telemetryShips.length > 0
             ? { telemetryShips: [...new Set(telemetryShips)] }
             : {}),
-          ...(citationsForAnswer.length === 0 ? { noDocumentation: true } : {}),
+          ...(citationsForAnswer.length === 0 && !telemetryOnlyQuery
+            ? { noDocumentation: true }
+            : {}),
         },
         citationsForAnswer,
       );
@@ -638,6 +773,175 @@ export class ChatService {
       const fallback = `I encountered an issue processing your query: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`;
       return this.addAssistantMessage(sessionId, fallback);
     }
+  }
+
+  private truncateForLog(value: string, maxLength = 180): string {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, maxLength - 3)}...`;
+  }
+
+  private async resolveHistoricalTelemetryForContext(params: {
+    shipId: string | null;
+    role: string;
+    sessionId: string;
+    userQuery: string;
+    effectiveUserQuery: string;
+    resolvedSubjectQuery?: string;
+  }): Promise<{
+    resolution: Awaited<
+      ReturnType<MetricsService['resolveHistoricalTelemetryQuery']>
+    >;
+    shipId?: string;
+    shipName?: string;
+  } | null> {
+    const {
+      shipId,
+      role,
+      sessionId,
+      userQuery,
+      effectiveUserQuery,
+      resolvedSubjectQuery,
+    } = params;
+
+    if (shipId) {
+      return {
+        resolution: await this.tryResolveHistoricalTelemetryForShip({
+          shipId,
+          sessionId,
+          userQuery,
+          effectiveUserQuery,
+          resolvedSubjectQuery,
+        }),
+        shipId,
+      };
+    }
+
+    if (role !== 'admin') {
+      return null;
+    }
+
+    const shipsWithMetrics = await this.prisma.ship.findMany({
+      where: { metricsConfig: { some: { isActive: true } } },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+
+    if (shipsWithMetrics.length === 0) {
+      return null;
+    }
+
+    const matches: Array<{
+      shipId: string;
+      shipName: string;
+      resolution: Awaited<
+        ReturnType<MetricsService['resolveHistoricalTelemetryQuery']>
+      >;
+    }> = [];
+
+    for (const candidateShip of shipsWithMetrics) {
+      const resolution = await this.tryResolveHistoricalTelemetryForShip({
+        shipId: candidateShip.id,
+        sessionId,
+        userQuery,
+        effectiveUserQuery,
+        resolvedSubjectQuery,
+      });
+      if (resolution.kind === 'none') {
+        continue;
+      }
+
+      matches.push({
+        shipId: candidateShip.id,
+        shipName: candidateShip.name,
+        resolution,
+      });
+    }
+
+    this.logger.debug(
+      `Historical telemetry admin-global session=${sessionId} candidateShips=${shipsWithMetrics.length} matchedShips=${matches.length}`,
+    );
+
+    if (matches.length === 0) {
+      return null;
+    }
+
+    if (matches.length === 1) {
+      return matches[0];
+    }
+
+    return {
+      resolution: {
+        kind: 'clarification',
+        clarificationQuestion:
+          'Which ship do you want this historical telemetry for?',
+        pendingQuery: userQuery.trim(),
+        clarificationActions: matches.slice(0, 4).map((match) => ({
+          label: match.shipName,
+          message: match.shipName,
+          kind: 'suggestion',
+        })),
+      },
+    };
+  }
+
+  private async tryResolveHistoricalTelemetryForShip(params: {
+    shipId: string;
+    sessionId: string;
+    userQuery: string;
+    effectiveUserQuery: string;
+    resolvedSubjectQuery?: string;
+  }): Promise<
+    Awaited<ReturnType<MetricsService['resolveHistoricalTelemetryQuery']>>
+  > {
+    const {
+      shipId,
+      sessionId,
+      userQuery,
+      effectiveUserQuery,
+      resolvedSubjectQuery,
+    } = params;
+    const historicalResolutionAttempts = [
+      { source: 'user', query: userQuery },
+      ...(effectiveUserQuery !== userQuery
+        ? [{ source: 'effective', query: effectiveUserQuery }]
+        : []),
+    ];
+    let historicalTelemetryResolution = { kind: 'none' } as Awaited<
+      ReturnType<MetricsService['resolveHistoricalTelemetryQuery']>
+    >;
+
+    for (const attempt of historicalResolutionAttempts) {
+      this.logger.debug(
+        `Historical telemetry attempt session=${sessionId} ship=${shipId} source=${attempt.source} query="${this.truncateForLog(
+          attempt.query,
+        )}" resolvedSubjectQuery="${this.truncateForLog(
+          resolvedSubjectQuery ?? '',
+        )}"`,
+      );
+      const candidateResolution =
+        await this.metricsService.resolveHistoricalTelemetryQuery(
+          shipId,
+          attempt.query,
+          resolvedSubjectQuery,
+        );
+      this.logger.debug(
+        `Historical telemetry result session=${sessionId} ship=${shipId} source=${attempt.source} kind=${candidateResolution.kind} clarification="${this.truncateForLog(
+          candidateResolution.clarificationQuestion ?? '',
+        )}" content="${this.truncateForLog(
+          candidateResolution.content ?? '',
+        )}"`,
+      );
+      if (candidateResolution.kind !== 'none') {
+        historicalTelemetryResolution = candidateResolution;
+        break;
+      }
+    }
+
+    return historicalTelemetryResolution;
   }
 
   private validateAccess(
@@ -762,7 +1066,235 @@ export class ChatService {
       return null;
     }
 
-    return this.buildDeterministicAggregateTelemetryAnswer(userQuery, telemetry);
+    const aggregateAnswer = this.buildDeterministicAggregateTelemetryAnswer(
+      userQuery,
+      telemetry,
+    );
+    if (aggregateAnswer) {
+      return aggregateAnswer;
+    }
+
+    if (!this.shouldUseDeterministicTelemetryReadAnswer(userQuery)) {
+      return null;
+    }
+
+    return this.buildDeterministicTelemetryReadAnswer(telemetry);
+  }
+
+  private buildDeterministicDocumentationAnswer(
+    userQuery: string,
+    primaryIntent: string,
+    citations: ChatCitation[],
+  ): string | null {
+    if (citations.length === 0) {
+      return null;
+    }
+
+    if (primaryIntent === 'manual_specification') {
+      return this.buildDeterministicManualSpecificationAnswer(
+        userQuery,
+        citations,
+      );
+    }
+
+    return null;
+  }
+
+  private buildDeterministicTelemetryUnavailableAnswer(
+    userQuery: string,
+    primaryIntent: string,
+    telemetryPrefiltered: boolean,
+    telemetryMatchMode: TelemetryMatchMode,
+    citations: ChatCitation[],
+  ): { content: string; citations: ChatCitation[] } | null {
+    if (primaryIntent !== 'telemetry_status') {
+      return null;
+    }
+
+    if (
+      telemetryPrefiltered ||
+      telemetryMatchMode === 'sample' ||
+      telemetryMatchMode === 'exact' ||
+      telemetryMatchMode === 'direct' ||
+      telemetryMatchMode === 'related'
+    ) {
+      return null;
+    }
+
+    const subject = this.buildTelemetryUnavailableSubject(userQuery);
+    let content = `I couldn't confirm ${subject} from a direct matched telemetry reading.`;
+
+    for (const citation of citations) {
+      const range = this.extractPreferredDocumentedRangeText(citation.snippet);
+      if (!range) {
+        continue;
+      }
+
+      const sourceLabel = citation.sourceTitle ?? 'the cited manual';
+      const documentedSubject = this.buildManualRangeSubject(userQuery);
+      content += ` The available manual evidence only confirms the documented ${documentedSubject} of ${range} [Manual: ${sourceLabel}], not the current live reading.`;
+      return {
+        content,
+        citations: [citation],
+      };
+    }
+
+    return {
+      content,
+      citations: [],
+    };
+  }
+
+  private buildDeterministicManualSpecificationAnswer(
+    userQuery: string,
+    citations: ChatCitation[],
+  ): string | null {
+    const query = userQuery.toLowerCase();
+
+    if (/\b(interval|how often|how frequently)\b/i.test(query)) {
+      for (const citation of citations) {
+        const interval = this.extractDocumentedIntervalText(citation.snippet);
+        if (!interval) {
+          continue;
+        }
+
+        const sourceLabel = citation.sourceTitle ?? 'the cited manual';
+        return `The documented interval is ${interval} [Manual: ${sourceLabel}].`;
+      }
+    }
+
+    if (
+      /\b(normal|operating|specified)\b/i.test(query) &&
+      /\b(range|limit|limits)\b/i.test(query)
+    ) {
+      for (const citation of citations) {
+        const range = this.extractPreferredDocumentedRangeText(citation.snippet);
+        if (!range) {
+          continue;
+        }
+
+        const subject = this.buildManualRangeSubject(userQuery);
+        const sourceLabel = citation.sourceTitle ?? 'the cited manual';
+        return `The documented ${subject} is ${range} [Manual: ${sourceLabel}].`;
+      }
+    }
+
+    return null;
+  }
+
+  private extractDocumentedIntervalText(snippet?: string): string | null {
+    if (!snippet) {
+      return null;
+    }
+
+    const normalized = snippet.replace(/\s+/g, ' ').trim();
+    const patterns = [
+      /\b(?:every|interval:?|service interval:?|oil change interval:?)[^\d]{0,20}(\d{2,5}\s*hours?(?:\s*(?:or|\/)\s*\d{1,2}\s*months?)?)/i,
+      /\b(\d{2,5}\s*hours?\s*(?:or|\/)\s*\d{1,2}\s*months?)\b/i,
+      /\bmust never exceed a period of (\d{1,2}\s*months?)\b/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = normalized.match(pattern);
+      if (match?.[1]) {
+        return match[1].replace(/\s+/g, ' ').trim();
+      }
+    }
+
+    return null;
+  }
+
+  private extractDocumentedRangeText(snippet?: string): string | null {
+    if (!snippet) {
+      return null;
+    }
+
+    const normalized = snippet.replace(/\s+/g, ' ').trim();
+    const match = normalized.match(
+      /\b(\d{1,4}(?:\.\d+)?)\s*(?:-|to)\s*(\d{1,4}(?:\.\d+)?)\s*(°?\s*[CF]|bar|kPa|psi|V|A|rpm|%)\b/i,
+    );
+
+    if (!match) {
+      return null;
+    }
+
+    return `${match[1]}-${match[2]} ${match[3].replace(/\s+/g, '').trim()}`;
+  }
+
+  private extractPreferredDocumentedRangeText(snippet?: string): string | null {
+    if (!snippet) {
+      return null;
+    }
+
+    const normalized = snippet.replace(/\s+/g, ' ').trim();
+    const candidates = [
+      ...normalized.matchAll(
+        /\bbetween\s+(\d{1,4}(?:\.\d+)?)\s+and\s+(\d{1,4}(?:\.\d+)?)\s*((?:°|º|˚|В°)?\s*[CF]|bar|kPa|psi|V|A|rpm|%)\b/gi,
+      ),
+      ...normalized.matchAll(
+        /\b(\d{1,4}(?:\.\d+)?)\s*(?:-|to)\s*(\d{1,4}(?:\.\d+)?)\s*((?:°|º|˚|В°)?\s*[CF]|bar|kPa|psi|V|A|rpm|%)\b/gi,
+      ),
+    ];
+
+    if (candidates.length === 0) {
+      return this.extractDocumentedRangeText(snippet);
+    }
+
+    const bestCandidate = candidates.sort((left, right) => {
+      const unitPriorityDiff =
+        this.getDocumentedRangeUnitPriority(right[3] ?? '') -
+        this.getDocumentedRangeUnitPriority(left[3] ?? '');
+      if (unitPriorityDiff !== 0) {
+        return unitPriorityDiff;
+      }
+
+      return normalized.indexOf(left[0]) - normalized.indexOf(right[0]);
+    })[0];
+
+    if (!bestCandidate) {
+      return this.extractDocumentedRangeText(snippet);
+    }
+
+    return `${bestCandidate[1]}-${bestCandidate[2]} ${this.normalizeDocumentedRangeUnit(
+      bestCandidate[3] ?? '',
+    )}`;
+  }
+
+  private buildManualRangeSubject(userQuery: string): string {
+    const query = userQuery.toLowerCase();
+    if (/\bcoolant\b/i.test(query) && /\btemperature\b/i.test(query)) {
+      return 'normal coolant temperature range';
+    }
+    if (/\boil\b/i.test(query) && /\bpressure\b/i.test(query)) {
+      return 'normal oil pressure range';
+    }
+    if (/\btemperature\b/i.test(query)) {
+      return 'normal operating range';
+    }
+
+    return 'documented operating range';
+  }
+
+  private getDocumentedRangeUnitPriority(unit: string): number {
+    const normalized = this.normalizeDocumentedRangeUnit(unit);
+    if (normalized === '°C') {
+      return 3;
+    }
+    if (normalized === '°F') {
+      return 2;
+    }
+    return 1;
+  }
+
+  private normalizeDocumentedRangeUnit(unit: string): string {
+    const normalized = unit.replace(/\s+/g, '').trim();
+    if (/c$/i.test(normalized)) {
+      return '°C';
+    }
+    if (/f$/i.test(normalized)) {
+      return '°F';
+    }
+    return normalized;
   }
 
   private buildDeterministicAggregateTelemetryAnswer(
@@ -853,6 +1385,121 @@ export class ChatService {
       '',
       valuesList,
     ].join('\n');
+  }
+
+  private shouldUseDeterministicTelemetryReadAnswer(query: string): boolean {
+    const normalized = this.normalizeAggregateTelemetryText(query);
+    if (!normalized) {
+      return false;
+    }
+
+    return !/\b(based on|depending on|according to|recommended|recommendation|action|next step|next steps|what should i do|what do i do|why|alarm|fault|error|issue|problem|stopp?ed|not working|maintenance|service|procedure|steps?|how to|how do i|manual|documentation|replace|change|install|remove|inspect|troubleshoot(?:ing)?)\b/.test(
+      normalized,
+    ) && !/\b(normal|range|limit|limits|spec(?:ification)?|specified|operating)\b/.test(
+      normalized,
+    );
+  }
+
+  private buildDeterministicTelemetryReadAnswer(
+    telemetry: Record<string, unknown>,
+  ): string | null {
+    const entries = Object.entries(telemetry)
+      .map(([label, value]) =>
+        this.parseDeterministicTelemetryReadEntry(label, value),
+      )
+      .filter(
+        (
+          entry,
+        ): entry is {
+          label: string;
+          valueText: string;
+          available: boolean;
+        } => entry !== null,
+      );
+
+    if (entries.length === 0) {
+      return null;
+    }
+
+    if (entries.length === 1) {
+      const [entry] = entries;
+      if (!entry.available) {
+        return `I found the matched telemetry metric, but its current value is unavailable: ${entry.label}.`;
+      }
+
+      return `The current matched telemetry reading is ${entry.label}: ${entry.valueText}.`;
+    }
+
+    const lead = entries.some((entry) => entry.available)
+      ? 'The current matched telemetry readings are:'
+      : 'I found the matched telemetry metrics, but their current values are unavailable:';
+
+    return [
+      lead,
+      '',
+      ...entries.map((entry) => `- ${entry.label}: ${entry.valueText}`),
+    ].join('\n');
+  }
+
+  private parseDeterministicTelemetryReadEntry(
+    label: string,
+    value: unknown,
+  ): {
+    label: string;
+    valueText: string;
+    available: boolean;
+  } | null {
+    const primaryLabel = label.split(' вЂ” ')[0]?.trim() ?? label.trim();
+    if (!primaryLabel) {
+      return null;
+    }
+
+    const unitMatch = label.match(/Unit:\s*([^\n\rвЂ”]+)/i);
+    const unit = unitMatch?.[1]?.trim() ?? null;
+    const valueText = this.formatDeterministicTelemetryValue(value, unit);
+
+    return {
+      label: primaryLabel,
+      valueText,
+      available: valueText !== 'unavailable',
+    };
+  }
+
+  private formatDeterministicTelemetryValue(
+    value: unknown,
+    unit: string | null,
+  ): string {
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) {
+        return 'unavailable';
+      }
+
+      return `${this.formatAggregateNumber(value)}${unit ? ` ${unit}` : ''}`;
+    }
+
+    if (typeof value === 'boolean') {
+      return value ? 'true' : 'false';
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (
+        !trimmed ||
+        trimmed.toLowerCase() === 'null' ||
+        trimmed.toLowerCase() === 'undefined'
+      ) {
+        return 'unavailable';
+      }
+
+      const numericValue = Number.parseFloat(trimmed);
+      if (/^-?\d+(?:\.\d+)?$/.test(trimmed) && Number.isFinite(numericValue)) {
+        return `${this.formatAggregateNumber(numericValue)}${unit ? ` ${unit}` : ''}`;
+      }
+
+      return trimmed;
+    }
+
+    return 'unavailable';
   }
 
   private detectAggregateFluid(
@@ -1018,5 +1665,82 @@ export class ChatService {
       .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase();
+  }
+
+  private buildTelemetryUnavailableSubject(userQuery: string): string {
+    const cleaned = userQuery.replace(/\?+$/g, '').trim();
+    const candidate = cleaned
+      .replace(/^(what\s+is|what's|whats|show\s+me|give\s+me|tell\s+me)\s+/i, '')
+      .trim();
+
+    if (
+      candidate &&
+      /\b(current|currently|reading|value|temperature|temp|pressure|level|voltage|load|rpm|speed|flow|rate|runtime|hours?|position|location)\b/i.test(
+        candidate,
+      )
+    ) {
+      return /^the\s+/i.test(candidate) ? candidate : `the ${candidate}`;
+    }
+
+    return 'the current requested reading';
+  }
+
+  private selectTelemetryContextForLlm(
+    queryPlan: ChatQueryPlan,
+    userQuery: string,
+    telemetry: Record<string, unknown>,
+    telemetryPrefiltered: boolean,
+    telemetryMatchMode: TelemetryMatchMode,
+  ): {
+    telemetry: Record<string, unknown>;
+    telemetryPrefiltered: boolean;
+    telemetryMatchMode: TelemetryMatchMode;
+  } {
+    if (!this.shouldKeepTelemetryForLlm(queryPlan, userQuery)) {
+      return {
+        telemetry: {},
+        telemetryPrefiltered: false,
+        telemetryMatchMode: 'none',
+      };
+    }
+
+    return {
+      telemetry,
+      telemetryPrefiltered,
+      telemetryMatchMode,
+    };
+  }
+
+  private shouldKeepTelemetryForLlm(
+    queryPlan: ChatQueryPlan,
+    userQuery: string,
+  ): boolean {
+    switch (queryPlan.primaryIntent) {
+      case 'telemetry_list':
+      case 'telemetry_status':
+      case 'telemetry_history':
+      case 'analytics_forecast':
+      case 'next_due_calculation':
+      case 'maintenance_due_now':
+      case 'last_maintenance':
+        return true;
+      case 'maintenance_procedure':
+        return this.isCurrentTelemetryGuidedQuery(userQuery);
+      case 'troubleshooting':
+        return this.isCurrentTelemetryGuidedQuery(userQuery);
+      case 'manual_specification':
+      case 'parts_fluids_consumables':
+      case 'certificate_status':
+      case 'regulation_compliance':
+        return false;
+      default:
+        return false;
+    }
+  }
+
+  private isCurrentTelemetryGuidedQuery(userQuery: string): boolean {
+    return /\b(current|currently|reading|value|measured|showing|reads?\s+\d+(?:\.\d+)?|is\s+\d+(?:\.\d+)?|at\s+\d+(?:\.\d+)?)\b/i.test(
+      userQuery,
+    );
   }
 }

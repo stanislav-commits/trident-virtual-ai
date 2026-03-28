@@ -16,6 +16,7 @@ describe('ChatService telemetry clarification', () => {
 
   const metricsService = {
     getShipTelemetryContextForQuery: jest.fn(),
+    resolveHistoricalTelemetryQuery: jest.fn(),
   } as any;
 
   const documentationService = {
@@ -26,6 +27,9 @@ describe('ChatService telemetry clarification', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    metricsService.resolveHistoricalTelemetryQuery.mockResolvedValue({
+      kind: 'none',
+    });
     service = new ChatService(
       prisma,
       llmService,
@@ -111,6 +115,149 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
+  it('returns historical telemetry clarification before current telemetry lookup', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What was the yacht position on 14 March?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What was the yacht position on 14 March?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.resolveHistoricalTelemetryQuery.mockResolvedValue({
+      kind: 'clarification',
+      clarificationQuestion: 'Which year do you mean for 14 March?',
+      pendingQuery: 'What was the yacht position on 14 March?',
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What was the yacht position on 14 March?',
+      'SeaWolfX',
+      'user',
+    );
+
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Which year do you mean for 14 March?',
+      expect.objectContaining({
+        awaitingClarification: true,
+        clarificationReason: 'historical_telemetry_query',
+        pendingClarificationQuery: 'What was the yacht position on 14 March?',
+      }),
+      [],
+    );
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
+  it('returns a historical telemetry answer before current telemetry lookup', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'How much fuel was used over the last 30 days?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'How much fuel was used over the last 30 days?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.resolveHistoricalTelemetryQuery.mockResolvedValue({
+      kind: 'answer',
+      content:
+        'Based on historical telemetry from 2026-02-25 23:10 UTC to 2026-03-27 23:10 UTC, the total across the matched metrics was 4,384 liters [Telemetry History].',
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'How much fuel was used over the last 30 days?',
+      'SeaWolfX',
+      'user',
+    );
+
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Based on historical telemetry from 2026-02-25 23:10 UTC to 2026-03-27 23:10 UTC, the total across the matched metrics was 4,384 liters [Telemetry History].',
+      expect.objectContaining({
+        historicalTelemetry: true,
+      }),
+      [],
+    );
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
+  it('returns a historical telemetry answer for admin global chat sessions without a bound ship', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What was the average generator load over the last 7 days?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    prisma.ship.findMany.mockResolvedValue([
+      {
+        id: 'ship-1',
+        name: 'SeaWolfX',
+      },
+    ]);
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What was the average generator load over the last 7 days?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.resolveHistoricalTelemetryQuery.mockResolvedValue({
+      kind: 'answer',
+      content:
+        'Based on historical telemetry from 2026-03-20 23:12 UTC to 2026-03-27 23:12 UTC, the average across the matched metrics was 4.52 % [Telemetry History].',
+    });
+
+    await (service as any).generateAssistantResponse(
+      null,
+      'session-1',
+      'What was the average generator load over the last 7 days?',
+      undefined,
+      'admin',
+    );
+
+    expect(metricsService.resolveHistoricalTelemetryQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'What was the average generator load over the last 7 days?',
+      undefined,
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Based on historical telemetry from 2026-03-20 23:12 UTC to 2026-03-27 23:12 UTC, the average across the matched metrics was 4.52 % [Telemetry History].',
+      expect.objectContaining({
+        historicalTelemetry: true,
+        telemetryShips: ['SeaWolfX'],
+      }),
+      [],
+    );
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
   it('answers direct aggregate telemetry tank queries deterministically without LLM arithmetic', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
@@ -168,7 +315,6 @@ describe('ChatService telemetry clarification', () => {
       ),
       expect.objectContaining({
         resolvedSubjectQuery: 'calculate how many fuel onboard according to all fuel tanks',
-        noDocumentation: true,
       }),
       [],
     );
@@ -219,7 +365,6 @@ describe('ChatService telemetry clarification', () => {
       ),
       expect.objectContaining({
         resolvedSubjectQuery: 'how many fuel onboard?',
-        noDocumentation: true,
       }),
       [],
     );
@@ -270,7 +415,6 @@ describe('ChatService telemetry clarification', () => {
       ),
       expect.objectContaining({
         resolvedSubjectQuery: 'What is the average generator load?',
-        noDocumentation: true,
       }),
       [],
     );
@@ -321,9 +465,527 @@ describe('ChatService telemetry clarification', () => {
       ),
       expect.objectContaining({
         resolvedSubjectQuery: 'Which battery has the highest voltage?',
-        noDocumentation: true,
       }),
       [],
+    );
+  });
+
+  it('answers a single direct telemetry reading deterministically without calling the LLM', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What is the current fuel level?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What is the current fuel level?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Tanks.Fuel_Level вЂ” Unit: %': 63,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 1,
+      prefiltered: true,
+      matchMode: 'exact',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What is the current fuel level?',
+      'Simens',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'The current matched telemetry reading is Tanks.Fuel_Level: 63 %.',
+      expect.objectContaining({
+        resolvedSubjectQuery: 'What is the current fuel level?',
+      }),
+      [],
+    );
+  });
+
+  it('answers multiple direct telemetry readings deterministically without calling the LLM', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What is the current water depth?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What is the current water depth?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'environment.depth.belowKeel вЂ” Unit: m': 4.8,
+        'environment.depth.belowSurface вЂ” Unit: m': 5.4,
+        'environment.depth.belowTransducer вЂ” Unit: m': 6.1,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 3,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What is the current water depth?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('The current matched telemetry readings are:'),
+      expect.objectContaining({
+        resolvedSubjectQuery: 'What is the current water depth?',
+      }),
+      [],
+    );
+
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        '- environment.depth.belowKeel: 4.8 m',
+      ),
+      expect.anything(),
+      [],
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        '- environment.depth.belowSurface: 5.4 m',
+      ),
+      expect.anything(),
+      [],
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        '- environment.depth.belowTransducer: 6.1 m',
+      ),
+      expect.anything(),
+      [],
+    );
+  });
+
+  it('answers manual interval questions deterministically from cited manual evidence', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What is the oil change interval in the Volvo manual?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+          snippet:
+            'Lubrication System. Engine oil must be changed every 500 hours. Oil change intervals must never exceed a period of 24 months.',
+          pageNumber: 131,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What is the oil change interval in the Volvo manual?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What is the oil change interval in the Volvo manual?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'The documented interval is 500 hours [Manual: Volvo Penta_operators manual_47710211.pdf].',
+      expect.objectContaining({
+        resolvedSubjectQuery: 'What is the oil change interval in the Volvo manual?',
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+        }),
+      ]),
+    );
+  });
+
+  it.skip('answers manual range questions deterministically from cited manual evidence', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What is the normal coolant temperature range for this Volvo engine?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+          snippet:
+            'Cooling system. The normal coolant temperature range is 75-95 °C during normal operation.',
+          pageNumber: 140,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What is the normal coolant temperature range for this Volvo engine?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'SIEMENS-MASE-GENSET-SB.Coolant Temperature (°C)': 36,
+      },
+      totalActiveMetrics: 1,
+      matchedMetrics: 1,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What is the normal coolant temperature range for this Volvo engine?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'The documented normal coolant temperature range is 75-95 °C [Manual: Volvo Penta_operators manual_47710211.pdf].',
+      expect.objectContaining({
+        resolvedSubjectQuery:
+          'What is the normal coolant temperature range for this Volvo engine?',
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+        }),
+      ]),
+    );
+  });
+
+  it('answers manual range questions deterministically from cited manual evidence and prefers celsius', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What is the normal coolant temperature range for this Volvo engine?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+          snippet:
+            'The instrument shows engine coolant temperature. During operations, coolant temperature should normally be between 75 and 95°C (167-203°F).',
+          pageNumber: 38,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What is the normal coolant temperature range for this Volvo engine?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'SIEMENS-MASE-GENSET-SB.Coolant Temperature (°C)': 36,
+      },
+      totalActiveMetrics: 1,
+      matchedMetrics: 1,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What is the normal coolant temperature range for this Volvo engine?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'The documented normal coolant temperature range is 75-95 °C [Manual: Volvo Penta_operators manual_47710211.pdf].',
+      expect.objectContaining({
+        resolvedSubjectQuery:
+          'What is the normal coolant temperature range for this Volvo engine?',
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+        }),
+      ]),
+    );
+  });
+
+  it('returns a deterministic unavailable message when a current telemetry value is not directly matched', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What is the current starboard engine coolant temperature?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+          snippet:
+            'The instrument shows engine coolant temperature. During operations, coolant temperature should normally be between 75 and 95°C (167-203°F).',
+          pageNumber: 38,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What is the current starboard engine coolant temperature?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What is the current starboard engine coolant temperature?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      "I couldn't confirm the current starboard engine coolant temperature from a direct matched telemetry reading. The available manual evidence only confirms the documented normal coolant temperature range of 75-95 °C [Manual: Volvo Penta_operators manual_47710211.pdf], not the current live reading.",
+      expect.objectContaining({
+        resolvedSubjectQuery:
+          'What is the current starboard engine coolant temperature?',
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+        }),
+      ]),
+    );
+  });
+
+  it('does not forward telemetry context to the LLM for maintenance procedure questions', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'How do I check and clean the seawater filter?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+          snippet:
+            'Close the sea cock. Remove the lid (1) and lift up the insert. Clean the insert. Fit the insert and open the sea cock before starting the engine. Check that there are no leaks.',
+          pageNumber: 140,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'How do I check and clean the seawater filter?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'SIEMENS-MASE-GENSET-PS.Seawater pressure (bar)': 0,
+        'SIEMENS-MASE-GENSET-SB.Seawater pressure (bar)': 0,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 2,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+    llmService.generateResponse.mockResolvedValue('Documented procedure answer.');
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'How do I check and clean the seawater filter?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userQuery: 'How do I check and clean the seawater filter?',
+        telemetry: {},
+        telemetryPrefiltered: false,
+        telemetryMatchMode: 'none',
+      }),
+    );
+  });
+
+  it('does not forward unrelated telemetry context to the LLM for alarm-list troubleshooting lookups', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content:
+            'What does the generator alarm list say about low oil pressure or high coolant temperature?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+          snippet:
+            'Low Oil Pressure and Coolant Temperature alarms are shown in the alarm list. Refer to fault handling and the fault code register for corrective actions.',
+          pageNumber: 110,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery:
+        'What does the generator alarm list say about low oil pressure or high coolant temperature?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'SIEMENS-MASE-GENSET-PS.Coolant Temperature (°C)': 31,
+        'SIEMENS-MASE-GENSET-SB.Coolant Temperature (°C)': 36,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 2,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+    llmService.generateResponse.mockResolvedValue('Documented troubleshooting answer.');
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What does the generator alarm list say about low oil pressure or high coolant temperature?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        telemetry: {},
+        telemetryPrefiltered: false,
+        telemetryMatchMode: 'none',
+      }),
+    );
+  });
+
+  it('keeps guidance-style telemetry questions on the LLM path', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'Based on the current oil level, what should I do next?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta operators manual',
+          snippet:
+            'Pull out the dipstick and ensure the oil level is between MAX and MIN markings.',
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'Based on the current oil level, what should I do next?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'CleanOilTank.Level вЂ” Unit: l': 9,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 1,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'Check the documented dipstick range before taking action.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'Based on the current oil level, what should I do next?',
+      'Simens',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalledTimes(1);
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Check the documented dipstick range before taking action.',
+      expect.objectContaining({
+        resolvedSubjectQuery: 'Based on the current oil level, what should I do next?',
+      }),
+      expect.any(Array),
     );
   });
 });

@@ -1,4 +1,5 @@
 import { LlmService } from './llm.service';
+import { IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT } from './chat-core-system-prompt.constants';
 
 describe('LlmService maintenance calculation guard', () => {
   beforeAll(() => {
@@ -46,6 +47,16 @@ describe('LlmService maintenance calculation guard', () => {
     ).toBe('telemetry_list');
   });
 
+  it('classifies manual range/specification questions as manual specifications instead of telemetry', () => {
+    const service = new LlmService();
+
+    expect(
+      (service as any).classifyQueryIntent(
+        'What is the normal coolant temperature range for this Volvo engine?',
+      ),
+    ).toBe('manual_specification');
+  });
+
   it('classifies exact telemetry-like metric identifiers as telemetry queries', () => {
     const service = new LlmService();
 
@@ -76,6 +87,39 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toBe('Support Aurora| (Aurora)');
   });
 
+  it('uses the immutable core system prompt for chat generation instead of the editable DB prompt', async () => {
+    const systemPromptService = {
+      getPromptTemplate: jest.fn().mockResolvedValue('DB prompt should be ignored'),
+    };
+    const service = new LlmService(systemPromptService as never);
+    const create = jest.fn().mockResolvedValue({
+      choices: [{ message: { content: 'ok' } }],
+    });
+    (service as any).client = {
+      chat: {
+        completions: {
+          create,
+        },
+      },
+    };
+
+    await service.generateResponse({
+      userQuery: 'What is the normal coolant temperature range for this Volvo engine?',
+      citations: [
+        {
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+          sourceCategory: 'MANUALS',
+          snippet: 'Coolant temperature, normal operation 75-95C.',
+        },
+      ],
+    });
+
+    expect(create).toHaveBeenCalled();
+    expect(create.mock.calls[0][0].messages[0].content).toBe(
+      IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT,
+    );
+  });
+
   it('labels documentation sources with category-aware inline source tags', () => {
     const service = new LlmService();
 
@@ -99,6 +143,37 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toContain(
       '[2] [Certificate: Flag Survey Due Dates.pdf]',
     );
+  });
+
+  it('injects operational context with current timestamp and preferred evidence order', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-26T10:15:00.000Z'));
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'When does the fire suppression system certificate expire?',
+      citations: [
+        {
+          sourceTitle: 'Fire Suppression Survey.pdf',
+          sourceCategory: 'CERTIFICATES',
+          snippet: 'Certificate valid until 14 August 2026.',
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      'Current operational timestamp (UTC): 2026-03-26T10:15:00.000Z',
+    );
+    expect(prompt).toContain(
+      'Preferred evidence order: CERTIFICATES -> REGULATION -> HISTORY_PROCEDURES -> MANUALS -> TELEMETRY',
+    );
+    expect(prompt).toContain(
+      'Use the current timestamp above whenever you need to determine whether something is overdue',
+    );
+    expect(prompt).toContain(
+      'Answer with the documented expiry or valid-until date first.',
+    );
+
+    jest.useRealTimers();
   });
 
   it('warns the procedure prompt not to invent drain-fill steps or derive oil quantity from parts rows', () => {

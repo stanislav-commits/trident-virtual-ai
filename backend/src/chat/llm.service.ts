@@ -5,8 +5,12 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import OpenAI from 'openai';
-import { DEFAULT_SYSTEM_PROMPT_TEMPLATE } from '../system-prompt/system-prompt.constants';
 import { SystemPromptService } from '../system-prompt/system-prompt.service';
+import { IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT } from './chat-core-system-prompt.constants';
+import {
+  ChatQueryPlan,
+  ChatQueryPlannerService,
+} from './chat-query-planner.service';
 
 export interface LLMContext {
   userQuery: string;
@@ -53,6 +57,7 @@ interface ExplicitNextDueEntry {
 type QueryIntent =
   | 'telemetry_list'
   | 'telemetry_status'
+  | 'manual_specification'
   | 'maintenance_due_now'
   | 'next_due_calculation'
   | 'parts_fluids_consumables'
@@ -68,10 +73,14 @@ export class LlmService {
   private model: string;
   private temperature: number;
   private maxTokens: number;
+  private readonly queryPlanner: ChatQueryPlannerService;
 
   constructor(
     @Optional() private readonly systemPromptService?: SystemPromptService,
+    @Optional() queryPlanner?: ChatQueryPlannerService,
   ) {
+    this.queryPlanner = queryPlanner ?? new ChatQueryPlannerService();
+
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY is not set');
@@ -85,10 +94,11 @@ export class LlmService {
 
   async generateResponse(context: LLMContext): Promise<string> {
     try {
-      const promptTemplate = await this.getSystemPromptTemplate();
+      // Chat generation intentionally uses an immutable core prompt so
+      // admin-edited prompt text cannot change routing or evidence handling.
       const systemPrompt = this.buildSystemPrompt(
         context.shipName,
-        promptTemplate,
+        IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT,
       );
       const userPrompt = this.buildUserPrompt(context);
 
@@ -168,7 +178,7 @@ export class LlmService {
 
   private async getSystemPromptTemplate(): Promise<string> {
     if (!this.systemPromptService) {
-      return DEFAULT_SYSTEM_PROMPT_TEMPLATE;
+      return IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT;
     }
 
     try {
@@ -177,13 +187,13 @@ export class LlmService {
       this.logger.warn(
         `Failed to load editable system prompt, using default template instead: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return DEFAULT_SYSTEM_PROMPT_TEMPLATE;
+      return IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT;
     }
   }
 
   private buildSystemPrompt(
     shipName?: string,
-    template = DEFAULT_SYSTEM_PROMPT_TEMPLATE,
+    template = IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT,
   ): string {
     const normalizedShipName = shipName?.trim() ?? '';
 
@@ -193,8 +203,16 @@ export class LlmService {
   }
 
   private buildUserPrompt(context: LLMContext): string {
-    const intent = this.classifyQueryIntent(context.userQuery);
-    let prompt = `Detected intent: ${intent}\nQuestion: ${context.userQuery}\n\n`;
+    const queryPlan = this.queryPlanner.planQuery(
+      context.userQuery,
+      context.resolvedSubjectQuery,
+    );
+    const intent = queryPlan.primaryIntent;
+    let prompt =
+      `Detected intent: ${intent}\n` +
+      `Question: ${context.userQuery}\n` +
+      this.buildOperationalContextPrompt(queryPlan);
+    prompt += this.buildPlannerSpecificGuidance(queryPlan, context);
 
     if (context.previousUserQuery) {
       prompt +=
@@ -427,7 +445,10 @@ export class LlmService {
       prompt += '\n';
     }
 
-    const maintenanceGuidance = this.buildMaintenanceCalculationPrompt(context);
+    const maintenanceGuidance = this.buildMaintenanceCalculationPrompt(
+      context,
+      queryPlan,
+    );
     if (maintenanceGuidance) {
       prompt += maintenanceGuidance;
     }
@@ -435,10 +456,121 @@ export class LlmService {
     return prompt;
   }
 
-  private buildMaintenanceCalculationPrompt(context: LLMContext): string {
-    if (
-      this.classifyQueryIntent(context.userQuery) !== 'next_due_calculation'
-    ) {
+  private buildOperationalContextPrompt(queryPlan: ChatQueryPlan): string {
+    const now = new Date();
+    let prompt = '';
+
+    prompt +=
+      `Current operational timestamp (UTC): ${now.toISOString()}\n` +
+      `Preferred evidence order: ${queryPlan.sourcePriorities.join(' -> ')}\n`;
+
+    if (queryPlan.secondaryIntents.length > 0) {
+      prompt += `Secondary intents: ${queryPlan.secondaryIntents.join(', ')}\n`;
+    }
+
+    if (queryPlan.requiresCurrentDateTime) {
+      prompt +=
+        'Important: Use the current timestamp above whenever you need to determine whether something is overdue, how much time remains, or whether an expiry date has passed.\n';
+    }
+
+    if (queryPlan.requiresTelemetry) {
+      prompt +=
+        'Important: Telemetry may be required for this answer. Use direct matched telemetry for current readings before falling back to documentation.\n';
+    }
+
+    if (queryPlan.requiresTelemetryHistory) {
+      prompt +=
+        'Important: This question may require historical telemetry or historical operational records. Prefer dated history and time-bounded records over generic guidance.\n';
+    }
+
+    if (queryPlan.prefersExactDocumentRows) {
+      prompt +=
+        'Important: Prefer exact schedule rows, reference IDs, certificate rows, or other explicit document records over broad nearby text.\n';
+    }
+
+    if (queryPlan.supportsMultiSourceAggregation) {
+      prompt +=
+        'Important: Aggregate only clearly matching evidence across the preferred source categories. Keep each fact tied to its supporting source and do not blend conflicting values.\n';
+    }
+
+    prompt += '\n';
+
+    return prompt;
+  }
+
+  private buildPlannerSpecificGuidance(
+    queryPlan: ChatQueryPlan,
+    context: LLMContext,
+  ): string {
+    switch (queryPlan.primaryIntent) {
+      case 'manual_specification':
+        return (
+          'Important: The user is asking for a documented specification, limit, interval, or normal operating range. ' +
+          'Answer from the matching manual or explicitly requested source first. ' +
+          'Do not replace a manual specification answer with current telemetry unless the user explicitly asked for the current reading.\n\n'
+        );
+      case 'maintenance_procedure':
+        return (
+          'Important: This is a maintenance procedure question. ' +
+          'Answer from explicitly documented procedure steps only. ' +
+          'If the citations contain a step-by-step procedure, present it clearly as documented steps plus safety warnings. ' +
+          'Do not begin the answer with telemetry or current sensor values unless the user explicitly asked for a current reading.\n\n'
+        );
+      case 'last_maintenance':
+        return (
+          'Important: The user is asking about the last completed maintenance event. ' +
+          'Prefer explicit completed-history or PMS records with the last completed date, hours, or status. ' +
+          'Do not infer the last completed event from a next-due row unless the documentation explicitly ties them together.\n\n'
+        );
+      case 'certificate_status':
+        return (
+          'Important: The user is asking about certificate validity or expiry. ' +
+          'Answer with the documented expiry or valid-until date first. ' +
+          'Use the current timestamp above to state whether the certificate is still valid, expired, or how much time remains. ' +
+          'Use regulations only for renewal consequences or compliance implications, not as the primary source of the expiry date.\n\n'
+        );
+      case 'regulation_compliance':
+        return (
+          'Important: The user is asking about compliance obligations. ' +
+          'Answer from the regulation text first. ' +
+          'Use certificates, PMS records, or manuals only to add vessel-specific status, deadlines, or equipment impact when those documents clearly support it.\n\n'
+        );
+      case 'analytics_forecast':
+        return (
+          'Important: This is an analytical or forecast question. ' +
+          'State the data range used, the figures used in the calculation, and the final result. ' +
+          'If there are fewer than two relevant historical periods or data points, say that the history is insufficient for a reliable forecast instead of guessing.\n\n'
+        );
+      case 'telemetry_history':
+        return (
+          'Important: The user is asking about a historical vessel state or position. ' +
+          'Prefer dated logs, history records, or time-bounded telemetry. ' +
+          'If the vessel moved during the requested day and no precise time is given, ask for a specific time instead of inventing one position for the whole day.\n\n'
+        );
+      case 'troubleshooting':
+        return (
+          'Important: For troubleshooting answers, separate likely documented causes from the immediate checks to perform next. ' +
+          'Use the documented alarm meaning, possible causes, and corrective actions first. ' +
+          'If current telemetry is present, mention it only when it directly matches the fault under discussion, and do not prepend unrelated telemetry before the documented troubleshooting steps. ' +
+          'If the cited evidence does not document a cause or a quick check, do not invent it.\n\n'
+        );
+      default:
+        return '';
+    }
+  }
+
+  private buildMaintenanceCalculationPrompt(
+    context: LLMContext,
+    queryPlan?: ChatQueryPlan,
+  ): string {
+    const effectiveQueryPlan =
+      queryPlan ??
+      this.queryPlanner.planQuery(
+        context.userQuery,
+        context.resolvedSubjectQuery,
+      );
+
+    if (effectiveQueryPlan.primaryIntent !== 'next_due_calculation') {
       return '';
     }
 
@@ -649,54 +781,22 @@ export class LlmService {
   }
 
   private classifyQueryIntent(query: string): QueryIntent {
-    const q = query.toLowerCase();
-
-    if (this.isMaintenanceCalculationQuery(q)) {
-      return 'next_due_calculation';
-    }
-
-    if (this.isTelemetryListQuery(q)) {
-      return 'telemetry_list';
-    }
+    const plannedIntent = this.queryPlanner.classifyPrimaryIntent(query);
 
     if (
-      /(procedure|steps?|how\s+to|how\s+do\s+i|how\s+can\s+i|instruction|instructions|checklist|perform|replace|clean|inspect|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)/i.test(
-        q,
-      )
+      plannedIntent === 'telemetry_list' ||
+      plannedIntent === 'telemetry_status' ||
+      plannedIntent === 'manual_specification' ||
+      plannedIntent === 'maintenance_due_now' ||
+      plannedIntent === 'next_due_calculation' ||
+      plannedIntent === 'parts_fluids_consumables' ||
+      plannedIntent === 'maintenance_procedure' ||
+      plannedIntent === 'troubleshooting'
     ) {
-      return 'maintenance_procedure';
+      return plannedIntent;
     }
 
-    if (
-      /(fault|alarm|error|troubleshoot|issue|problem|not\s+working|failure)/i.test(
-        q,
-      )
-    ) {
-      return 'troubleshooting';
-    }
-
-    if (
-      /(what\s+maintenance\s+is\s+due|what\s+service\s+is\s+due|due\s+now|maintenance\s+due\s+now|service\s+due\s+now|what\s+is\s+the\s+next\s+(maintenance|service)|what\s+(maintenance|service)\s+is\s+next)/i.test(
-        q,
-      )
-    ) {
-      return 'maintenance_due_now';
-    }
-
-    if (this.isTelemetryValueQuery(q)) {
-      return 'telemetry_status';
-    }
-
-    if (
-      /\b(parts?|spare\s*parts?|spares?|consumables?|fluids?|oil|coolant|filter|filters|quantity|quantities|capacity|capacities|part\s*numbers?)\b/i.test(
-        q,
-      )
-    ) {
-      return 'parts_fluids_consumables';
-    }
-
-    // Detect short fragment/code/title inputs after explicit task intents.
-    if (this.isFragmentReferenceQuery(query)) {
+    if (plannedIntent === 'fragment_reference' || this.isFragmentReferenceQuery(query)) {
       return 'fragment_reference';
     }
 
