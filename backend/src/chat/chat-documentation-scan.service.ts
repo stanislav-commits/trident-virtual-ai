@@ -679,11 +679,24 @@ export class ChatDocumentationScanService {
       manuals,
       citations,
     );
-    const certificateLike = baseOrdered.filter((manual) =>
-      /\b(certificate|certificato|survey|registry|approval|class|solas|med|cor|radio|load\s*line|loadline|iopp|mlc|declaration)\b/i.test(
-        manual.filename,
-      ),
-    );
+    const certificateLike = baseOrdered
+      .filter((manual) =>
+        /\b(certificate|certificato|survey|registry|approval|class|solas|med|cor|radio|load\s*line|loadline|iopp|mlc|declaration)\b/i.test(
+          manual.filename,
+        ),
+      )
+      .sort((left, right) => {
+        const leftScore = this.scoreCertificateScanManual(left.filename);
+        const rightScore = this.scoreCertificateScanManual(right.filename);
+        if (leftScore !== rightScore) {
+          return rightScore - leftScore;
+        }
+
+        return (
+          baseOrdered.findIndex((manual) => manual.id === left.id) -
+          baseOrdered.findIndex((manual) => manual.id === right.id)
+        );
+      });
     const ordered = [...certificateLike, ...baseOrdered];
     const seen = new Set<string>();
 
@@ -693,6 +706,37 @@ export class ChatDocumentationScanService {
       seen.add(key);
       return true;
     });
+  }
+
+  private scoreCertificateScanManual(filename: string): number {
+    const normalized = filename.toLowerCase();
+    let score = 0;
+
+    if (
+      /\b(certificate|certificato|survey|approval|license|licence|class|solas|med|iopp|load\s*line|loadline|radio|mlc|declaration)\b/.test(
+        normalized,
+      )
+    ) {
+      score += 50;
+    }
+
+    if (
+      /\b(fire|suppression|liferaft|life\s*raft|safety|pollution|commercial|approval|survey|inspection|license|licence)\b/.test(
+        normalized,
+      )
+    ) {
+      score += 30;
+    }
+
+    if (/\b(registry|cor\b|certificate\s+of\s+registry)\b/.test(normalized)) {
+      score -= 40;
+    }
+
+    if (/\bprivate\b/.test(normalized)) {
+      score -= 10;
+    }
+
+    return score;
   }
 
   private mapDocumentChunkToCitation(
