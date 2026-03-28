@@ -44,7 +44,17 @@ export class ChatDocumentationService {
           userQuery,
         )
       : this.queryService.buildRetrievalQuery(userQuery, previousUserQuery);
-    const effectiveUserQuery = isClarificationReply ? retrievalQuery : userQuery;
+    const shouldPromoteRetrievalQueryToAnswerQuery =
+      !isClarificationReply &&
+      this.queryService.shouldPromoteRetrievalQueryToAnswerQuery(
+        userQuery,
+        previousUserQuery,
+        retrievalQuery,
+      );
+    const effectiveUserQuery =
+      isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
+        ? retrievalQuery
+        : userQuery;
 
     if (
       this.queryService.shouldAskClarifyingQuestion({
@@ -346,7 +356,10 @@ export class ChatDocumentationService {
       return {
         previousUserQuery: previousUserQuery ?? undefined,
         retrievalQuery,
-        answerQuery: isClarificationReply ? retrievalQuery : undefined,
+        answerQuery:
+          isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
+            ? retrievalQuery
+            : undefined,
         resolvedSubjectQuery,
         citations,
         compareBySource: preparedAnswerCitations.compareBySource,
@@ -361,6 +374,10 @@ export class ChatDocumentationService {
     return {
       previousUserQuery: previousUserQuery ?? undefined,
       retrievalQuery,
+      answerQuery:
+        isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
+          ? retrievalQuery
+          : undefined,
       citations,
     };
   }

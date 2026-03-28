@@ -1285,6 +1285,15 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
+    if (
+      relativeRange &&
+      !explicitDate &&
+      !explicitTime &&
+      this.isForecastPlanningHistoryQuery(searchSpace)
+    ) {
+      return null;
+    }
+
     const metricQuery = this.sanitizeHistoricalMetricQuery(
       resolvedSubjectQuery?.trim() ? resolvedSubjectQuery : query,
     );
@@ -1360,6 +1369,14 @@ export class MetricsService implements OnModuleInit {
       range,
       rangeLabel: this.formatHistoricalRange(range),
     };
+  }
+
+  private isForecastPlanningHistoryQuery(query: string): boolean {
+    const normalized = this.normalizeTelemetryText(query);
+    return (
+      /\b(forecast|budget|need|order)\b/i.test(normalized) &&
+      /\b(next|coming|upcoming)\s+(month|week)\b/i.test(normalized)
+    );
   }
 
   private detectHistoricalOperation(

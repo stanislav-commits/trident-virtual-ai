@@ -535,6 +535,7 @@ export class LlmService {
           'Answer with the documented expiry or valid-until date first. ' +
           'Use the current timestamp above to state whether the certificate is still valid, expired, or how much time remains. ' +
           'Prefer the certificate or survey whose title and subject match the asked system or equipment, and do not substitute unrelated extinguisher, HRU, EPIRB, calibration, or appliance certificates for the requested system certificate. ' +
+          'For broad questions like which certificates expire soon, prefer standalone vessel or equipment certificate documents over manual appendices, user-guide approvals, or embedded product-assessment tables. ' +
           'Use regulations only for renewal consequences or compliance implications, not as the primary source of the expiry date.\n\n'
         );
       case 'regulation_compliance':

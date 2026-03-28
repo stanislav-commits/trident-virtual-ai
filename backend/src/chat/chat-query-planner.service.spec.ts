@@ -68,6 +68,17 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.requiresCurrentDateTime).toBe(true);
   });
 
+  it('routes broad certificate expiry questions to certificates first', () => {
+    const plan = service.planQuery('Which certificates will expire soon?');
+
+    expect(plan.primaryIntent).toBe('certificate_status');
+    expect(plan.sourcePriorities.slice(0, 2)).toEqual([
+      'CERTIFICATES',
+      'REGULATION',
+    ]);
+    expect(plan.requiresCurrentDateTime).toBe(true);
+  });
+
   it('routes manual specification questions to manuals instead of telemetry', () => {
     const plan = service.planQuery(
       'What is the normal coolant temperature range for this Volvo engine?',

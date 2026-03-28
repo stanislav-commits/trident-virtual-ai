@@ -122,6 +122,16 @@ export class ChatDocumentationQueryService {
     if (!trimmed) return trimmed;
 
     if (
+      previousUserQuery &&
+      this.isTemporalRangeFollowUpQuery(trimmed) &&
+      this.isAnalyticalContinuationContext(previousUserQuery)
+    ) {
+      return `${previousUserQuery.trim().replace(/[?!.]+$/g, '')} ${trimmed}`
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    if (
       !previousUserQuery ||
       (!this.isContextualFollowUpQuery(trimmed) &&
         !this.shouldInheritPreviousSubject(trimmed, previousUserQuery)) ||
@@ -134,6 +144,28 @@ export class ChatDocumentationQueryService {
     if (!followUpSubject) return trimmed;
 
     return `${followUpSubject} ${trimmed}`.trim();
+  }
+
+  shouldPromoteRetrievalQueryToAnswerQuery(
+    userQuery: string,
+    previousUserQuery: string | null,
+    retrievalQuery: string,
+  ): boolean {
+    const trimmed = userQuery.trim();
+    const normalizedRetrievalQuery = retrievalQuery.trim();
+    if (
+      !trimmed ||
+      !previousUserQuery ||
+      !normalizedRetrievalQuery ||
+      normalizedRetrievalQuery.toLowerCase() === trimmed.toLowerCase()
+    ) {
+      return false;
+    }
+
+    return (
+      this.isTemporalRangeFollowUpQuery(trimmed) &&
+      this.isAnalyticalContinuationContext(previousUserQuery)
+    );
   }
 
   buildClarificationResolvedQuery(
@@ -923,6 +955,34 @@ export class ChatDocumentationQueryService {
 
     return /\b(when\s+should\s+we\s+do\s+next\s+maintenance|when\s+is\s+the\s+next\s+maintenance|what\s+maintenance\s+is\s+(?:next|due)|what\s+service\s+is\s+(?:next|due)|what\s+maintenance\s+is\s+last\s+due|what\s+service\s+is\s+last\s+due|last\s+due|next\s+due|next\s+maintenance|next\s+service|what\s+tasks?\s+are\s+included|what\s+(?:spare\s+)?parts?\s+are\s+(?:needed|required|listed)|how\s+do\s+i|how\s+to|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done)\b/i.test(
       query,
+    );
+  }
+
+  private isTemporalRangeFollowUpQuery(query: string): boolean {
+    return (
+      /\b(?:based on|for|using)\b[\s\S]{0,40}\b(last|past|previous|this)\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\b/i.test(
+        query,
+      ) ||
+      /\b(?:last|past|previous)\s+\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\b/i.test(
+        query,
+      ) ||
+      /\b(?:this|last)\s+(?:week|month|year)\b/i.test(query) ||
+      /\b(?:today|yesterday)\b/i.test(query) ||
+      /\b\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b/i.test(
+        query,
+      )
+    );
+  }
+
+  private isAnalyticalContinuationContext(query: string): boolean {
+    return (
+      /\b(forecast|budget|trend|history|historical|consumption|usage|need\s+to\s+order|order)\b/i.test(
+        query,
+      ) ||
+      (/\bfuel\b/i.test(query) &&
+        /\b(how\s+much|how\s+many|need|next\s+month|coming\s+month|upcoming\s+month)\b/i.test(
+          query,
+        ))
     );
   }
 

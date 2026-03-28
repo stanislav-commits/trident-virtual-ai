@@ -290,6 +290,112 @@ Reference ID: 1P47`,
     ).toBe('How do I change oil in the port generator');
   });
 
+  it('promotes analytical temporal follow-ups into answerQuery for downstream reasoning', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => {
+            citations: ChatCitation[];
+            compareBySource: boolean;
+            sourceComparisonTitles: string[];
+          }
+        >()
+        .mockImplementation((_query, _userQuery, citations) => ({
+          citations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        })),
+      limitCitationsForLlm: jest
+        .fn<
+          (
+            userQuery: string,
+            citations: ChatCitation[],
+            compareBySource: boolean,
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const messageHistory = [
+      {
+        role: 'user',
+        content: 'calculate how many fuel do i need for the next month?',
+      },
+      {
+        role: 'assistant',
+        content:
+          'The history is insufficient for a reliable forecast of fuel needs for the next month.',
+      },
+      {
+        role: 'user',
+        content: 'based on the last month',
+      },
+    ];
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'based on the last month',
+      messageHistory,
+    });
+
+    expect(result.retrievalQuery).toBe(
+      'calculate how many fuel do i need for the next month based on the last month',
+    );
+    expect(result.answerQuery).toBe(result.retrievalQuery);
+    expect(contextService.findContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      result.retrievalQuery,
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
   it('runs a second narrowing pass when an exact maintenance subject is resolved from the first citation set', async () => {
     const citations: ChatCitation[] = [
       {

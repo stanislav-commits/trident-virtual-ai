@@ -912,10 +912,18 @@ export class ChatDocumentationCitationService {
       return explicitCategory;
     }
 
+    if (this.isStandaloneCertificateLikeCitation(citation)) {
+      return 'CERTIFICATES';
+    }
+
     const haystack =
       `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+    const manualLikeTitle = this.isManualLikeCitationTitle(
+      citation.sourceTitle,
+    );
 
     if (
+      !manualLikeTitle &&
       /\b(certificate|survey|class\s+certificate|valid\s+until|expiry|expire)\b/i.test(
         haystack,
       )
@@ -945,6 +953,40 @@ export class ChatDocumentationCitationService {
     }
 
     return null;
+  }
+
+  private isManualLikeCitationTitle(sourceTitle?: string): boolean {
+    return /\b(manual|guide|handbook|instruction|user'?s\s+guide|operator|operators)\b/i.test(
+      sourceTitle ?? '',
+    );
+  }
+
+  private isStandaloneCertificateLikeCitation(citation: ChatCitation): boolean {
+    const explicitCategory = citation.sourceCategory?.trim().toUpperCase();
+    if (explicitCategory === 'CERTIFICATES') {
+      return true;
+    }
+
+    const title = citation.sourceTitle ?? '';
+    if (this.isManualLikeCitationTitle(title)) {
+      return false;
+    }
+
+    return /\b(certificate|survey|registry|renewal|class\b|inspection)\b/i.test(
+      title,
+    );
+  }
+
+  private isEmbeddedProductApprovalCitation(citation: ChatCitation): boolean {
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+
+    return (
+      this.isManualLikeCitationTitle(citation.sourceTitle) &&
+      /\b(product\s+design\s+assessment|manufacturing\s+assessment|type\s+approval|declaration\s+of\s+conformity|module\s+[a-z]|gas\s+detector)\b/i.test(
+        haystack,
+      )
+    );
   }
 
   private classifyCitationSourceType(citation: {
@@ -1196,6 +1238,13 @@ export class ChatDocumentationCitationService {
       .filter(
         (term) =>
           ![
+            'what',
+            'when',
+            'where',
+            'which',
+            'who',
+            'will',
+            'any',
             'certificate',
             'certificates',
             'expiry',
@@ -1206,11 +1255,64 @@ export class ChatDocumentationCitationService {
             'until',
             'renewal',
             'date',
+            'soon',
+            'upcoming',
           ].includes(term),
       );
 
     if (focusTerms.length === 0) {
-      return citations;
+      const broadCertificateRanking = [...citations].sort((left, right) => {
+        const leftHaystack =
+          `${left.sourceTitle ?? ''}\n${left.snippet ?? ''}`.toLowerCase();
+        const rightHaystack =
+          `${right.sourceTitle ?? ''}\n${right.snippet ?? ''}`.toLowerCase();
+        const leftStandalone = this.isStandaloneCertificateLikeCitation(left)
+          ? 1
+          : 0;
+        const rightStandalone = this.isStandaloneCertificateLikeCitation(right)
+          ? 1
+          : 0;
+        if (rightStandalone !== leftStandalone) {
+          return rightStandalone - leftStandalone;
+        }
+
+        const leftEmbeddedManual = this.isEmbeddedProductApprovalCitation(left)
+          ? 1
+          : 0;
+        const rightEmbeddedManual = this.isEmbeddedProductApprovalCitation(
+          right,
+        )
+          ? 1
+          : 0;
+        if (leftEmbeddedManual !== rightEmbeddedManual) {
+          return leftEmbeddedManual - rightEmbeddedManual;
+        }
+
+        const leftOfficialCertificate = /\b(certificate\s+of\s+registry|official\s+and\s+imo|name\s+of\s+ship|issued\s+in\s+terms|renewal\s+certificate)\b/i.test(
+          leftHaystack,
+        )
+          ? 1
+          : 0;
+        const rightOfficialCertificate = /\b(certificate\s+of\s+registry|official\s+and\s+imo|name\s+of\s+ship|issued\s+in\s+terms|renewal\s+certificate)\b/i.test(
+          rightHaystack,
+        )
+          ? 1
+          : 0;
+        if (rightOfficialCertificate !== leftOfficialCertificate) {
+          return rightOfficialCertificate - leftOfficialCertificate;
+        }
+
+        return (right.score ?? 0) - (left.score ?? 0);
+      });
+
+      const standaloneMatches = broadCertificateRanking.filter((citation) =>
+        this.isStandaloneCertificateLikeCitation(citation),
+      );
+      if (standaloneMatches.length > 0) {
+        return standaloneMatches;
+      }
+
+      return broadCertificateRanking;
     }
 
     const scored = citations

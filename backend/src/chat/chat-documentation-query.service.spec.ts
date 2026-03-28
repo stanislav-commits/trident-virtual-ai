@@ -162,7 +162,18 @@ describe('ChatDocumentationQueryService', () => {
         'when should we do next maintenance?',
         'what is running hours meter for port generator',
       ),
-    ).toContain('port generator');
+      ).toContain('port generator');
+  });
+
+  it('inherits the full previous analytical question for temporal forecast follow-ups', () => {
+    expect(
+      service.buildRetrievalQuery(
+        'based on the last month',
+        'calculate how many fuel do i need for the next month?',
+      ),
+    ).toBe(
+      'calculate how many fuel do i need for the next month based on the last month',
+    );
   });
 
   it('inherits the previous subject for vague last-due follow-up questions', () => {

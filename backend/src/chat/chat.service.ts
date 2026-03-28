@@ -670,6 +670,32 @@ export class ChatService {
         telemetryMatchMode,
       );
 
+      const deterministicForecastAnswer =
+        await this.buildDeterministicAnalyticsForecastAnswer({
+          shipId,
+          role,
+          sessionId,
+          queryPlan,
+          userQuery: effectiveUserQuery,
+          telemetry,
+        });
+      if (deterministicForecastAnswer) {
+        return this.addAssistantMessage(
+          sessionId,
+          deterministicForecastAnswer,
+          {
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            ...(telemetryShips.length > 0
+              ? { telemetryShips: [...new Set(telemetryShips)] }
+              : {}),
+            ...(citationsForAnswer.length === 0
+              ? { noDocumentation: true }
+              : {}),
+          },
+          citationsForAnswer,
+        );
+      }
+
       const deterministicDocumentationAnswer =
         this.buildDeterministicDocumentationAnswer(
           effectiveUserQuery,
@@ -1112,6 +1138,68 @@ export class ChatService {
     }
 
     return null;
+  }
+
+  private async buildDeterministicAnalyticsForecastAnswer(params: {
+    shipId: string | null;
+    role: string;
+    sessionId: string;
+    queryPlan: ChatQueryPlan;
+    userQuery: string;
+    telemetry: Record<string, unknown>;
+  }): Promise<string | null> {
+    const { shipId, role, sessionId, queryPlan, userQuery, telemetry } = params;
+
+    if (queryPlan.primaryIntent !== 'analytics_forecast') {
+      return null;
+    }
+
+    if (!this.isFuelForecastQuery(userQuery)) {
+      return null;
+    }
+
+    const historyBasisQuery = this.buildFuelForecastHistoricalBasisQuery(userQuery);
+    const historicalMatch = await this.resolveHistoricalTelemetryForContext({
+      shipId,
+      role,
+      sessionId,
+      userQuery: historyBasisQuery,
+      effectiveUserQuery: historyBasisQuery,
+      resolvedSubjectQuery: historyBasisQuery,
+    });
+
+    if (
+      !historicalMatch ||
+      historicalMatch.resolution.kind !== 'answer' ||
+      !historicalMatch.resolution.content
+    ) {
+      return null;
+    }
+
+    const projectedFuel = this.extractHistoricalFuelLiters(
+      historicalMatch.resolution.content,
+    );
+    if (projectedFuel === null) {
+      return null;
+    }
+
+    const onboardFuel = this.sumCurrentFuelTankTelemetry(telemetry);
+    const basisLabel = this.describeFuelForecastBasis(userQuery, historyBasisQuery);
+    const lines = [
+      `Based on historical telemetry from ${basisLabel}, projected fuel consumption for the next month is approximately ${this.formatAggregateNumber(projectedFuel)} liters [Telemetry History].`,
+    ];
+
+    if (onboardFuel !== null) {
+      lines.push(
+        `Current onboard fuel across the matched tank readings is ${this.formatAggregateNumber(onboardFuel)} liters [Telemetry].`,
+      );
+    }
+
+    lines.push(
+      'This estimate assumes a similar operational profile to the selected historical period.',
+    );
+
+    return lines.join('\n\n');
   }
 
   private buildDeterministicTelemetryUnavailableAnswer(
@@ -1568,6 +1656,104 @@ export class ChatService {
     if (/\b(def|urea)\b/.test(normalized)) return 'def';
     if (/\b(water|fresh water|seawater)\b/.test(normalized)) return 'water';
     return null;
+  }
+
+  private isFuelForecastQuery(query: string): boolean {
+    const normalized = this.normalizeAggregateTelemetryText(query);
+    return (
+      /\bfuel\b/.test(normalized) &&
+      (/\b(forecast|budget|need|order)\b/.test(normalized) ||
+        /\b(next|coming|upcoming)\s+month\b/.test(normalized))
+    );
+  }
+
+  private buildFuelForecastHistoricalBasisQuery(query: string): string {
+    const normalized = this.normalizeAggregateTelemetryText(query);
+    const agoMatch = normalized.match(
+      /\b(\d+)\s+(hour|hours|day|days|week|weeks|month|months)\s+ago\b/i,
+    );
+    if (agoMatch) {
+      return `How much fuel was used over the last ${agoMatch[1]} ${agoMatch[2]}?`;
+    }
+
+    const rangeMatch = normalized.match(
+      /\b(?:last|past|previous|over the last)\s+(\d+)\s+(hour|hours|day|days|week|weeks|month|months)\b/i,
+    );
+    if (rangeMatch) {
+      return `How much fuel was used over the last ${rangeMatch[1]} ${rangeMatch[2]}?`;
+    }
+
+    if (/\blast month\b/i.test(normalized)) {
+      return 'How much fuel was used over the last month?';
+    }
+
+    if (/\bthis month\b/i.test(normalized)) {
+      return 'How much fuel was used over this month?';
+    }
+
+    return 'How much fuel was used over the last 30 days?';
+  }
+
+  private describeFuelForecastBasis(
+    userQuery: string,
+    historyBasisQuery: string,
+  ): string {
+    const normalized = this.normalizeAggregateTelemetryText(
+      `${userQuery} ${historyBasisQuery}`,
+    );
+
+    if (/\blast month\b/i.test(normalized)) {
+      return 'the last month';
+    }
+
+    const rangeMatch = normalized.match(
+      /\blast\s+(\d+)\s+(hour|hours|day|days|week|weeks|month|months)\b/i,
+    );
+    if (rangeMatch) {
+      return `the last ${rangeMatch[1]} ${rangeMatch[2]}`;
+    }
+
+    return 'the last 30 days';
+  }
+
+  private extractHistoricalFuelLiters(content: string): number | null {
+    const match = content.match(/\bwas\s+([\d,]+(?:\.\d+)?)\s+liters\b/i);
+    if (!match?.[1]) {
+      return null;
+    }
+
+    const numeric = Number.parseFloat(match[1].replace(/,/g, ''));
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  private sumCurrentFuelTankTelemetry(
+    telemetry: Record<string, unknown>,
+  ): number | null {
+    const entries = Object.entries(telemetry)
+      .map(([label, value]) => this.parseNumericTelemetryEntry(label, value))
+      .filter(
+        (
+          entry,
+        ): entry is {
+          label: string;
+          value: number;
+          normalizedLabel: string;
+          unit: string | null;
+        } => entry !== null,
+      )
+      .filter(
+        (entry) =>
+          /\bfuel\s+tank\b/i.test(entry.normalizedLabel) &&
+          !/\b(used|consumed|consumption|rate|flow|pressure|temp|temperature)\b/i.test(
+            entry.normalizedLabel,
+          ),
+      );
+
+    if (entries.length === 0) {
+      return null;
+    }
+
+    return entries.reduce((sum, entry) => sum + entry.value, 0);
   }
 
   private detectTelemetryCalculationOperation(

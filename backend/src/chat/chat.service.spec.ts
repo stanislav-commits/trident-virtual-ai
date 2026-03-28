@@ -386,6 +386,85 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('builds a deterministic fuel forecast from historical fuel use and current tank telemetry', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'calculate how many fuel do i need for the next month?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    prisma.ship.findMany.mockResolvedValue([
+      {
+        id: 'ship-1',
+        name: 'Sea Wolf X',
+      },
+    ]);
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'calculate how many fuel do i need for the next month?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.resolveHistoricalTelemetryQuery.mockImplementation(
+      async (_shipId: string, query: string) => {
+        if (query === 'How much fuel was used over the last 30 days?') {
+          return {
+            kind: 'answer',
+            content:
+              'Based on historical telemetry from 2026-02-25 23:46 UTC to 2026-03-27 23:46 UTC, the total across the matched metrics was 4,384 liters [Telemetry History].',
+          };
+        }
+
+        return { kind: 'none' };
+      },
+    );
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Fuel Tank 1P': 3950,
+        'Fuel Tank 2S': 3896,
+        'Fuel Tank 3P': 462,
+        'Fuel Tank 4S': 370,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 4,
+      prefiltered: true,
+      matchMode: 'related',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      null,
+      'session-1',
+      'calculate how many fuel do i need for the next month?',
+      undefined,
+      'admin',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        'projected fuel consumption for the next month is approximately 4,384 liters',
+      ),
+      expect.objectContaining({
+        noDocumentation: true,
+      }),
+      [],
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        'Current onboard fuel across the matched tank readings is 8,678 liters',
+      ),
+      expect.anything(),
+      [],
+    );
+  });
+
   it('answers direct aggregate telemetry tank queries deterministically without LLM arithmetic', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

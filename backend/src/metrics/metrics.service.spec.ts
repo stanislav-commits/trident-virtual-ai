@@ -1528,6 +1528,38 @@ describe('MetricsService historical telemetry', () => {
     );
   });
 
+  it('does not turn forecast-planning fuel questions into point-in-time historical clarifications', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn(),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn(),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'based on the last month calculate how many fuel do i need for the next month?',
+    );
+
+    expect(result.kind).toBe('none');
+  });
+
   it('returns historical position at an exact time when latitude and longitude metrics exist', async () => {
     const prisma = {
       ship: {
