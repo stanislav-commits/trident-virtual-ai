@@ -1171,34 +1171,31 @@ export class ChatService {
       return null;
     }
 
-    const certificateEntries = citations
+    const rawCertificateEntries = citations
       .filter(
         (citation) =>
           citation.sourceCategory?.trim().toUpperCase() === 'CERTIFICATES',
       )
-      .map((citation) => {
-        const expiry = this.extractExplicitCertificateExpiry(citation.snippet);
-        if (!expiry) {
-          return null;
+      .flatMap((citation) =>
+        this.extractExplicitCertificateExpiries(citation.snippet).map(
+          (expiry) => ({
+            citation,
+            timestamp: expiry.timestamp,
+            displayDate: expiry.displayDate,
+            sourceLabel: citation.sourceTitle ?? 'the cited certificate',
+          }),
+        ),
+      );
+    const seenCertificateEntryKeys = new Set<string>();
+    const certificateEntries = rawCertificateEntries
+      .filter((entry) => {
+        const key = `${entry.sourceLabel}::${entry.timestamp}`;
+        if (seenCertificateEntryKeys.has(key)) {
+          return false;
         }
-
-        return {
-          citation,
-          timestamp: expiry.timestamp,
-          displayDate: expiry.displayDate,
-          sourceLabel: citation.sourceTitle ?? 'the cited certificate',
-        };
+        seenCertificateEntryKeys.add(key);
+        return true;
       })
-      .filter(
-        (
-          entry,
-        ): entry is {
-          citation: ChatCitation;
-          timestamp: number;
-          displayDate: string;
-          sourceLabel: string;
-        } => entry !== null,
-      )
       .sort((left, right) => left.timestamp - right.timestamp);
 
     if (certificateEntries.length === 0) {
@@ -1213,49 +1210,54 @@ export class ChatService {
 
       return {
         content:
-          'I could not confirm any currently valid certificates that are due to expire within the next 180 days from the provided certificate documents because the retrieved certificate snippets do not include clear expiry dates.',
+          'I could not confirm any upcoming certificate expiries from the provided certificate documents because the retrieved certificate snippets do not include clear expiry dates.',
         citations: fallbackCitations,
       };
     }
 
     const now = Date.now();
     const soonHorizonMs = 180 * 24 * 60 * 60 * 1000;
-    const upcomingSoon = certificateEntries.filter(
-      (entry) =>
-        entry.timestamp >= now && entry.timestamp <= now + soonHorizonMs,
+    const upcomingEntries = certificateEntries.filter(
+      (entry) => entry.timestamp >= now,
     );
 
-    if (upcomingSoon.length > 0) {
-      const selected = upcomingSoon.slice(0, 5);
+    if (upcomingEntries.length > 0) {
+      const selected = upcomingEntries.slice(0, 5);
+      const hasSoonExpiry = selected.some(
+        (entry) => entry.timestamp <= now + soonHorizonMs,
+      );
+
       if (selected.length === 1) {
         const [entry] = selected;
+        const remaining = this.formatApproximateTimeUntil(entry.timestamp, now);
+        const timingText = remaining ? ` in about ${remaining}` : '';
+
         return {
-          content: `The next certificate due to expire within the next 180 days is ${entry.sourceLabel}, which expires on ${entry.displayDate} [Certificate: ${entry.sourceLabel}].`,
+          content: hasSoonExpiry
+            ? `The next certificate due to expire is ${entry.sourceLabel}, which expires on ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`
+            : `I did not find any certificate expiring within the next 180 days. The nearest upcoming certificate expiry I found is ${entry.sourceLabel}, which expires on ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`,
           citations: [entry.citation],
         };
       }
 
+      const intro = hasSoonExpiry
+        ? 'The nearest upcoming certificate expiries I found are:'
+        : 'I did not find any certificate expiring within the next 180 days. The nearest upcoming certificate expiries I found are:';
+
       return {
         content: [
-          'The following certificates are due to expire within the next 180 days:',
+          intro,
           '',
-          ...selected.map(
-            (entry) =>
-              `- ${entry.sourceLabel}: ${entry.displayDate} [Certificate: ${entry.sourceLabel}]`,
-          ),
+          ...selected.map((entry) => {
+            const remaining = this.formatApproximateTimeUntil(
+              entry.timestamp,
+              now,
+            );
+            const timingText = remaining ? ` (in about ${remaining})` : '';
+            return `- ${entry.sourceLabel}: ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}]`;
+          }),
         ].join('\n'),
-        citations: selected.map((entry) => entry.citation),
-      };
-    }
-
-    const laterUpcoming = certificateEntries.filter(
-      (entry) => entry.timestamp >= now + soonHorizonMs,
-    );
-    if (laterUpcoming.length > 0) {
-      const [entry] = laterUpcoming;
-      return {
-        content: `I could not confirm any currently valid certificates that are due to expire within the next 180 days from the provided certificate documents. The earliest later expiry I found is ${entry.sourceLabel} on ${entry.displayDate} [Certificate: ${entry.sourceLabel}].`,
-        citations: [entry.citation],
+        citations: [...new Set(selected.map((entry) => entry.citation))],
       };
     }
 
@@ -1266,7 +1268,7 @@ export class ChatService {
     if (expiredEntries.length > 0) {
       return {
         content:
-          'I could not confirm any currently valid certificates that are due to expire within the next 180 days from the provided certificate documents. The certificate snippets I found with explicit expiry dates are already expired.',
+          'I could not confirm any currently valid upcoming certificate expiries from the provided certificate documents. The certificate snippets I found with explicit expiry dates are already expired.',
         citations: expiredEntries.map((entry) => entry.citation),
       };
     }
@@ -1339,7 +1341,7 @@ export class ChatService {
   private isBroadCertificateSoonQuery(query: string): boolean {
     const normalized = query.toLowerCase();
     return (
-      /\bcertificates\b/.test(normalized) &&
+      /\bcertificates?\b/.test(normalized) &&
       /\b(expire|expiry|expiring|valid\s+until)\b/.test(normalized) &&
       /\b(soon|upcoming|next)\b/.test(normalized)
     );
@@ -1348,8 +1350,14 @@ export class ChatService {
   private extractExplicitCertificateExpiry(
     snippet?: string,
   ): { timestamp: number; displayDate: string } | null {
+    return this.extractExplicitCertificateExpiries(snippet)[0] ?? null;
+  }
+
+  private extractExplicitCertificateExpiries(
+    snippet?: string,
+  ): Array<{ timestamp: number; displayDate: string }> {
     if (!snippet) {
-      return null;
+      return [];
     }
 
     const plainText = snippet
@@ -1358,27 +1366,31 @@ export class ChatService {
       .replace(/\s+/g, ' ')
       .trim();
     const patterns = [
-      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}\s+[a-z]{3,9}\s+\d{2,4})\b/i,
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi,
     ];
+    const seen = new Set<number>();
+    const expiries: Array<{ timestamp: number; displayDate: string }> = [];
 
     for (const pattern of patterns) {
-      const match = plainText.match(pattern);
-      if (!match?.[1]) {
-        continue;
-      }
+      for (const match of plainText.matchAll(pattern)) {
+        if (!match?.[1]) {
+          continue;
+        }
 
-      const parsedDate = this.parseExplicitCertificateDateToken(match[1]);
-      if (!parsedDate) {
-        continue;
-      }
+        const parsedDate = this.parseExplicitCertificateDateToken(match[1]);
+        if (!parsedDate || seen.has(parsedDate)) {
+          continue;
+        }
 
-      return {
-        timestamp: parsedDate,
-        displayDate: this.formatExplicitCertificateDate(parsedDate),
-      };
+        seen.add(parsedDate);
+        expiries.push({
+          timestamp: parsedDate,
+          displayDate: this.formatExplicitCertificateDate(parsedDate),
+        });
+      }
     }
 
-    return null;
+    return expiries.sort((left, right) => left.timestamp - right.timestamp);
   }
 
   private parseExplicitCertificateDateToken(token: string): number | null {
@@ -1423,7 +1435,7 @@ export class ChatService {
     }
 
     const monthNameMatch = normalized.match(
-      /^(\d{1,2})\s+([a-z]{3,9})\s+(\d{2,4})$/i,
+      /^(\d{1,2})(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
     );
     if (monthNameMatch) {
       const day = Number.parseInt(monthNameMatch[1], 10);
@@ -1449,6 +1461,48 @@ export class ChatService {
       year: 'numeric',
       timeZone: 'UTC',
     }).format(new Date(timestamp));
+  }
+
+  private formatApproximateTimeUntil(
+    timestamp: number,
+    nowTimestamp: number,
+  ): string | null {
+    if (timestamp <= nowTimestamp) {
+      return null;
+    }
+
+    const now = new Date(nowTimestamp);
+    const target = new Date(timestamp);
+    const totalMonths = Math.max(
+      0,
+      (target.getUTCFullYear() - now.getUTCFullYear()) * 12 +
+        (target.getUTCMonth() - now.getUTCMonth()),
+    );
+    const years = Math.floor(totalMonths / 12);
+    const months = totalMonths % 12;
+
+    const parts: string[] = [];
+    if (years > 0) {
+      parts.push(`${years} year${years === 1 ? '' : 's'}`);
+    }
+    if (months > 0) {
+      parts.push(`${months} month${months === 1 ? '' : 's'}`);
+    }
+
+    if (parts.length > 0) {
+      return parts.slice(0, 2).join(' and ');
+    }
+
+    const diffDays = Math.max(
+      1,
+      Math.round((timestamp - nowTimestamp) / (24 * 60 * 60 * 1000)),
+    );
+    if (diffDays >= 7) {
+      const weeks = Math.round(diffDays / 7);
+      return `${weeks} week${weeks === 1 ? '' : 's'}`;
+    }
+
+    return `${diffDays} day${diffDays === 1 ? '' : 's'}`;
   }
 
   private buildDeterministicTelemetryUnavailableAnswer(
