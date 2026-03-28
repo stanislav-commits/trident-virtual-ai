@@ -74,4 +74,12 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.requiresTelemetryHistory).toBe(true);
     expect(plan.supportsMultiSourceAggregation).toBe(true);
   });
+
+  it('treats plain current average telemetry questions as telemetry status, not forecasting', () => {
+    const plan = service.planQuery('What is the average generator load?');
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetryHistory).toBe(false);
+  });
 });

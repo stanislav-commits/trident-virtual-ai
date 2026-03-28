@@ -559,8 +559,13 @@ export class ChatService {
       let telemetryMatchMode: TelemetryMatchMode = 'none';
       let telemetryClarification: TelemetryClarification | null = null;
       const telemetryShips: string[] = [];
+      const shouldLookupCurrentTelemetry = this.shouldLookupCurrentTelemetry(
+        queryPlan,
+        effectiveUserQuery,
+      );
+
       try {
-        if (shipId) {
+        if (shouldLookupCurrentTelemetry && shipId) {
           const telemetryContext =
             await this.metricsService.getShipTelemetryContextForQuery(
               shipId,
@@ -575,7 +580,7 @@ export class ChatService {
             `Telemetry context for ship ${shipId}: matchMode=${telemetryMatchMode}, prefiltered=${telemetryPrefiltered}, matchedMetrics=${telemetryContext.matchedMetrics}, clarificationActions=${telemetryClarification?.actions.length ?? 0}`,
           );
           if (shipName) telemetryShips.push(shipName);
-        } else if (role === 'admin') {
+        } else if (shouldLookupCurrentTelemetry && role === 'admin') {
           const shipsWithMetrics = await this.prisma.ship.findMany({
             where: { metricsConfig: { some: { isActive: true } } },
             select: { id: true, name: true },
@@ -618,7 +623,11 @@ export class ChatService {
         );
       }
 
-      if (telemetryClarification && telemetryClarification.actions.length > 0) {
+      if (
+        telemetryClarification &&
+        telemetryClarification.actions.length > 0 &&
+        this.shouldReturnTelemetryClarification(queryPlan, effectiveUserQuery)
+      ) {
         this.logger.debug(
           `Returning telemetry clarification for query="${effectiveUserQuery}" with ${telemetryClarification.actions.length} actions`,
         );
@@ -645,13 +654,12 @@ export class ChatService {
 
       const documentationIntentPattern =
         /\b(based\s+on|recommended|recommendation|action|next\s+step|what\s+should\s+i\s+do|what\s+do\s+i\s+do|procedure|steps?|how\s+to|how\s+do\s+i|manual|documentation|according\s+to\s+(?:the\s+)?(?:manual|documentation|docs?|handbook|guide|procedure|spec(?:ification)?)|normal|range|limit|limits|specified|operating)\b/i;
-      const telemetryOnlyQuery =
-        /\bfrom\s+telemetry\b|\btelemetry\s+only\b|\bfrom\s+metrics\b/i.test(
-          effectiveUserQuery,
-        ) ||
-        telemetryMatchMode === 'sample' ||
-        ((telemetryMatchMode === 'exact' || telemetryMatchMode === 'direct') &&
-          !documentationIntentPattern.test(effectiveUserQuery));
+      const telemetryOnlyQuery = this.isTelemetryOnlyQuery(
+        queryPlan,
+        effectiveUserQuery,
+        telemetryMatchMode,
+        documentationIntentPattern,
+      );
 
       const citationsForAnswer = telemetryOnlyQuery ? [] : citations;
       const llmTelemetryContext = this.selectTelemetryContextForLlm(
@@ -705,6 +713,7 @@ export class ChatService {
       }
 
       const deterministicTelemetryAnswer = this.buildDeterministicTelemetryAnswer(
+        queryPlan,
         effectiveUserQuery,
         telemetry,
         telemetryPrefiltered,
@@ -1053,11 +1062,16 @@ export class ChatService {
   }
 
   private buildDeterministicTelemetryAnswer(
+    queryPlan: ChatQueryPlan,
     userQuery: string,
     telemetry: Record<string, unknown>,
     telemetryPrefiltered: boolean,
     telemetryMatchMode: TelemetryMatchMode,
   ): string | null {
+    if (!this.shouldUseDeterministicTelemetryAnswer(queryPlan, userQuery)) {
+      return null;
+    }
+
     if (!telemetryPrefiltered) {
       return null;
     }
@@ -1736,6 +1750,119 @@ export class ChatService {
       default:
         return false;
     }
+  }
+
+  private shouldLookupCurrentTelemetry(
+    queryPlan: ChatQueryPlan,
+    userQuery: string,
+  ): boolean {
+    if (this.isCurrentInventoryTelemetryQuery(userQuery)) {
+      return true;
+    }
+
+    switch (queryPlan.primaryIntent) {
+      case 'telemetry_list':
+      case 'telemetry_status':
+      case 'analytics_forecast':
+      case 'next_due_calculation':
+      case 'maintenance_due_now':
+      case 'last_maintenance':
+        return true;
+      case 'maintenance_procedure':
+      case 'troubleshooting':
+        return this.isCurrentTelemetryGuidedQuery(userQuery);
+      case 'parts_fluids_consumables':
+        return this.isCurrentInventoryTelemetryQuery(userQuery);
+      case 'general':
+        return (
+          /\b(from\s+telemetry|telemetry\s+only|from\s+metrics)\b/i.test(
+            userQuery,
+          ) || this.isCurrentTelemetryGuidedQuery(userQuery)
+        );
+      default:
+        return false;
+    }
+  }
+
+  private shouldReturnTelemetryClarification(
+    queryPlan: ChatQueryPlan,
+    userQuery: string,
+  ): boolean {
+    if (/\b(from\s+telemetry|telemetry\s+only|from\s+metrics)\b/i.test(userQuery)) {
+      return true;
+    }
+
+    return (
+      queryPlan.primaryIntent === 'telemetry_status' ||
+      queryPlan.primaryIntent === 'telemetry_list'
+    );
+  }
+
+  private isTelemetryOnlyQuery(
+    queryPlan: ChatQueryPlan,
+    userQuery: string,
+    telemetryMatchMode: TelemetryMatchMode,
+    documentationIntentPattern: RegExp,
+  ): boolean {
+    if (/\bfrom\s+telemetry\b|\btelemetry\s+only\b|\bfrom\s+metrics\b/i.test(userQuery)) {
+      return true;
+    }
+
+    if (queryPlan.primaryIntent === 'telemetry_list') {
+      return true;
+    }
+
+    if (queryPlan.primaryIntent !== 'telemetry_status') {
+      return false;
+    }
+
+    return (
+      telemetryMatchMode === 'sample' ||
+      ((telemetryMatchMode === 'exact' || telemetryMatchMode === 'direct') &&
+        !documentationIntentPattern.test(userQuery))
+    );
+  }
+
+  private shouldUseDeterministicTelemetryAnswer(
+    queryPlan: ChatQueryPlan,
+    userQuery: string,
+  ): boolean {
+    if (/\bfrom\s+telemetry\b|\btelemetry\s+only\b|\bfrom\s+metrics\b/i.test(userQuery)) {
+      return true;
+    }
+
+    if (this.isCurrentInventoryTelemetryQuery(userQuery)) {
+      return true;
+    }
+
+    switch (queryPlan.primaryIntent) {
+      case 'telemetry_status':
+      case 'telemetry_list':
+        return true;
+      case 'parts_fluids_consumables':
+        return this.isCurrentInventoryTelemetryQuery(userQuery);
+      default:
+        return false;
+    }
+  }
+
+  private isCurrentInventoryTelemetryQuery(userQuery: string): boolean {
+    const normalized = userQuery.toLowerCase();
+    if (
+      /\b(next\s+month|next\s+week|forecast|budget|trend|historical|history|over\s+the\s+last|last\s+\d+\s+(?:days?|weeks?|months?)|need\s+to\s+order|order)\b/i.test(
+        normalized,
+      )
+    ) {
+      return false;
+    }
+
+    return (
+      /\b(onboard|on\s+board|in\s+tanks|tank\s+levels?|all\s+fuel\s+tanks|remaining|available)\b/i.test(
+        normalized,
+      ) ||
+      (/\b(how\s+many|how\s+much|total|combined|sum)\b/i.test(normalized) &&
+        /\b(fuel|oil|water|coolant)\b/i.test(normalized))
+    );
   }
 
   private isCurrentTelemetryGuidedQuery(userQuery: string): boolean {

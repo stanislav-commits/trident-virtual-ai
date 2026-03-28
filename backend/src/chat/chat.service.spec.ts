@@ -258,6 +258,134 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
+  it('does not look up current telemetry for certificate-status questions', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'When does the fire suppression system certificate expire?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Fire Suppression Survey.pdf',
+          sourceCategory: 'CERTIFICATES',
+          snippet: 'Certificate valid until 14 August 2026.',
+          pageNumber: 1,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'When does the fire suppression system certificate expire?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'The fire suppression system certificate expires on 14 August 2026.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'When does the fire suppression system certificate expire?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        telemetry: {},
+        telemetryPrefiltered: false,
+        telemetryMatchMode: 'none',
+      }),
+    );
+  });
+
+  it('keeps forecast questions on the LLM path instead of returning telemetry clarification or current aggregates', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'How much fuel do we need to order for next month?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'M/Y Seawolf X - Components History.pdf',
+          sourceCategory: 'HISTORY_PROCEDURES',
+          snippet:
+            'Generator fuel usage records are available for prior periods and should be compared with current onboard quantities.',
+          pageNumber: 12,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'How much fuel do we need to order for next month?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Fuel Tank 1P': 3950,
+        'Fuel Tank 2S': 3896,
+        'SIEMENS-MASE-GENSET-SB.Total Fuel Used (l)': 35116,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 3,
+      prefiltered: true,
+      matchMode: 'related',
+      clarification: {
+        question:
+          "I couldn't find a direct telemetry metric that exactly measures the requested reading, but I did find related metrics for the same topic. Which one do you want to inspect?",
+        pendingQuery: 'What is the current value of',
+        actions: [
+          {
+            label: 'Fuel Tank 1P',
+            message: 'What is the current value of Fuel Tank 1P?',
+            kind: 'suggestion',
+          },
+        ],
+      },
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'Forecast answer using documentation and telemetry context.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'How much fuel do we need to order for next month?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        telemetry: {
+          'Fuel Tank 1P': 3950,
+          'Fuel Tank 2S': 3896,
+          'SIEMENS-MASE-GENSET-SB.Total Fuel Used (l)': 35116,
+        },
+        noDocumentation: false,
+      }),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Forecast answer using documentation and telemetry context.',
+      expect.anything(),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'M/Y Seawolf X - Components History.pdf',
+        }),
+      ]),
+    );
+  });
+
   it('answers direct aggregate telemetry tank queries deterministically without LLM arithmetic', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
@@ -316,7 +444,11 @@ describe('ChatService telemetry clarification', () => {
       expect.objectContaining({
         resolvedSubjectQuery: 'calculate how many fuel onboard according to all fuel tanks',
       }),
-      [],
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Volvo Penta operators manual',
+        }),
+      ]),
     );
   });
 

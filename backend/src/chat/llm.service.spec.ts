@@ -445,6 +445,31 @@ describe('LlmService maintenance calculation guard', () => {
     );
   });
 
+  it('expands right-engine subject terms to starboard aliases for maintenance calculations', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildMaintenanceCalculationPrompt({
+      userQuery: 'When should I change the oil in the right engine?',
+      citations: [
+        {
+          sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+          pageNumber: 18,
+          snippet:
+            'Component name: SB ENGINE Task name: CHANGE OIL Interval: 500 hours Next due: 4500',
+        },
+      ],
+      telemetry: {
+        'SB engine running hours': 4520,
+      },
+    });
+
+    expect(prompt).toContain('Subject terms to match:');
+    expect(prompt).toContain('starboard');
+    expect(prompt).toContain('sb');
+    expect(prompt).toContain('Detected telemetry hour counters:');
+    expect(prompt).toContain('SB engine running hours: 4520 hours');
+  });
+
   it('classifies vessel location questions as telemetry queries', () => {
     const service = new LlmService();
 

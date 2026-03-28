@@ -1125,11 +1125,46 @@ export class LlmService {
       .filter((term) => !stopWords.has(term))
       .filter((term) => !/^\d+$/.test(term));
 
-    return [
+    const uniqueTerms = [
       ...new Set(
         terms.filter((term) => term.length >= 3 || term === 'ps' || term === 'sb'),
       ),
     ];
+
+    return this.expandSubjectAliases(uniqueTerms);
+  }
+
+  private expandSubjectAliases(terms: string[]): string[] {
+    const aliases = new Map<string, string[]>([
+      ['right', ['starboard', 'stbd', 'sb']],
+      ['starboard', ['right', 'stbd', 'sb']],
+      ['stbd', ['starboard', 'right', 'sb']],
+      ['sb', ['starboard', 'right', 'stbd']],
+      ['left', ['port', 'ps']],
+      ['port', ['left', 'ps']],
+      ['ps', ['port', 'left']],
+      ['genset', ['generator']],
+      ['generator', ['genset']],
+    ]);
+
+    const expanded: string[] = [];
+    const seen = new Set<string>();
+    for (const term of terms) {
+      if (!seen.has(term)) {
+        seen.add(term);
+        expanded.push(term);
+      }
+
+      for (const alias of aliases.get(term) ?? []) {
+        if (seen.has(alias)) {
+          continue;
+        }
+        seen.add(alias);
+        expanded.push(alias);
+      }
+    }
+
+    return expanded;
   }
 
   private parseNumericValue(value: unknown): number | null {

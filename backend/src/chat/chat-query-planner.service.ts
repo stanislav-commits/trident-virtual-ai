@@ -396,8 +396,31 @@ export class ChatQueryPlannerService {
   }
 
   private isAnalyticsForecastQuery(query: string): boolean {
-    return /\b(average|forecast|consumption|usage|trend|how\s+much\s+.*need|order\s+for\s+next\s+month|over\s+the\s+last\s+\d+|budget)\b/i.test(
-      query,
+    if (
+      /\b(forecast|budget|order\s+for\s+next\s+month|next\s+month|next\s+week)\b/i.test(
+        query,
+      )
+    ) {
+      return true;
+    }
+
+    if (/\bhow\s+much\b[\s\S]{0,80}\bneed\b/i.test(query)) {
+      return true;
+    }
+
+    if (
+      /\b(consumption|usage|trend|historical|history)\b/i.test(query) ||
+      /\bover\s+the\s+last\s+\d+\b/i.test(query) ||
+      /\blast\s+\d+\s+(?:days?|weeks?|months?)\b/i.test(query)
+    ) {
+      return true;
+    }
+
+    return (
+      /\baverage\b/i.test(query) &&
+      (/\bover\s+the\s+last\b/i.test(query) ||
+        /\blast\s+\d+\s+(?:days?|weeks?|months?)\b/i.test(query) ||
+        /\b(historical|history|trend)\b/i.test(query))
     );
   }
 
