@@ -456,8 +456,10 @@ export class ChatDocumentationService {
   private isBroadCertificateSoonQuery(query: string): boolean {
     return (
       /\bcertificates?\b/i.test(query) &&
-      /\b(expire|expiry|expiring|valid\s+until)\b/i.test(query) &&
-      /\b(soon|upcoming|next)\b/i.test(query)
+      /\b(expire|expiry|expiries|expiring|valid\s+until|due\s+to\s+expire)\b/i.test(
+        query,
+      ) &&
+      /\b(soon|upcoming|next|nearest)\b/i.test(query)
     );
   }
 
@@ -472,7 +474,7 @@ export class ChatDocumentationService {
       .replace(/\s+/g, ' ')
       .trim();
     const pattern =
-      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi;
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi;
     const timestamps = new Set<number>();
 
     for (const match of plainText.matchAll(pattern)) {
@@ -533,7 +535,7 @@ export class ChatDocumentationService {
     }
 
     const monthNameMatch = normalized.match(
-      /^(\d{1,2})(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
+      /^(\d{1,2})(?:st|nd|rd|th)?(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
     );
     if (monthNameMatch) {
       const day = Number.parseInt(monthNameMatch[1], 10);
