@@ -1173,8 +1173,7 @@ export class ChatService {
 
     const rawCertificateEntries = citations
       .filter(
-        (citation) =>
-          citation.sourceCategory?.trim().toUpperCase() === 'CERTIFICATES',
+        (citation) => this.isDeterministicCertificateExpiryEvidence(citation),
       )
       .flatMap((citation) =>
         this.extractExplicitCertificateExpiries(citation.snippet).map(
@@ -1237,9 +1236,8 @@ export class ChatService {
     );
 
     if (certificateEntries.length === 0) {
-      const certificateCitations = citations.filter(
-        (citation) =>
-          citation.sourceCategory?.trim().toUpperCase() === 'CERTIFICATES',
+      const certificateCitations = citations.filter((citation) =>
+        this.isDeterministicCertificateExpiryEvidence(citation),
       );
       const fallbackCitations =
         certificateCitations.length > 0
@@ -1302,6 +1300,52 @@ export class ChatService {
     }
 
     return null;
+  }
+
+  private isDeterministicCertificateExpiryEvidence(citation: ChatCitation): boolean {
+    const title = citation.sourceTitle ?? '';
+    const haystack = `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`;
+    const manualLikeTitle =
+      /\b(manual|guide|guidelines|handbook|instruction|user'?s\s+guide|operator|operators)\b/i.test(
+        title,
+      );
+    const supportDocTitle =
+      /\b(guideline|guidelines|report|record|records|checklist|history|details|administration|form|list)\b/i.test(
+        title,
+      );
+    const strongTitleSignal =
+      /\b(certificate|certificato|approval|license|licence|declaration|registry|renewal|cor\b|class\b)\b/i.test(
+        title,
+      ) ||
+      (/\bsurvey\b/i.test(title) && !supportDocTitle);
+    const strongSnippetSignal =
+      /\b(this\s+certificate|certificate\s+no\.?|certificateof|certificate\s+of|ec\s+type-?examination|type\s+approval|product\s+design\s+assessment|manufacturing\s+assessment|declaration\s+of\s+conformity|radio\s+station\s+communication\s+license|valid\s+until|expiration\s+date|expiry\s+date|expires?\s+on|expiring:)\b/i.test(
+        haystack,
+      );
+    const embeddedApprovalSignal =
+      manualLikeTitle &&
+      /\b(product\s+design\s+assessment|manufacturing\s+assessment|type\s+approval|declaration\s+of\s+conformity|module\s+[a-z])\b/i.test(
+        haystack,
+      );
+
+    if (manualLikeTitle && !embeddedApprovalSignal) {
+      return false;
+    }
+
+    const explicitCategory = citation.sourceCategory?.trim().toUpperCase();
+    if (explicitCategory === 'CERTIFICATES') {
+      return (
+        strongSnippetSignal ||
+        (strongTitleSignal && !supportDocTitle) ||
+        embeddedApprovalSignal
+      );
+    }
+
+    return (
+      strongSnippetSignal ||
+      (strongTitleSignal && !supportDocTitle) ||
+      embeddedApprovalSignal
+    );
   }
 
   private buildCertificateExpiryEntryDedupKey(entry: {
@@ -1389,8 +1433,10 @@ export class ChatService {
     const normalized = query.toLowerCase();
     return (
       /\bcertificates?\b/.test(normalized) &&
-      /\b(expire|expiry|expiring|valid\s+until)\b/.test(normalized) &&
-      /\b(soon|upcoming|next)\b/.test(normalized)
+      /\b(expire|expiry|expiries|expiring|valid\s+until|due\s+to\s+expire)\b/.test(
+        normalized,
+      ) &&
+      /\b(soon|upcoming|next|nearest)\b/.test(normalized)
     );
   }
 
@@ -1413,7 +1459,7 @@ export class ChatService {
       .replace(/\s+/g, ' ')
       .trim();
     const patterns = [
-      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi,
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi,
     ];
     const seen = new Set<number>();
     const expiries: Array<{ timestamp: number; displayDate: string }> = [];
@@ -1482,7 +1528,7 @@ export class ChatService {
     }
 
     const monthNameMatch = normalized.match(
-      /^(\d{1,2})(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
+      /^(\d{1,2})(?:st|nd|rd|th)?(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
     );
     if (monthNameMatch) {
       const day = Number.parseInt(monthNameMatch[1], 10);
