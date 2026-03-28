@@ -123,6 +123,28 @@ export class ChatDocumentationService {
         }
       }
 
+      if (
+        this.shouldAugmentBroadCertificateExpiryLookup(
+          effectiveUserQuery,
+          citations,
+        )
+      ) {
+        for (const fallbackQuery of this.buildCertificateExpiryFallbackQueries(
+          retrievalQuery,
+          effectiveUserQuery,
+        )) {
+          if (!fallbackQuery || fallbackQuery === retrievalQuery) {
+            continue;
+          }
+
+          const fallbackCitations = await searchCitationsForQuery(fallbackQuery);
+          citations = this.citationService.mergeCitations(
+            citations,
+            fallbackCitations,
+          );
+        }
+      }
+
       const assetFallbackQueries =
         this.queryService.buildGeneratorAssetFallbackQueries(
           retrievalQuery,
@@ -245,6 +267,18 @@ export class ChatDocumentationService {
       citations = this.citationService.mergeCitations(
         citations,
         maintenanceDocumentFallbackCitations,
+      );
+
+      const certificateDocumentFallbackCitations =
+        await this.scanService.expandCertificateExpiryDocumentChunkCitations(
+          shipId,
+          retrievalQuery,
+          effectiveUserQuery,
+          citations,
+        );
+      citations = this.citationService.mergeCitations(
+        citations,
+        certificateDocumentFallbackCitations,
       );
 
       citations = this.citationService.pruneCitationsForResolvedSubject(
@@ -380,6 +414,142 @@ export class ChatDocumentationService {
           : undefined,
       citations,
     };
+  }
+
+  private shouldAugmentBroadCertificateExpiryLookup(
+    userQuery: string,
+    citations: ChatCitation[],
+  ): boolean {
+    if (!this.isBroadCertificateSoonQuery(userQuery)) {
+      return false;
+    }
+
+    const futureExplicitExpiryCount = citations.filter((citation) =>
+      this.extractExplicitCertificateExpiryTimestamps(citation.snippet ?? '').some(
+        (expiry) => expiry >= Date.now(),
+      ),
+    ).length;
+
+    return futureExplicitExpiryCount === 0;
+  }
+
+  private buildCertificateExpiryFallbackQueries(
+    retrievalQuery: string,
+    userQuery: string,
+  ): string[] {
+    if (!this.isBroadCertificateSoonQuery(userQuery)) {
+      return [];
+    }
+
+    const queries = new Set<string>();
+    const normalized = retrievalQuery.trim().replace(/\s+/g, ' ');
+    queries.add(`${normalized} expiry date valid until expiring`);
+    queries.add('certificate expiry date expiration date valid until expiring');
+    queries.add('certificate valid until expiration date survey approval');
+    queries.add(
+      'certificate approval assessment expiry date valid until expiration date',
+    );
+
+    return [...queries];
+  }
+
+  private isBroadCertificateSoonQuery(query: string): boolean {
+    return (
+      /\bcertificates?\b/i.test(query) &&
+      /\b(expire|expiry|expiring|valid\s+until)\b/i.test(query) &&
+      /\b(soon|upcoming|next)\b/i.test(query)
+    );
+  }
+
+  private extractExplicitCertificateExpiryTimestamp(text: string): number | null {
+    return this.extractExplicitCertificateExpiryTimestamps(text)[0] ?? null;
+  }
+
+  private extractExplicitCertificateExpiryTimestamps(text: string): number[] {
+    const plainText = text
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const pattern =
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi;
+    const timestamps = new Set<number>();
+
+    for (const match of plainText.matchAll(pattern)) {
+      if (!match[1]) {
+        continue;
+      }
+
+      const timestamp = this.parseCertificateDateToken(match[1]);
+      if (timestamp !== null) {
+        timestamps.add(timestamp);
+      }
+    }
+
+    return [...timestamps].sort((left, right) => left - right);
+  }
+
+  private parseCertificateDateToken(token: string): number | null {
+    const normalized = token.replace(/\s+/g, ' ').trim();
+    const monthNames = new Map<string, number>([
+      ['jan', 0],
+      ['january', 0],
+      ['feb', 1],
+      ['february', 1],
+      ['mar', 2],
+      ['march', 2],
+      ['apr', 3],
+      ['april', 3],
+      ['may', 4],
+      ['jun', 5],
+      ['june', 5],
+      ['jul', 6],
+      ['july', 6],
+      ['aug', 7],
+      ['august', 7],
+      ['sep', 8],
+      ['sept', 8],
+      ['september', 8],
+      ['oct', 9],
+      ['october', 9],
+      ['nov', 10],
+      ['november', 10],
+      ['dec', 11],
+      ['december', 11],
+    ]);
+
+    const numericMatch = normalized.match(
+      /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/,
+    );
+    if (numericMatch) {
+      const day = Number.parseInt(numericMatch[1], 10);
+      const month = Number.parseInt(numericMatch[2], 10) - 1;
+      let year = Number.parseInt(numericMatch[3], 10);
+      if (year < 100) {
+        year += year >= 70 ? 1900 : 2000;
+      }
+      const timestamp = Date.UTC(year, month, day);
+      return Number.isNaN(timestamp) ? null : timestamp;
+    }
+
+    const monthNameMatch = normalized.match(
+      /^(\d{1,2})(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
+    );
+    if (monthNameMatch) {
+      const day = Number.parseInt(monthNameMatch[1], 10);
+      const month = monthNames.get(monthNameMatch[2].toLowerCase());
+      if (month === undefined) {
+        return null;
+      }
+      let year = Number.parseInt(monthNameMatch[3], 10);
+      if (year < 100) {
+        year += year >= 70 ? 1900 : 2000;
+      }
+      const timestamp = Date.UTC(year, month, day);
+      return Number.isNaN(timestamp) ? null : timestamp;
+    }
+
+    return null;
   }
 
   private async buildClarificationActions(params: {
