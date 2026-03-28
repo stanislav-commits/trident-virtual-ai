@@ -128,6 +128,16 @@ export class ChatDocumentationCitationService {
     }
 
     refined = this.refineGeneratorAssetCitations(queryContext, refined);
+    refined = this.refineCertificateSubjectCitations(
+      queryContext,
+      refined,
+      queryPlan,
+    );
+    refined = this.refineTroubleshootingCitations(
+      queryContext,
+      refined,
+      queryPlan,
+    );
 
     if (this.queryService.isNextDueLookupQuery(queryContext)) {
       refined = this.sortCitationsByUpcomingDue(refined);
@@ -902,6 +912,218 @@ export class ChatDocumentationCitationService {
     }
 
     return scored.map((entry) => entry.citation);
+  }
+
+  private refineCertificateSubjectCitations(
+    query: string,
+    citations: ChatCitation[],
+    queryPlan: ChatQueryPlan,
+  ): ChatCitation[] {
+    if (
+      queryPlan.primaryIntent !== 'certificate_status' ||
+      citations.length <= 1
+    ) {
+      return citations;
+    }
+
+    const normalized = query.toLowerCase();
+    if (
+      /\bfire\s+suppression|suppression\s+system|fixed\s+fire(?:\s*fighting|\s*extinguishing)?\s+system\b/i.test(
+        normalized,
+      )
+    ) {
+      const directSystemMatches = citations
+        .filter((citation) => {
+          const haystack =
+            `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+          return /\bfire\s+suppression|suppression\s+system|fixed\s+fire(?:\s*fighting|\s*extinguishing)?\s+system\b/i.test(
+            haystack,
+          );
+        })
+        .sort((left, right) => {
+          const leftCertificate = left.sourceCategory === 'CERTIFICATES' ? 1 : 0;
+          const rightCertificate =
+            right.sourceCategory === 'CERTIFICATES' ? 1 : 0;
+          if (rightCertificate !== leftCertificate) {
+            return rightCertificate - leftCertificate;
+          }
+
+          const leftSurveyEvidence = /\b(survey|certificate|valid\s+until|expiry|expires?)\b/i.test(
+            `${left.sourceTitle ?? ''}\n${left.snippet ?? ''}`,
+          )
+            ? 1
+            : 0;
+          const rightSurveyEvidence = /\b(survey|certificate|valid\s+until|expiry|expires?)\b/i.test(
+            `${right.sourceTitle ?? ''}\n${right.snippet ?? ''}`,
+          )
+            ? 1
+            : 0;
+          if (rightSurveyEvidence !== leftSurveyEvidence) {
+            return rightSurveyEvidence - leftSurveyEvidence;
+          }
+
+          return (right.score ?? 0) - (left.score ?? 0);
+        });
+
+      if (directSystemMatches.length > 0) {
+        return directSystemMatches;
+      }
+    }
+
+    const focusTerms = this.queryService
+      .extractRetrievalSubjectTerms(query)
+      .filter(
+        (term) =>
+          ![
+            'certificate',
+            'certificates',
+            'expiry',
+            'expire',
+            'expires',
+            'expired',
+            'valid',
+            'until',
+            'renewal',
+            'date',
+          ].includes(term),
+      );
+
+    if (focusTerms.length === 0) {
+      return citations;
+    }
+
+    const scored = citations
+      .map((citation) => {
+        const haystack =
+          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+        const focusOverlap = focusTerms.filter((term) =>
+          haystack.includes(term),
+        ).length;
+        let score = (citation.score ?? 0) * 10 + focusOverlap * 8;
+
+        if (
+          /\bfire\s+suppression|suppression\s+system\b/i.test(normalized) &&
+          /\bextinguisher\b/i.test(haystack) &&
+          !/\bsuppression\b/i.test(haystack)
+        ) {
+          score -= 20;
+        }
+
+        if (
+          /\bfire\s+suppression|suppression\s+system\b/i.test(normalized) &&
+          /\bsurvey\b/i.test(haystack)
+        ) {
+          score += 6;
+        }
+
+        return {
+          citation,
+          focusOverlap,
+          score,
+        };
+      })
+      .sort((left, right) => {
+        if (right.focusOverlap !== left.focusOverlap) {
+          return right.focusOverlap - left.focusOverlap;
+        }
+
+        return right.score - left.score;
+      });
+
+    const matched = scored.filter((entry) => entry.focusOverlap > 0);
+    if (matched.length > 0) {
+      return matched.map((entry) => entry.citation);
+    }
+
+    return citations;
+  }
+
+  private refineTroubleshootingCitations(
+    query: string,
+    citations: ChatCitation[],
+    queryPlan: ChatQueryPlan,
+  ): ChatCitation[] {
+    if (queryPlan.primaryIntent !== 'troubleshooting' || citations.length <= 1) {
+      return citations;
+    }
+
+    const focusTerms = this.queryService
+      .extractRetrievalSubjectTerms(query)
+      .filter(
+        (term) =>
+          ![
+            'alarm',
+            'alarms',
+            'fault',
+            'error',
+            'issue',
+            'problem',
+            'high',
+            'low',
+            'temperature',
+            'temp',
+            'pressure',
+            'current',
+            'reading',
+            'value',
+            'check',
+            'checks',
+            'first',
+            'showing',
+          ].includes(term),
+      );
+
+    if (focusTerms.length === 0) {
+      return citations;
+    }
+
+    const scored = citations
+      .map((citation) => {
+        const haystack =
+          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+        const focusOverlap = focusTerms.filter((term) =>
+          haystack.includes(term),
+        ).length;
+        const troubleshootingEvidence =
+          /\b(alarm|possible\s+cause|corrective\s+action|fault|troubleshoot|check|inspect|replace|clean|blocked|impeller|thermostat|coolant|temperature|seawater|sea\s*water)\b/i.test(
+            haystack,
+          )
+            ? 1
+            : 0;
+        const looksUnrelatedControlSystem =
+          /\b(autopilot|rudder|plotter|compass|can\s+bus|xte|boat\s+speed|gps|nav\s+mode|work\s+profile)\b/i.test(
+            haystack,
+          ) && focusOverlap === 0;
+        let score =
+          (citation.score ?? 0) * 10 + focusOverlap * 8 + troubleshootingEvidence * 4;
+
+        if (looksUnrelatedControlSystem) {
+          score -= 20;
+        }
+
+        return {
+          citation,
+          focusOverlap,
+          troubleshootingEvidence,
+          score,
+        };
+      })
+      .sort((left, right) => {
+        if (right.focusOverlap !== left.focusOverlap) {
+          return right.focusOverlap - left.focusOverlap;
+        }
+        if (right.troubleshootingEvidence !== left.troubleshootingEvidence) {
+          return right.troubleshootingEvidence - left.troubleshootingEvidence;
+        }
+        return right.score - left.score;
+      });
+
+    const matched = scored.filter((entry) => entry.focusOverlap > 0);
+    if (matched.length > 0) {
+      return matched.map((entry) => entry.citation);
+    }
+
+    return citations;
   }
 
   private isSupplementalGeneratorProcedureCitation(

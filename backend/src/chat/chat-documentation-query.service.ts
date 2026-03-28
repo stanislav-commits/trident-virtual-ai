@@ -654,11 +654,11 @@ export class ChatDocumentationQueryService {
   }
 
   detectDirectionalSide(query: string): 'port' | 'starboard' | null {
-    if (/\b(port(?:\s+side)?|portside|ps)\b/i.test(query)) {
+    if (/\b(port(?:\s+side)?|portside|ps|left(?:\s+side)?)\b/i.test(query)) {
       return 'port';
     }
 
-    if (/\b(starboard(?:\s+side)?|starboardside|sb|stbd)\b/i.test(query)) {
+    if (/\b(starboard(?:\s+side)?|starboardside|sb|stbd|right(?:\s+side)?)\b/i.test(query)) {
       return 'starboard';
     }
 
@@ -739,6 +739,8 @@ export class ChatDocumentationQueryService {
 
   isNextDueLookupQuery(query: string): boolean {
     return /\b(next\s+due|what\s+is\s+next\s+due|next\s+due\s+value|when\s+is\s+.*(?:maintenance|service).*\sdue|what\s+is\s+the\s+next\s+(maintenance|service)|what\s+(maintenance|service)\s+is\s+next)\b/i.test(
+      query,
+    ) || /\bwhen\s+(?:is|will)\s+.+\b(?:maintenance|service|oil\s+change|filter(?:\s+change)?|inspection|overhaul|greasing|grease|calibration|cleaning)\b.+\bdue\b/i.test(
       query,
     );
   }

@@ -380,6 +380,8 @@ export class ChatQueryPlannerService {
   private isMaintenanceCalculationQuery(query: string): boolean {
     return /\b(when\s+should|when\s+is\s+the\s+next|how\s+many\s+hours?\s+until|hours?\s+left|remaining\s+hours?|next\s+service\s+at\s+what\s+hour|due\s+at\s+what\s+hour|overdue\s+by)\b/i.test(
       query,
+    ) || /\bwhen\s+(?:is|will)\s+.+\b(?:maintenance|service|oil\s+change|filter(?:\s+change)?|inspection|overhaul|greasing|grease|calibration|cleaning)\b.+\bdue\b/i.test(
+      query,
     );
   }
 
@@ -397,7 +399,7 @@ export class ChatQueryPlannerService {
 
   private isAnalyticsForecastQuery(query: string): boolean {
     if (
-      /\b(forecast|budget|order\s+for\s+next\s+month|next\s+month|next\s+week)\b/i.test(
+      /\b(forecast|budget|order\s+for\s+(?:next|coming|upcoming)\s+month|(?:next|coming|upcoming)\s+month|(?:next|coming|upcoming)\s+week)\b/i.test(
         query,
       )
     ) {

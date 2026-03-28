@@ -74,6 +74,14 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(false);
   });
 
+  it('recognizes generic due-date maintenance phrasing as a next-due lookup', () => {
+    expect(
+      service.isNextDueLookupQuery(
+        'When is the starboard engine oil change due?',
+      ),
+    ).toBe(true);
+  });
+
   it('does not ask for clarification for broader asset lookups that already name one concrete subject', () => {
     const userQuery = 'What spare parts do I need for the compressor?';
 
@@ -225,6 +233,13 @@ describe('ChatDocumentationQueryService', () => {
         'I need the oil change procedure for the port generator.',
       ).some((query) => /replace oil and filters|oil/i.test(query)),
       ).toBe(true);
+  });
+
+  it('maps left and right directional aliases to port and starboard', () => {
+    expect(service.detectDirectionalSide('left engine oil filter')).toBe('port');
+    expect(service.detectDirectionalSide('right engine oil filter')).toBe(
+      'starboard',
+    );
   });
 
   it('skips documentation retrieval for telemetry list requests so manuals do not override live metric samples', () => {

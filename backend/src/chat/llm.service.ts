@@ -527,6 +527,7 @@ export class LlmService {
           'Important: The user is asking about certificate validity or expiry. ' +
           'Answer with the documented expiry or valid-until date first. ' +
           'Use the current timestamp above to state whether the certificate is still valid, expired, or how much time remains. ' +
+          'Prefer the certificate or survey whose title and subject match the asked system or equipment, and do not substitute unrelated extinguisher, HRU, EPIRB, calibration, or appliance certificates for the requested system certificate. ' +
           'Use regulations only for renewal consequences or compliance implications, not as the primary source of the expiry date.\n\n'
         );
       case 'regulation_compliance':
@@ -551,6 +552,7 @@ export class LlmService {
         return (
           'Important: For troubleshooting answers, separate likely documented causes from the immediate checks to perform next. ' +
           'Use the documented alarm meaning, possible causes, and corrective actions first. ' +
+          'Ignore citations for unrelated systems that only mention generic alarms, temperatures, or checks if the asset or subsystem does not match the user question. ' +
           'If current telemetry is present, mention it only when it directly matches the fault under discussion, and do not prepend unrelated telemetry before the documented troubleshooting steps. ' +
           'If the cited evidence does not document a cause or a quick check, do not invent it.\n\n'
         );

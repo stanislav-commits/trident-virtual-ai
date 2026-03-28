@@ -183,6 +183,44 @@ describe('ChatDocumentationCitationService', () => {
     expect(refined[0].sourceCategory).toBe('CERTIFICATES');
   });
 
+  it('prefers the fire suppression survey over unrelated extinguisher certificates for suppression expiry questions', () => {
+    const citations = [
+      {
+        sourceTitle: 'Inventory List.pdf',
+        sourceCategory: 'INVENTORY',
+        snippet:
+          'Items list with miscellaneous expiry dates for onboard equipment.',
+        score: 0.99,
+      },
+      {
+        sourceTitle:
+          'VSS001980 - VSS Fire Extinguisher Powder Kg 6_SOLAS Certificato Mod. B.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'This certificate remains valid unless cancelled or revoked. First issue 08/01/2021. Expiry 07/01/2026.',
+        score: 0.98,
+      },
+      {
+        sourceTitle: 'Fire Suppression Survey.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'Fixed fire suppression system survey. Certificate valid until 14 August 2026.',
+        score: 0.84,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'What is the expiry date of the fire suppression certificate?',
+      'What is the expiry date of the fire suppression certificate?',
+      citations,
+    );
+
+    expect(refined[0].sourceTitle).toBe('Fire Suppression Survey.pdf');
+    expect(
+      refined.some((citation) => /Fire Extinguisher/i.test(citation.sourceTitle ?? '')),
+    ).toBe(false);
+  });
+
   it('prioritizes regulations over certificates for compliance questions', () => {
     const citations = [
       {
@@ -207,6 +245,36 @@ describe('ChatDocumentationCitationService', () => {
     );
 
     expect(refined[0].sourceCategory).toBe('REGULATION');
+  });
+
+  it('filters unrelated control-system citations out of troubleshooting answers when a matching generator coolant citation exists', () => {
+    const citations = [
+      {
+        sourceTitle: 'AP70-MK2_OM_EN_988-12375-001_w.pdf',
+        sourceCategory: 'MANUALS',
+        snippet:
+          'High internal temp. Internal temperature >75 C. Check battery, charger condition, plotter and cable connections.',
+        score: 0.99,
+      },
+      {
+        sourceTitle: 'Volvo Generator Manual.pdf',
+        sourceCategory: 'MANUALS',
+        snippet:
+          'Coolant Temperature Possible cause: The coolant temperature is too high. Corrective Action: Check the coolant level. Check the seawater filter. Check the impeller in the seawater pump.',
+        score: 0.78,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'The port generator has a high coolant temperature alarm, what checks should I do first?',
+      'The port generator has a high coolant temperature alarm, what checks should I do first?',
+      citations,
+    );
+
+    expect(refined[0].sourceTitle).toBe('Volvo Generator Manual.pdf');
+    expect(
+      refined.some((citation) => /AP70-MK2/i.test(citation.sourceTitle ?? '')),
+    ).toBe(false);
   });
 
   it('hard-filters explicit source requests by source title instead of matching nearby snippet text', () => {

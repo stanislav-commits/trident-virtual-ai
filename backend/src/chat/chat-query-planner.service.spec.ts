@@ -19,6 +19,22 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.allowsMaintenanceCalculation).toBe(true);
   });
 
+  it('routes generic due-date maintenance phrasing to next-due calculation', () => {
+    const plan = service.planQuery(
+      'When is the starboard engine oil change due?',
+    );
+
+    expect(plan.primaryIntent).toBe('next_due_calculation');
+    expect(plan.sourcePriorities.slice(0, 3)).toEqual([
+      'HISTORY_PROCEDURES',
+      'TELEMETRY',
+      'MANUALS',
+    ]);
+    expect(plan.requiresCurrentDateTime).toBe(true);
+    expect(plan.requiresTelemetry).toBe(true);
+    expect(plan.allowsMaintenanceCalculation).toBe(true);
+  });
+
   it('routes procedures to manuals first', () => {
     const plan = service.planQuery(
       'How do I carry out the monthly bilge pump run on the port bilge pump?',
@@ -64,6 +80,20 @@ describe('ChatQueryPlannerService', () => {
   it('routes forecasting questions to historical data with telemetry support', () => {
     const plan = service.planQuery(
       'How much fuel do we need to order for next month?',
+    );
+
+    expect(plan.primaryIntent).toBe('analytics_forecast');
+    expect(plan.sourcePriorities.slice(0, 2)).toEqual([
+      'HISTORY_PROCEDURES',
+      'TELEMETRY',
+    ]);
+    expect(plan.requiresTelemetryHistory).toBe(true);
+    expect(plan.supportsMultiSourceAggregation).toBe(true);
+  });
+
+  it('routes coming-month fuel ordering questions to forecasting', () => {
+    const plan = service.planQuery(
+      'How much fuel should we order for the coming month?',
     );
 
     expect(plan.primaryIntent).toBe('analytics_forecast');
