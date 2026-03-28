@@ -398,7 +398,7 @@ export class ChatDocumentationScanService {
     for (const scanContext of scanContexts) {
       const candidateManuals = this
         .selectCandidateManualsForCertificateScan(scanContext.manuals, citations)
-        .slice(0, 12);
+        .slice(0, 16);
       scannedManualCount += candidateManuals.length;
 
       for (const manual of candidateManuals) {
@@ -428,9 +428,8 @@ export class ChatDocumentationScanService {
                 /\b(valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|will\s+expire\s+on|scadenza)\b/i.test(
                   entry.haystack,
                 ) &&
-                /\b(certificate|certificato|survey|registry|approval|directive|module|class|solas|med|declaration\s+of\s+conformity|product\s+design\s+assessment|manufacturing\s+assessment)\b/i.test(
-                  entry.haystack,
-                ),
+                (this.isLikelyStandaloneCertificateManual(manual.filename) ||
+                  this.hasStrongCertificateSnippetSignals(entry.haystack)),
             )
             .sort((left, right) => {
               const leftFuture =
@@ -681,9 +680,7 @@ export class ChatDocumentationScanService {
     );
     const certificateLike = baseOrdered
       .filter((manual) =>
-        /\b(certificate|certificato|survey|registry|approval|class|solas|med|cor|radio|load\s*line|loadline|iopp|mlc|declaration)\b/i.test(
-          manual.filename,
-        ),
+        this.isCertificateScanCandidateManual(manual.filename),
       )
       .sort((left, right) => {
         const leftScore = this.scoreCertificateScanManual(left.filename);
@@ -713,7 +710,7 @@ export class ChatDocumentationScanService {
     let score = 0;
 
     if (
-      /\b(certificate|certificato|survey|approval|license|licence|class|solas|med|iopp|load\s*line|loadline|radio|mlc|declaration)\b/.test(
+      /\b(certificate|certificato|approval|license|licence|class|solas|med|iopp|load\s*line|loadline|radio|mlc|declaration)\b/.test(
         normalized,
       )
     ) {
@@ -721,11 +718,15 @@ export class ChatDocumentationScanService {
     }
 
     if (
-      /\b(fire|suppression|liferaft|life\s*raft|safety|pollution|commercial|approval|survey|inspection|license|licence)\b/.test(
+      /\b(product\s+design\s+assessment|manufacturing\s+assessment|type\s+approval|module\s+[a-z]|fire|suppression|liferaft|life\s*raft|safety|pollution|commercial|approval|license|licence)\b/.test(
         normalized,
       )
     ) {
       score += 30;
+    }
+
+    if (/\bsurvey\b/.test(normalized) && !/\bguidelines?\b/.test(normalized)) {
+      score += 10;
     }
 
     if (/\b(registry|cor\b|certificate\s+of\s+registry)\b/.test(normalized)) {
@@ -736,7 +737,49 @@ export class ChatDocumentationScanService {
       score -= 10;
     }
 
+    if (
+      /\b(manual|guide|guidelines|handbook|instruction|report|record|history|details|administration|checklist|list)\b/.test(
+        normalized,
+      )
+    ) {
+      score -= 35;
+    }
+
     return score;
+  }
+
+  private isCertificateScanCandidateManual(filename: string): boolean {
+    const normalized = filename.toLowerCase();
+    if (
+      /\b(certificate|certificato|approval|license|licence|registry|cor\b|declaration|class|solas|med|iopp|load\s*line|loadline|radio|mlc)\b/.test(
+        normalized,
+      )
+    ) {
+      return true;
+    }
+
+    return /\bsurvey\b/.test(normalized) && !/\bguidelines?\b/.test(normalized);
+  }
+
+  private isLikelyStandaloneCertificateManual(filename: string): boolean {
+    const normalized = filename.toLowerCase();
+    if (
+      /\b(manual|guide|guidelines|handbook|instruction|report|record|history|details|administration|checklist|list)\b/.test(
+        normalized,
+      )
+    ) {
+      return false;
+    }
+
+    return /\b(certificate|certificato|approval|license|licence|registry|cor\b|declaration|class|solas|med|survey|iopp|load\s*line|loadline|radio|mlc)\b/.test(
+      normalized,
+    );
+  }
+
+  private hasStrongCertificateSnippetSignals(text: string): boolean {
+    return /\b(this\s+certificate|certificate\s+no\.?|certificateof|certificate\s+of|ec\s+type-?examination|type\s+approval|product\s+design\s+assessment|manufacturing\s+assessment|declaration\s+of\s+conformity|radio\s+station\s+communication\s+license|issued\s+under\s+the\s+authority|certificato\s+mod\.?|module\s+[a-z])\b/i.test(
+      text,
+    );
   }
 
   private mapDocumentChunkToCitation(
@@ -760,8 +803,10 @@ export class ChatDocumentationScanService {
   private isBroadCertificateSoonQuery(query: string): boolean {
     return (
       /\bcertificates?\b/i.test(query) &&
-      /\b(expire|expiry|expiring|valid\s+until)\b/i.test(query) &&
-      /\b(soon|upcoming|next)\b/i.test(query)
+      /\b(expire|expiry|expiries|expiring|valid\s+until|due\s+to\s+expire)\b/i.test(
+        query,
+      ) &&
+      /\b(soon|upcoming|next|nearest)\b/i.test(query)
     );
   }
 
@@ -776,7 +821,7 @@ export class ChatDocumentationScanService {
       .replace(/\s+/g, ' ')
       .trim();
     const pattern =
-      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi;
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi;
     const timestamps = new Set<number>();
 
     for (const match of plainText.matchAll(pattern)) {
@@ -837,7 +882,7 @@ export class ChatDocumentationScanService {
     }
 
     const monthNameMatch = normalized.match(
-      /^(\d{1,2})(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
+      /^(\d{1,2})(?:st|nd|rd|th)?(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
     );
     if (monthNameMatch) {
       const day = Number.parseInt(monthNameMatch[1], 10);
