@@ -403,7 +403,14 @@ describe('ChatService telemetry clarification', () => {
       },
     ]);
     documentationService.prepareDocumentationContext.mockResolvedValue({
-      citations: [],
+      citations: [
+        {
+          sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+          sourceCategory: 'HISTORY_PROCEDURES',
+          snippet: 'Annual service row for main generator maintenance.',
+          pageNumber: 10,
+        },
+      ],
       previousUserQuery: undefined,
       retrievalQuery: 'calculate how many fuel do i need for the next month?',
       resolvedSubjectQuery: undefined,
@@ -463,6 +470,153 @@ describe('ChatService telemetry clarification', () => {
       expect.anything(),
       [],
     );
+  });
+
+  it('answers broad certificate expiry questions deterministically from explicit certificate dates', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 28));
+    try {
+      prisma.chatSession.findUnique.mockResolvedValue({
+        messages: [
+          {
+            role: 'user',
+            content: 'Which certificates will expire soon?',
+            ragflowContext: null,
+          },
+        ],
+      });
+      documentationService.prepareDocumentationContext.mockResolvedValue({
+        citations: [
+          {
+            sourceTitle:
+              '26.01.13 SEAWOLF X Renewal Certificate of Reg. (exp 27.01.15).pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'CERTIFICATE OF MALTA REGISTRY. Renewing Certificate dated 06 January 2025.',
+            pageNumber: 1,
+          },
+          {
+            sourceTitle: 'Fire Suppression Survey.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'Fixed fire suppression system survey. Certificate valid until 14 August 2026.',
+            pageNumber: 1,
+          },
+          {
+            sourceTitle:
+              'VSS001980 - VSS Fire Extinguisher Powder Kg 6_SOLAS Certificato Mod. B.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet: 'Expiry 07/01/2026.',
+            pageNumber: 1,
+          },
+        ],
+        previousUserQuery: undefined,
+        retrievalQuery: 'Which certificates will expire soon?',
+        resolvedSubjectQuery: undefined,
+        answerQuery: undefined,
+      });
+      metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+        telemetry: {},
+        totalActiveMetrics: 0,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+        clarification: null,
+      });
+
+      await (service as any).generateAssistantResponse(
+        'ship-1',
+        'session-1',
+        'Which certificates will expire soon?',
+        'Sea Wolf X',
+        'user',
+      );
+
+      expect(llmService.generateResponse).not.toHaveBeenCalled();
+      expect(service.addAssistantMessage).toHaveBeenCalledWith(
+        'session-1',
+        expect.stringContaining('14 August 2026'),
+        expect.anything(),
+        [
+          expect.objectContaining({
+            sourceTitle: 'Fire Suppression Survey.pdf',
+          }),
+        ],
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('does not let broad certificate expiry questions fall back to LLM when snippets lack explicit expiry dates', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 28));
+    try {
+      prisma.chatSession.findUnique.mockResolvedValue({
+        messages: [
+          {
+            role: 'user',
+            content: 'Which certificates will expire soon?',
+            ragflowContext: null,
+          },
+        ],
+      });
+      documentationService.prepareDocumentationContext.mockResolvedValue({
+        citations: [
+          {
+            sourceTitle: 'CoR Private.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'CERTIFICATE OF MALTA REGISTRY. Official and IMO No. Name of Ship SEAWOLF X.',
+            pageNumber: 1,
+          },
+          {
+            sourceTitle:
+              '26.01.13 SEAWOLF X Renewal Certificate of Reg. (exp 27.01.15).pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'CERTIFICATE OF MALTA REGISTRY. Renewing Certificate dated 06 January 2025.',
+            pageNumber: 1,
+          },
+        ],
+        previousUserQuery: undefined,
+        retrievalQuery: 'Which certificates will expire soon?',
+        resolvedSubjectQuery: undefined,
+        answerQuery: undefined,
+      });
+      metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+        telemetry: {},
+        totalActiveMetrics: 0,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+        clarification: null,
+      });
+
+      await (service as any).generateAssistantResponse(
+        'ship-1',
+        'session-1',
+        'Which certificates will expire soon?',
+        'Sea Wolf X',
+        'user',
+      );
+
+      expect(llmService.generateResponse).not.toHaveBeenCalled();
+      expect(service.addAssistantMessage).toHaveBeenCalledWith(
+        'session-1',
+        expect.stringContaining('do not include clear expiry dates'),
+        expect.anything(),
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceTitle: 'CoR Private.pdf',
+          }),
+        ]),
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it('answers direct aggregate telemetry tank queries deterministically without LLM arithmetic', async () => {

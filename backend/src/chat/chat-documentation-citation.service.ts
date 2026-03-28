@@ -989,6 +989,107 @@ export class ChatDocumentationCitationService {
     );
   }
 
+  private isBroadCertificateSoonQuery(query: string): boolean {
+    return (
+      /\bcertificates\b/i.test(query) &&
+      /\b(expire|expiry|expiring|valid\s+until)\b/i.test(query) &&
+      /\b(soon|upcoming|next)\b/i.test(query)
+    );
+  }
+
+  private isOfficialRegistryCertificateCitation(citation: ChatCitation): boolean {
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+
+    return /\b(certificate\s+of\s+registry|official\s+and\s+imo|name\s+of\s+ship|issued\s+in\s+terms|renewal\s+certificate)\b/i.test(
+      haystack,
+    );
+  }
+
+  private extractExplicitCertificateExpiryTimestamp(
+    citation: ChatCitation,
+  ): number | null {
+    const plainText = this.stripHtmlLikeMarkup(citation.snippet ?? '');
+    const patterns = [
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}\s+[a-z]{3,9}\s+\d{2,4})\b/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = plainText.match(pattern);
+      if (!match?.[1]) {
+        continue;
+      }
+
+      const timestamp = this.parseExplicitCertificateDateToken(match[1]);
+      if (timestamp !== null) {
+        return timestamp;
+      }
+    }
+
+    return null;
+  }
+
+  private parseExplicitCertificateDateToken(token: string): number | null {
+    const normalized = token.replace(/\s+/g, ' ').trim();
+    const monthNames = new Map<string, number>([
+      ['jan', 0],
+      ['january', 0],
+      ['feb', 1],
+      ['february', 1],
+      ['mar', 2],
+      ['march', 2],
+      ['apr', 3],
+      ['april', 3],
+      ['may', 4],
+      ['jun', 5],
+      ['june', 5],
+      ['jul', 6],
+      ['july', 6],
+      ['aug', 7],
+      ['august', 7],
+      ['sep', 8],
+      ['sept', 8],
+      ['september', 8],
+      ['oct', 9],
+      ['october', 9],
+      ['nov', 10],
+      ['november', 10],
+      ['dec', 11],
+      ['december', 11],
+    ]);
+
+    const numericMatch = normalized.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+    if (numericMatch) {
+      const day = Number.parseInt(numericMatch[1], 10);
+      const month = Number.parseInt(numericMatch[2], 10) - 1;
+      let year = Number.parseInt(numericMatch[3], 10);
+      if (year < 100) {
+        year += year >= 70 ? 1900 : 2000;
+      }
+      const timestamp = Date.UTC(year, month, day);
+      return Number.isNaN(timestamp) ? null : timestamp;
+    }
+
+    const monthNameMatch = normalized.match(
+      /^(\d{1,2})\s+([a-z]{3,9})\s+(\d{2,4})$/i,
+    );
+    if (monthNameMatch) {
+      const day = Number.parseInt(monthNameMatch[1], 10);
+      const month = monthNames.get(monthNameMatch[2].toLowerCase());
+      if (month === undefined) {
+        return null;
+      }
+      let year = Number.parseInt(monthNameMatch[3], 10);
+      if (year < 100) {
+        year += year >= 70 ? 1900 : 2000;
+      }
+      const timestamp = Date.UTC(year, month, day);
+      return Number.isNaN(timestamp) ? null : timestamp;
+    }
+
+    return null;
+  }
+
   private classifyCitationSourceType(citation: {
     snippet?: string;
     sourceTitle?: string;
@@ -1261,6 +1362,7 @@ export class ChatDocumentationCitationService {
       );
 
     if (focusTerms.length === 0) {
+      const broadSoonQuery = this.isBroadCertificateSoonQuery(normalized);
       const broadCertificateRanking = [...citations].sort((left, right) => {
         const leftHaystack =
           `${left.sourceTitle ?? ''}\n${left.snippet ?? ''}`.toLowerCase();
@@ -1288,18 +1390,27 @@ export class ChatDocumentationCitationService {
           return leftEmbeddedManual - rightEmbeddedManual;
         }
 
-        const leftOfficialCertificate = /\b(certificate\s+of\s+registry|official\s+and\s+imo|name\s+of\s+ship|issued\s+in\s+terms|renewal\s+certificate)\b/i.test(
-          leftHaystack,
+        const leftHasExplicitExpiry = broadSoonQuery
+          ? this.extractExplicitCertificateExpiryTimestamp(left) !== null
+          : false;
+        const rightHasExplicitExpiry = broadSoonQuery
+          ? this.extractExplicitCertificateExpiryTimestamp(right) !== null
+          : false;
+        if (rightHasExplicitExpiry !== leftHasExplicitExpiry) {
+          return Number(rightHasExplicitExpiry) - Number(leftHasExplicitExpiry);
+        }
+
+        const leftOfficialCertificate = this.isOfficialRegistryCertificateCitation(
+          left,
         )
           ? 1
           : 0;
-        const rightOfficialCertificate = /\b(certificate\s+of\s+registry|official\s+and\s+imo|name\s+of\s+ship|issued\s+in\s+terms|renewal\s+certificate)\b/i.test(
-          rightHaystack,
-        )
-          ? 1
-          : 0;
+        const rightOfficialCertificate =
+          this.isOfficialRegistryCertificateCitation(right) ? 1 : 0;
         if (rightOfficialCertificate !== leftOfficialCertificate) {
-          return rightOfficialCertificate - leftOfficialCertificate;
+          return broadSoonQuery
+            ? leftOfficialCertificate - rightOfficialCertificate
+            : rightOfficialCertificate - leftOfficialCertificate;
         }
 
         return (right.score ?? 0) - (left.score ?? 0);
@@ -1308,6 +1419,38 @@ export class ChatDocumentationCitationService {
       const standaloneMatches = broadCertificateRanking.filter((citation) =>
         this.isStandaloneCertificateLikeCitation(citation),
       );
+      if (
+        standaloneMatches.length > 0 &&
+        broadSoonQuery
+      ) {
+        const now = Date.now();
+        const datedStandaloneMatches = standaloneMatches
+          .map((citation) => ({
+            citation,
+            expiry: this.extractExplicitCertificateExpiryTimestamp(citation),
+          }))
+          .filter(
+            (
+              entry,
+            ): entry is {
+              citation: ChatCitation;
+              expiry: number;
+            } => entry.expiry !== null,
+          )
+          .sort((left, right) => left.expiry - right.expiry);
+
+        const futureStandaloneMatches = datedStandaloneMatches
+          .filter((entry) => entry.expiry >= now)
+          .map((entry) => entry.citation);
+        if (futureStandaloneMatches.length > 0) {
+          return futureStandaloneMatches;
+        }
+
+        if (datedStandaloneMatches.length > 0) {
+          return datedStandaloneMatches.map((entry) => entry.citation);
+        }
+      }
+
       if (standaloneMatches.length > 0) {
         return standaloneMatches;
       }

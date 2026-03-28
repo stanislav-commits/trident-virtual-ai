@@ -688,11 +688,29 @@ export class ChatService {
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
-            ...(citationsForAnswer.length === 0
-              ? { noDocumentation: true }
+            noDocumentation: true,
+          },
+          [],
+        );
+      }
+
+      const deterministicCertificateAnswer =
+        this.buildDeterministicCertificateStatusAnswer(
+          effectiveUserQuery,
+          queryPlan.primaryIntent,
+          citationsForAnswer,
+        );
+      if (deterministicCertificateAnswer) {
+        return this.addAssistantMessage(
+          sessionId,
+          deterministicCertificateAnswer.content,
+          {
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            ...(telemetryShips.length > 0
+              ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
           },
-          citationsForAnswer,
+          deterministicCertificateAnswer.citations,
         );
       }
 
@@ -1140,6 +1158,122 @@ export class ChatService {
     return null;
   }
 
+  private buildDeterministicCertificateStatusAnswer(
+    userQuery: string,
+    primaryIntent: string,
+    citations: ChatCitation[],
+  ): { content: string; citations: ChatCitation[] } | null {
+    if (primaryIntent !== 'certificate_status' || citations.length === 0) {
+      return null;
+    }
+
+    if (!this.isBroadCertificateSoonQuery(userQuery)) {
+      return null;
+    }
+
+    const certificateEntries = citations
+      .filter(
+        (citation) =>
+          citation.sourceCategory?.trim().toUpperCase() === 'CERTIFICATES',
+      )
+      .map((citation) => {
+        const expiry = this.extractExplicitCertificateExpiry(citation.snippet);
+        if (!expiry) {
+          return null;
+        }
+
+        return {
+          citation,
+          timestamp: expiry.timestamp,
+          displayDate: expiry.displayDate,
+          sourceLabel: citation.sourceTitle ?? 'the cited certificate',
+        };
+      })
+      .filter(
+        (
+          entry,
+        ): entry is {
+          citation: ChatCitation;
+          timestamp: number;
+          displayDate: string;
+          sourceLabel: string;
+        } => entry !== null,
+      )
+      .sort((left, right) => left.timestamp - right.timestamp);
+
+    if (certificateEntries.length === 0) {
+      const certificateCitations = citations.filter(
+        (citation) =>
+          citation.sourceCategory?.trim().toUpperCase() === 'CERTIFICATES',
+      );
+      const fallbackCitations =
+        certificateCitations.length > 0
+          ? certificateCitations.slice(0, 3)
+          : citations.slice(0, 3);
+
+      return {
+        content:
+          'I could not confirm any currently valid certificates that are due to expire within the next 180 days from the provided certificate documents because the retrieved certificate snippets do not include clear expiry dates.',
+        citations: fallbackCitations,
+      };
+    }
+
+    const now = Date.now();
+    const soonHorizonMs = 180 * 24 * 60 * 60 * 1000;
+    const upcomingSoon = certificateEntries.filter(
+      (entry) =>
+        entry.timestamp >= now && entry.timestamp <= now + soonHorizonMs,
+    );
+
+    if (upcomingSoon.length > 0) {
+      const selected = upcomingSoon.slice(0, 5);
+      if (selected.length === 1) {
+        const [entry] = selected;
+        return {
+          content: `The next certificate due to expire within the next 180 days is ${entry.sourceLabel}, which expires on ${entry.displayDate} [Certificate: ${entry.sourceLabel}].`,
+          citations: [entry.citation],
+        };
+      }
+
+      return {
+        content: [
+          'The following certificates are due to expire within the next 180 days:',
+          '',
+          ...selected.map(
+            (entry) =>
+              `- ${entry.sourceLabel}: ${entry.displayDate} [Certificate: ${entry.sourceLabel}]`,
+          ),
+        ].join('\n'),
+        citations: selected.map((entry) => entry.citation),
+      };
+    }
+
+    const laterUpcoming = certificateEntries.filter(
+      (entry) => entry.timestamp >= now + soonHorizonMs,
+    );
+    if (laterUpcoming.length > 0) {
+      const [entry] = laterUpcoming;
+      return {
+        content: `I could not confirm any currently valid certificates that are due to expire within the next 180 days from the provided certificate documents. The earliest later expiry I found is ${entry.sourceLabel} on ${entry.displayDate} [Certificate: ${entry.sourceLabel}].`,
+        citations: [entry.citation],
+      };
+    }
+
+    const expiredEntries = certificateEntries
+      .filter((entry) => entry.timestamp < now)
+      .sort((left, right) => right.timestamp - left.timestamp)
+      .slice(0, 3);
+    if (expiredEntries.length > 0) {
+      return {
+        content:
+          'I could not confirm any currently valid certificates that are due to expire within the next 180 days from the provided certificate documents. The certificate snippets I found with explicit expiry dates are already expired.',
+        citations: expiredEntries.map((entry) => entry.citation),
+      };
+    }
+
+    return null;
+  }
+
   private async buildDeterministicAnalyticsForecastAnswer(params: {
     shipId: string | null;
     role: string;
@@ -1200,6 +1334,121 @@ export class ChatService {
     );
 
     return lines.join('\n\n');
+  }
+
+  private isBroadCertificateSoonQuery(query: string): boolean {
+    const normalized = query.toLowerCase();
+    return (
+      /\bcertificates\b/.test(normalized) &&
+      /\b(expire|expiry|expiring|valid\s+until)\b/.test(normalized) &&
+      /\b(soon|upcoming|next)\b/.test(normalized)
+    );
+  }
+
+  private extractExplicitCertificateExpiry(
+    snippet?: string,
+  ): { timestamp: number; displayDate: string } | null {
+    if (!snippet) {
+      return null;
+    }
+
+    const plainText = snippet
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const patterns = [
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}\s+[a-z]{3,9}\s+\d{2,4})\b/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = plainText.match(pattern);
+      if (!match?.[1]) {
+        continue;
+      }
+
+      const parsedDate = this.parseExplicitCertificateDateToken(match[1]);
+      if (!parsedDate) {
+        continue;
+      }
+
+      return {
+        timestamp: parsedDate,
+        displayDate: this.formatExplicitCertificateDate(parsedDate),
+      };
+    }
+
+    return null;
+  }
+
+  private parseExplicitCertificateDateToken(token: string): number | null {
+    const normalized = token.replace(/\s+/g, ' ').trim();
+    const monthNames = new Map<string, number>([
+      ['jan', 0],
+      ['january', 0],
+      ['feb', 1],
+      ['february', 1],
+      ['mar', 2],
+      ['march', 2],
+      ['apr', 3],
+      ['april', 3],
+      ['may', 4],
+      ['jun', 5],
+      ['june', 5],
+      ['jul', 6],
+      ['july', 6],
+      ['aug', 7],
+      ['august', 7],
+      ['sep', 8],
+      ['sept', 8],
+      ['september', 8],
+      ['oct', 9],
+      ['october', 9],
+      ['nov', 10],
+      ['november', 10],
+      ['dec', 11],
+      ['december', 11],
+    ]);
+
+    const numericMatch = normalized.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+    if (numericMatch) {
+      const day = Number.parseInt(numericMatch[1], 10);
+      const month = Number.parseInt(numericMatch[2], 10) - 1;
+      let year = Number.parseInt(numericMatch[3], 10);
+      if (year < 100) {
+        year += year >= 70 ? 1900 : 2000;
+      }
+      const timestamp = Date.UTC(year, month, day);
+      return Number.isNaN(timestamp) ? null : timestamp;
+    }
+
+    const monthNameMatch = normalized.match(
+      /^(\d{1,2})\s+([a-z]{3,9})\s+(\d{2,4})$/i,
+    );
+    if (monthNameMatch) {
+      const day = Number.parseInt(monthNameMatch[1], 10);
+      const month = monthNames.get(monthNameMatch[2].toLowerCase());
+      if (month === undefined) {
+        return null;
+      }
+      let year = Number.parseInt(monthNameMatch[3], 10);
+      if (year < 100) {
+        year += year >= 70 ? 1900 : 2000;
+      }
+      const timestamp = Date.UTC(year, month, day);
+      return Number.isNaN(timestamp) ? null : timestamp;
+    }
+
+    return null;
+  }
+
+  private formatExplicitCertificateDate(timestamp: number): string {
+    return new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(new Date(timestamp));
   }
 
   private buildDeterministicTelemetryUnavailableAnswer(

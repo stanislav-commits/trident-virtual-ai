@@ -298,6 +298,58 @@ describe('ChatDocumentationCitationService', () => {
     ).toBe(false);
   });
 
+  it('prefers explicit future-dated certificate snippets over registry certificates for broad expiry questions', () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 28));
+    const citations = [
+      {
+        sourceTitle: 'CoR Private.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'CERTIFICATE OF MALTA REGISTRY. Name of Ship SEAWOLF X. Official and IMO No.',
+        score: 0.99,
+      },
+      {
+        sourceTitle:
+          '26.01.13 SEAWOLF X Renewal Certificate of Reg. (exp 27.01.15).pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'CERTIFICATE OF MALTA REGISTRY. Renewing Certificate dated 06 January 2025.',
+        score: 0.98,
+      },
+      {
+        sourceTitle: 'Fire Suppression Survey.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'Fixed fire suppression system survey. Certificate valid until 14 August 2026.',
+        score: 0.82,
+      },
+      {
+        sourceTitle:
+          'VSS001990 - Viking PS37891054000 Fireman suite complete MCA SO_SOLAS Certificato Mod. B.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet: 'Expiration date: 29 July 2024.',
+        score: 0.85,
+      },
+    ];
+
+    try {
+      const refined = service.refineCitationsForIntent(
+        'Which certificates will expire soon?',
+        'Which certificates will expire soon?',
+        citations,
+      );
+
+      expect(refined[0].sourceTitle).toBe('Fire Suppression Survey.pdf');
+      expect(
+        refined.some((citation) => citation.sourceTitle === 'CoR Private.pdf'),
+      ).toBe(false);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('prioritizes regulations over certificates for compliance questions', () => {
     const citations = [
       {
