@@ -368,6 +368,130 @@ export class ChatDocumentationScanService {
     return collected;
   }
 
+  async expandCertificateExpiryDocumentChunkCitations(
+    shipId: string | null,
+    retrievalQuery: string,
+    userQuery: string,
+    citations: ChatCitation[],
+  ): Promise<ChatCitation[]> {
+    if (!this.ragflowService.isConfigured()) return [];
+
+    const queryContext =
+      retrievalQuery.trim().length >= userQuery.trim().length
+        ? retrievalQuery
+        : userQuery;
+    if (!this.isBroadCertificateSoonQuery(queryContext)) {
+      return [];
+    }
+
+    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    if (scanContexts.length === 0) {
+      this.logger.debug(
+        'Certificate document chunk scan skipped: no contexts available',
+      );
+      return [];
+    }
+
+    const collected: ChatCitation[] = [];
+    let scannedManualCount = 0;
+
+    for (const scanContext of scanContexts) {
+      const candidateManuals = this
+        .selectCandidateManualsForCertificateScan(scanContext.manuals, citations)
+        .slice(0, 12);
+      scannedManualCount += candidateManuals.length;
+
+      for (const manual of candidateManuals) {
+        try {
+          const chunks = await this.ragflowService.listDocumentChunks(
+            scanContext.ragflowDatasetId,
+            manual.ragflowDocumentId,
+            300,
+          );
+
+          const relevantChunks = chunks
+            .map((chunk) => {
+              const content = chunk.content ?? '';
+              const haystack = `${manual.filename}\n${content}`.toLowerCase();
+              const expiries = this.extractExplicitCertificateExpiryTimestamps(
+                content,
+              );
+              return {
+                chunk,
+                content,
+                haystack,
+                expiries,
+              };
+            })
+            .filter(
+              (entry) =>
+                /\b(valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|will\s+expire\s+on|scadenza)\b/i.test(
+                  entry.haystack,
+                ) &&
+                /\b(certificate|certificato|survey|registry|approval|directive|module|class|solas|med|declaration\s+of\s+conformity|product\s+design\s+assessment|manufacturing\s+assessment)\b/i.test(
+                  entry.haystack,
+                ),
+            )
+            .sort((left, right) => {
+              const leftFuture =
+                left.expiries.some((expiry) => expiry >= Date.now()) ? 1 : 0;
+              const rightFuture =
+                right.expiries.some((expiry) => expiry >= Date.now()) ? 1 : 0;
+              if (rightFuture !== leftFuture) {
+                return rightFuture - leftFuture;
+              }
+
+              const leftSoonest =
+                left.expiries.find((expiry) => expiry >= Date.now()) ??
+                left.expiries[0] ??
+                Number.MAX_SAFE_INTEGER;
+              const rightSoonest =
+                right.expiries.find((expiry) => expiry >= Date.now()) ??
+                right.expiries[0] ??
+                Number.MAX_SAFE_INTEGER;
+              if (leftSoonest !== rightSoonest) {
+                return leftSoonest - rightSoonest;
+              }
+
+              return (right.chunk.similarity ?? 0) - (left.chunk.similarity ?? 0);
+            })
+            .slice(0, 3);
+
+          collected.push(
+            ...relevantChunks.map((entry) =>
+              this.mapDocumentChunkToCitation(
+                manual,
+                entry.chunk,
+                1.01,
+                entry.content,
+                'CERTIFICATES',
+              ),
+            ),
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Certificate document chunk scan skipped for ${manual.filename}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+
+        const futureCollectedCount = collected.filter((citation) =>
+          this.extractExplicitCertificateExpiryTimestamps(citation.snippet ?? '').some(
+            (expiry) => expiry >= Date.now(),
+          ),
+        ).length;
+        if (futureCollectedCount >= 5) {
+          break;
+        }
+      }
+    }
+
+    this.logger.debug(
+      `Certificate document chunk scan completed: contexts=${scanContexts.length}, manuals=${scannedManualCount}, collected=${collected.length}`,
+    );
+
+    return collected;
+  }
+
   private async loadDocumentScanContexts(
     shipId: string | null,
     citations: ChatCitation[],
@@ -547,11 +671,36 @@ export class ChatDocumentationScanService {
     });
   }
 
+  private selectCandidateManualsForCertificateScan(
+    manuals: DocumentScanManual[],
+    citations: ChatCitation[],
+  ): DocumentScanManual[] {
+    const baseOrdered = this.selectCandidateManualsForDocumentScan(
+      manuals,
+      citations,
+    );
+    const certificateLike = baseOrdered.filter((manual) =>
+      /\b(certificate|certificato|survey|registry|approval|class|solas|med|cor|radio|load\s*line|loadline|iopp|mlc|declaration)\b/i.test(
+        manual.filename,
+      ),
+    );
+    const ordered = [...certificateLike, ...baseOrdered];
+    const seen = new Set<string>();
+
+    return ordered.filter((manual) => {
+      const key = `${manual.id}::${manual.ragflowDocumentId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   private mapDocumentChunkToCitation(
     manual: Pick<DocumentScanManual, 'id' | 'filename'>,
     chunk: RagflowChunk,
     fallbackScore: number,
     snippetOverride?: string,
+    sourceCategory?: string,
   ): ChatCitation {
     return {
       shipManualId: manual.id,
@@ -560,7 +709,107 @@ export class ChatDocumentationScanService {
       pageNumber: this.extractChunkPageNumber(chunk),
       snippet: snippetOverride ?? chunk.content ?? '',
       sourceTitle: manual.filename,
+      ...(sourceCategory ? { sourceCategory } : {}),
     };
+  }
+
+  private isBroadCertificateSoonQuery(query: string): boolean {
+    return (
+      /\bcertificates?\b/i.test(query) &&
+      /\b(expire|expiry|expiring|valid\s+until)\b/i.test(query) &&
+      /\b(soon|upcoming|next)\b/i.test(query)
+    );
+  }
+
+  private extractExplicitCertificateExpiryTimestamp(text: string): number | null {
+    return this.extractExplicitCertificateExpiryTimestamps(text)[0] ?? null;
+  }
+
+  private extractExplicitCertificateExpiryTimestamps(text: string): number[] {
+    const plainText = text
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const pattern =
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi;
+    const timestamps = new Set<number>();
+
+    for (const match of plainText.matchAll(pattern)) {
+      if (!match?.[1]) {
+        continue;
+      }
+
+      const timestamp = this.parseCertificateDateToken(match[1]);
+      if (timestamp !== null) {
+        timestamps.add(timestamp);
+      }
+    }
+
+    return [...timestamps].sort((left, right) => left - right);
+  }
+
+  private parseCertificateDateToken(token: string): number | null {
+    const normalized = token.replace(/\s+/g, ' ').trim();
+    const monthNames = new Map<string, number>([
+      ['jan', 0],
+      ['january', 0],
+      ['feb', 1],
+      ['february', 1],
+      ['mar', 2],
+      ['march', 2],
+      ['apr', 3],
+      ['april', 3],
+      ['may', 4],
+      ['jun', 5],
+      ['june', 5],
+      ['jul', 6],
+      ['july', 6],
+      ['aug', 7],
+      ['august', 7],
+      ['sep', 8],
+      ['sept', 8],
+      ['september', 8],
+      ['oct', 9],
+      ['october', 9],
+      ['nov', 10],
+      ['november', 10],
+      ['dec', 11],
+      ['december', 11],
+    ]);
+
+    const numericMatch = normalized.match(
+      /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/,
+    );
+    if (numericMatch) {
+      const day = Number.parseInt(numericMatch[1], 10);
+      const month = Number.parseInt(numericMatch[2], 10) - 1;
+      let year = Number.parseInt(numericMatch[3], 10);
+      if (year < 100) {
+        year += year >= 70 ? 1900 : 2000;
+      }
+      const timestamp = Date.UTC(year, month, day);
+      return Number.isNaN(timestamp) ? null : timestamp;
+    }
+
+    const monthNameMatch = normalized.match(
+      /^(\d{1,2})(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
+    );
+    if (monthNameMatch) {
+      const day = Number.parseInt(monthNameMatch[1], 10);
+      const month = monthNames.get(monthNameMatch[2].toLowerCase());
+      if (month === undefined) {
+        return null;
+      }
+      let year = Number.parseInt(monthNameMatch[3], 10);
+      if (year < 100) {
+        year += year >= 70 ? 1900 : 2000;
+      }
+      const timestamp = Date.UTC(year, month, day);
+      return Number.isNaN(timestamp) ? null : timestamp;
+    }
+
+    return null;
   }
 
   private trimSnippetBeforeForeignReference(
