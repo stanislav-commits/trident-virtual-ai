@@ -2122,6 +2122,19 @@ export class ChatDocumentationCitationService {
         if (leftSoonest !== rightSoonest) {
           return leftSoonest - rightSoonest;
         }
+        const leftRegistryProfile = this.isOfficialRegistryCertificateProfile(
+          left,
+        )
+          ? 1
+          : 0;
+        const rightRegistryProfile = this.isOfficialRegistryCertificateProfile(
+          right,
+        )
+          ? 1
+          : 0;
+        if (leftRegistryProfile !== rightRegistryProfile) {
+          return leftRegistryProfile - rightRegistryProfile;
+        }
         if (right.explicitEvidenceScore !== left.explicitEvidenceScore) {
           return right.explicitEvidenceScore - left.explicitEvidenceScore;
         }
@@ -2154,6 +2167,14 @@ export class ChatDocumentationCitationService {
     sourceKeys: Set<string>,
   ): ChatCitation[] {
     return citations.filter((citation) => sourceKeys.has(this.getSourceKey(citation)));
+  }
+
+  private isOfficialRegistryCertificateProfile(
+    profile: SourceEvidenceProfile,
+  ): boolean {
+    return profile.citations.some((citation) =>
+      this.isOfficialRegistryCertificateCitation(citation),
+    );
   }
 
   private balanceCitationsAcrossSources(
