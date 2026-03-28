@@ -250,54 +250,6 @@ describe('ChatDocumentationCitationService', () => {
     ).toBe(false);
   });
 
-  it('prefers standalone certificate documents over manual appendix expiry snippets for broad expiry questions', () => {
-    const citations = [
-      {
-        sourceTitle: 'Gas Detector manualRev.1.11.pdf',
-        sourceCategory: 'MANUALS',
-        snippet: 'This certificate will expire on 12 Dec 2022.',
-        score: 0.99,
-      },
-      {
-        sourceTitle:
-          "Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf",
-        sourceCategory: 'MANUALS',
-        snippet:
-          'Product Design Assessment (PDA) expiry date 27-OCT-2025. Manufacturing Assessment (MA) expiry date 28-OCT-2025.',
-        score: 0.97,
-      },
-      {
-        sourceTitle:
-          '26.01.13 SEAWOLF X Renewal Certificate of Reg. (exp 27.01.15).pdf',
-        sourceCategory: 'CERTIFICATES',
-        snippet:
-          'CERTIFICATE OF MALTA REGISTRY. Renewing Certificate dated 06 January 2025.',
-        score: 0.76,
-      },
-      {
-        sourceTitle: 'CoR Private.pdf',
-        sourceCategory: 'CERTIFICATES',
-        snippet:
-          'CERTIFICATE OF MALTA REGISTRY. Name of Ship SEAWOLF X. Official and IMO No.',
-        score: 0.74,
-      },
-    ];
-
-    const refined = service.refineCitationsForIntent(
-      'Which certificates will expire soon?',
-      'Which certificates will expire soon?',
-      citations,
-    );
-
-    expect(refined[0].sourceCategory).toBe('CERTIFICATES');
-    expect(refined[0].sourceTitle).toMatch(/Certificate|CoR/i);
-    expect(
-      refined.some((citation) =>
-        /manualrev|user'?s guide/i.test(citation.sourceTitle ?? ''),
-      ),
-    ).toBe(false);
-  });
-
   it('prefers explicit future-dated certificate snippets over registry certificates for broad expiry questions', () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
@@ -381,6 +333,90 @@ describe('ChatDocumentationCitationService', () => {
       expect(prepared.citations).toEqual([
         expect.objectContaining({
           sourceTitle: 'Selmar Type Approval Certificate.pdf',
+        }),
+      ]);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('filters survey guideline and inspection report support docs out of broad expiry answers', () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 28));
+    const citations = [
+      {
+        sourceTitle: 'Seawolf X - CY Survey Guidelines.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'Buoyant Smoke Signals (Expiry Date:05/28). EPIRB(Battery Exp:11/34).',
+        score: 0.98,
+      },
+      {
+        sourceTitle: 'MLC 2006 - Inspection report - for vessel under 500 GT Seawolf X.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'Statement of Compliance. Valid until: 26th October 2025.',
+        score: 0.97,
+      },
+      {
+        sourceTitle: 'Selmar Type Approval Certificate.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'THIS CERTIFICATE IS ISSUED IN COMPLIANCE WITH MODULE D. EXPIRATION DATE: 22-dec-2026.',
+        score: 0.79,
+      },
+    ];
+
+    try {
+      const prepared = service.prepareCitationsForAnswer(
+        'Which certificates will expire soon?',
+        'Which certificates will expire soon?',
+        citations,
+      );
+
+      expect(prepared.citations).toEqual([
+        expect.objectContaining({
+          sourceTitle: 'Selmar Type Approval Certificate.pdf',
+        }),
+      ]);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('falls back to embedded approval expiry evidence when no standalone certificate expiry is available', () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2024, 2, 28));
+    const citations = [
+      {
+        sourceTitle: 'Gas Detector manualRev.1.11.pdf',
+        sourceCategory: 'MANUALS',
+        snippet: 'This certificate will expire on 12 Dec 2022.',
+        score: 0.99,
+      },
+      {
+        sourceTitle:
+          "Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf",
+        sourceCategory: 'MANUALS',
+        snippet:
+          'Product Design Assessment (PDA) Expiry Date 27-OCT-2025. Manufacturing Assessment (MA) Expiry Date 28-OCT-2025.',
+        score: 0.97,
+      },
+    ];
+
+    try {
+      const prepared = service.prepareCitationsForAnswer(
+        'Which certificates will expire soon?',
+        'Which certificates will expire soon?',
+        citations,
+      );
+
+      expect(prepared.citations).toEqual([
+        expect.objectContaining({
+          sourceTitle:
+            "Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf",
         }),
       ]);
     } finally {
