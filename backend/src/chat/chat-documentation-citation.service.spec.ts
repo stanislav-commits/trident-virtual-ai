@@ -350,6 +350,44 @@ describe('ChatDocumentationCitationService', () => {
     }
   });
 
+  it('keeps hyphenated month expiry certificates for broad expiry answers', () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 28));
+    const citations = [
+      {
+        sourceTitle: 'CoR Private.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'CERTIFICATE OF MALTA REGISTRY. Name of Ship SEAWOLF X. Official and IMO No.',
+        score: 0.99,
+      },
+      {
+        sourceTitle: "Selmar Type Approval Certificate.pdf",
+        sourceCategory: 'CERTIFICATES',
+        snippet:
+          'THIS CERTIFICATE IS ISSUED IN COMPLIANCE WITH MODULE D. ISSUE DATE: 10-feb-2022 EXPIRATION DATE: 22-dec-2026.',
+        score: 0.81,
+      },
+    ];
+
+    try {
+      const prepared = service.prepareCitationsForAnswer(
+        'Which certificates will expire soon?',
+        'Which certificates will expire soon?',
+        citations,
+      );
+
+      expect(prepared.citations).toEqual([
+        expect.objectContaining({
+          sourceTitle: 'Selmar Type Approval Certificate.pdf',
+        }),
+      ]);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('prioritizes regulations over certificates for compliance questions', () => {
     const citations = [
       {
