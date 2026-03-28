@@ -10,6 +10,7 @@ import {
 import {
   InfluxMetric,
   InfluxMetricValue,
+  InfluxHistoricalQueryRange,
   InfluxdbService,
 } from '../influxdb/influxdb.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -58,6 +59,7 @@ interface ShipTelemetryEntry {
   bucket?: string | null;
   measurement?: string | null;
   field?: string | null;
+  dataType?: string | null;
   value: string | number | boolean | null;
   updatedAt?: Date | null;
 }
@@ -77,6 +79,27 @@ interface ShipTelemetryContext {
       kind?: 'suggestion' | 'all';
     }>;
   } | null;
+}
+
+interface ShipHistoricalTelemetryResolution {
+  kind: 'none' | 'clarification' | 'answer';
+  content?: string;
+  pendingQuery?: string;
+  clarificationQuestion?: string;
+  clarificationActions?: Array<{
+    label: string;
+    message: string;
+    kind?: 'suggestion' | 'all';
+  }>;
+}
+
+interface ParsedHistoricalTelemetryRequest {
+  metricQuery: string;
+  operation: 'point' | 'average' | 'min' | 'max' | 'sum' | 'delta' | 'position';
+  range: InfluxHistoricalQueryRange;
+  pointInTime?: Date;
+  rangeLabel: string;
+  clarificationQuestion?: string;
 }
 
 @Injectable()
@@ -463,6 +486,35 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
+    const normalizedSearchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    if (this.hasStrictTelemetryContext(normalizedSearchSpace)) {
+      const fallbackEntries = this.findTelemetryFallbackEntries(
+        entries,
+        query,
+        resolvedSubjectQuery,
+      );
+      const fallbackMatchMode = fallbackEntries.length > 0 ? 'related' : 'none';
+
+      return {
+        telemetry: this.toTelemetryMap(fallbackEntries),
+        totalActiveMetrics: entries.length,
+        matchedMetrics: fallbackEntries.length,
+        prefiltered: fallbackEntries.length > 0,
+        matchMode: fallbackMatchMode,
+        clarification:
+          fallbackEntries.length > 0
+            ? this.buildTelemetryClarification(
+                fallbackMatchMode,
+                fallbackEntries,
+                query,
+                resolvedSubjectQuery,
+              )
+            : null,
+      };
+    }
+
     // Preserve current behaviour for small ships while avoiding massive prompt
     // dumps when thousands of metrics are active.
     if (entries.length <= 25) {
@@ -498,6 +550,139 @@ export class MetricsService implements OnModuleInit {
               resolvedSubjectQuery,
             )
           : null,
+    };
+  }
+
+  async resolveHistoricalTelemetryQuery(
+    shipId: string,
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): Promise<ShipHistoricalTelemetryResolution> {
+    this.logger.debug(
+      `Historical telemetry resolver input ship=${shipId} query="${this.truncateTelemetryLogValue(
+        query,
+      )}" resolvedSubjectQuery="${this.truncateTelemetryLogValue(
+        resolvedSubjectQuery ?? '',
+      )}"`,
+    );
+    const parsedRequest = this.parseHistoricalTelemetryRequest(
+      query,
+      resolvedSubjectQuery,
+    );
+    if (!parsedRequest) {
+      this.logger.debug(
+        `Historical telemetry parser returned none for ship=${shipId}`,
+      );
+      return { kind: 'none' };
+    }
+
+    this.logger.debug(
+      `Historical telemetry parsed ship=${shipId} operation=${parsedRequest.operation} metricQuery="${this.truncateTelemetryLogValue(
+        parsedRequest.metricQuery,
+      )}" rangeLabel="${this.truncateTelemetryLogValue(
+        parsedRequest.rangeLabel,
+      )}" clarification="${this.truncateTelemetryLogValue(
+        parsedRequest.clarificationQuestion ?? '',
+      )}"`,
+    );
+
+    if (parsedRequest.clarificationQuestion) {
+      return {
+        kind: 'clarification',
+        clarificationQuestion: parsedRequest.clarificationQuestion,
+        pendingQuery: query.trim(),
+      };
+    }
+
+    const ship = await this.prisma.ship.findUnique({
+      where: { id: shipId },
+      select: { organizationName: true },
+    });
+    const organizationName = ship?.organizationName?.trim() ?? '';
+    if (!organizationName || !this.influxdb.isConfigured()) {
+      this.logger.debug(
+        `Historical telemetry resolver skipped ship=${shipId} organizationConfigured=${Boolean(
+          organizationName,
+        )} influxConfigured=${this.influxdb.isConfigured()}`,
+      );
+      return { kind: 'none' };
+    }
+
+    const entries = await this.loadShipTelemetryEntries(shipId);
+    if (entries.length === 0) {
+      return {
+        kind: 'answer',
+        content:
+          'No active telemetry metrics are configured for historical lookup on this ship.',
+      };
+    }
+
+    const matchedEntries = this.findHistoricalTelemetryEntries(
+      entries,
+      parsedRequest,
+    );
+    this.logger.debug(
+      `Historical telemetry matching ship=${shipId} activeEntries=${entries.length} matchedEntries=${matchedEntries.length}`,
+    );
+
+    if (matchedEntries.length === 0) {
+      return {
+        kind: 'answer',
+        content:
+          'I could not find a matching telemetry metric for the requested historical lookup.',
+      };
+    }
+
+    const matchMode =
+      parsedRequest.operation === 'position'
+        ? 'direct'
+        : this.determineTelemetryMatchMode(
+            matchedEntries,
+            parsedRequest.metricQuery,
+            undefined,
+          );
+    this.logger.debug(
+      `Historical telemetry match mode ship=${shipId} mode=${matchMode} metricKeys=${matchedEntries
+        .map((entry) => entry.key)
+        .slice(0, 6)
+        .join(', ')}`,
+    );
+
+    if (matchMode === 'related') {
+      return {
+        kind: 'clarification',
+        clarificationQuestion:
+          "I found related historical telemetry metrics for that period, but not one exact direct match. Which metric do you want to inspect?",
+        pendingQuery: query.trim(),
+        clarificationActions: this.buildHistoricalClarificationActions(
+          matchedEntries,
+          parsedRequest,
+        ),
+      };
+    }
+
+    const content = await this.buildHistoricalTelemetryAnswer({
+      matchedEntries,
+      organizationName,
+      request: parsedRequest,
+    });
+    this.logger.debug(
+      `Historical telemetry answer build ship=${shipId} hasContent=${Boolean(
+        content,
+      )}`,
+    );
+
+    if (!content) {
+      return {
+        kind: 'answer',
+        content:
+          'No historical telemetry values were found for the requested period.',
+      };
+    }
+
+    return {
+      kind: 'answer',
+      content,
     };
   }
 
@@ -643,6 +828,7 @@ export class MetricsService implements OnModuleInit {
             bucket: true,
             measurement: true,
             field: true,
+            dataType: true,
           },
         },
       },
@@ -656,9 +842,1020 @@ export class MetricsService implements OnModuleInit {
       bucket: config.metric?.bucket,
       measurement: config.metric?.measurement,
       field: config.metric?.field,
+      dataType: config.metric?.dataType,
       value: (config.latestValue as string | number | boolean | null) ?? null,
       updatedAt: config.valueUpdatedAt,
     }));
+  }
+
+  private findHistoricalTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+    request: ParsedHistoricalTelemetryRequest,
+  ): ShipTelemetryEntry[] {
+    if (request.operation === 'position') {
+      return this.findLocationTelemetryEntries(
+        entries,
+        request.metricQuery,
+        undefined,
+      );
+    }
+
+    const searchSpace = this.normalizeTelemetryText(request.metricQuery);
+    const queryKinds = this.extractTelemetryMeasurementKinds(searchSpace);
+
+    if (request.operation === 'delta') {
+      const counterMatches = entries.filter((entry) => {
+        const haystack = this.buildTelemetryHaystack(entry);
+        return (
+          this.getHistoricalMetricSemanticKind(entry) === 'counter' &&
+          this.matchesTelemetrySpecificContext(entry, searchSpace) &&
+          (!/\bfuel\b/i.test(searchSpace) || /\bfuel\b/i.test(haystack))
+        );
+      });
+
+      const directFuelUsageMatches = counterMatches.filter((entry) =>
+        /\b(total fuel used|fuel used)\b/i.test(
+          this.buildTelemetryHaystack(entry),
+        ),
+      );
+      if (directFuelUsageMatches.length > 0) {
+        return this.sortHistoricalTelemetryEntries(directFuelUsageMatches);
+      }
+
+      if (counterMatches.length > 0) {
+        return this.sortHistoricalTelemetryEntries(counterMatches);
+      }
+    }
+
+    if (queryKinds.has('load') && /\b(generator|genset)\b/i.test(searchSpace)) {
+      const loadMatches = entries.filter((entry) => {
+        const haystack = this.buildTelemetryHaystack(entry);
+        return (
+          this.matchesTelemetrySpecificContext(entry, searchSpace) &&
+          this.matchesTelemetryKinds(entry, new Set(['load'])) &&
+          /\b(generator|genset)\b/i.test(haystack)
+        );
+      });
+
+      const preferredElectricalGensetLoadMatches = loadMatches.filter((entry) =>
+        /\bsiemens genset\b/i.test(this.buildTelemetryHaystack(entry)),
+      );
+      if (preferredElectricalGensetLoadMatches.length > 0) {
+        return this.sortHistoricalTelemetryEntries(
+          preferredElectricalGensetLoadMatches,
+        );
+      }
+
+      if (loadMatches.length > 0) {
+        return this.sortHistoricalTelemetryEntries(loadMatches);
+      }
+    }
+
+    return this.findRelevantTelemetryEntries(entries, request.metricQuery);
+  }
+
+  private sortHistoricalTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+  ): ShipTelemetryEntry[] {
+    return [...entries].sort((left, right) => {
+      const leftSide = this.getTelemetrySideRank(left);
+      const rightSide = this.getTelemetrySideRank(right);
+      return leftSide - rightSide || left.key.localeCompare(right.key);
+    });
+  }
+
+  private getTelemetrySideRank(entry: ShipTelemetryEntry): number {
+    const haystack = this.buildTelemetryHaystack(entry);
+    if (/\b(port|ps)\b/i.test(haystack)) {
+      return 1;
+    }
+    if (/\b(starboard|sb|stbd)\b/i.test(haystack)) {
+      return 2;
+    }
+    return 3;
+  }
+
+  private async buildHistoricalTelemetryAnswer(params: {
+    matchedEntries: ShipTelemetryEntry[];
+    organizationName: string;
+    request: ParsedHistoricalTelemetryRequest;
+  }): Promise<string | null> {
+    const { matchedEntries, organizationName, request } = params;
+    const effectiveOperation =
+      request.operation === 'sum' &&
+      matchedEntries.every((entry) => this.getHistoricalMetricSemanticKind(entry) === 'counter')
+        ? 'delta'
+        : request.operation;
+
+    if (effectiveOperation === 'position') {
+      return this.buildHistoricalPositionAnswer(
+        matchedEntries,
+        organizationName,
+        request,
+      );
+    }
+
+    if (effectiveOperation === 'point') {
+      return this.buildHistoricalPointAnswer(
+        matchedEntries,
+        organizationName,
+        request,
+      );
+    }
+
+    if (effectiveOperation === 'delta') {
+      return this.buildHistoricalDeltaAnswer(
+        matchedEntries,
+        organizationName,
+        request,
+      );
+    }
+
+    return this.buildHistoricalAggregateAnswer(
+      matchedEntries,
+      organizationName,
+      request,
+      effectiveOperation,
+    );
+  }
+
+  private async buildHistoricalPointAnswer(
+    matchedEntries: ShipTelemetryEntry[],
+    organizationName: string,
+    request: ParsedHistoricalTelemetryRequest,
+  ): Promise<string | null> {
+    const pointInTime = request.pointInTime;
+    if (!pointInTime) {
+      return null;
+    }
+
+    const rows = await this.influxdb.queryHistoricalNearestValues(
+      matchedEntries.map((entry) => entry.key),
+      pointInTime,
+      organizationName,
+    );
+    const nearestRows = this.pickNearestHistoricalRows(rows, pointInTime);
+    if (nearestRows.length === 0) {
+      return null;
+    }
+
+    const rowsByKey = new Map(nearestRows.map((row) => [row.key, row]));
+    const lines = matchedEntries
+      .map((entry) => {
+        const row = rowsByKey.get(entry.key);
+        if (!row) return null;
+        const formattedValue = this.formatHistoricalMetricValue(entry, row.value);
+        return `- ${this.buildTelemetrySuggestionLabel(entry)}: ${formattedValue}`;
+      })
+      .filter((line): line is string => Boolean(line));
+
+    if (lines.length === 0) {
+      return null;
+    }
+
+    if (lines.length === 1) {
+      return `At ${request.rangeLabel}, ${lines[0].replace(/^- /, '')} [Telemetry History].`;
+    }
+
+    return [
+      `At ${request.rangeLabel}, the matched historical telemetry readings were [Telemetry History]:`,
+      '',
+      ...lines,
+    ].join('\n');
+  }
+
+  private async buildHistoricalPositionAnswer(
+    matchedEntries: ShipTelemetryEntry[],
+    organizationName: string,
+    request: ParsedHistoricalTelemetryRequest,
+  ): Promise<string | null> {
+    const pointInTime = request.pointInTime;
+    if (pointInTime) {
+      const rows = await this.influxdb.queryHistoricalNearestValues(
+        matchedEntries.map((entry) => entry.key),
+        pointInTime,
+        organizationName,
+      );
+      const nearestRows = this.pickNearestHistoricalRows(rows, pointInTime);
+      const coordinatePair = this.extractHistoricalCoordinatePair(nearestRows);
+      if (!coordinatePair) {
+        return null;
+      }
+
+      return `At ${request.rangeLabel}, the vessel position was Latitude ${coordinatePair.latitude.toFixed(6)}, Longitude ${coordinatePair.longitude.toFixed(6)} [Telemetry History].`;
+    }
+
+    const boundary = await this.influxdb.queryHistoricalFirstLast(
+      matchedEntries.map((entry) => entry.key),
+      request.range,
+      organizationName,
+    );
+    const firstPosition = this.extractHistoricalCoordinatePair(boundary.first);
+    const lastPosition = this.extractHistoricalCoordinatePair(boundary.last);
+
+    if (!firstPosition && !lastPosition) {
+      return null;
+    }
+
+    if (firstPosition && lastPosition) {
+      if (this.isSameCoordinateArea(firstPosition, lastPosition)) {
+        return `For ${request.rangeLabel}, the vessel remained around Latitude ${firstPosition.latitude.toFixed(6)}, Longitude ${firstPosition.longitude.toFixed(6)} based on the first and last recorded positions in the requested period [Telemetry History].`;
+      }
+
+      return [
+        `For ${request.rangeLabel}, the first recorded vessel position was Latitude ${firstPosition.latitude.toFixed(6)}, Longitude ${firstPosition.longitude.toFixed(6)} at ${this.formatHistoricalTimestamp(firstPosition.time)}, and the last recorded position was Latitude ${lastPosition.latitude.toFixed(6)}, Longitude ${lastPosition.longitude.toFixed(6)} at ${this.formatHistoricalTimestamp(lastPosition.time)} [Telemetry History].`,
+        '',
+        'Ask for a specific time if you need the exact position at one moment within that period.',
+      ].join('\n');
+    }
+
+    const singlePosition = firstPosition ?? lastPosition;
+    if (!singlePosition) {
+      return null;
+    }
+
+    return `For ${request.rangeLabel}, the recorded vessel position was Latitude ${singlePosition.latitude.toFixed(6)}, Longitude ${singlePosition.longitude.toFixed(6)} at ${this.formatHistoricalTimestamp(singlePosition.time)} [Telemetry History].`;
+  }
+
+  private async buildHistoricalDeltaAnswer(
+    matchedEntries: ShipTelemetryEntry[],
+    organizationName: string,
+    request: ParsedHistoricalTelemetryRequest,
+  ): Promise<string | null> {
+    const boundary = await this.influxdb.queryHistoricalFirstLast(
+      matchedEntries.map((entry) => entry.key),
+      request.range,
+      organizationName,
+    );
+    const firstByKey = new Map(boundary.first.map((row) => [row.key, row]));
+    const lastByKey = new Map(boundary.last.map((row) => [row.key, row]));
+
+    const deltas = matchedEntries
+      .map((entry) => {
+        const first = this.parseHistoricalNumericValue(firstByKey.get(entry.key)?.value);
+        const last = this.parseHistoricalNumericValue(lastByKey.get(entry.key)?.value);
+        if (first == null || last == null) {
+          return null;
+        }
+
+        return {
+          entry,
+          delta: last - first,
+        };
+      })
+      .filter(
+        (
+          value,
+        ): value is {
+          entry: ShipTelemetryEntry;
+          delta: number;
+        } => Boolean(value),
+      );
+
+    if (deltas.length === 0) {
+      return null;
+    }
+
+    const total = deltas.reduce((sum, item) => sum + item.delta, 0);
+    const unit = this.getConsistentHistoricalUnit(deltas.map((item) => item.entry));
+    const unitSuffix = unit ? ` ${unit}` : '';
+    const lines = deltas.map(
+      (item) =>
+        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.delta)}${unitSuffix}`,
+    );
+
+    if (deltas.length === 1) {
+      return `Based on historical telemetry from ${request.rangeLabel}, ${this.buildTelemetrySuggestionLabel(deltas[0].entry)} changed by ${this.formatAggregateNumber(deltas[0].delta)}${unitSuffix} [Telemetry History].`;
+    }
+
+    return [
+      `Based on historical telemetry from ${request.rangeLabel}, the total across the matched metrics was ${this.formatAggregateNumber(total)}${unitSuffix} [Telemetry History].`,
+      '',
+      ...lines,
+    ].join('\n');
+  }
+
+  private async buildHistoricalAggregateAnswer(
+    matchedEntries: ShipTelemetryEntry[],
+    organizationName: string,
+    request: ParsedHistoricalTelemetryRequest,
+    operation: 'average' | 'min' | 'max' | 'sum',
+  ): Promise<string | null> {
+    const aggregateMap: Record<
+      'average' | 'min' | 'max' | 'sum',
+      'mean' | 'min' | 'max' | 'sum'
+    > = {
+      average: 'mean',
+      min: 'min',
+      max: 'max',
+      sum: 'sum',
+    };
+
+    const rows = await this.influxdb.queryHistoricalAggregate(
+      matchedEntries.map((entry) => entry.key),
+      request.range,
+      aggregateMap[operation],
+      organizationName,
+    );
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const rowsByKey = new Map(rows.map((row) => [row.key, row]));
+    const values = matchedEntries
+      .map((entry) => {
+        const row = rowsByKey.get(entry.key);
+        const numericValue = this.parseHistoricalNumericValue(row?.value);
+        if (!row || numericValue == null) {
+          return null;
+        }
+
+        return {
+          entry,
+          value: numericValue,
+        };
+      })
+      .filter(
+        (
+          value,
+        ): value is {
+          entry: ShipTelemetryEntry;
+          value: number;
+        } => Boolean(value),
+      );
+
+    if (values.length === 0) {
+      return null;
+    }
+
+    const unit = this.getConsistentHistoricalUnit(values.map((item) => item.entry));
+    const unitSuffix = unit ? ` ${unit}` : '';
+    const labelMap: Record<'average' | 'min' | 'max' | 'sum', string> = {
+      average: 'average',
+      min: 'minimum',
+      max: 'maximum',
+      sum: 'sum',
+    };
+    const lines = values.map(
+      (item) =>
+        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.value)}${unitSuffix}`,
+    );
+
+    if (values.length === 1) {
+      return `Based on historical telemetry from ${request.rangeLabel}, the ${labelMap[operation]} ${this.buildTelemetrySuggestionLabel(values[0].entry)} was ${this.formatAggregateNumber(values[0].value)}${unitSuffix} [Telemetry History].`;
+    }
+
+    const overallValue =
+      operation === 'min'
+        ? Math.min(...values.map((item) => item.value))
+        : operation === 'max'
+          ? Math.max(...values.map((item) => item.value))
+          : values.reduce((sum, item) => sum + item.value, 0) /
+            (operation === 'sum' ? 1 : values.length);
+    const overallText =
+      operation === 'sum'
+        ? values.reduce((sum, item) => sum + item.value, 0)
+        : overallValue;
+
+    return [
+      `Based on historical telemetry from ${request.rangeLabel}, the ${labelMap[operation]} across the matched metrics was ${this.formatAggregateNumber(overallText)}${unitSuffix} [Telemetry History].`,
+      '',
+      ...lines,
+    ].join('\n');
+  }
+
+  private buildHistoricalClarificationActions(
+    entries: ShipTelemetryEntry[],
+    request: ParsedHistoricalTelemetryRequest,
+  ): Array<{ label: string; message: string; kind?: 'suggestion' | 'all' }> {
+    const selected: Array<{
+      label: string;
+      message: string;
+      kind?: 'suggestion' | 'all';
+    }> = [];
+    const seen = new Set<string>();
+
+    for (const entry of entries) {
+      const label = this.buildTelemetrySuggestionLabel(entry);
+      const normalizedLabel = this.normalizeTelemetryText(label);
+      if (!label || seen.has(normalizedLabel)) {
+        continue;
+      }
+
+      seen.add(normalizedLabel);
+      selected.push({
+        label,
+        message:
+          request.operation === 'point' || request.operation === 'position'
+            ? `What was ${label} at ${request.rangeLabel}?`
+            : `What was ${label} during ${request.rangeLabel}?`,
+        kind: 'suggestion',
+      });
+
+      if (selected.length >= 4) {
+        break;
+      }
+    }
+
+    return selected;
+  }
+
+  private parseHistoricalTelemetryRequest(
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ParsedHistoricalTelemetryRequest | null {
+    const searchSpace = `${query}\n${resolvedSubjectQuery ?? ''}`;
+    const normalized = this.normalizeTelemetryText(searchSpace);
+    const positionQuery = this.isTelemetryLocationQuery(normalized);
+    const operation = this.detectHistoricalOperation(searchSpace, positionQuery);
+    const missingYearFragment = this.findHistoricalDateWithoutYear(searchSpace);
+    if (missingYearFragment) {
+      return {
+        metricQuery: this.sanitizeHistoricalMetricQuery(query),
+        operation,
+        range: { start: new Date(), stop: new Date() },
+        rangeLabel: '',
+        clarificationQuestion: `Which year do you mean for ${missingYearFragment}?`,
+      };
+    }
+
+    const relativeRange = this.parseRelativeHistoricalRange(searchSpace);
+    const explicitDate = this.parseExplicitHistoricalDate(searchSpace);
+    const explicitTime = this.parseHistoricalTimeOfDay(searchSpace);
+
+    if (!relativeRange && !explicitDate) {
+      return null;
+    }
+
+    const metricQuery = this.sanitizeHistoricalMetricQuery(
+      resolvedSubjectQuery?.trim() ? resolvedSubjectQuery : query,
+    );
+
+    if (operation === 'point' || operation === 'position') {
+      if (!explicitTime) {
+        if (operation === 'position') {
+          const singleDayRange = explicitDate
+            ? this.buildFullDayHistoricalRange(explicitDate)
+            : this.isSingleUtcDayRange(relativeRange)
+              ? relativeRange
+              : null;
+
+          if (singleDayRange) {
+            return {
+              metricQuery,
+              operation,
+              range: singleDayRange,
+              rangeLabel: this.formatHistoricalDayOrRange(singleDayRange),
+            };
+          }
+        }
+
+        return {
+          metricQuery,
+          operation,
+          range: { start: new Date(), stop: new Date() },
+          rangeLabel: '',
+          clarificationQuestion:
+            operation === 'position'
+              ? 'Please specify the exact time, or ask for a single day, for this historical position lookup.'
+              : 'Please specify the exact time for this historical telemetry lookup.',
+        };
+      }
+
+      const baseDate = explicitDate
+        ? explicitDate
+        : relativeRange
+          ? new Date(relativeRange.start)
+          : null;
+      if (!baseDate) {
+        return null;
+      }
+
+      const pointInTime = new Date(
+        Date.UTC(
+          baseDate.getUTCFullYear(),
+          baseDate.getUTCMonth(),
+          baseDate.getUTCDate(),
+          explicitTime.hours,
+          explicitTime.minutes,
+          0,
+          0,
+        ),
+      );
+
+      return {
+        metricQuery,
+        operation,
+        range: {
+          start: pointInTime,
+          stop: pointInTime,
+        },
+        pointInTime,
+        rangeLabel: this.formatHistoricalTimestamp(pointInTime),
+      };
+    }
+
+    const range = relativeRange ?? this.buildFullDayHistoricalRange(explicitDate!);
+    return {
+      metricQuery,
+      operation,
+      range,
+      rangeLabel: this.formatHistoricalRange(range),
+    };
+  }
+
+  private detectHistoricalOperation(
+    query: string,
+    positionQuery: boolean,
+  ): 'point' | 'average' | 'min' | 'max' | 'sum' | 'delta' | 'position' {
+    if (positionQuery) {
+      return 'position';
+    }
+
+    const normalized = this.normalizeTelemetryText(query);
+    if (/\b(average|avg|mean)\b/i.test(normalized)) {
+      return 'average';
+    }
+    if (/\b(min|minimum|lowest|smallest|least)\b/i.test(normalized)) {
+      return 'min';
+    }
+    if (/\b(max|maximum|highest|peak|largest|greatest)\b/i.test(normalized)) {
+      return 'max';
+    }
+    if (
+      /\b(used|consumed|consumption|difference|delta|increase|decrease)\b/i.test(
+        normalized,
+      )
+    ) {
+      return 'delta';
+    }
+    if (/\b(total|sum|overall|combined)\b/i.test(normalized)) {
+      return 'sum';
+    }
+
+    return 'point';
+  }
+
+  private parseRelativeHistoricalRange(
+    query: string,
+  ): InfluxHistoricalQueryRange | null {
+    const now = new Date();
+    const normalized = this.normalizeTelemetryText(query);
+    const lastMatch = normalized.match(
+      /\b(?:last|past|previous|over the last)\s+(\d+)\s+(hour|hours|day|days|week|weeks|month|months)\b/i,
+    );
+    if (lastMatch) {
+      const amount = Number.parseInt(lastMatch[1], 10);
+      const unit = lastMatch[2].toLowerCase();
+      const start = new Date(now);
+      if (unit.startsWith('hour')) start.setUTCHours(start.getUTCHours() - amount);
+      if (unit.startsWith('day')) start.setUTCDate(start.getUTCDate() - amount);
+      if (unit.startsWith('week')) start.setUTCDate(start.getUTCDate() - amount * 7);
+      if (unit.startsWith('month')) start.setUTCMonth(start.getUTCMonth() - amount);
+      return { start, stop: now };
+    }
+
+    if (/\byesterday\b/i.test(normalized)) {
+      const start = this.startOfUtcDay(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+      const stop = this.endOfUtcDay(start);
+      return { start, stop };
+    }
+
+    if (/\btoday\b/i.test(normalized)) {
+      return { start: this.startOfUtcDay(now), stop: now };
+    }
+
+    if (/\bthis week\b/i.test(normalized)) {
+      return { start: this.startOfUtcWeek(now), stop: now };
+    }
+
+    if (/\blast week\b/i.test(normalized)) {
+      const endOfLastWeek = new Date(this.startOfUtcWeek(now).getTime() - 1);
+      return {
+        start: this.startOfUtcWeek(endOfLastWeek),
+        stop: this.endOfUtcDay(endOfLastWeek),
+      };
+    }
+
+    if (/\bthis month\b/i.test(normalized)) {
+      return { start: this.startOfUtcMonth(now), stop: now };
+    }
+
+    if (/\blast month\b/i.test(normalized)) {
+      const previousMonth = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
+      );
+      return {
+        start: this.startOfUtcMonth(previousMonth),
+        stop: this.endOfUtcMonth(previousMonth),
+      };
+    }
+
+    return null;
+  }
+
+  private parseExplicitHistoricalDate(query: string): Date | null {
+    const isoMatch = query.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+    if (isoMatch) {
+      return new Date(
+        Date.UTC(
+          Number.parseInt(isoMatch[1], 10),
+          Number.parseInt(isoMatch[2], 10) - 1,
+          Number.parseInt(isoMatch[3], 10),
+        ),
+      );
+    }
+
+    const monthPattern =
+      /\b(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})\b/i;
+    const dayMonthMatch = query.match(monthPattern);
+    if (dayMonthMatch) {
+      return new Date(
+        Date.UTC(
+          Number.parseInt(dayMonthMatch[3], 10),
+          this.getHistoricalMonthIndex(dayMonthMatch[2]),
+          Number.parseInt(dayMonthMatch[1], 10),
+        ),
+      );
+    }
+
+    const monthDayPattern =
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{4})\b/i;
+    const monthDayMatch = query.match(monthDayPattern);
+    if (monthDayMatch) {
+      return new Date(
+        Date.UTC(
+          Number.parseInt(monthDayMatch[3], 10),
+          this.getHistoricalMonthIndex(monthDayMatch[1]),
+          Number.parseInt(monthDayMatch[2], 10),
+        ),
+      );
+    }
+
+    return null;
+  }
+
+  private findHistoricalDateWithoutYear(query: string): string | null {
+    const match = query.match(
+      /\b(?:on\s+|from\s+|between\s+)?(\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))(?!\s+\d{4})\b/i,
+    );
+    if (match?.[1]) {
+      return match[1];
+    }
+
+    const reverseMatch = query.match(
+      /\b((?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2})(?!,?\s+\d{4})\b/i,
+    );
+    return reverseMatch?.[1] ?? null;
+  }
+
+  private parseHistoricalTimeOfDay(
+    query: string,
+  ): { hours: number; minutes: number } | null {
+    const clockMatch = query.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
+    if (!clockMatch) {
+      return null;
+    }
+
+    let hours = Number.parseInt(clockMatch[1], 10);
+    const minutes = Number.parseInt(clockMatch[2] ?? '0', 10);
+    const meridiem = clockMatch[3]?.toLowerCase();
+    if (meridiem === 'pm' && hours < 12) {
+      hours += 12;
+    } else if (meridiem === 'am' && hours === 12) {
+      hours = 0;
+    }
+
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      return null;
+    }
+
+    return { hours, minutes };
+  }
+
+  private sanitizeHistoricalMetricQuery(query: string): string {
+    const cleaned = query
+      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ')
+      .replace(/\b\d{4}\b/g, ' ')
+      .replace(
+        /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/gi,
+        ' ',
+      )
+      .replace(/\b\d{1,2}:\d{2}\b/g, ' ')
+      .replace(/\b(?:last|past|previous|over the last|today|yesterday|this week|last week|this month|last month|between|from|to|on|at|during|for)\b/gi, ' ')
+      .replace(/\b(?:what|was|were|is|the|please|show|give|tell|me)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return cleaned || query.trim();
+  }
+
+  private pickNearestHistoricalRows(
+    rows: InfluxMetricValue[],
+    targetTime: Date,
+  ): InfluxMetricValue[] {
+    const bestByKey = new Map<string, InfluxMetricValue>();
+    for (const row of rows) {
+      const rowTime = Date.parse(row.time);
+      if (!Number.isFinite(rowTime)) {
+        continue;
+      }
+
+      const currentBest = bestByKey.get(row.key);
+      if (!currentBest) {
+        bestByKey.set(row.key, row);
+        continue;
+      }
+
+      const bestTime = Date.parse(currentBest.time);
+      if (
+        Math.abs(rowTime - targetTime.getTime()) <
+        Math.abs(bestTime - targetTime.getTime())
+      ) {
+        bestByKey.set(row.key, row);
+      }
+    }
+
+    return [...bestByKey.values()];
+  }
+
+  private formatHistoricalMetricValue(
+    entry: ShipTelemetryEntry,
+    value: unknown,
+  ): string {
+    const numericValue = this.parseHistoricalNumericValue(value);
+    if (numericValue == null) {
+      return typeof value === 'string' ? value : 'unavailable';
+    }
+
+    const unit = this.getTelemetryDisplayUnit(entry);
+    return `${this.formatAggregateNumber(numericValue)}${unit ? ` ${unit}` : ''}`;
+  }
+
+  private parseHistoricalNumericValue(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number.parseFloat(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    return null;
+  }
+
+  private extractHistoricalCoordinatePair(rows: InfluxMetricValue[]): {
+    latitude: number;
+    longitude: number;
+    time: Date;
+  } | null {
+    const latitudeRow = rows.find((row) => /\b(lat|latitude)\b/i.test(row.field));
+    const longitudeRow = rows.find((row) =>
+      /\b(lon|longitude)\b/i.test(row.field),
+    );
+
+    if (!latitudeRow || !longitudeRow) {
+      return null;
+    }
+
+    const latitude = this.parseHistoricalNumericValue(latitudeRow.value);
+    const longitude = this.parseHistoricalNumericValue(longitudeRow.value);
+    const latitudeTime = Date.parse(latitudeRow.time);
+    const longitudeTime = Date.parse(longitudeRow.time);
+    if (
+      latitude == null ||
+      longitude == null ||
+      !Number.isFinite(latitudeTime) ||
+      !Number.isFinite(longitudeTime)
+    ) {
+      return null;
+    }
+
+    return {
+      latitude,
+      longitude,
+      time: new Date(Math.max(latitudeTime, longitudeTime)),
+    };
+  }
+
+  private isSameCoordinateArea(
+    left: { latitude: number; longitude: number },
+    right: { latitude: number; longitude: number },
+  ): boolean {
+    return (
+      Math.abs(left.latitude - right.latitude) <= 0.0005 &&
+      Math.abs(left.longitude - right.longitude) <= 0.0005
+    );
+  }
+
+  private getConsistentHistoricalUnit(entries: ShipTelemetryEntry[]): string | null {
+    const units = [
+      ...new Set(
+        entries
+          .map((entry) => this.getTelemetryDisplayUnit(entry))
+          .filter(Boolean),
+      ),
+    ];
+    if (units.length !== 1) {
+      return null;
+    }
+
+    const [unit] = units;
+    if (!unit) {
+      return null;
+    }
+
+    return unit;
+  }
+
+  private getTelemetryDisplayUnit(entry: ShipTelemetryEntry): string | null {
+    const explicitUnit = entry.unit?.trim();
+    if (explicitUnit) {
+      return this.normalizeTelemetryDisplayUnit(explicitUnit);
+    }
+
+    const sourceText = `${entry.field ?? ''} ${entry.label ?? ''}`.trim();
+    if (!sourceText) {
+      return null;
+    }
+
+    if (/%/.test(sourceText)) {
+      return '%';
+    }
+
+    const match = sourceText.match(/\(([^)]+)\)/);
+    if (!match?.[1]) {
+      return null;
+    }
+
+    return this.normalizeTelemetryDisplayUnit(match[1]);
+  }
+
+  private normalizeTelemetryDisplayUnit(unit: string): string | null {
+    const trimmed = unit.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (/^l$/i.test(trimmed) || /^lit(er|re)s?$/i.test(trimmed)) {
+      return 'liters';
+    }
+
+    if (/%/.test(trimmed)) {
+      return '%';
+    }
+
+    if (/^kw$/i.test(trimmed)) {
+      return 'kW';
+    }
+
+    if (/^nm$/i.test(trimmed)) {
+      return 'Nm';
+    }
+
+    if (/^rpm$/i.test(trimmed)) {
+      return 'rpm';
+    }
+
+    if (/^c$|^°c$/i.test(trimmed)) {
+      return '°C';
+    }
+
+    return trimmed;
+  }
+
+  private getHistoricalMetricSemanticKind(
+    entry: ShipTelemetryEntry,
+  ): 'counter' | 'coordinate' | 'state' | 'gauge' {
+    const haystack = this.buildTelemetryHaystack(entry);
+    if (/\b(latitude|longitude|lat|lon|position|gps|coordinate)\b/i.test(haystack)) {
+      return 'coordinate';
+    }
+
+    if (
+      entry.dataType === 'boolean' ||
+      /\b(status|state|alarm|fault)\b/i.test(haystack)
+    ) {
+      return 'state';
+    }
+
+    if (
+      /\b(total fuel used|fuel used|running hours|engine hours|hour meter|runtime|cumulative|counter|accumulated)\b/i.test(
+        haystack,
+      )
+    ) {
+      return 'counter';
+    }
+
+    return 'gauge';
+  }
+
+  private buildFullDayHistoricalRange(date: Date): InfluxHistoricalQueryRange {
+    return {
+      start: this.startOfUtcDay(date),
+      stop: this.endOfUtcDay(date),
+    };
+  }
+
+  private isSingleUtcDayRange(
+    range: InfluxHistoricalQueryRange | null,
+  ): range is InfluxHistoricalQueryRange {
+    if (!range) {
+      return false;
+    }
+
+    const start = range.start instanceof Date ? range.start : new Date(range.start);
+    const stop = range.stop instanceof Date ? range.stop : new Date(range.stop);
+    return (
+      start.getUTCFullYear() === stop.getUTCFullYear() &&
+      start.getUTCMonth() === stop.getUTCMonth() &&
+      start.getUTCDate() === stop.getUTCDate()
+    );
+  }
+
+  private formatHistoricalTimestamp(date: Date): string {
+    return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+  }
+
+  private formatHistoricalDay(date: Date): string {
+    return `${date.toISOString().slice(0, 10)} UTC`;
+  }
+
+  private formatHistoricalDayOrRange(range: InfluxHistoricalQueryRange): string {
+    const start = range.start instanceof Date ? range.start : new Date(range.start);
+    const stop = range.stop instanceof Date ? range.stop : new Date(range.stop);
+    const fullDay =
+      start.getTime() === this.startOfUtcDay(start).getTime() &&
+      stop.getTime() === this.endOfUtcDay(start).getTime();
+
+    if (this.isSingleUtcDayRange(range) && fullDay) {
+      return this.formatHistoricalDay(start);
+    }
+
+    return this.formatHistoricalRange(range);
+  }
+
+  private formatHistoricalRange(range: InfluxHistoricalQueryRange): string {
+    const start = range.start instanceof Date ? range.start : new Date(range.start);
+    const stop = range.stop instanceof Date ? range.stop : new Date(range.stop);
+    return `${this.formatHistoricalTimestamp(start)} to ${this.formatHistoricalTimestamp(stop)}`;
+  }
+
+  private startOfUtcDay(date: Date): Date {
+    return new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+    );
+  }
+
+  private endOfUtcDay(date: Date): Date {
+    return new Date(this.startOfUtcDay(date).getTime() + 24 * 60 * 60 * 1000 - 1);
+  }
+
+  private startOfUtcWeek(date: Date): Date {
+    const start = this.startOfUtcDay(date);
+    const day = start.getUTCDay() || 7;
+    start.setUTCDate(start.getUTCDate() - (day - 1));
+    return start;
+  }
+
+  private startOfUtcMonth(date: Date): Date {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+  }
+
+  private endOfUtcMonth(date: Date): Date {
+    return new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1) - 1,
+    );
+  }
+
+  private getHistoricalMonthIndex(monthName: string): number {
+    const months = [
+      'january',
+      'february',
+      'march',
+      'april',
+      'may',
+      'june',
+      'july',
+      'august',
+      'september',
+      'october',
+      'november',
+      'december',
+    ];
+    return Math.max(0, months.indexOf(monthName.trim().toLowerCase()));
+  }
+
+  private formatAggregateNumber(value: number): string {
+    return Number.isInteger(value)
+      ? value.toLocaleString('en-US')
+      : value.toLocaleString('en-US', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        });
   }
 
   private toTelemetryMap(
@@ -888,6 +2085,9 @@ export class MetricsService implements OnModuleInit {
 
     const filtered = entries.filter((entry) => {
       const haystack = this.buildTelemetryHaystack(entry);
+      if (!this.matchesTelemetrySpecificContext(entry, searchSpace)) {
+        return false;
+      }
       const matchesSubject =
         subjectTokens.length === 0 ||
         subjectTokens.some((token) => haystack.includes(token));
@@ -906,6 +2106,10 @@ export class MetricsService implements OnModuleInit {
       }
       return false;
     });
+
+    if (filtered.length === 0 && this.hasStrictTelemetryContext(searchSpace)) {
+      return [];
+    }
 
     return filtered.slice(0, 8);
   }
@@ -952,8 +2156,13 @@ export class MetricsService implements OnModuleInit {
       'am',
       'and',
       'at',
+      'average',
+      'avg',
       'be',
       'been',
+      'combined',
+      'consumed',
+      'consumption',
       'what',
       'which',
       'when',
@@ -979,15 +2188,24 @@ export class MetricsService implements OnModuleInit {
       'has',
       'have',
       'had',
+      'historical',
+      'history',
       'i',
       'in',
+      'increase',
       'into',
       'it',
       'its',
+      'last',
       'list',
       'lookup',
       'many',
+      'max',
+      'maximum',
       'me',
+      'mean',
+      'min',
+      'minimum',
       'my',
       'much',
       'of',
@@ -996,7 +2214,12 @@ export class MetricsService implements OnModuleInit {
       'or',
       'our',
       'out',
+      'overall',
       'output',
+      'over',
+      'past',
+      'period',
+      'previous',
       'vessel',
       'yacht',
       'show',
@@ -1031,9 +2254,15 @@ export class MetricsService implements OnModuleInit {
       'telemetry',
       'readings',
       'values',
+      'sum',
+      'total',
       'active',
       'connected',
+      'day',
+      'days',
       'enabled',
+      'month',
+      'months',
       'random',
       'remaining',
       'right',
@@ -1047,9 +2276,14 @@ export class MetricsService implements OnModuleInit {
       'us',
       'using',
       'we',
+      'week',
+      'weeks',
       'were',
       'will',
       'would',
+      'year',
+      'years',
+      'used',
       'your',
       'best',
       'match',
@@ -1118,7 +2352,7 @@ export class MetricsService implements OnModuleInit {
     const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
     const matchedSubjectTokens = subjectTokens.filter((token) =>
-      haystack.includes(token),
+      this.matchesTelemetrySubjectToken(haystack, token),
     );
     const matchedKinds = [...queryKinds].filter((kind) => entryKinds.has(kind));
 
@@ -1286,10 +2520,34 @@ export class MetricsService implements OnModuleInit {
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
 
     if (queryKinds.size === 0 || subjectTokens.length === 0) {
-      return scored;
+      const contextMatched = scored.filter((candidate) =>
+        this.matchesTelemetrySpecificContext(
+          candidate.entry,
+          querySignals.normalizedQuery,
+        ),
+      );
+      if (contextMatched.length > 0) {
+        return contextMatched;
+      }
+      return this.hasStrictTelemetryContext(querySignals.normalizedQuery)
+        ? []
+        : scored;
     }
 
-    const withSubject = scored.filter((candidate) =>
+    const contextMatched = scored.filter((candidate) =>
+      this.matchesTelemetrySpecificContext(
+        candidate.entry,
+        querySignals.normalizedQuery,
+      ),
+    );
+    const searchSpace =
+      contextMatched.length > 0
+        ? contextMatched
+        : this.hasStrictTelemetryContext(querySignals.normalizedQuery)
+          ? []
+          : scored;
+
+    const withSubject = searchSpace.filter((candidate) =>
       this.matchesTelemetrySubject(candidate.entry, subjectTokens),
     );
     const withSubjectAndKind = withSubject.filter((candidate) =>
@@ -1304,10 +2562,10 @@ export class MetricsService implements OnModuleInit {
       return withSubject;
     }
 
-    const withKind = scored.filter((candidate) =>
+    const withKind = searchSpace.filter((candidate) =>
       this.matchesTelemetryKinds(candidate.entry, queryKinds),
     );
-    return withKind.length > 0 ? withKind : scored;
+    return withKind.length > 0 ? withKind : searchSpace;
   }
 
   private filterScoredTelemetryEntries(
@@ -1434,7 +2692,7 @@ export class MetricsService implements OnModuleInit {
       const haystack = this.buildTelemetryHaystack(entry);
       const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
       const matchesSubject = subjectTokens.some((token) =>
-        haystack.includes(token),
+        this.matchesTelemetrySubjectToken(haystack, token),
       );
       return (
         matchesSubject && [...queryKinds].some((kind) => entryKinds.has(kind))
@@ -1658,7 +2916,9 @@ export class MetricsService implements OnModuleInit {
     const asksForStoredQuantity =
       /\b(how much|how many|onboard|remaining|left|available)\b/i.test(
         normalized,
-      ) && /\b(fuel|oil|coolant|water|tank|def|urea)\b/i.test(normalized);
+      ) &&
+      /\b(fuel|oil|coolant|water|tank|def|urea)\b/i.test(normalized) &&
+      !/\b(used|consumed|consumption|rate|flow)\b/i.test(normalized);
     if (asksForStoredQuantity) {
       kinds.add('level');
     }
@@ -1718,7 +2978,7 @@ export class MetricsService implements OnModuleInit {
 
     const haystack = this.buildTelemetryHaystack(entry);
     const matchedCount = subjectTokens.filter((token) =>
-      haystack.includes(token),
+      this.matchesTelemetrySubjectToken(haystack, token),
     ).length;
     const minimumMatches = Math.min(subjectTokens.length, 2);
     return matchedCount >= minimumMatches;
@@ -1745,6 +3005,11 @@ export class MetricsService implements OnModuleInit {
       .replace(/[^a-zA-Z0-9\s]+/g, ' ')
       .replace(/\btemps?\b/g, ' temperature ')
       .replace(/\bvolt(s)?\b/g, ' voltage ')
+      .replace(/\bstbd\b/g, ' starboard ')
+      .replace(/\bsb\b/g, ' starboard ')
+      .replace(/\bps\b/g, ' port ')
+      .replace(/\bright\b/g, ' starboard ')
+      .replace(/\bleft\b/g, ' port ')
       .replace(/\bgenerator\s+set\b/g, ' genset ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -1752,7 +3017,13 @@ export class MetricsService implements OnModuleInit {
   }
 
   private getTelemetrySubjectTokens(tokens: string[]): string[] {
-    return tokens.filter((token) => !this.isTelemetryKindToken(token));
+    return [
+      ...new Set(
+        tokens
+          .filter((token) => !this.isTelemetryKindToken(token))
+          .map((token) => this.canonicalizeTelemetrySubjectToken(token)),
+      ),
+    ];
   }
 
   private isTelemetryKindToken(token: string): boolean {
@@ -1824,6 +3095,11 @@ export class MetricsService implements OnModuleInit {
       batteries: 'battery',
       generators: 'generator',
       gensets: 'genset',
+      right: 'starboard',
+      left: 'port',
+      stbd: 'starboard',
+      sb: 'starboard',
+      ps: 'port',
       status: 'status',
       statuses: 'status',
       states: 'state',
@@ -1860,8 +3136,8 @@ export class MetricsService implements OnModuleInit {
     const variants = new Set([token]);
     const aliasGroups = [
       ['generator', 'genset'],
-      ['port', 'ps'],
-      ['starboard', 'sb'],
+      ['port', 'ps', 'left'],
+      ['starboard', 'sb', 'stbd', 'right'],
       ['temperature', 'temp'],
       ['latitude', 'lat'],
       ['longitude', 'lon'],
@@ -1875,6 +3151,77 @@ export class MetricsService implements OnModuleInit {
     }
 
     return [...variants];
+  }
+
+  private canonicalizeTelemetrySubjectToken(token: string): string {
+    switch (token) {
+      case 'genset':
+        return 'generator';
+      case 'ps':
+      case 'left':
+        return 'port';
+      case 'sb':
+      case 'stbd':
+      case 'right':
+        return 'starboard';
+      default:
+        return token;
+    }
+  }
+
+  private matchesTelemetrySubjectToken(
+    haystack: string,
+    token: string,
+  ): boolean {
+    return this.expandTelemetryTokenVariants(token).some((variant) =>
+      haystack.includes(variant),
+    );
+  }
+
+  private hasStrictTelemetryContext(normalizedQuery: string): boolean {
+    return /\b(engine room|generator|genset|engine|gearbox|pump|coolant|oil|fuel|battery)\b/i.test(
+      normalizedQuery,
+    );
+  }
+
+  private matchesTelemetrySpecificContext(
+    entry: ShipTelemetryEntry,
+    normalizedQuery: string,
+  ): boolean {
+    const haystack = this.buildTelemetryHaystack(entry);
+    const mentionsEngineRoom = /\bengine room\b/i.test(normalizedQuery);
+    const mentionsGenerator = /\b(generator|genset)\b/i.test(normalizedQuery);
+    const mentionsMainEngine =
+      /\bengine\b/i.test(normalizedQuery) &&
+      !mentionsEngineRoom &&
+      !mentionsGenerator;
+
+    if (mentionsEngineRoom && !/\bengine room\b/i.test(haystack)) {
+      return false;
+    }
+
+    if (mentionsGenerator && !/\b(generator|genset)\b/i.test(haystack)) {
+      return false;
+    }
+
+    if (
+      mentionsMainEngine &&
+      /\b(generator|genset|engine room)\b/i.test(haystack)
+    ) {
+      return false;
+    }
+
+    const requiredTerms = ['coolant', 'oil', 'fuel', 'battery', 'depth'];
+    for (const term of requiredTerms) {
+      if (
+        new RegExp(`\\b${term}\\b`, 'i').test(normalizedQuery) &&
+        !new RegExp(`\\b${term}\\b`, 'i').test(haystack)
+      ) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   private containsLoosely(left: string, right: string): boolean {
@@ -2022,6 +3369,15 @@ export class MetricsService implements OnModuleInit {
     const side = match[2]?.toLowerCase() ?? '';
     const sideOffset = side === 'p' ? 1 : side === 's' ? 2 : 3;
     return number * 10 + sideOffset;
+  }
+
+  private truncateTelemetryLogValue(value: string, maxLength = 180): string {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, maxLength - 3)}...`;
   }
 
   private isTelemetryLocationQuery(normalizedQuery: string): boolean {

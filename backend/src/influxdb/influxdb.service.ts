@@ -23,6 +23,18 @@ export interface InfluxMetricValue {
   time: string;
 }
 
+export interface InfluxHistoricalQueryRange {
+  start: Date | string;
+  stop: Date | string;
+}
+
+export interface InfluxHistoricalAggregateValue extends InfluxMetricValue {}
+
+export interface InfluxHistoricalFirstLastValues {
+  first: InfluxMetricValue[];
+  last: InfluxMetricValue[];
+}
+
 interface InfluxOrganizationsResponse {
   orgs?: Array<{ name?: string | null }>;
 }
@@ -249,6 +261,127 @@ export class InfluxdbService {
     return results;
   }
 
+  async queryHistoricalSeries(
+    keys: string[],
+    range: InfluxHistoricalQueryRange,
+    orgName?: string,
+  ): Promise<InfluxMetricValue[]> {
+    return this.queryHistoricalRows(keys, range, orgName);
+  }
+
+  async queryHistoricalAggregate(
+    keys: string[],
+    range: InfluxHistoricalQueryRange,
+    aggregate: 'mean' | 'min' | 'max' | 'sum',
+    orgName?: string,
+  ): Promise<InfluxHistoricalAggregateValue[]> {
+    if (!keys.length) return [];
+
+    const effectiveOrg = orgName?.trim() || this.defaultOrg?.trim();
+    if (!effectiveOrg) {
+      throw new ServiceUnavailableException(
+        'InfluxDB organization is not configured for this query',
+      );
+    }
+
+    const byBucket = this.groupMetricKeys(keys);
+    const results: InfluxHistoricalAggregateValue[] = [];
+
+    for (const [bucket, byMeasurement] of byBucket) {
+      for (const [measurement, metrics] of byMeasurement) {
+        const metricKeyByField = new Map(
+          metrics.map((metric) => [metric.field, metric.key]),
+        );
+
+        for (const metricsBatch of this.chunk(metrics, this.latestValuesBatchSize)) {
+          const fieldFilter =
+            metricsBatch.length === 1
+              ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
+              : `contains(value: r._field, set: [${metricsBatch
+                  .map((metric) => this.toFluxString(metric.field))
+                  .join(', ')}])`;
+
+          const flux = [
+            `from(bucket: ${this.toFluxString(bucket)})`,
+            `  |> range(start: ${this.toFluxTime(range.start)}, stop: ${this.toFluxTime(range.stop)})`,
+            `  |> filter(fn: (r) => r._measurement == ${this.toFluxString(measurement)})`,
+            `  |> filter(fn: (r) => ${fieldFilter})`,
+            `  |> ${aggregate}()`,
+          ].join('\n');
+
+          this.logger.debug(
+            `Influx historical aggregate query org=${effectiveOrg} bucket=${bucket} measurement=${measurement} aggregate=${aggregate} metrics=${metricsBatch.length} start=${this.toFluxTime(
+              range.start,
+            )} stop=${this.toFluxTime(range.stop)}`,
+          );
+          const rows = await this.queryRows(flux, effectiveOrg);
+          this.logger.debug(
+            `Influx historical aggregate result org=${effectiveOrg} bucket=${bucket} measurement=${measurement} aggregate=${aggregate} rows=${rows.length}`,
+          );
+
+          for (const row of rows) {
+            const field = this.toText(row._field);
+            const matchedMetricKey = metricKeyByField.get(field);
+            if (!matchedMetricKey) continue;
+
+            results.push({
+              key: matchedMetricKey,
+              bucket,
+              measurement,
+              field,
+              value: row._value as number | string | boolean | null,
+              time: this.toText(row._time),
+            });
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+
+  async queryHistoricalFirstLast(
+    keys: string[],
+    range: InfluxHistoricalQueryRange,
+    orgName?: string,
+  ): Promise<InfluxHistoricalFirstLastValues> {
+    return {
+      first: await this.queryHistoricalBoundaryValues('first', keys, range, orgName),
+      last: await this.queryHistoricalBoundaryValues('last', keys, range, orgName),
+    };
+  }
+
+  async queryHistoricalNearestValues(
+    keys: string[],
+    pointInTime: Date,
+    orgName?: string,
+    windowMs = 12 * 60 * 60 * 1000,
+  ): Promise<InfluxMetricValue[]> {
+    if (!keys.length) return [];
+
+    const beforeRange = {
+      start: new Date(pointInTime.getTime() - windowMs),
+      stop: new Date(pointInTime.getTime() + 1),
+    };
+    const afterRange = {
+      start: pointInTime,
+      stop: new Date(pointInTime.getTime() + windowMs),
+    };
+
+    this.logger.debug(
+      `Influx historical nearest query point=${pointInTime.toISOString()} windowMs=${windowMs} keys=${keys.length}`,
+    );
+    const [previousRows, nextRows] = await Promise.all([
+      this.queryHistoricalBoundaryValues('last', keys, beforeRange, orgName),
+      this.queryHistoricalBoundaryValues('first', keys, afterRange, orgName),
+    ]);
+    const rows = [...previousRows, ...nextRows];
+    this.logger.debug(
+      `Influx historical nearest result point=${pointInTime.toISOString()} rows=${rows.length}`,
+    );
+    return rows;
+  }
+
   private async listMeasurements(
     orgName: string,
     bucket: string,
@@ -280,6 +413,145 @@ export class InfluxdbService {
     const fields = rows.map((row) => this.toText(row._value)).filter(Boolean);
 
     return [...new Set(fields)];
+  }
+
+  private async queryHistoricalRows(
+    keys: string[],
+    range: InfluxHistoricalQueryRange,
+    orgName?: string,
+  ): Promise<InfluxMetricValue[]> {
+    if (!keys.length) return [];
+
+    const effectiveOrg = orgName?.trim() || this.defaultOrg?.trim();
+    if (!effectiveOrg) {
+      throw new ServiceUnavailableException(
+        'InfluxDB organization is not configured for this query',
+      );
+    }
+
+    const byBucket = this.groupMetricKeys(keys);
+    const results: InfluxMetricValue[] = [];
+
+    for (const [bucket, byMeasurement] of byBucket) {
+      for (const [measurement, metrics] of byMeasurement) {
+        const metricKeyByField = new Map(
+          metrics.map((metric) => [metric.field, metric.key]),
+        );
+
+        for (const metricsBatch of this.chunk(metrics, this.latestValuesBatchSize)) {
+          const fieldFilter =
+            metricsBatch.length === 1
+              ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
+              : `contains(value: r._field, set: [${metricsBatch
+                  .map((metric) => this.toFluxString(metric.field))
+                  .join(', ')}])`;
+
+          const flux = [
+            `from(bucket: ${this.toFluxString(bucket)})`,
+            `  |> range(start: ${this.toFluxTime(range.start)}, stop: ${this.toFluxTime(range.stop)})`,
+            `  |> filter(fn: (r) => r._measurement == ${this.toFluxString(measurement)})`,
+            `  |> filter(fn: (r) => ${fieldFilter})`,
+            '  |> sort(columns: ["_time"])',
+          ].join('\n');
+
+          this.logger.debug(
+            `Influx historical series query org=${effectiveOrg} bucket=${bucket} measurement=${measurement} metrics=${metricsBatch.length} start=${this.toFluxTime(
+              range.start,
+            )} stop=${this.toFluxTime(range.stop)}`,
+          );
+          const rows = await this.queryRows(flux, effectiveOrg);
+          this.logger.debug(
+            `Influx historical series result org=${effectiveOrg} bucket=${bucket} measurement=${measurement} rows=${rows.length}`,
+          );
+          for (const row of rows) {
+            const field = this.toText(row._field);
+            const matchedMetricKey = metricKeyByField.get(field);
+            if (!matchedMetricKey) continue;
+
+            results.push({
+              key: matchedMetricKey,
+              bucket,
+              measurement,
+              field,
+              value: row._value as number | string | boolean | null,
+              time: this.toText(row._time),
+            });
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+
+  private async queryHistoricalBoundaryValues(
+    boundary: 'first' | 'last',
+    keys: string[],
+    range: InfluxHistoricalQueryRange,
+    orgName?: string,
+  ): Promise<InfluxMetricValue[]> {
+    if (!keys.length) return [];
+
+    const effectiveOrg = orgName?.trim() || this.defaultOrg?.trim();
+    if (!effectiveOrg) {
+      throw new ServiceUnavailableException(
+        'InfluxDB organization is not configured for this query',
+      );
+    }
+
+    const byBucket = this.groupMetricKeys(keys);
+    const results: InfluxMetricValue[] = [];
+
+    for (const [bucket, byMeasurement] of byBucket) {
+      for (const [measurement, metrics] of byMeasurement) {
+        const metricKeyByField = new Map(
+          metrics.map((metric) => [metric.field, metric.key]),
+        );
+
+        for (const metricsBatch of this.chunk(metrics, this.latestValuesBatchSize)) {
+          const fieldFilter =
+            metricsBatch.length === 1
+              ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
+              : `contains(value: r._field, set: [${metricsBatch
+                  .map((metric) => this.toFluxString(metric.field))
+                  .join(', ')}])`;
+
+          const flux = [
+            `from(bucket: ${this.toFluxString(bucket)})`,
+            `  |> range(start: ${this.toFluxTime(range.start)}, stop: ${this.toFluxTime(range.stop)})`,
+            `  |> filter(fn: (r) => r._measurement == ${this.toFluxString(measurement)})`,
+            `  |> filter(fn: (r) => ${fieldFilter})`,
+            `  |> ${boundary}()`,
+          ].join('\n');
+
+          this.logger.debug(
+            `Influx historical boundary query org=${effectiveOrg} bucket=${bucket} measurement=${measurement} boundary=${boundary} metrics=${metricsBatch.length} start=${this.toFluxTime(
+              range.start,
+            )} stop=${this.toFluxTime(range.stop)}`,
+          );
+          const rows = await this.queryRows(flux, effectiveOrg);
+          this.logger.debug(
+            `Influx historical boundary result org=${effectiveOrg} bucket=${bucket} measurement=${measurement} boundary=${boundary} rows=${rows.length}`,
+          );
+          for (const row of rows) {
+            const field = this.toText(row._field);
+            const matchedMetricKey = metricKeyByField.get(field);
+            if (!matchedMetricKey) continue;
+
+            results.push({
+              key: matchedMetricKey,
+              bucket,
+              measurement,
+              field,
+              value: row._value as number | string | boolean | null,
+              time: this.toText(row._time),
+            });
+          }
+        }
+      }
+    }
+
+    return results;
   }
 
   private async queryRows(
@@ -343,6 +615,30 @@ export class InfluxdbService {
     return JSON.stringify(value);
   }
 
+  private toFluxTime(value: Date | string): string {
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      throw new ServiceUnavailableException('InfluxDB query time cannot be empty');
+    }
+
+    if (/^[+-]?\d+[smhdw]$/i.test(trimmed)) {
+      return trimmed;
+    }
+
+    if (
+      /^\d{4}-\d{2}-\d{2}t\d{2}:\d{2}:\d{2}(?:\.\d+)?z$/i.test(trimmed) ||
+      /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ) {
+      return trimmed;
+    }
+
+    return trimmed;
+  }
+
   private toText(value: unknown): string {
     if (typeof value === 'string') return value.trim();
     if (typeof value === 'number' || typeof value === 'boolean') {
@@ -371,5 +667,30 @@ export class InfluxdbService {
       chunks.push(items.slice(index, index + size));
     }
     return chunks;
+  }
+
+  private groupMetricKeys(
+    keys: string[],
+  ): Map<string, Map<string, { field: string; key: string }[]>> {
+    const byBucket = new Map<
+      string,
+      Map<string, { field: string; key: string }[]>
+    >();
+
+    for (const key of keys) {
+      const parts = key.split('::');
+      if (parts.length !== 3) continue;
+      const [bucket, measurement, field] = parts;
+      if (!byBucket.has(bucket)) {
+        byBucket.set(bucket, new Map());
+      }
+      const byMeasurement = byBucket.get(bucket);
+      if (!byMeasurement?.has(measurement)) {
+        byMeasurement?.set(measurement, []);
+      }
+      byMeasurement?.get(measurement)?.push({ field, key });
+    }
+
+    return byBucket;
   }
 }

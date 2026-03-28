@@ -467,6 +467,64 @@ describe('MetricsService telemetry matching', () => {
     expect(result.clarification).toBeNull();
   });
 
+  it('does not treat genset or engine-room temperature as a direct starboard engine coolant reading', async () => {
+    const fillerEntries = Array.from({ length: 24 }, (_, index) => ({
+      metricKey: `Trending::HVAC-Guest-${index}::Room Temperature`,
+      latestValue: 20 + index,
+      valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+      metric: {
+        label: `HVAC-Guest-${index}.Room Temperature`,
+        description: `Displays the guest cabin room temperature for zone ${index}.`,
+        unit: 'C',
+        bucket: 'Trending',
+        measurement: `HVAC-Guest-${index}`,
+        field: 'Room Temperature',
+      },
+    }));
+
+    const service = buildService([
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-SB::Coolant Temperature (°C)',
+        latestValue: 36,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-SB.Coolant Temperature (°C)',
+          description:
+            'Displays the coolant temperature in degrees Celsius for the starboard genset.',
+          unit: 'C',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-SB',
+          field: 'Coolant Temperature (°C)',
+        },
+      },
+      {
+        metricKey: 'Trending::Temperatures::STBD ENGINE ROOM TEMPERATURE',
+        latestValue: 26,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Temperatures.STBD ENGINE ROOM TEMPERATURE',
+          description:
+            'Temperature reading from the starboard engine room.',
+          unit: 'C',
+          bucket: 'Trending',
+          measurement: 'Temperatures',
+          field: 'STBD ENGINE ROOM TEMPERATURE',
+        },
+      },
+      ...fillerEntries,
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'What is the current starboard engine coolant temperature?',
+    );
+
+    expect(result.prefiltered).toBe(false);
+    expect(result.matchMode).toBe('none');
+    expect(result.matchedMetrics).toBe(0);
+    expect(result.telemetry).toEqual({});
+  });
+
   it('does not treat DEF tank level as a direct fuel level reading', async () => {
     const service = buildService([
       {
@@ -1102,5 +1160,552 @@ describe('MetricsService value sync', () => {
         }),
       }),
     );
+  });
+});
+
+describe('MetricsService historical telemetry', () => {
+  it('asks for the year when an absolute date omits it', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn(),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn(),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'What was the starboard engine coolant temperature on 14 March?',
+    );
+
+    expect(result.kind).toBe('clarification');
+    expect(result.clarificationQuestion).toContain('Which year');
+  });
+
+  it('answers historical averages deterministically from Influx aggregates', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::GENSET-PS::Load',
+            latestValue: 40,
+            valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+            metric: {
+              label: 'GENSET-PS.Load',
+              description: 'Generator load in kilowatts.',
+              unit: 'kW',
+              bucket: 'Trending',
+              measurement: 'GENSET-PS',
+              field: 'Load',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalAggregate: jest.fn().mockResolvedValue([
+        {
+          key: 'Trending::GENSET-PS::Load',
+          bucket: 'Trending',
+          measurement: 'GENSET-PS',
+          field: 'Load',
+          value: 42.5,
+          time: '2026-03-28T00:00:00.000Z',
+        },
+      ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'What was the average generator load over the last 7 days?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('average');
+    expect(result.content).toContain('42.5 kW');
+    expect(influxdb.queryHistoricalAggregate).toHaveBeenCalled();
+  });
+
+  it('prefers direct generator load metrics over related speed metrics for historical averages', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::SIEMENS-GENSET-PS::Actual motor (generator) speed (rpm)',
+            latestValue: 1500,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'SIEMENS-GENSET-PS.Actual motor (generator) speed (rpm)',
+              description: 'Generator speed.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'SIEMENS-GENSET-PS',
+              field: 'Actual motor (generator) speed (rpm)',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::SIEMENS-GENSET-PS::Machine load (0 - 100 %)',
+            latestValue: 4.2,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'SIEMENS-GENSET-PS.Machine load (0 - 100 %)',
+              description: 'Generator machine load.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'SIEMENS-GENSET-PS',
+              field: 'Machine load (0 - 100 %)',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::SIEMENS-GENSET-SB::Actual motor (generator) speed (rpm)',
+            latestValue: 1500,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'SIEMENS-GENSET-SB.Actual motor (generator) speed (rpm)',
+              description: 'Generator speed.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'SIEMENS-GENSET-SB',
+              field: 'Actual motor (generator) speed (rpm)',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::SIEMENS-GENSET-SB::Machine load (0 - 100 %)',
+            latestValue: 4.8,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'SIEMENS-GENSET-SB.Machine load (0 - 100 %)',
+              description: 'Generator machine load.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'SIEMENS-GENSET-SB',
+              field: 'Machine load (0 - 100 %)',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalAggregate: jest.fn().mockResolvedValue([
+        {
+          key: 'Trending::SIEMENS-GENSET-PS::Machine load (0 - 100 %)',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-GENSET-PS',
+          field: 'Machine load (0 - 100 %)',
+          value: 4.35,
+          time: '2026-03-28T00:00:00.000Z',
+        },
+        {
+          key: 'Trending::SIEMENS-GENSET-SB::Machine load (0 - 100 %)',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-GENSET-SB',
+          field: 'Machine load (0 - 100 %)',
+          value: 4.7,
+          time: '2026-03-28T00:00:00.000Z',
+        },
+      ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'What was the average generator load over the last 7 days?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('SIEMENS-GENSET-PS.Machine load');
+    expect(result.content).toContain('SIEMENS-GENSET-SB.Machine load');
+    expect(result.content).not.toContain('speed');
+  });
+
+  it('uses historical total fuel used counters for fuel delta queries', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Diesel Fuel Rate (l/h)',
+            latestValue: 12,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'SIEMENS-MASE-GENSET-PS.Diesel Fuel Rate (l/h)',
+              description: 'Instant fuel rate.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'SIEMENS-MASE-GENSET-PS',
+              field: 'Diesel Fuel Rate (l/h)',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Total Fuel Used (l)',
+            latestValue: 34658,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'SIEMENS-MASE-GENSET-PS.Total Fuel Used (l)',
+              description: 'Total fuel used.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'SIEMENS-MASE-GENSET-PS',
+              field: 'Total Fuel Used (l)',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::SIEMENS-MASE-GENSET-SB::Fuel Pressure (bar)',
+            latestValue: 1.2,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'SIEMENS-MASE-GENSET-SB.Fuel Pressure (bar)',
+              description: 'Fuel pressure.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'SIEMENS-MASE-GENSET-SB',
+              field: 'Fuel Pressure (bar)',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::SIEMENS-MASE-GENSET-SB::Total Fuel Used (l)',
+            latestValue: 35116,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'SIEMENS-MASE-GENSET-SB.Total Fuel Used (l)',
+              description: 'Total fuel used.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'SIEMENS-MASE-GENSET-SB',
+              field: 'Total Fuel Used (l)',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            latestValue: 3053,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_1P',
+              description: 'Fuel tank quantity.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_1P',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalFirstLast: jest.fn().mockResolvedValue({
+        first: [
+          {
+            key: 'Trending::SIEMENS-MASE-GENSET-PS::Total Fuel Used (l)',
+            bucket: 'Trending',
+            measurement: 'SIEMENS-MASE-GENSET-PS',
+            field: 'Total Fuel Used (l)',
+            value: 33021,
+            time: '2026-02-25T23:10:00.000Z',
+          },
+          {
+            key: 'Trending::SIEMENS-MASE-GENSET-SB::Total Fuel Used (l)',
+            bucket: 'Trending',
+            measurement: 'SIEMENS-MASE-GENSET-SB',
+            field: 'Total Fuel Used (l)',
+            value: 32369,
+            time: '2026-02-25T23:10:00.000Z',
+          },
+        ],
+        last: [
+          {
+            key: 'Trending::SIEMENS-MASE-GENSET-PS::Total Fuel Used (l)',
+            bucket: 'Trending',
+            measurement: 'SIEMENS-MASE-GENSET-PS',
+            field: 'Total Fuel Used (l)',
+            value: 34658,
+            time: '2026-03-27T23:10:00.000Z',
+          },
+          {
+            key: 'Trending::SIEMENS-MASE-GENSET-SB::Total Fuel Used (l)',
+            bucket: 'Trending',
+            measurement: 'SIEMENS-MASE-GENSET-SB',
+            field: 'Total Fuel Used (l)',
+            value: 35116,
+            time: '2026-03-27T23:10:00.000Z',
+          },
+        ],
+      }),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'How much fuel was used over the last 30 days?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('4,384 liters');
+    expect(result.content).toContain('SIEMENS-MASE-GENSET-PS.Total Fuel Used (l)');
+    expect(result.content).toContain('SIEMENS-MASE-GENSET-SB.Total Fuel Used (l)');
+    expect(result.content).not.toContain('Fuel Pressure');
+    expect(result.content).not.toContain('Diesel Fuel Rate');
+  });
+
+  it('returns historical position at an exact time when latitude and longitude metrics exist', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'NMEA::navigation::latitude',
+            latestValue: 46.5,
+            valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+            metric: {
+              label: 'navigation.latitude',
+              description: 'Current vessel latitude.',
+              unit: null,
+              bucket: 'NMEA',
+              measurement: 'navigation',
+              field: 'latitude',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'NMEA::navigation::longitude',
+            latestValue: 10.3,
+            valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+            metric: {
+              label: 'navigation.longitude',
+              description: 'Current vessel longitude.',
+              unit: null,
+              bucket: 'NMEA',
+              measurement: 'navigation',
+              field: 'longitude',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalNearestValues: jest.fn().mockResolvedValue([
+        {
+          key: 'NMEA::navigation::latitude',
+          bucket: 'NMEA',
+          measurement: 'navigation',
+          field: 'latitude',
+          value: 46.584758,
+          time: '2026-03-15T10:01:00.000Z',
+        },
+        {
+          key: 'NMEA::navigation::longitude',
+          bucket: 'NMEA',
+          measurement: 'navigation',
+          field: 'longitude',
+          value: 10.353452,
+          time: '2026-03-15T10:01:00.000Z',
+        },
+      ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'What was the yacht position on 15 March 2026 at 10:00?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('Latitude 46.584758');
+    expect(result.content).toContain('Longitude 10.353452');
+    expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalled();
+  });
+
+  it('returns a day summary for date-only position follow-ups after the year is clarified', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'NMEA::navigation::latitude',
+            latestValue: 46.5,
+            valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+            metric: {
+              label: 'navigation.latitude',
+              description: 'Current vessel latitude.',
+              unit: null,
+              bucket: 'NMEA',
+              measurement: 'navigation',
+              field: 'latitude',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'NMEA::navigation::longitude',
+            latestValue: 10.3,
+            valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+            metric: {
+              label: 'navigation.longitude',
+              description: 'Current vessel longitude.',
+              unit: null,
+              bucket: 'NMEA',
+              measurement: 'navigation',
+              field: 'longitude',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalFirstLast: jest.fn().mockResolvedValue({
+        first: [
+          {
+            key: 'NMEA::navigation::latitude',
+            bucket: 'NMEA',
+            measurement: 'navigation',
+            field: 'latitude',
+            value: 46.584758,
+            time: '2025-03-14T00:05:00.000Z',
+          },
+          {
+            key: 'NMEA::navigation::longitude',
+            bucket: 'NMEA',
+            measurement: 'navigation',
+            field: 'longitude',
+            value: 10.353452,
+            time: '2025-03-14T00:05:00.000Z',
+          },
+        ],
+        last: [
+          {
+            key: 'NMEA::navigation::latitude',
+            bucket: 'NMEA',
+            measurement: 'navigation',
+            field: 'latitude',
+            value: 46.617112,
+            time: '2025-03-14T23:55:00.000Z',
+          },
+          {
+            key: 'NMEA::navigation::longitude',
+            bucket: 'NMEA',
+            measurement: 'navigation',
+            field: 'longitude',
+            value: 10.401006,
+            time: '2025-03-14T23:55:00.000Z',
+          },
+        ],
+      }),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      '2025',
+      'What was the yacht position on 14 March 2025',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('For 2025-03-14 UTC');
+    expect(result.content).toContain('first recorded vessel position');
+    expect(result.content).toContain('last recorded position');
+    expect(influxdb.queryHistoricalFirstLast).toHaveBeenCalled();
   });
 });
