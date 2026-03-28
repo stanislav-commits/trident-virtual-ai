@@ -874,9 +874,7 @@ export class MetricsService implements OnModuleInit {
       });
 
       const directFuelUsageMatches = counterMatches.filter((entry) =>
-        /\b(total fuel used|fuel used)\b/i.test(
-          this.buildTelemetryHaystack(entry),
-        ),
+        this.isHistoricalFuelUsageCounter(entry),
       );
       if (directFuelUsageMatches.length > 0) {
         return this.sortHistoricalTelemetryEntries(directFuelUsageMatches);
@@ -2023,22 +2021,42 @@ export class MetricsService implements OnModuleInit {
       return [];
     }
 
+    const explicitCoordinateScored = scored.filter(
+      (candidate) =>
+        this.getExplicitTelemetryCoordinateKinds(candidate.entry).size > 0,
+    );
+    const useExplicitCoordinateEntries =
+      explicitCoordinateScored.length > 0 &&
+      this.hasCoordinatePair(
+        explicitCoordinateScored.map((candidate) => candidate.entry),
+        (entry) => this.getExplicitTelemetryCoordinateKinds(entry),
+      );
+    const coordinateCandidates = useExplicitCoordinateEntries
+      ? explicitCoordinateScored
+      : scored;
+    const coordinateKindsForEntry = (
+      entry: ShipTelemetryEntry,
+    ): Set<'latitude' | 'longitude'> =>
+      useExplicitCoordinateEntries
+        ? this.getExplicitTelemetryCoordinateKinds(entry)
+        : this.getTelemetryCoordinateKinds(entry);
+
     const wantsLatitude = /\b(latitude|lat)\b/i.test(searchSpace);
     const wantsLongitude = /\b(longitude|lon)\b/i.test(searchSpace);
 
     if (wantsLatitude && !wantsLongitude) {
-      return scored
+      return coordinateCandidates
         .filter((candidate) =>
-          this.getTelemetryCoordinateKinds(candidate.entry).has('latitude'),
+          coordinateKindsForEntry(candidate.entry).has('latitude'),
         )
         .slice(0, 1)
         .map((candidate) => candidate.entry);
     }
 
     if (wantsLongitude && !wantsLatitude) {
-      return scored
+      return coordinateCandidates
         .filter((candidate) =>
-          this.getTelemetryCoordinateKinds(candidate.entry).has('longitude'),
+          coordinateKindsForEntry(candidate.entry).has('longitude'),
         )
         .slice(0, 1)
         .map((candidate) => candidate.entry);
@@ -2047,8 +2065,8 @@ export class MetricsService implements OnModuleInit {
     const selected: ShipTelemetryEntry[] = [];
     const seen = new Set<'latitude' | 'longitude'>();
 
-    for (const candidate of scored) {
-      const kinds = this.getTelemetryCoordinateKinds(candidate.entry);
+    for (const candidate of coordinateCandidates) {
+      const kinds = coordinateKindsForEntry(candidate.entry);
       if (kinds.has('latitude') && !seen.has('latitude')) {
         selected.push(candidate.entry);
         seen.add('latitude');
@@ -3405,6 +3423,72 @@ export class MetricsService implements OnModuleInit {
     }
 
     return kinds;
+  }
+
+  private getExplicitTelemetryCoordinateKinds(
+    entry: ShipTelemetryEntry,
+  ): Set<'latitude' | 'longitude'> {
+    const exactText = this.normalizeTelemetryText(
+      [entry.key, entry.label, entry.measurement, entry.field]
+        .filter(Boolean)
+        .join(' '),
+    );
+    const kinds = new Set<'latitude' | 'longitude'>();
+
+    if (/\b(latitude|lat)\b/i.test(exactText)) {
+      kinds.add('latitude');
+    }
+    if (/\b(longitude|lon)\b/i.test(exactText)) {
+      kinds.add('longitude');
+    }
+
+    return kinds;
+  }
+
+  private hasCoordinatePair(
+    entries: ShipTelemetryEntry[],
+    getKinds: (entry: ShipTelemetryEntry) => Set<'latitude' | 'longitude'>,
+  ): boolean {
+    const kinds = new Set<'latitude' | 'longitude'>();
+    for (const entry of entries) {
+      for (const kind of getKinds(entry)) {
+        kinds.add(kind);
+      }
+      if (kinds.has('latitude') && kinds.has('longitude')) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private isHistoricalFuelUsageCounter(entry: ShipTelemetryEntry): boolean {
+    const rawText = [
+      entry.key,
+      entry.label,
+      entry.measurement,
+      entry.field,
+      entry.description,
+      entry.unit,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    if (!/\bfuel\b/i.test(rawText)) {
+      return false;
+    }
+
+    if (
+      /\b(rate|flow|pressure|temperature|temp)\b/i.test(rawText) ||
+      /\bl\/h\b/i.test(rawText) ||
+      /\b(?:liters?|litres?)\s+per\s+hour\b/i.test(rawText)
+    ) {
+      return false;
+    }
+
+    return /\b(total fuel used|fuel used|cumulative|counter|accumulated)\b/i.test(
+      rawText,
+    );
   }
 
   private async syncLatestValuesForShip(

@@ -201,6 +201,37 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toContain('Tools and Materials Needed:');
     expect(prompt).toContain('Step-by-Step Instructions:');
     expect(prompt).toContain('Safety Warnings:');
+    expect(prompt).toContain(
+      'If a section is not documented, say it is not specified instead of inventing content.',
+    );
+    expect(prompt).toContain(
+      'Do not add generic safety advice, generic electrical cautions, or invented preparation steps.',
+    );
+    expect(prompt).toContain(
+      'Only include a Safety Warnings section when the cited text contains a warning, caution, danger note, or an explicit safety instruction.',
+    );
+  });
+
+  it('tells parts prompts to answer partially when an item is mentioned but location or quantity is missing', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'Where are the impeller spares for the port generator stored?',
+      citations: [
+        {
+          sourceTitle: 'Recommended Mase Parts.pdf',
+          snippet:
+            'List of recommended spare Mase parts. Sea water pump impeller code 913722.',
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      'If the documentation confirms a specific spare item or part code but omits quantity, location, or part numbers, state what is confirmed and explicitly say which details are not shown.',
+    );
+    expect(prompt).toContain(
+      'Only say that the documentation does not list parts when the asked part itself is not mentioned.',
+    );
   });
 
   it('marks prefiltered telemetry as the best current metric match in the prompt', () => {
@@ -323,6 +354,25 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toContain('Common causes to check:');
     expect(prompt).toContain('Start with these quick checks:');
     expect(prompt).toContain('If the fault remains:');
+  });
+
+  it('tells manual specification prompts to ignore unrelated numeric ranges', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery:
+        'According to the manual, what is the normal coolant temperature range for the engine?',
+      citations: [
+        {
+          sourceTitle: 'MMEN06 Manual SPC-II Hybrid - NG.pdf',
+          snippet: 'Input Voltage range 170-520V 3ph.',
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      'Ignore unrelated numeric ranges such as voltage, ambient temperature, or dimensional limits when the cited text does not clearly match the asked subsystem.',
+    );
   });
 
   it('tells telemetry list prompts to keep the list scoped to the requested subject', () => {

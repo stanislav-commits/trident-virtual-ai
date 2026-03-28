@@ -1138,7 +1138,9 @@ export class ChatService {
     const subject = this.buildTelemetryUnavailableSubject(userQuery);
     let content = `I couldn't confirm ${subject} from a direct matched telemetry reading.`;
 
-    for (const citation of citations) {
+    for (const citation of citations.filter((item) =>
+      this.matchesManualRangeCitationSubject(userQuery, item),
+    )) {
       const range = this.extractPreferredDocumentedRangeText(citation.snippet);
       if (!range) {
         continue;
@@ -1181,7 +1183,9 @@ export class ChatService {
       /\b(normal|operating|specified)\b/i.test(query) &&
       /\b(range|limit|limits)\b/i.test(query)
     ) {
-      for (const citation of citations) {
+      for (const citation of citations.filter((item) =>
+        this.matchesManualRangeCitationSubject(userQuery, item),
+      )) {
         const range = this.extractPreferredDocumentedRangeText(citation.snippet);
         if (!range) {
           continue;
@@ -1194,6 +1198,36 @@ export class ChatService {
     }
 
     return null;
+  }
+
+  private matchesManualRangeCitationSubject(
+    userQuery: string,
+    citation: ChatCitation,
+  ): boolean {
+    const searchSpace = `${citation.sourceTitle ?? ''} ${citation.snippet ?? ''}`.toLowerCase();
+    const query = userQuery.toLowerCase();
+
+    if (/\bcoolant\b/.test(query) && /\btemperature\b/.test(query)) {
+      return /\bcoolant\b/.test(searchSpace) && /\btemperature\b/.test(searchSpace);
+    }
+
+    if (/\boil\b/.test(query) && /\bpressure\b/.test(query)) {
+      return /\boil\b/.test(searchSpace) && /\bpressure\b/.test(searchSpace);
+    }
+
+    if (/\bvoltage\b/.test(query)) {
+      return /\bvoltage\b/.test(searchSpace);
+    }
+
+    if (/\btemperature\b/.test(query)) {
+      return /\btemperature\b/.test(searchSpace);
+    }
+
+    if (/\bpressure\b/.test(query)) {
+      return /\bpressure\b/.test(searchSpace);
+    }
+
+    return true;
   }
 
   private extractDocumentedIntervalText(snippet?: string): string | null {

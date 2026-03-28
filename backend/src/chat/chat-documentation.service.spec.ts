@@ -401,4 +401,139 @@ Reference ID: 1P47`,
       (citationService.prepareCitationsForAnswer as jest.Mock).mock.calls[0][0],
     ).toContain('Reference ID 1P280');
   });
+
+  it('runs a second exact-row retrieval and scan pass after resolving a maintenance subject', async () => {
+    const resolvedSubjectQuery =
+      'M Y Seawolf X Maintenance Tasks Reference ID 1P47 PS ENGINE A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE';
+    const initialCitation: ChatCitation = {
+      sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+      score: 0.74,
+      snippet: `Component name: PS ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1P47`,
+    };
+    const resolvedCitation: ChatCitation = {
+      sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+      score: 0.96,
+      snippet: `Reference ID: 1P47
+Spare parts:
+- Spare Name: Volvo Penta - Impeller Kit
+Quantity: 1
+Location: BOX 25 VOLVO PENTA SPARES`,
+    };
+
+    const contextService = {
+      findContextForQuery: jest.fn().mockImplementation((_shipId, query) => {
+        if (query === resolvedSubjectQuery) {
+          return Promise.resolve({ citations: [resolvedCitation] });
+        }
+
+        return Promise.resolve({ citations: [initialCitation] });
+      }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    jest
+      .spyOn(queryService, 'buildGeneratorAssetFallbackQueries')
+      .mockReturnValue([]);
+    jest
+      .spyOn(queryService, 'buildPartsFallbackQueries')
+      .mockReturnValue([]);
+    jest
+      .spyOn(queryService, 'buildReferenceContinuationFallbackQueries')
+      .mockReturnValue([]);
+
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => {
+            citations: ChatCitation[];
+            compareBySource: boolean;
+            sourceComparisonTitles: string[];
+          }
+        >()
+        .mockImplementation((_query, _userQuery, citations) => ({
+          citations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        })),
+      limitCitationsForLlm: jest
+        .fn<
+          (
+            userQuery: string,
+            citations: ChatCitation[],
+            compareBySource: boolean,
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest
+        .fn()
+        .mockReturnValue(resolvedSubjectQuery),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'Where are the impeller spares for the port generator stored?',
+    });
+
+    expect(contextService.findContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      resolvedSubjectQuery,
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(
+      (scanService.expandReferenceDocumentChunkCitations as jest.Mock).mock.calls.some(
+        (call) => call[1] === resolvedSubjectQuery,
+      ),
+    ).toBe(true);
+    expect(
+      (
+        scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock
+      ).mock.calls.some((call) => call[1] === resolvedSubjectQuery),
+    ).toBe(true);
+    expect(result.resolvedSubjectQuery).toBe(resolvedSubjectQuery);
+  });
 });

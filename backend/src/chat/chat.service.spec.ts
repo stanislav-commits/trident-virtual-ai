@@ -851,6 +851,12 @@ describe('ChatService telemetry clarification', () => {
     documentationService.prepareDocumentationContext.mockResolvedValue({
       citations: [
         {
+          sourceTitle: 'MMEN06 Manual SPC-II Hybrid - NG.pdf',
+          snippet:
+            'Electrical specifications: Nominal Input Voltage 230/400V 3ph. Input Voltage range 170-520V 3ph.',
+          pageNumber: 68,
+        },
+        {
           sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
           snippet:
             'The instrument shows engine coolant temperature. During operations, coolant temperature should normally be between 75 and 95°C (167-203°F).',
@@ -909,6 +915,12 @@ describe('ChatService telemetry clarification', () => {
     });
     documentationService.prepareDocumentationContext.mockResolvedValue({
       citations: [
+        {
+          sourceTitle: 'MMEN06 Manual SPC-II Hybrid - NG.pdf',
+          snippet:
+            'Electrical specifications: Nominal Input Voltage 230/400V 3ph. Input Voltage range 170-520V 3ph.',
+          pageNumber: 68,
+        },
         {
           sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
           snippet:

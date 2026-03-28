@@ -368,7 +368,8 @@ export class LlmService {
       prompt +=
         'Important: The retrieved context does not show an explicit parts table or part-number fields for the asked item. ' +
         'Do not convert maintenance actions into parts. ' +
-        'If no explicit spare names, quantities, or part numbers are shown for the asked item, state that the documentation does not list parts for it.\n\n';
+        'If the documentation confirms a specific spare item or part code but omits quantity, location, or part numbers, state what is confirmed and explicitly say which details are not shown. ' +
+        'Only say that the documentation does not list parts when the asked part itself is not mentioned.\n\n';
     }
 
     if (
@@ -508,13 +509,18 @@ export class LlmService {
         return (
           'Important: The user is asking for a documented specification, limit, interval, or normal operating range. ' +
           'Answer from the matching manual or explicitly requested source first. ' +
+          'Ignore unrelated numeric ranges such as voltage, ambient temperature, or dimensional limits when the cited text does not clearly match the asked subsystem. ' +
           'Do not replace a manual specification answer with current telemetry unless the user explicitly asked for the current reading.\n\n'
         );
       case 'maintenance_procedure':
         return (
           'Important: This is a maintenance procedure question. ' +
           'Answer from explicitly documented procedure steps only. ' +
-          'If the citations contain a step-by-step procedure, present it clearly as documented steps plus safety warnings. ' +
+          'If the citations contain a step-by-step procedure, present it clearly as documented steps. ' +
+          'Only include tools, materials, and safety warnings that are explicitly documented. ' +
+          'Do not add generic safety advice, generic electrical cautions, or invented preparation steps. ' +
+          'Only include a Safety Warnings section when the cited text contains a warning, caution, danger note, or an explicit safety instruction. ' +
+          'If a section is not documented, say it is not specified instead of inventing content. ' +
           'Do not begin the answer with telemetry or current sensor values unless the user explicitly asked for a current reading.\n\n'
         );
       case 'last_maintenance':
@@ -576,7 +582,10 @@ export class LlmService {
           '- Use this structure when the documentation supports it:\n' +
           '  Tools and Materials Needed:\n' +
           '  Step-by-Step Instructions:\n' +
-          '  Safety Warnings:\n';
+          '  Safety Warnings:\n' +
+          '- Only include documented tools, steps, and warnings.\n' +
+          '- Only include a Safety Warnings section when the citations explicitly contain warning, caution, danger, or safety language.\n' +
+          '- If a section is not documented, say "Not specified in the provided documentation." instead of inventing content.\n';
         break;
       case 'troubleshooting':
         prompt +=

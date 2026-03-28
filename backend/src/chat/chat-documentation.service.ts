@@ -261,6 +261,52 @@ export class ChatDocumentationService {
         resolvedSubjectQuery.trim().toLowerCase() !==
           retrievalQuery.trim().toLowerCase()
       ) {
+        const resolvedSubjectFallbackCitations =
+          await searchCitationsForQuery(resolvedSubjectQuery);
+        citations = this.citationService.mergeCitations(
+          citations,
+          resolvedSubjectFallbackCitations,
+        );
+
+        const resolvedReferenceContinuationFallbackQueries =
+          this.queryService.buildReferenceContinuationFallbackQueries(
+            resolvedSubjectQuery,
+            effectiveUserQuery,
+            citations,
+          );
+        for (const continuationQuery of resolvedReferenceContinuationFallbackQueries) {
+          const fallbackCitations =
+            await searchCitationsForQuery(continuationQuery);
+          citations = this.citationService.mergeCitations(
+            citations,
+            fallbackCitations,
+          );
+        }
+
+        const resolvedReferenceDocumentFallbackCitations =
+          await this.scanService.expandReferenceDocumentChunkCitations(
+            shipId,
+            resolvedSubjectQuery,
+            effectiveUserQuery,
+            citations,
+          );
+        citations = this.citationService.mergeCitations(
+          citations,
+          resolvedReferenceDocumentFallbackCitations,
+        );
+
+        const resolvedMaintenanceDocumentFallbackCitations =
+          await this.scanService.expandMaintenanceAssetDocumentChunkCitations(
+            shipId,
+            resolvedSubjectQuery,
+            effectiveUserQuery,
+            citations,
+          );
+        citations = this.citationService.mergeCitations(
+          citations,
+          resolvedMaintenanceDocumentFallbackCitations,
+        );
+
         const narrowedCitations = this.citationService.focusCitationsForQuery(
           resolvedSubjectQuery,
           this.citationService.refineCitationsForIntent(

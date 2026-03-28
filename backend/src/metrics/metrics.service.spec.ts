@@ -1386,7 +1386,8 @@ describe('MetricsService historical telemetry', () => {
             valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
             metric: {
               label: 'SIEMENS-MASE-GENSET-PS.Diesel Fuel Rate (l/h)',
-              description: 'Instant fuel rate.',
+              description:
+                'Current fuel used rate in liters per hour for the port genset.',
               unit: null,
               bucket: 'Trending',
               measurement: 'SIEMENS-MASE-GENSET-PS',
@@ -1517,6 +1518,14 @@ describe('MetricsService historical telemetry', () => {
     expect(result.content).toContain('SIEMENS-MASE-GENSET-SB.Total Fuel Used (l)');
     expect(result.content).not.toContain('Fuel Pressure');
     expect(result.content).not.toContain('Diesel Fuel Rate');
+    expect(influxdb.queryHistoricalFirstLast).toHaveBeenCalledWith(
+      [
+        'Trending::SIEMENS-MASE-GENSET-PS::Total Fuel Used (l)',
+        'Trending::SIEMENS-MASE-GENSET-SB::Total Fuel Used (l)',
+      ],
+      expect.any(Object),
+      'SeaWolfX',
+    );
   });
 
   it('returns historical position at an exact time when latitude and longitude metrics exist', async () => {
@@ -1601,6 +1610,110 @@ describe('MetricsService historical telemetry', () => {
     expect(result.content).toContain('Latitude 46.584758');
     expect(result.content).toContain('Longitude 10.353452');
     expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalled();
+  });
+
+  it('prefers explicit latitude and longitude fields over generic position metrics', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey:
+              'NMEA::navigation.courseGreatCircle.nextPoint.position::value',
+            latestValue: '43.546295,7.014903',
+            valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+            metric: {
+              label: 'navigation.courseGreatCircle.nextPoint.position',
+              description:
+                'Next route point position with latitude and longitude values.',
+              unit: null,
+              bucket: 'NMEA',
+              measurement: 'navigation.courseGreatCircle.nextPoint.position',
+              field: 'value',
+              dataType: 'text',
+            },
+          },
+          {
+            metricKey: 'NMEA::navigation.position::lat',
+            latestValue: 43.55,
+            valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+            metric: {
+              label: 'navigation.position.lat',
+              description: 'Vessel latitude.',
+              unit: null,
+              bucket: 'NMEA',
+              measurement: 'navigation.position',
+              field: 'lat',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'NMEA::navigation.position::lon',
+            latestValue: 7.01,
+            valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+            metric: {
+              label: 'navigation.position.lon',
+              description: 'Vessel longitude.',
+              unit: null,
+              bucket: 'NMEA',
+              measurement: 'navigation.position',
+              field: 'lon',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalNearestValues: jest.fn().mockResolvedValue([
+        {
+          key: 'NMEA::navigation.position::lat',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+          value: 43.546295,
+          time: '2026-03-15T10:01:00.000Z',
+        },
+        {
+          key: 'NMEA::navigation.position::lon',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+          value: 7.014903,
+          time: '2026-03-15T10:01:00.000Z',
+        },
+      ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'What was the yacht position on 15 March 2026 at 10:00?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('Latitude 43.546295');
+    expect(result.content).toContain('Longitude 7.014903');
+    expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalledWith(
+      ['NMEA::navigation.position::lat', 'NMEA::navigation.position::lon'],
+      expect.any(Date),
+      'SeaWolfX',
+    );
   });
 
   it('returns a day summary for date-only position follow-ups after the year is clarified', async () => {
