@@ -1186,17 +1186,55 @@ export class ChatService {
           }),
         ),
       );
-    const seenCertificateEntryKeys = new Set<string>();
-    const certificateEntries = rawCertificateEntries
-      .filter((entry) => {
-        const key = `${entry.sourceLabel}::${entry.timestamp}`;
-        if (seenCertificateEntryKeys.has(key)) {
-          return false;
+    const dedupedCertificateEntries = new Map<
+      string,
+      (typeof rawCertificateEntries)[number]
+    >();
+    for (const entry of rawCertificateEntries) {
+      const dedupKey = this.buildCertificateExpiryEntryDedupKey(entry);
+      const existing = dedupedCertificateEntries.get(dedupKey);
+      if (!existing) {
+        dedupedCertificateEntries.set(dedupKey, entry);
+        continue;
+      }
+
+      const existingScore = existing.citation.score ?? 0;
+      const nextScore = entry.citation.score ?? 0;
+      if (nextScore > existingScore) {
+        dedupedCertificateEntries.set(dedupKey, entry);
+        continue;
+      }
+
+      if (
+        nextScore === existingScore &&
+        entry.sourceLabel.length < existing.sourceLabel.length
+      ) {
+        dedupedCertificateEntries.set(dedupKey, entry);
+      }
+    }
+    const certificateEntries = [...dedupedCertificateEntries.values()].sort(
+      (left, right) => {
+        if (left.timestamp !== right.timestamp) {
+          return left.timestamp - right.timestamp;
         }
-        seenCertificateEntryKeys.add(key);
-        return true;
-      })
-      .sort((left, right) => left.timestamp - right.timestamp);
+
+        const leftRegistry = this.isOfficialRegistryCertificateCitation(
+          left.citation,
+        )
+          ? 1
+          : 0;
+        const rightRegistry = this.isOfficialRegistryCertificateCitation(
+          right.citation,
+        )
+          ? 1
+          : 0;
+        if (leftRegistry !== rightRegistry) {
+          return leftRegistry - rightRegistry;
+        }
+
+        return (right.citation.score ?? 0) - (left.citation.score ?? 0);
+      },
+    );
 
     if (certificateEntries.length === 0) {
       const certificateCitations = citations.filter(
@@ -1216,16 +1254,12 @@ export class ChatService {
     }
 
     const now = Date.now();
-    const soonHorizonMs = 180 * 24 * 60 * 60 * 1000;
     const upcomingEntries = certificateEntries.filter(
       (entry) => entry.timestamp >= now,
     );
 
     if (upcomingEntries.length > 0) {
       const selected = upcomingEntries.slice(0, 5);
-      const hasSoonExpiry = selected.some(
-        (entry) => entry.timestamp <= now + soonHorizonMs,
-      );
 
       if (selected.length === 1) {
         const [entry] = selected;
@@ -1233,20 +1267,14 @@ export class ChatService {
         const timingText = remaining ? ` in about ${remaining}` : '';
 
         return {
-          content: hasSoonExpiry
-            ? `The next certificate due to expire is ${entry.sourceLabel}, which expires on ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`
-            : `I did not find any certificate expiring within the next 180 days. The nearest upcoming certificate expiry I found is ${entry.sourceLabel}, which expires on ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`,
+          content: `The nearest upcoming certificate expiry I found is ${entry.sourceLabel}, which expires on ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`,
           citations: [entry.citation],
         };
       }
 
-      const intro = hasSoonExpiry
-        ? 'The nearest upcoming certificate expiries I found are:'
-        : 'I did not find any certificate expiring within the next 180 days. The nearest upcoming certificate expiries I found are:';
-
       return {
         content: [
-          intro,
+          'The nearest upcoming certificate expiries I found are:',
           '',
           ...selected.map((entry) => {
             const remaining = this.formatApproximateTimeUntil(
@@ -1274,6 +1302,25 @@ export class ChatService {
     }
 
     return null;
+  }
+
+  private buildCertificateExpiryEntryDedupKey(entry: {
+    citation: ChatCitation;
+    timestamp: number;
+    sourceLabel: string;
+  }): string {
+    if (this.isOfficialRegistryCertificateCitation(entry.citation)) {
+      return `registry::${entry.timestamp}`;
+    }
+
+    return `${entry.sourceLabel.trim().toLowerCase()}::${entry.timestamp}`;
+  }
+
+  private isOfficialRegistryCertificateCitation(citation: ChatCitation): boolean {
+    const haystack = `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+    return /\b(certificate\s+of\s+registry|official\s+and\s+imo|name\s+of\s+ship|issued\s+in\s+terms|renew(?:ing|al)\s+certificate|registrar\s+of\s+maltese\s+ships)\b/i.test(
+      haystack,
+    );
   }
 
   private async buildDeterministicAnalyticsForecastAnswer(params: {
