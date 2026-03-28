@@ -549,6 +549,143 @@ describe('ChatService telemetry clarification', () => {
     }
   });
 
+  it('answers broad certificate expiry questions from hyphenated month expiry dates', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 28));
+    try {
+      prisma.chatSession.findUnique.mockResolvedValue({
+        messages: [
+          {
+            role: 'user',
+            content: 'Which certificates will expire soon?',
+            ragflowContext: null,
+          },
+        ],
+      });
+      documentationService.prepareDocumentationContext.mockResolvedValue({
+        citations: [
+          {
+            sourceTitle: 'CoR Private.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'CERTIFICATE OF MALTA REGISTRY. Official and IMO No. Name of Ship SEAWOLF X.',
+            pageNumber: 1,
+          },
+          {
+            sourceTitle: 'Selmar Type Approval Certificate.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'THIS CERTIFICATE IS ISSUED IN COMPLIANCE WITH MODULE D. ISSUE DATE: 10-feb-2022 EXPIRATION DATE: 22-dec-2026.',
+            pageNumber: 161,
+          },
+        ],
+        previousUserQuery: undefined,
+        retrievalQuery: 'Which certificates will expire soon?',
+        resolvedSubjectQuery: undefined,
+        answerQuery: undefined,
+      });
+      metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+        telemetry: {},
+        totalActiveMetrics: 0,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+        clarification: null,
+      });
+
+      await (service as any).generateAssistantResponse(
+        'ship-1',
+        'session-1',
+        'Which certificates will expire soon?',
+        'Sea Wolf X',
+        'user',
+      );
+
+      expect(llmService.generateResponse).not.toHaveBeenCalled();
+      expect(service.addAssistantMessage).toHaveBeenCalledWith(
+        'session-1',
+        expect.stringContaining('22 December 2026'),
+        expect.anything(),
+        [
+          expect.objectContaining({
+            sourceTitle: 'Selmar Type Approval Certificate.pdf',
+          }),
+        ],
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('prefers the nearest future expiry when one certificate snippet contains multiple dates', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2024, 2, 28));
+    try {
+      prisma.chatSession.findUnique.mockResolvedValue({
+        messages: [
+          {
+            role: 'user',
+            content: 'Which certificates will expire soon?',
+            ragflowContext: null,
+          },
+        ],
+      });
+      documentationService.prepareDocumentationContext.mockResolvedValue({
+        citations: [
+          {
+            sourceTitle: 'Selmar Type Approval Certificate.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'THIS CERTIFICATE IS ISSUED IN COMPLIANCE WITH MODULE D. ISSUE DATE: 10-feb-2022 EXPIRATION DATE: 22-dec-2026. Product Design Assessment (PDA) Expiry Date 27-OCT-2025. Manufacturing Assessment (MA) Expiry Date 28-OCT-2025.',
+            pageNumber: 161,
+          },
+        ],
+        previousUserQuery: undefined,
+        retrievalQuery: 'Which certificates will expire soon?',
+        resolvedSubjectQuery: undefined,
+        answerQuery: undefined,
+      });
+      metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+        telemetry: {},
+        totalActiveMetrics: 0,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+        clarification: null,
+      });
+
+      await (service as any).generateAssistantResponse(
+        'ship-1',
+        'session-1',
+        'Which certificates will expire soon?',
+        'Sea Wolf X',
+        'user',
+      );
+
+      expect(llmService.generateResponse).not.toHaveBeenCalled();
+      expect(service.addAssistantMessage).toHaveBeenCalledWith(
+        'session-1',
+        expect.stringContaining('27 October 2025'),
+        expect.anything(),
+        [
+          expect.objectContaining({
+            sourceTitle: 'Selmar Type Approval Certificate.pdf',
+          }),
+        ],
+      );
+      expect(service.addAssistantMessage).toHaveBeenCalledWith(
+        'session-1',
+        expect.stringContaining('1 year and 7 months'),
+        expect.anything(),
+        expect.any(Array),
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('does not let broad certificate expiry questions fall back to LLM when snippets lack explicit expiry dates', async () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
