@@ -23,6 +23,7 @@ interface SourceEvidenceProfile {
   partNumbers: string[];
   quantityValues: string[];
   capacityValues: string[];
+  expiryTimestamps: number[];
 }
 
 @Injectable()
@@ -203,6 +204,16 @@ export class ChatDocumentationCitationService {
     if (profiles.length < 2) {
       return {
         citations,
+        compareBySource: false,
+        sourceComparisonTitles: [],
+      };
+    }
+
+    const broadCertificateSoonCitations =
+      this.prepareBroadCertificateSoonAnswerCitations(userQuery, citations, profiles);
+    if (broadCertificateSoonCitations.length > 0) {
+      return {
+        citations: broadCertificateSoonCitations,
         compareBySource: false,
         sourceComparisonTitles: [],
       };
@@ -991,7 +1002,7 @@ export class ChatDocumentationCitationService {
 
   private isBroadCertificateSoonQuery(query: string): boolean {
     return (
-      /\bcertificates\b/i.test(query) &&
+      /\bcertificates?\b/i.test(query) &&
       /\b(expire|expiry|expiring|valid\s+until)\b/i.test(query) &&
       /\b(soon|upcoming|next)\b/i.test(query)
     );
@@ -1011,7 +1022,7 @@ export class ChatDocumentationCitationService {
   ): number | null {
     const plainText = this.stripHtmlLikeMarkup(citation.snippet ?? '');
     const patterns = [
-      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}\s+[a-z]{3,9}\s+\d{2,4})\b/i,
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/i,
     ];
 
     for (const pattern of patterns) {
@@ -1071,7 +1082,7 @@ export class ChatDocumentationCitationService {
     }
 
     const monthNameMatch = normalized.match(
-      /^(\d{1,2})\s+([a-z]{3,9})\s+(\d{2,4})$/i,
+      /^(\d{1,2})(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
     );
     if (monthNameMatch) {
       const day = Number.parseInt(monthNameMatch[1], 10);
@@ -1923,6 +1934,8 @@ export class ChatDocumentationCitationService {
           plainText,
           /\b\d+(?:\.\d+)?\s*(?:l|liters?|litres?|ml|gal|gallons?)\b/gi,
         );
+        const expiryTimestamps =
+          this.extractExplicitCertificateExpiryTimestampsFromText(plainText);
         const explicitEvidenceScore =
           this.countNonEmptyArrays([
             intervalValues,
@@ -1933,9 +1946,10 @@ export class ChatDocumentationCitationService {
             partNumbers,
             quantityValues,
             capacityValues,
+            expiryTimestamps.map((timestamp) => String(timestamp)),
           ]) +
           sourceCitations.filter((citation) =>
-            /\b(reference\s*id|interval|next\s*due|last\s*due|spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location)\b/i.test(
+            /\b(reference\s*id|interval|next\s*due|last\s*due|spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location|valid\s+until|expiry|expiration|expiring|expires?\s+on|scadenza)\b/i.test(
               citation.snippet ?? '',
             ),
           ).length;
@@ -1959,6 +1973,7 @@ export class ChatDocumentationCitationService {
           partNumbers,
           quantityValues,
           capacityValues,
+          expiryTimestamps,
         };
       })
       .sort((a, b) => {
@@ -1970,6 +1985,30 @@ export class ChatDocumentationCitationService {
         }
         return b.aggregateScore - a.aggregateScore;
       });
+  }
+
+  private extractExplicitCertificateExpiryTimestampsFromText(
+    plainText: string,
+  ): number[] {
+    const patterns = [
+      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi,
+    ];
+
+    const timestamps = new Set<number>();
+    for (const pattern of patterns) {
+      for (const match of plainText.matchAll(pattern)) {
+        if (!match[1]) {
+          continue;
+        }
+
+        const timestamp = this.parseExplicitCertificateDateToken(match[1]);
+        if (timestamp !== null) {
+          timestamps.add(timestamp);
+        }
+      }
+    }
+
+    return [...timestamps].sort((left, right) => left - right);
   }
 
   private findMateriallyDifferentSourceProfiles(
@@ -2050,6 +2089,64 @@ export class ChatDocumentationCitationService {
         top.explicitEvidenceScore >= second.explicitEvidenceScore);
 
     return topClearlyStronger ? [top.sourceKey] : [];
+  }
+
+  private prepareBroadCertificateSoonAnswerCitations(
+    userQuery: string,
+    citations: ChatCitation[],
+    profiles: SourceEvidenceProfile[],
+  ): ChatCitation[] {
+    if (!this.isBroadCertificateSoonQuery(userQuery)) {
+      return [];
+    }
+
+    const certificateProfiles = profiles.filter((profile) =>
+      profile.citations.some((citation) =>
+        this.isStandaloneCertificateLikeCitation(citation),
+      ),
+    );
+    if (certificateProfiles.length === 0) {
+      return [];
+    }
+
+    const now = Date.now();
+    const futureProfiles = certificateProfiles
+      .filter((profile) => profile.expiryTimestamps.some((timestamp) => timestamp >= now))
+      .sort((left, right) => {
+        const leftSoonest =
+          left.expiryTimestamps.find((timestamp) => timestamp >= now) ??
+          Number.MAX_SAFE_INTEGER;
+        const rightSoonest =
+          right.expiryTimestamps.find((timestamp) => timestamp >= now) ??
+          Number.MAX_SAFE_INTEGER;
+        if (leftSoonest !== rightSoonest) {
+          return leftSoonest - rightSoonest;
+        }
+        if (right.explicitEvidenceScore !== left.explicitEvidenceScore) {
+          return right.explicitEvidenceScore - left.explicitEvidenceScore;
+        }
+        return right.aggregateScore - left.aggregateScore;
+      });
+    if (futureProfiles.length > 0) {
+      return this.balanceCitationsAcrossSources(
+        citations,
+        new Set(futureProfiles.slice(0, 5).map((profile) => profile.sourceKey)),
+        2,
+      );
+    }
+
+    const datedProfiles = certificateProfiles.filter(
+      (profile) => profile.expiryTimestamps.length > 0,
+    );
+    if (datedProfiles.length > 0) {
+      return this.balanceCitationsAcrossSources(
+        citations,
+        new Set(datedProfiles.slice(0, 5).map((profile) => profile.sourceKey)),
+        2,
+      );
+    }
+
+    return [];
   }
 
   private filterCitationsBySourceKeys(
