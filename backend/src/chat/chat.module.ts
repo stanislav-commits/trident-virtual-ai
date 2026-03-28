@@ -8,6 +8,7 @@ import { ChatDocumentationQueryService } from './chat-documentation-query.servic
 import { ChatDocumentationCitationService } from './chat-documentation-citation.service';
 import { ChatDocumentationScanService } from './chat-documentation-scan.service';
 import { ChatReferenceExtractionService } from './chat-reference-extraction.service';
+import { ChatQueryPlannerService } from './chat-query-planner.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RagflowModule } from '../ragflow/ragflow.module';
 import { MetricsModule } from '../metrics/metrics.module';
@@ -24,8 +25,15 @@ import { SystemPromptModule } from '../system-prompt/system-prompt.module';
     ChatDocumentationCitationService,
     ChatDocumentationScanService,
     ChatReferenceExtractionService,
+    ChatQueryPlannerService,
     LlmService,
   ],
-  exports: [ChatService, ChatContextService, ChatDocumentationService, LlmService],
+  exports: [
+    ChatService,
+    ChatContextService,
+    ChatDocumentationService,
+    ChatQueryPlannerService,
+    LlmService,
+  ],
 })
 export class ChatModule {}
