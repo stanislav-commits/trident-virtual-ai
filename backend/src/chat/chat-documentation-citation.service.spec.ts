@@ -131,4 +131,106 @@ describe('ChatDocumentationCitationService', () => {
       refined.some((citation) => citation.snippet?.includes('Reference ID: 1S47')),
     ).toBe(false);
   });
+
+  it('prioritizes history procedures over manuals for next-due questions', () => {
+    const citations = [
+      {
+        sourceTitle: 'Volvo Penta D13 Manual.pdf',
+        sourceCategory: 'MANUALS',
+        snippet: 'Oil change interval: every 500 running hours.',
+        score: 0.97,
+      },
+      {
+        sourceTitle: 'PMS Export.pdf',
+        sourceCategory: 'HISTORY_PROCEDURES',
+        snippet:
+          'Task name: Starboard engine oil change. Last due: 4000 hours. Next due: 4500 hours.',
+        score: 0.9,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'When should I change the oil in the right engine?',
+      'When should I change the oil in the right engine?',
+      citations,
+    );
+
+    expect(refined[0].sourceCategory).toBe('HISTORY_PROCEDURES');
+  });
+
+  it('prioritizes certificate evidence over manuals for expiry questions', () => {
+    const citations = [
+      {
+        sourceTitle: 'Fire Suppression Manual.pdf',
+        sourceCategory: 'MANUALS',
+        snippet: 'Inspect the suppression system during scheduled maintenance.',
+        score: 0.98,
+      },
+      {
+        sourceTitle: 'Fire Suppression Survey.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet: 'Certificate valid until 14 August 2026.',
+        score: 0.88,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'When does the fire suppression system certificate expire?',
+      'When does the fire suppression system certificate expire?',
+      citations,
+    );
+
+    expect(refined[0].sourceCategory).toBe('CERTIFICATES');
+  });
+
+  it('prioritizes regulations over certificates for compliance questions', () => {
+    const citations = [
+      {
+        sourceTitle: 'OWS Certificate.pdf',
+        sourceCategory: 'CERTIFICATES',
+        snippet: '15 PPM monitor calibrated and valid until 2028.',
+        score: 0.94,
+      },
+      {
+        sourceTitle: 'MARPOL Annex I.pdf',
+        sourceCategory: 'REGULATION',
+        snippet:
+          'Discharge of oily water exceeding 15 ppm into the sea is prohibited.',
+        score: 0.82,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'What are our obligations for bilge water discharge under MARPOL?',
+      'What are our obligations for bilge water discharge under MARPOL?',
+      citations,
+    );
+
+    expect(refined[0].sourceCategory).toBe('REGULATION');
+  });
+
+  it('hard-filters explicit source requests by source title instead of matching nearby snippet text', () => {
+    const citations = [
+      {
+        sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+        snippet:
+          'Use genuine Volvo oil, filters and components. Refer to the Volvo manual for additional maintenance.',
+        score: 0.96,
+      },
+      {
+        sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+        snippet: 'Oil change interval: 500 hours or 12 months.',
+        score: 0.88,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'What is the oil change interval in the Volvo manual?',
+      'What is the oil change interval in the Volvo manual?',
+      citations,
+    );
+
+    expect(refined).toHaveLength(1);
+    expect(refined[0].sourceTitle).toContain('Volvo Penta_operators manual');
+  });
 });

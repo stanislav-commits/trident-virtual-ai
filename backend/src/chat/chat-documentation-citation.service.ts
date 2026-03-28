@@ -1,6 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ChatCitation } from './chat.types';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
+import {
+  ChatQueryPlan,
+  ChatQueryPlannerService,
+  ChatSourceCategory,
+} from './chat-query-planner.service';
 
 interface SourceEvidenceProfile {
   sourceKey: string;
@@ -22,9 +27,14 @@ interface SourceEvidenceProfile {
 
 @Injectable()
 export class ChatDocumentationCitationService {
+  private readonly queryPlanner: ChatQueryPlannerService;
+
   constructor(
     private readonly queryService: ChatDocumentationQueryService,
-  ) {}
+    @Optional() queryPlanner?: ChatQueryPlannerService,
+  ) {
+    this.queryPlanner = queryPlanner ?? new ChatQueryPlannerService();
+  }
 
   pruneCitationsForResolvedSubject(
     retrievalQuery: string,
@@ -54,7 +64,12 @@ export class ChatDocumentationCitationService {
   ): ChatCitation[] {
     if (citations.length === 0) return citations;
 
-    let refined = this.rankCitationsBySourceType(userQuery, citations);
+    const queryPlan = this.queryPlanner.planQuery(userQuery, retrievalQuery);
+    let refined = this.rankCitationsBySourceType(
+      userQuery,
+      citations,
+      queryPlan,
+    );
     const queryContext =
       retrievalQuery.trim().length > userQuery.trim().length
         ? retrievalQuery
@@ -356,9 +371,12 @@ export class ChatDocumentationCitationService {
     for (const pattern of sourcePatterns) {
       for (const match of query.matchAll(pattern)) {
         const value = this.queryService.normalizeSourceTitleHint(match[1]);
-        if (value) {
-          hints.add(value.toLowerCase());
+        if (!value) {
+          continue;
         }
+        this.expandRequestedSourceHints(value).forEach((hint) =>
+          hints.add(hint),
+        );
       }
     }
 
@@ -369,23 +387,61 @@ export class ChatDocumentationCitationService {
     citation: ChatCitation,
     hints: string[],
   ): number {
-    const haystack =
-      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+    const normalizedTitle =
+      this.queryService.normalizeSourceTitleHint(citation.sourceTitle)?.toLowerCase() ??
+      '';
+    const normalizedSnippet = `${citation.snippet ?? ''}`.toLowerCase();
 
     let score = 0;
     for (const hint of hints) {
-      if (haystack.includes(hint)) {
-        score += 3;
+      if (normalizedTitle.includes(hint)) {
+        score += 12;
         continue;
       }
 
       const condensedHint = hint.replace(/\s+/g, '');
-      if (condensedHint && haystack.replace(/\s+/g, '').includes(condensedHint)) {
+      const condensedTitle = normalizedTitle.replace(/\s+/g, '');
+      if (condensedHint && condensedTitle.includes(condensedHint)) {
+        score += 8;
+        continue;
+      }
+
+      if (normalizedSnippet.includes(hint)) {
+        score += 1;
+        continue;
+      }
+
+      const condensedSnippet = normalizedSnippet.replace(/\s+/g, '');
+      if (condensedHint && condensedSnippet.includes(condensedHint)) {
         score += 1;
       }
     }
 
     return score;
+  }
+
+  private expandRequestedSourceHints(value: string): string[] {
+    const hints = new Set<string>();
+    const normalized = value
+      .toLowerCase()
+      .replace(/^[\s-]*(?:the|a|an)\s+/i, '')
+      .replace(
+        /\b(manual|operator'?s\s+manual|operators\s+manual|handbook|guide|document|documentation|pdf)\b/gi,
+        ' ',
+      )
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const originalNormalized = value.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (originalNormalized) {
+      hints.add(originalNormalized);
+    }
+
+    if (normalized) {
+      hints.add(normalized);
+    }
+
+    return [...hints].filter((hint) => hint.length >= 3);
   }
 
   private expandReferenceEvidenceCitations(
@@ -544,6 +600,7 @@ export class ChatDocumentationCitationService {
   private rankCitationsBySourceType(
     userQuery: string,
     citations: ChatCitation[],
+    queryPlan: ChatQueryPlan,
   ): ChatCitation[] {
     if (citations.length <= 1) return citations;
 
@@ -555,10 +612,21 @@ export class ChatDocumentationCitationService {
       );
     const wantsMaintenanceSchedule =
       this.queryService.isNextDueLookupQuery(userQuery);
+    const categoryWeights = this.buildCategoryWeightMap(
+      queryPlan.sourcePriorities,
+    );
 
     return [...citations].sort((a, b) => {
       const typeA = this.classifyCitationSourceType(a);
       const typeB = this.classifyCitationSourceType(b);
+      const categoryWeightA = this.getCitationCategoryWeight(
+        a,
+        categoryWeights,
+      );
+      const categoryWeightB = this.getCitationCategoryWeight(
+        b,
+        categoryWeights,
+      );
       const weightA = this.getCitationSourceWeight(
         typeA,
         wantsParts,
@@ -572,9 +640,80 @@ export class ChatDocumentationCitationService {
         wantsMaintenanceSchedule,
       );
 
+      if (categoryWeightA !== categoryWeightB) return categoryWeightB - categoryWeightA;
       if (weightA !== weightB) return weightB - weightA;
       return (b.score ?? 0) - (a.score ?? 0);
     });
+  }
+
+  private buildCategoryWeightMap(
+    sourcePriorities: ChatSourceCategory[],
+  ): Map<ChatSourceCategory, number> {
+    const weights = new Map<ChatSourceCategory, number>();
+    const size = sourcePriorities.length;
+
+    sourcePriorities.forEach((category, index) => {
+      weights.set(category, size - index);
+    });
+
+    return weights;
+  }
+
+  private getCitationCategoryWeight(
+    citation: ChatCitation,
+    categoryWeights: Map<ChatSourceCategory, number>,
+  ): number {
+    const category = this.inferCitationKnowledgeCategory(citation);
+    if (!category) return 0;
+    return categoryWeights.get(category) ?? 0;
+  }
+
+  private inferCitationKnowledgeCategory(
+    citation: ChatCitation,
+  ): ChatSourceCategory | null {
+    const explicitCategory = citation.sourceCategory?.trim().toUpperCase();
+    if (
+      explicitCategory === 'MANUALS' ||
+      explicitCategory === 'HISTORY_PROCEDURES' ||
+      explicitCategory === 'CERTIFICATES' ||
+      explicitCategory === 'REGULATION'
+    ) {
+      return explicitCategory;
+    }
+
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+
+    if (
+      /\b(certificate|survey|class\s+certificate|valid\s+until|expiry|expire)\b/i.test(
+        haystack,
+      )
+    ) {
+      return 'CERTIFICATES';
+    }
+
+    if (
+      /\b(regulation|marl?pol|imo|flag\s+state|annex|compliance|detention|fine)\b/i.test(
+        haystack,
+      )
+    ) {
+      return 'REGULATION';
+    }
+
+    if (
+      /maintenance\s+tasks/i.test(citation.sourceTitle ?? '') ||
+      /\b(reference\s*id|next\s+due|last\s+due|completed|postponed|maintenance\s+record|task\s+name|component\s+name)\b/i.test(
+        haystack,
+      )
+    ) {
+      return 'HISTORY_PROCEDURES';
+    }
+
+    if (citation.sourceTitle || citation.snippet) {
+      return 'MANUALS';
+    }
+
+    return null;
   }
 
   private classifyCitationSourceType(citation: {
@@ -1196,6 +1335,12 @@ export class ChatDocumentationCitationService {
       /\b1p\d{2,}\b/i.test(retrievalQuery) ||
       this.queryService.isNextDueLookupQuery(userQuery) ||
       this.queryService.isPartsQuery(userQuery) ||
+      /\b(?:according\s+to|in|from)\s+the\s+.+?\b(manual|operator'?s\s+manual|handbook|guide|document)\b/i.test(
+        userQuery,
+      ) ||
+      /\b(normal|recommended|specified|operating|range|limit|limits|spec(?:ification)?|grade|viscosity|interval|should\s+we\s+use)\b/i.test(
+        userQuery,
+      ) ||
       /\b(procedure|steps?|how\s+to|instruction|instructions|checklist|what\s+should\s+i\s+do|what\s+needs?\s+to\s+be\s+done)\b/i.test(
         userQuery,
       );

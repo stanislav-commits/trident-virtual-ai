@@ -345,7 +345,12 @@ export class ChatDocumentationQueryService {
       return false;
     }
 
-    return /\b(filters?|oil|coolant)\b/i.test(query);
+    return (
+      /\b(oil|coolant|fluid|fluids?)\b/i.test(query) &&
+      /\b(quantity|quantities|capacity|capacities|grade|viscosity|available|onboard|how\s+much|how\s+many|need|order)\b/i.test(
+        query,
+      )
+    );
   }
 
   isProcedureQuery(query: string): boolean {
@@ -708,6 +713,7 @@ export class ChatDocumentationQueryService {
       );
     const wantsParts = this.isPartsQuery(userQuery);
     const wantsProcedure = this.isProcedureQuery(userQuery);
+    const wantsManualSpecification = this.isManualSpecificationQuery(userQuery);
 
     if (isExactReference) {
       return { topK: 72, candidateK: 216 };
@@ -721,6 +727,10 @@ export class ChatDocumentationQueryService {
       return { topK: 24, candidateK: 72 };
     }
 
+    if (wantsManualSpecification) {
+      return { topK: 16, candidateK: 48 };
+    }
+
     return {
       topK: DEFAULT_RAGFLOW_CONTEXT_TOP_K,
       candidateK: Math.max(DEFAULT_RAGFLOW_CONTEXT_TOP_K * 3, 24),
@@ -730,6 +740,20 @@ export class ChatDocumentationQueryService {
   isNextDueLookupQuery(query: string): boolean {
     return /\b(next\s+due|what\s+is\s+next\s+due|next\s+due\s+value|when\s+is\s+.*(?:maintenance|service).*\sdue|what\s+is\s+the\s+next\s+(maintenance|service)|what\s+(maintenance|service)\s+is\s+next)\b/i.test(
       query,
+    );
+  }
+
+  private isManualSpecificationQuery(query: string): boolean {
+    return (
+      /\b(?:according\s+to|in|from)\s+the\s+.+?\b(manual|operator'?s\s+manual|operators\s+manual|handbook|guide|document)\b/i.test(
+        query,
+      ) ||
+      /\b(normal|recommended|specified|operating)\b[\s\S]{0,40}\b(range|limit|limits|grade|viscosity|temperature|pressure|oil)\b/i.test(
+        query,
+      ) ||
+      /\b(range|limit|limits|grade|viscosity|capacity|torque|spec(?:ification)?)\b[\s\S]{0,40}\b(?:manual|handbook|guide|volvo|mase)\b/i.test(
+        query,
+      )
     );
   }
 
