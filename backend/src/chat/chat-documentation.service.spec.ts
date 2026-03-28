@@ -74,6 +74,9 @@ Reference ID: 1P47`,
       expandMaintenanceAssetDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const clarificationActions = [
       {
@@ -191,6 +194,16 @@ Reference ID: 1P47`,
         >()
         .mockResolvedValue([]),
       expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn<
+          (
+            shipId: string | null,
+            retrievalQuery: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => Promise<ChatCitation[]>
+        >()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
         .fn<
           (
             shipId: string | null,
@@ -347,6 +360,9 @@ Reference ID: 1P47`,
       expandMaintenanceAssetDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
@@ -469,6 +485,9 @@ Reference ID: 1P47`,
     const scanService = {
       expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
       expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
@@ -600,6 +619,9 @@ Location: BOX 25 VOLVO PENTA SPARES`,
         .fn()
         .mockResolvedValue([]),
       expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
