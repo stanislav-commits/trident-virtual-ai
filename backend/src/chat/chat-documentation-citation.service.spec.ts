@@ -183,6 +183,35 @@ describe('ChatDocumentationCitationService', () => {
     expect(refined[0].sourceCategory).toBe('CERTIFICATES');
   });
 
+  it('prefers item-specific impeller spare evidence over generic same-asset spare rows', () => {
+    const citations = [
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        snippet:
+          'Reference row: Component name: PS ENGINE Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE Reference ID: 1P47 Spare parts: - Spare Name: Volvo Penta Engine Oil 15W-40 Quantity: 2 Location: Bilges Steering Room - Spare Name: Oil Filter Element Quantity: 4 Location: Box 21 Volvo Penta Oil Filters',
+        score: 0.99,
+      },
+      {
+        sourceTitle: 'Recommended Mase Parts.pdf',
+        snippet:
+          'List of recommended spare Mase parts. Sea water pump impeller code 913722. Quantity: 1. Location: Box 25 Volvo Penta Spares.',
+        score: 0.74,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'Where are the impeller spares for the port generator stored?',
+      'Where are the impeller spares for the port generator stored?',
+      citations,
+    );
+
+    expect(refined[0].sourceTitle).toBe('Recommended Mase Parts.pdf');
+    expect(refined[0].snippet).toContain('impeller');
+    expect(
+      refined.some((citation) => /Oil Filter Element|Engine Oil/i.test(citation.snippet ?? '')),
+    ).toBe(false);
+  });
+
   it('prefers the fire suppression survey over unrelated extinguisher certificates for suppression expiry questions', () => {
     const citations = [
       {

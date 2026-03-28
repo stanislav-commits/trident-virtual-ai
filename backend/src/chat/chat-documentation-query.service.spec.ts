@@ -82,6 +82,14 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(true);
   });
 
+  it('recognizes remaining-hours maintenance phrasing as a next-due lookup', () => {
+    expect(
+      service.isNextDueLookupQuery(
+        'How many hours remain until the next annual service on the starboard generator?',
+      ),
+    ).toBe(true);
+  });
+
   it('does not ask for clarification for broader asset lookups that already name one concrete subject', () => {
     const userQuery = 'What spare parts do I need for the compressor?';
 

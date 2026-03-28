@@ -250,9 +250,43 @@ export class ChatDocumentationService {
         retrievalQuery,
         citations,
       );
+      let resolvedSubjectQuery =
+        this.referenceExtractionService.buildResolvedMaintenanceSubjectQuery(
+          retrievalQuery,
+          effectiveUserQuery,
+          citations,
+        ) ?? undefined;
+      if (
+        resolvedSubjectQuery &&
+        resolvedSubjectQuery.trim().toLowerCase() !==
+          retrievalQuery.trim().toLowerCase()
+      ) {
+        const narrowedCitations = this.citationService.focusCitationsForQuery(
+          resolvedSubjectQuery,
+          this.citationService.refineCitationsForIntent(
+            resolvedSubjectQuery,
+            effectiveUserQuery,
+            this.citationService.pruneCitationsForResolvedSubject(
+              resolvedSubjectQuery,
+              citations,
+            ),
+          ),
+        );
+
+        if (narrowedCitations.length > 0) {
+          citations = narrowedCitations;
+          resolvedSubjectQuery =
+            this.referenceExtractionService.buildResolvedMaintenanceSubjectQuery(
+              resolvedSubjectQuery,
+              effectiveUserQuery,
+              citations,
+            ) ??
+            resolvedSubjectQuery;
+        }
+      }
       const preparedAnswerCitations =
         this.citationService.prepareCitationsForAnswer(
-          retrievalQuery,
+          resolvedSubjectQuery ?? retrievalQuery,
           effectiveUserQuery,
           citations,
         );
@@ -262,12 +296,6 @@ export class ChatDocumentationService {
         citations,
         preparedAnswerCitations.compareBySource,
       );
-      const resolvedSubjectQuery =
-        this.referenceExtractionService.buildResolvedMaintenanceSubjectQuery(
-          retrievalQuery,
-          effectiveUserQuery,
-          citations,
-        ) ?? undefined;
 
       return {
         previousUserQuery: previousUserQuery ?? undefined,

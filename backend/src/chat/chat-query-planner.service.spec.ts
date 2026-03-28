@@ -35,6 +35,16 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.allowsMaintenanceCalculation).toBe(true);
   });
 
+  it('routes remaining-hours maintenance phrasing to next-due calculation', () => {
+    const plan = service.planQuery(
+      'How many hours remain until the next annual service on the starboard generator?',
+    );
+
+    expect(plan.primaryIntent).toBe('next_due_calculation');
+    expect(plan.requiresTelemetry).toBe(true);
+    expect(plan.allowsMaintenanceCalculation).toBe(true);
+  });
+
   it('routes procedures to manuals first', () => {
     const plan = service.planQuery(
       'How do I carry out the monthly bilge pump run on the port bilge pump?',

@@ -117,13 +117,18 @@ export class ChatDocumentationCitationService {
     }
 
     if (this.queryService.isPartsQuery(queryContext)) {
+      refined = this.refinePartsSubjectCitations(queryContext, refined);
       const matchedParts = refined.filter((citation) =>
         /\b(spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location|volvo\s+penta|engine\s+oil|zinc|anode|belt|filter|impeller|wear\s*kit|coolant|prefilter)\b/i.test(
           citation.snippet ?? '',
         ),
       );
       if (matchedParts.length > 0) {
-        refined = this.expandPartsEvidenceCitations(matchedParts, citations);
+        refined = this.expandPartsEvidenceCitations(
+          queryContext,
+          matchedParts,
+          citations,
+        );
       }
     }
 
@@ -496,6 +501,92 @@ export class ChatDocumentationCitationService {
     return this.mergeCitations(matchedByReference, continuationCandidates);
   }
 
+  private refinePartsSubjectCitations(
+    query: string,
+    citations: ChatCitation[],
+  ): ChatCitation[] {
+    if (citations.length <= 1) {
+      return citations;
+    }
+
+    const focus = this.extractPartsFocus(query);
+    if (focus.generalTerms.length === 0 && focus.specificTerms.length === 0) {
+      return citations;
+    }
+
+    const scored = citations
+      .map((citation) => {
+        const haystack =
+          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+        const generalOverlap = focus.generalTerms.filter((term) =>
+          haystack.includes(term),
+        ).length;
+        const specificOverlap = focus.specificTerms.filter((term) =>
+          haystack.includes(term),
+        ).length;
+        const hasConflictingPartsEvidence =
+          focus.specificTerms.length > 0 &&
+          this.hasConflictingPartsEvidence(haystack, focus.specificTerms);
+        const sourceType = this.classifyCitationSourceType(citation);
+        const metadataEvidence = /\b(spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location)\b/i.test(
+          haystack,
+        )
+          ? 1
+          : 0;
+
+        let score =
+          (citation.score ?? 0) * 10 +
+          generalOverlap * 4 +
+          specificOverlap * 12 +
+          metadataEvidence * 3;
+
+        if (sourceType === 'parts_list') {
+          score += 8;
+        } else if (sourceType === 'maintenance_schedule') {
+          score += 4;
+        }
+
+        if (hasConflictingPartsEvidence) {
+          score -= 18;
+        }
+
+        return {
+          citation,
+          generalOverlap,
+          specificOverlap,
+          hasConflictingPartsEvidence,
+          score,
+        };
+      })
+      .sort((left, right) => {
+        if (right.specificOverlap !== left.specificOverlap) {
+          return right.specificOverlap - left.specificOverlap;
+        }
+        if (right.generalOverlap !== left.generalOverlap) {
+          return right.generalOverlap - left.generalOverlap;
+        }
+
+        return right.score - left.score;
+      });
+
+    const directSpecificMatches = scored.filter(
+      (entry) => entry.specificOverlap > 0,
+    );
+    if (directSpecificMatches.length > 0) {
+      return directSpecificMatches.map((entry) => entry.citation);
+    }
+
+    const generalMatches = scored.filter(
+      (entry) =>
+        entry.generalOverlap > 0 && !entry.hasConflictingPartsEvidence,
+    );
+    if (generalMatches.length > 0) {
+      return generalMatches.map((entry) => entry.citation);
+    }
+
+    return scored.map((entry) => entry.citation);
+  }
+
   private sortCitationsByUpcomingDue(citations: ChatCitation[]): ChatCitation[] {
     const withKeys = citations.map((citation) => ({
       citation,
@@ -583,6 +674,7 @@ export class ChatDocumentationCitationService {
   }
 
   private expandPartsEvidenceCitations(
+    query: string,
     matchedParts: ChatCitation[],
     allCitations: ChatCitation[],
   ): ChatCitation[] {
@@ -595,16 +687,145 @@ export class ChatDocumentationCitationService {
       ),
     );
 
+    const focus = this.extractPartsFocus(query);
     const samePagePartCandidates = allCitations.filter((citation) => {
       const key = `${citation.sourceTitle ?? ''}::${citation.pageNumber ?? ''}`;
       if (!anchorKeys.has(key)) return false;
 
-      return /\b(manufacturer\s*part#?|supplier\s*part#?|quantity|location|volvo\s+penta|engine\s+oil|zinc|anode|belt|filter|impeller|wear\s*kit|coolant|prefilter)\b/i.test(
-        citation.snippet ?? '',
+      const haystack =
+        `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+      const hasPartsEvidence = /\b(manufacturer\s*part#?|supplier\s*part#?|quantity|location|volvo\s+penta|engine\s+oil|zinc|anode|belt|filter|impeller|wear\s*kit|coolant|prefilter)\b/i.test(
+        haystack,
       );
+      if (!hasPartsEvidence) {
+        return false;
+      }
+
+      if (focus.specificTerms.length === 0) {
+        return true;
+      }
+
+      const specificOverlap = focus.specificTerms.filter((term) =>
+        haystack.includes(term),
+      ).length;
+      if (specificOverlap > 0) {
+        return true;
+      }
+
+      return !this.hasConflictingPartsEvidence(haystack, focus.specificTerms);
     });
 
     return this.mergeCitations(matchedParts, samePagePartCandidates);
+  }
+
+  private extractPartsFocus(query: string): {
+    generalTerms: string[];
+    specificTerms: string[];
+  } {
+    const genericTerms = new Set([
+      'part',
+      'parts',
+      'spare',
+      'spares',
+      'consumables',
+      'manufacturer',
+      'supplier',
+      'quantity',
+      'quantities',
+      'location',
+      'locations',
+      'stored',
+      'storage',
+      'need',
+      'needed',
+      'replace',
+      'replacement',
+      'generator',
+      'genset',
+      'engine',
+      'port',
+      'starboard',
+      'left',
+      'right',
+    ]);
+    const specificVocabulary = new Set([
+      'impeller',
+      'filter',
+      'filters',
+      'anode',
+      'anodes',
+      'zinc',
+      'belt',
+      'belts',
+      'thermostat',
+      'thermostats',
+      'pump',
+      'pumps',
+      'seal',
+      'seals',
+      'gasket',
+      'gaskets',
+      'bearing',
+      'bearings',
+      'cartridge',
+      'cartridges',
+      'coolant',
+      'oil',
+      'wear',
+      'kit',
+      'kits',
+      'sensor',
+      'sensors',
+      'valve',
+      'valves',
+      'hose',
+      'hoses',
+      'coupling',
+      'couplings',
+    ]);
+
+    const terms = this.queryService.extractRetrievalSubjectTerms(query);
+    return {
+      generalTerms: terms.filter((term) => !genericTerms.has(term)),
+      specificTerms: terms.filter((term) => specificVocabulary.has(term)),
+    };
+  }
+
+  private hasConflictingPartsEvidence(
+    haystack: string,
+    specificTerms: string[],
+  ): boolean {
+    const evidenceTerms = this.extractPartsEvidenceTerms(haystack);
+    return (
+      evidenceTerms.length > 0 &&
+      evidenceTerms.every((term) => !specificTerms.includes(term))
+    );
+  }
+
+  private extractPartsEvidenceTerms(text: string): string[] {
+    const patterns: Array<[string, RegExp]> = [
+      ['impeller', /\bimpellers?\b/i],
+      ['filter', /\bfilters?\b/i],
+      ['anode', /\b(anodes?|zincs?)\b/i],
+      ['belt', /\bbelts?\b/i],
+      ['thermostat', /\bthermostats?\b/i],
+      ['pump', /\bpumps?\b/i],
+      ['seal', /\bseals?\b/i],
+      ['gasket', /\bgaskets?\b/i],
+      ['bearing', /\bbearings?\b/i],
+      ['cartridge', /\bcartridges?\b/i],
+      ['coolant', /\bcoolant\b/i],
+      ['oil', /\boil\b/i],
+      ['wear', /\bwear\s*kit\b/i],
+      ['sensor', /\bsensors?\b/i],
+      ['valve', /\bvalves?\b/i],
+      ['hose', /\bhoses?\b/i],
+      ['coupling', /\bcouplings?\b/i],
+    ];
+
+    return patterns
+      .filter(([, pattern]) => pattern.test(text))
+      .map(([label]) => label);
   }
 
   private rankCitationsBySourceType(
@@ -1273,6 +1494,10 @@ export class ChatDocumentationCitationService {
     query: string,
     citations: ChatCitation[],
   ): ChatCitation[] {
+    if (this.queryService.isPartsQuery(query)) {
+      return citations;
+    }
+
     if (
       !/\b(maintenance|service|due|parts?|spares?|procedure|steps?|what\s+should\s+i\s+do|what\s+needs?\s+to\s+be\s+done|included)\b/i.test(
         query,

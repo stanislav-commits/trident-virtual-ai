@@ -590,6 +590,10 @@ export class LlmService {
       subjectQuery,
     );
     const subjectTerms = this.extractSubjectTerms(subjectQuery);
+    const asksForRemainingHours =
+      /\b(how\s+many\s+hours?|hours?\s+(?:left|remain|remaining))\b/i.test(
+        context.userQuery,
+      );
 
     if (subjectTerms.length === 0) {
       return (
@@ -616,6 +620,12 @@ export class LlmService {
       '- If you perform a due-hours calculation, show the arithmetic with exact values before the conclusion.\n';
     prompt +=
       '- Do not use an interval unless the snippet clearly refers to the same component, task, or asset as the question.\n';
+    if (asksForRemainingHours) {
+      prompt +=
+        '- The user explicitly asked for remaining hours. If a matching telemetry hour counter and a documented next-due threshold are available, answer with remaining hours first.\n';
+      prompt +=
+        '- Do not replace a supported remaining-hours calculation with only calendar days or only the due date.\n';
+    }
 
     if (subjectTerms.length > 0) {
       prompt += `- Subject terms to match: ${subjectTerms.join(', ')}.\n`;
@@ -737,7 +747,7 @@ export class LlmService {
   }
 
   private isMaintenanceCalculationQuery(query: string): boolean {
-    return /(when\s+is\s+.*(maintenance|service)\s+due|when\s+should\s+we\s+do\s+next\s+(maintenance|service)|what\s+is\s+next\s+due|next\s+due\s+value|next\s+(maintenance|service)\s+due|how\s+many\s+hours\s+(left|remaining)|remaining\s+hours|hours\s+until\s+next\s+(maintenance|service)|next\s+service\s+at\s+what\s+hour)/i.test(
+    return /(when\s+is\s+.*(maintenance|service)\s+due|when\s+should\s+we\s+do\s+next\s+(maintenance|service)|what\s+is\s+next\s+due|next\s+due\s+value|next\s+(maintenance|service)\s+due|how\s+many\s+hours\s+(?:left|remain(?:ing)?)|how\s+many\s+hours\s+(?:left|remain(?:ing)?)?\s*until|remaining\s+hours|hours\s+until\s+next\s+(maintenance|service)|next\s+service\s+at\s+what\s+hour)/i.test(
       query,
     );
   }
@@ -856,7 +866,11 @@ export class LlmService {
 
     const result: HourTelemetryEntry[] = [];
     for (const [label, value] of Object.entries(telemetry)) {
-      if (!/(engine|runtime|running|operating|hour|hourmeter)/i.test(label)) {
+      if (
+        !/\b(runtime|run\s*time|running|operating(?:\s+time|\s+hours?)?|hours?|hour\s*meter|hourmeter|engine\s+hours?)\b/i.test(
+          label,
+        )
+      ) {
         continue;
       }
       const numericValue = this.parseNumericValue(value);
@@ -867,12 +881,74 @@ export class LlmService {
     const subjectTerms = this.extractSubjectTerms(subjectQuery ?? '');
     if (subjectTerms.length === 0) return result;
 
-    const matched = result.filter((entry) => {
-      const haystack = entry.label.toLowerCase();
-      return subjectTerms.some((term) => haystack.includes(term));
-    });
+    const scored = result
+      .map((entry) => ({
+        entry,
+        score: this.scoreHourTelemetryEntry(entry, subjectTerms, subjectQuery ?? ''),
+      }))
+      .sort((left, right) => right.score - left.score);
 
-    return matched.length > 0 ? matched : result;
+    const matched = scored
+      .filter((entry) => entry.score > 0)
+      .map((entry) => entry.entry);
+
+    if (matched.length > 0) {
+      return matched.slice(0, 3);
+    }
+
+    return scored.map((entry) => entry.entry).slice(0, 4);
+  }
+
+  private scoreHourTelemetryEntry(
+    entry: HourTelemetryEntry,
+    subjectTerms: string[],
+    subjectQuery: string,
+  ): number {
+    const haystack = this.normalizeMaintenanceText(entry.label);
+    const normalizedQuery = this.normalizeMaintenanceText(subjectQuery);
+    let score = 0;
+
+    if (
+      /\b(runtime|run time|running|operating(?: time| hours?)?|hours?|hour meter|hourmeter|engine hours?)\b/i.test(
+        haystack,
+      )
+    ) {
+      score += 6;
+    }
+
+    const overlap = subjectTerms.filter((term) => haystack.includes(term)).length;
+    score += overlap * 6;
+
+    if (
+      /\b(generator|genset)\b/i.test(normalizedQuery) &&
+      /\b(generator|genset)\b/i.test(haystack)
+    ) {
+      score += 6;
+    }
+
+    if (/\bengine\b/i.test(normalizedQuery) && /\bengine\b/i.test(haystack)) {
+      score += 4;
+    }
+
+    if (
+      /\bstarboard\b/i.test(normalizedQuery) &&
+      /\bstarboard\b/i.test(haystack)
+    ) {
+      score += 3;
+    }
+
+    if (/\bport\b/i.test(normalizedQuery) && /\bport\b/i.test(haystack)) {
+      score += 3;
+    }
+
+    if (
+      /\b(generator|genset)\b/i.test(normalizedQuery) &&
+      /\bengine room\b/i.test(haystack)
+    ) {
+      score -= 2;
+    }
+
+    return score;
   }
 
   private isTelemetryValueQuery(query: string): boolean {
@@ -1134,6 +1210,21 @@ export class LlmService {
     ];
 
     return this.expandSubjectAliases(uniqueTerms);
+  }
+
+  private normalizeMaintenanceText(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/[_./:-]+/g, ' ')
+      .replace(/\bstbd\b/g, ' starboard ')
+      .replace(/\bsb\b/g, ' starboard ')
+      .replace(/\bps\b/g, ' port ')
+      .replace(/\bright\b/g, ' starboard ')
+      .replace(/\bleft\b/g, ' port ')
+      .replace(/\bgenerator\s+set\b/g, ' genset ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private expandSubjectAliases(terms: string[]): string[] {

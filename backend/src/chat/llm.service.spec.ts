@@ -470,6 +470,37 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toContain('SB engine running hours: 4520 hours');
   });
 
+  it('prioritizes remaining-hours reasoning for hour-based next-due questions when telemetry is available', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildMaintenanceCalculationPrompt({
+      userQuery:
+        'How many hours remain until the next annual service on the starboard generator?',
+      citations: [
+        {
+          sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+          pageNumber: 29,
+          snippet:
+            'Reference row: Component name: SB ENGINE Task name: F MAIN GENERATOR 500 HOURS / ANNUAL SERVICE Reference ID: 1P59 Last due: 07.07.2025 / 1750 Next due: 07.07.2026 / 2250',
+        },
+      ],
+      telemetry: {
+        'Starboard genset operating time counter': 2031,
+      },
+    });
+
+    expect(prompt).toContain(
+      'The user explicitly asked for remaining hours.',
+    );
+    expect(prompt).toContain(
+      'Do not replace a supported remaining-hours calculation with only calendar days',
+    );
+    expect(prompt).toContain(
+      'Starboard genset operating time counter: 2031 hours',
+    );
+    expect(prompt).toContain('remaining is 219 hours');
+  });
+
   it('classifies vessel location questions as telemetry queries', () => {
     const service = new LlmService();
 

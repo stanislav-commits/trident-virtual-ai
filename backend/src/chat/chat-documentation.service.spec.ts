@@ -289,4 +289,116 @@ Reference ID: 1P47`,
       ).mock.calls[0][1],
     ).toBe('How do I change oil in the port generator');
   });
+
+  it('runs a second narrowing pass when an exact maintenance subject is resolved from the first citation set', async () => {
+    const citations: ChatCitation[] = [
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        snippet:
+          'Reference row: Component name: FUEL PURIFIER Task name: CARTRIDGE AND FILTER ANNUAL MAINTENANCE Reference ID: 1P280 Included work items: - CHANGE THE FILTER AND CARTRIDGE ONCE PER YEAR',
+        score: 0.91,
+      },
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        snippet:
+          'Reference row: Component name: FUEL PURIFIER Task name: CLEAN BOWL AND DISCS EVERY 6 MONTHS Reference ID: 1P281 Included work items: - CLEAN BOWL - CLEAN DISCS',
+        score: 0.92,
+      },
+    ];
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((query, retrievedCitations) =>
+          /reference id 1p280/i.test(query)
+            ? [retrievedCitations[0]]
+            : retrievedCitations,
+        ),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, retrievedCitations) => retrievedCitations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, retrievedCitations) => retrievedCitations),
+      prepareCitationsForAnswer: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => {
+            citations: ChatCitation[];
+            compareBySource: boolean;
+            sourceComparisonTitles: string[];
+          }
+        >()
+        .mockImplementation((_query, _userQuery, retrievedCitations) => ({
+          citations: retrievedCitations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        })),
+      limitCitationsForLlm: jest
+        .fn<
+          (
+            userQuery: string,
+            citations: ChatCitation[],
+            compareBySource: boolean,
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_userQuery, retrievedCitations) => retrievedCitations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest
+        .fn()
+        .mockReturnValue(
+          'M Y Seawolf X Maintenance Tasks Reference ID 1P280 FUEL PURIFIER CARTRIDGE AND FILTER ANNUAL MAINTENANCE',
+        ),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'What does the fuel purifier annual maintenance include?',
+    });
+
+    expect(result.resolvedSubjectQuery).toContain('Reference ID 1P280');
+    expect(result.citations).toHaveLength(1);
+    expect(result.citations[0].snippet).toContain('Reference ID: 1P280');
+    expect(
+      (citationService.pruneCitationsForResolvedSubject as jest.Mock).mock.calls.some(
+        (call) => /reference id 1p280/i.test(call[0]),
+      ),
+    ).toBe(true);
+    expect(
+      (citationService.prepareCitationsForAnswer as jest.Mock).mock.calls[0][0],
+    ).toContain('Reference ID 1P280');
+  });
 });
