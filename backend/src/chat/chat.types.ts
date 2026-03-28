@@ -27,6 +27,7 @@ export interface ChatDocumentationContext {
   resolvedSubjectQuery?: string;
   answerQuery?: string;
   citations: ChatCitation[];
+  analysisCitations?: ChatCitation[];
   needsClarification?: boolean;
   clarificationQuestion?: string;
   clarificationReason?: string;

@@ -374,6 +374,7 @@ export class ChatDocumentationService {
             resolvedSubjectQuery;
         }
       }
+      const analysisCitations = citations;
       const preparedAnswerCitations =
         this.citationService.prepareCitationsForAnswer(
           resolvedSubjectQuery ?? retrievalQuery,
@@ -396,6 +397,7 @@ export class ChatDocumentationService {
             : undefined,
         resolvedSubjectQuery,
         citations,
+        analysisCitations,
         compareBySource: preparedAnswerCitations.compareBySource,
         sourceComparisonTitles: preparedAnswerCitations.sourceComparisonTitles,
       };
@@ -405,15 +407,16 @@ export class ChatDocumentationService {
       );
     }
 
-    return {
-      previousUserQuery: previousUserQuery ?? undefined,
-      retrievalQuery,
-      answerQuery:
-        isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
-          ? retrievalQuery
-          : undefined,
-      citations,
-    };
+      return {
+        previousUserQuery: previousUserQuery ?? undefined,
+        retrievalQuery,
+        answerQuery:
+          isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
+            ? retrievalQuery
+            : undefined,
+        citations,
+        analysisCitations: citations,
+      };
   }
 
   private shouldAugmentBroadCertificateExpiryLookup(

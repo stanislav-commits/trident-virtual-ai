@@ -441,6 +441,7 @@ export class ChatService {
 
       const {
         citations,
+        analysisCitations,
         previousUserQuery,
         retrievalQuery,
         resolvedSubjectQuery: exactResolvedSubjectQuery,
@@ -698,7 +699,9 @@ export class ChatService {
         this.buildDeterministicCertificateStatusAnswer(
           effectiveUserQuery,
           queryPlan.primaryIntent,
-          citationsForAnswer,
+          this.isBroadCertificateSoonQuery(effectiveUserQuery)
+            ? analysisCitations ?? citationsForAnswer
+            : citationsForAnswer,
         );
       if (deterministicCertificateAnswer) {
         return this.addAssistantMessage(

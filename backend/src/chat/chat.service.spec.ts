@@ -823,6 +823,84 @@ describe('ChatService telemetry clarification', () => {
     }
   });
 
+  it('uses broader certificate analysis citations when answer citations lost expiry evidence', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 28));
+    try {
+      prisma.chatSession.findUnique.mockResolvedValue({
+        messages: [
+          {
+            role: 'user',
+            content: 'Show me the nearest upcoming certificate expiries',
+            ragflowContext: null,
+          },
+        ],
+      });
+      documentationService.prepareDocumentationContext.mockResolvedValue({
+        citations: [
+          {
+            sourceTitle: 'FA170_OME44900J.pdf',
+            sourceCategory: 'MANUALS',
+            snippet:
+              'bearing to a target are updated. However, target order is not updated.',
+            pageNumber: 29,
+          },
+        ],
+        analysisCitations: [
+          {
+            sourceTitle: 'FA170_OME44900J.pdf',
+            sourceCategory: 'MANUALS',
+            snippet:
+              'bearing to a target are updated. However, target order is not updated.',
+            pageNumber: 29,
+          },
+          {
+            sourceTitle: '26.03.04 Renewal Radio Licence COMMERCIAL.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'This Licence expires on: 15 January 2027.',
+            pageNumber: 1,
+          },
+        ],
+        previousUserQuery: undefined,
+        retrievalQuery: 'Show me the nearest upcoming certificate expiries',
+        resolvedSubjectQuery: undefined,
+        answerQuery: undefined,
+      });
+      metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+        telemetry: {},
+        totalActiveMetrics: 0,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+        clarification: null,
+      });
+
+      await (service as any).generateAssistantResponse(
+        'ship-1',
+        'session-1',
+        'Show me the nearest upcoming certificate expiries',
+        'Sea Wolf X',
+        'user',
+      );
+
+      expect(llmService.generateResponse).not.toHaveBeenCalled();
+      expect(service.addAssistantMessage).toHaveBeenCalledWith(
+        'session-1',
+        expect.stringContaining('15 January 2027'),
+        expect.anything(),
+        [
+          expect.objectContaining({
+            sourceTitle: '26.03.04 Renewal Radio Licence COMMERCIAL.pdf',
+          }),
+        ],
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('uses embedded approval expiry evidence when broad certificate snippets come from a manual appendix', async () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
