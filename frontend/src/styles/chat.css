@@ -1794,14 +1794,27 @@
 }
 
 .chat-message__no-docs {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-  padding: 4px 0;
-  color: rgba(255, 255, 255, 0.35);
-  font-size: 0.72rem;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0;
+  line-height: 1.2;
   font-style: italic;
+}
+
+.chat-message__no-docs svg {
+  flex-shrink: 0;
+}
+
+.chat-message__no-docs::after {
+  content: "Answered without matching document evidence";
+  font-size: 0.72rem;
 }
 
 .chat-message__suggestions {
@@ -2594,6 +2607,12 @@
     border-color: var(--chat-border);
   }
 
+  .chat-message__no-docs {
+    border-color: rgba(13, 17, 23, 0.08);
+    background: rgba(13, 17, 23, 0.04);
+    color: rgba(13, 17, 23, 0.58);
+  }
+
   /* ── Global scrollbar for light mode ── */
   * {
     scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
@@ -2648,4 +2667,10 @@
 
 [data-theme="light"] .chat-main__send--inside:disabled {
   background: rgba(26, 26, 26, 0.45);
+}
+
+[data-theme="light"] .chat-message__no-docs {
+  border-color: rgba(13, 17, 23, 0.08);
+  background: rgba(13, 17, 23, 0.04);
+  color: rgba(13, 17, 23, 0.58);
 }
