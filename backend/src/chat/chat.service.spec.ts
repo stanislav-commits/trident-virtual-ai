@@ -2047,4 +2047,49 @@ describe('ChatService telemetry clarification', () => {
 
     expect(llmService.generateResponse).toHaveBeenCalled();
   });
+
+  it('returns director contacts from the company contact details document without asking for more clarification', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'show all directors from the company contact details document',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet:
+            'JMs Yachting Company Contact Details Franc Jansen - Monaco franc@jmsyachting.com JMS Founder, Director & DPA (M) +33 612 639 648 Sam Thompson - Monaco Commercial Director, Director of JMS Careers (M) +33 784 123 373 sam@jmsyachting.com Rob Pijper - Palma Operations Director (M) +31 636 219 315 rob@jmsyachting.com Lucia Badano - Palma Technical Director (M) +34 689 300533 lucia@jmsyachting.com',
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'director contact details',
+      resolvedSubjectQuery: 'director contact details',
+      answerQuery: undefined,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'show all directors from the company contact details document',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const content = (
+      service.addAssistantMessage as jest.Mock
+    ).mock.calls.at(-1)?.[1];
+
+    expect(content).toContain('Franc Jansen');
+    expect(content).toContain('Sam Thompson');
+    expect(content).toContain('Rob Pijper');
+    expect(content).toContain('Lucia Badano');
+    expect(content).not.toContain('Please clarify');
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
 });

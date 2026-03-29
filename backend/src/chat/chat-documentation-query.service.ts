@@ -432,7 +432,10 @@ export class ChatDocumentationQueryService {
   }
 
   extractContactAnchorTerms(query: string): string[] {
-    if (!this.isPersonnelDirectoryQuery(query)) {
+    if (
+      !this.isPersonnelDirectoryQuery(query) &&
+      !this.isRoleDescriptionQuery(query)
+    ) {
       return [];
     }
 
@@ -488,6 +491,12 @@ export class ChatDocumentationQueryService {
       'there',
       'available',
       'mentioned',
+      'document',
+      'documents',
+      'doc',
+      'file',
+      'files',
+      'pdf',
     ]);
 
     return [

@@ -241,6 +241,29 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(false);
   });
 
+  it('treats explicit role-description questions as self-contained even after a personnel lookup', () => {
+    expect(
+      service.buildRetrievalQuery(
+        'what is the role of dpa?',
+        'list all managers with their contact details',
+      ),
+    ).toBe('what is the role of dpa?');
+  });
+
+  it('drops document scaffolding from director-list personnel queries', () => {
+    expect(
+      service.extractContactAnchorTerms(
+        'show all directors from the company contact details document',
+      ),
+    ).toEqual(['director']);
+    expect(
+      service.buildRetrievalQuery(
+        'show all directors from the company contact details document',
+        null,
+      ),
+    ).toBe('director contact details');
+  });
+
   it('inherits the previous subject for role-inventory follow-up questions', () => {
     const retrievalQuery = service.buildRetrievalQuery(
       'what other roles are there?',
