@@ -325,6 +325,7 @@ export class ChatDocumentationQueryService {
       'what',
       'when',
       'where',
+      'who',
       'why',
       'how',
       'about',
@@ -387,6 +388,48 @@ export class ChatDocumentationQueryService {
           .filter((term) => !/^\d+$/.test(term)),
       ),
     ];
+  }
+
+  isContactLookupQuery(query: string): boolean {
+    return /\b(contact|contacts|contact\s+details?|email|emails|phone|telephone|mobile|number|numbers|address|reach|call)\b/i.test(
+      query,
+    );
+  }
+
+  extractContactAnchorTerms(query: string): string[] {
+    if (!this.isContactLookupQuery(query)) {
+      return [];
+    }
+
+    const genericTerms = new Set([
+      'contact',
+      'contacts',
+      'email',
+      'emails',
+      'phone',
+      'telephone',
+      'mobile',
+      'number',
+      'numbers',
+      'address',
+      'details',
+      'detail',
+      'reach',
+      'call',
+      'emergency',
+      'company',
+      'vessel',
+      'yacht',
+      'ship',
+      'crew',
+      'staff',
+      'person',
+      'people',
+    ]);
+
+    return this.extractRetrievalSubjectTerms(query).filter(
+      (term) => !genericTerms.has(term),
+    );
   }
 
   isPartsQuery(query: string): boolean {

@@ -192,6 +192,20 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe('emergency dpa contacts contact details');
   });
 
+  it('extracts role anchors for contact lookups without keeping generic contact scaffolding', () => {
+    expect(
+      service.isContactLookupQuery('provide his contacts'),
+    ).toBe(true);
+    expect(
+      service.extractContactAnchorTerms('who vessel dpa contact details'),
+    ).toEqual(['dpa']);
+    expect(
+      service.extractContactAnchorTerms(
+        'emergency operations director contact details',
+      ),
+    ).toEqual(['operations', 'director']);
+  });
+
   it('inherits the previous certificate subject for completeness-check follow-ups', () => {
     const retrievalQuery = service.buildRetrievalQuery(
       'Are you sure there are all certificates?',

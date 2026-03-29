@@ -15,6 +15,7 @@ interface SourceEvidenceProfile {
   subjectCoverage: number;
   aggregateScore: number;
   explicitEvidenceScore: number;
+  contactEvidenceScore: number;
   intervalValues: string[];
   nextDueValues: string[];
   nextDueDates: string[];
@@ -24,6 +25,8 @@ interface SourceEvidenceProfile {
   quantityValues: string[];
   capacityValues: string[];
   expiryTimestamps: number[];
+  emailValues: string[];
+  phoneValues: string[];
 }
 
 @Injectable()
@@ -116,6 +119,8 @@ export class ChatDocumentationCitationService {
         refined = matchedByNumericToken;
       }
     }
+
+    refined = this.refineContactSubjectCitations(queryContext, refined);
 
     if (this.queryService.isPartsQuery(queryContext)) {
       refined = this.refinePartsSubjectCitations(queryContext, refined);
@@ -329,6 +334,44 @@ export class ChatDocumentationCitationService {
     return [...primaryAnchors, ...continuation];
   }
 
+  private refineContactSubjectCitations(
+    query: string,
+    citations: ChatCitation[],
+  ): ChatCitation[] {
+    if (
+      citations.length === 0 ||
+      !this.queryService.isContactLookupQuery(query)
+    ) {
+      return citations;
+    }
+
+    const scored = citations
+      .map((citation) => ({
+        citation,
+        score: this.scoreContactCitation(query, citation),
+      }))
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          (right.citation.score ?? 0) - (left.citation.score ?? 0),
+      );
+
+    const bestScore = scored[0]?.score ?? 0;
+    if (bestScore <= 0) {
+      return citations;
+    }
+
+    const cutoff =
+      bestScore >= 20
+        ? Math.max(12, bestScore - 8)
+        : Math.max(8, Math.ceil(bestScore * 0.7));
+    const matched = scored
+      .filter((entry) => entry.score >= cutoff)
+      .map((entry) => entry.citation);
+
+    return matched.length > 0 ? matched : citations;
+  }
+
   limitCitationsForLlm(
     userQuery: string,
     citations: ChatCitation[],
@@ -343,13 +386,18 @@ export class ChatDocumentationCitationService {
       /\b(procedure|steps?|how\s+to|instruction|instructions|checklist|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done)\b/i.test(
         userQuery,
       );
+    const wantsContactDetails = this.queryService.isContactLookupQuery(userQuery);
     const hasReferenceId = /\b1p\d{2,}\b/i.test(userQuery);
     const wantsExhaustiveList =
       /\b(list\s+all|all\s+details|do\s+not\s+omit|how\s+many\s+spare-?part\s+rows)\b/i.test(
         userQuery,
       );
     const limit =
-      wantsParts || wantsProcedure || hasReferenceId || wantsExhaustiveList
+      wantsParts ||
+      wantsProcedure ||
+      wantsContactDetails ||
+      hasReferenceId ||
+      wantsExhaustiveList
         ? 16
         : this.queryService.getDefaultContextTopK();
 
@@ -362,6 +410,59 @@ export class ChatDocumentationCitationService {
     }
 
     return citations.slice(0, limit);
+  }
+
+  private scoreContactCitation(query: string, citation: ChatCitation): number {
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+    const anchorTerms = this.queryService.extractContactAnchorTerms(query);
+    const matchedAnchors = anchorTerms.filter((term) => haystack.includes(term));
+    const hasEmail =
+      /\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/i.test(haystack) ||
+      /\b(email|e-mail)\b/i.test(haystack);
+    const hasPhone =
+      /\+\s*\d[\d\s()./-]{5,}\d\b/.test(haystack) ||
+      /\b(phone|telephone|mobile|tel[:.]?)\b/i.test(haystack);
+    const hasContactTitle =
+      /\b(contact\s+details|contact\s+list|company\s+contact|emergency\s+contact|emergencycontactlist)\b/i.test(
+        haystack,
+      );
+    const hasDpa = /\bdpa\b/i.test(haystack);
+    const weakGenericContactOnly =
+      /\bcontact\s+details?\b|\bcontacts?\b/i.test(haystack) &&
+      !hasEmail &&
+      !hasPhone;
+
+    let score = 0;
+    score += matchedAnchors.length * 12;
+
+    if (/\bdpa\b/i.test(query) && hasDpa) {
+      score += 12;
+    }
+    if (hasContactTitle) {
+      score += 10;
+    }
+    if (hasEmail) {
+      score += 8;
+    }
+    if (hasPhone) {
+      score += 8;
+    }
+    if (hasEmail && hasPhone) {
+      score += 4;
+    }
+    if (
+      /\b(founder|director|manager|compliance|operations|technical|captain|master|cso)\b/i.test(
+        haystack,
+      )
+    ) {
+      score += 2;
+    }
+    if (weakGenericContactOnly) {
+      score -= 6;
+    }
+
+    return score;
   }
 
   private refineCitationsForRequestedSource(
@@ -1958,8 +2059,31 @@ export class ChatDocumentationCitationService {
           plainText,
           /\b\d+(?:\.\d+)?\s*(?:l|liters?|litres?|ml|gal|gallons?)\b/gi,
         );
+        const emailValues = this.extractUniqueMatches(
+          plainText,
+          /\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/gi,
+        );
+        const phoneValues = this.extractUniqueMatches(
+          plainText,
+          /\+\s*\d[\d\s()./-]{5,}\d\b/gi,
+        );
         const expiryTimestamps =
           this.extractExplicitCertificateExpiryTimestampsFromText(plainText);
+        const contactAnchorTerms =
+          this.queryService.extractContactAnchorTerms(retrievalQuery);
+        const matchedContactAnchors = contactAnchorTerms.filter((term) =>
+          sourceHaystack.includes(term),
+        );
+        const contactEvidenceScore =
+          Math.min(emailValues.length, 4) +
+          Math.min(phoneValues.length, 4) +
+          sourceCitations.filter((citation) =>
+            /\b(email|e-mail|mobile|phone|telephone|tel[:.]?|contact\s+details|contact\s+list|company\s+contact|emergency\s+contact)\b/i.test(
+              `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`,
+            ),
+          ).length +
+          matchedContactAnchors.length * 3 +
+          (matchedContactAnchors.includes('dpa') ? 4 : 0);
         const explicitEvidenceScore =
           this.countNonEmptyArrays([
             intervalValues,
@@ -1972,6 +2096,7 @@ export class ChatDocumentationCitationService {
             capacityValues,
             expiryTimestamps.map((timestamp) => String(timestamp)),
           ]) +
+          contactEvidenceScore +
           sourceCitations.filter((citation) =>
             /\b(reference\s*id|interval|next\s*due|last\s*due|spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location|valid\s+until|expiry|expiration|expiring|expires?\s+on|scadenza)\b/i.test(
               citation.snippet ?? '',
@@ -1989,6 +2114,7 @@ export class ChatDocumentationCitationService {
             0,
           ),
           explicitEvidenceScore,
+          contactEvidenceScore,
           intervalValues,
           nextDueValues,
           nextDueDates,
@@ -1998,6 +2124,8 @@ export class ChatDocumentationCitationService {
           quantityValues,
           capacityValues,
           expiryTimestamps,
+          emailValues,
+          phoneValues,
         };
       })
       .sort((a, b) => {
@@ -2040,6 +2168,10 @@ export class ChatDocumentationCitationService {
     userQuery: string,
     profiles: SourceEvidenceProfile[],
   ): SourceEvidenceProfile[] {
+    if (this.queryService.isContactLookupQuery(userQuery)) {
+      return [];
+    }
+
     if (
       /\b1p\d{2,}\b/i.test(retrievalQuery) ||
       this.hasExplicitSourceRequest(userQuery)
@@ -2089,6 +2221,7 @@ export class ChatDocumentationCitationService {
     const isPreciseLookup =
       /\b1p\d{2,}\b/i.test(retrievalQuery) ||
       this.queryService.isNextDueLookupQuery(userQuery) ||
+      this.queryService.isContactLookupQuery(userQuery) ||
       this.queryService.isPartsQuery(userQuery) ||
       /\b(?:according\s+to|in|from)\s+the\s+.+?\b(manual|operator'?s\s+manual|handbook|guide|document)\b/i.test(
         userQuery,
@@ -2102,6 +2235,9 @@ export class ChatDocumentationCitationService {
     if (!isPreciseLookup) return [];
 
     const topClearlyStronger =
+      (this.queryService.isContactLookupQuery(userQuery) &&
+        top.contactEvidenceScore >= second.contactEvidenceScore + 3 &&
+        top.subjectCoverage >= second.subjectCoverage) ||
       (top.explicitEvidenceScore >= second.explicitEvidenceScore + 2 &&
         top.subjectCoverage >= second.subjectCoverage) ||
       (top.explicitEvidenceScore > 0 &&
@@ -2317,6 +2453,15 @@ export class ChatDocumentationCitationService {
     a: SourceEvidenceProfile,
     b: SourceEvidenceProfile,
   ): boolean {
+    if (this.queryService.isContactLookupQuery(userQuery)) {
+      if (this.hasConflictingValueSet(a.emailValues, b.emailValues)) {
+        return true;
+      }
+      if (this.hasConflictingValueSet(a.phoneValues, b.phoneValues)) {
+        return true;
+      }
+    }
+
     if (this.hasConflictingValueSet(a.intervalValues, b.intervalValues)) {
       return true;
     }

@@ -60,6 +60,72 @@ describe('ChatDocumentationCitationService', () => {
     expect(prepared.citations[0].sourceTitle).toBe('Engine Manual.pdf');
   });
 
+  it('prioritizes explicit DPA contact sheets over generic contact mentions for contact lookups', () => {
+    const citations = [
+      {
+        sourceTitle: 'SEAWOLF X COMPLAINTS AND GRIEVANCE PROCEDURE 1.2 - Final.pdf',
+        snippet:
+          'The facts are to be forwarded to the Employer by email. The Employer may delegate further investigations to the Yacht Manager.',
+        score: 0.3678,
+      },
+      {
+        sourceTitle: '24.07.23 MMSI Confirmation Letter - TENDER.pdf',
+        snippet:
+          'Transport Malta will send the provided emergency contact details ashore to authorised entities. Tel: (356)21222203 Email: info.tm@transport.gov.mt',
+        score: 0.2721,
+      },
+      {
+        sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+        snippet:
+          'JMs Yachting Company Contact Details Franc Jansen - Monaco franc@jmsyachting.com JMS Founder, Director & DPA (M) +33 612 639 648',
+        score: 0.2732,
+      },
+      {
+        sourceTitle: 'Seawolf X SOPEP.pdf',
+        snippet:
+          'The contact details of the vessel contracted Damage Stability Provider can be found in ANNEX 1.',
+        score: 0.2653,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'who vessel dpa contact details',
+      'provide his contacts',
+      citations,
+    );
+    const prepared = service.prepareCitationsForAnswer(
+      'who vessel dpa contact details',
+      'provide his contacts',
+      refined,
+    );
+
+    expect(refined[0].sourceTitle).toBe('JMS Company Contact Details Jan 26.pdf');
+    expect(prepared.compareBySource).toBe(false);
+    expect(prepared.citations[0].sourceTitle).toBe(
+      'JMS Company Contact Details Jan 26.pdf',
+    );
+    expect(
+      prepared.citations.some((citation) =>
+        /grievance|mmsi confirmation/i.test(citation.sourceTitle ?? ''),
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps a wider citation window for contact lookups so explicit contact sheets are not trimmed out', () => {
+    const citations = Array.from({ length: 20 }, (_, index) => ({
+      sourceTitle: `Source ${index + 1}.pdf`,
+      snippet:
+        index === 9
+          ? 'Franc Jansen - Monaco franc@jmsyachting.com DPA +33 612 639 648'
+          : `Generic snippet ${index + 1}`,
+      score: 1 - index * 0.01,
+    }));
+
+    expect(
+      service.limitCitationsForLlm('provide his contacts', citations, false),
+    ).toHaveLength(16);
+  });
+
   it('prioritizes oil-relevant generator maintenance citations over unrelated generator rows', () => {
     const citations = [
       {
