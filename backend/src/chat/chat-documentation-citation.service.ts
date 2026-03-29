@@ -340,7 +340,7 @@ export class ChatDocumentationCitationService {
   ): ChatCitation[] {
     if (
       citations.length === 0 ||
-      !this.queryService.isContactLookupQuery(query)
+      !this.queryService.isPersonnelDirectoryQuery(query)
     ) {
       return citations;
     }
@@ -386,7 +386,8 @@ export class ChatDocumentationCitationService {
       /\b(procedure|steps?|how\s+to|instruction|instructions|checklist|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done)\b/i.test(
         userQuery,
       );
-    const wantsContactDetails = this.queryService.isContactLookupQuery(userQuery);
+    const wantsContactDetails =
+      this.queryService.isPersonnelDirectoryQuery(userQuery);
     const hasReferenceId = /\b1p\d{2,}\b/i.test(userQuery);
     const wantsExhaustiveList =
       /\b(list\s+all|all\s+details|do\s+not\s+omit|how\s+many\s+spare-?part\s+rows)\b/i.test(
@@ -2168,7 +2169,7 @@ export class ChatDocumentationCitationService {
     userQuery: string,
     profiles: SourceEvidenceProfile[],
   ): SourceEvidenceProfile[] {
-    if (this.queryService.isContactLookupQuery(userQuery)) {
+    if (this.queryService.isPersonnelDirectoryQuery(userQuery)) {
       return [];
     }
 
@@ -2221,7 +2222,7 @@ export class ChatDocumentationCitationService {
     const isPreciseLookup =
       /\b1p\d{2,}\b/i.test(retrievalQuery) ||
       this.queryService.isNextDueLookupQuery(userQuery) ||
-      this.queryService.isContactLookupQuery(userQuery) ||
+      this.queryService.isPersonnelDirectoryQuery(userQuery) ||
       this.queryService.isPartsQuery(userQuery) ||
       /\b(?:according\s+to|in|from)\s+the\s+.+?\b(manual|operator'?s\s+manual|handbook|guide|document)\b/i.test(
         userQuery,
@@ -2235,7 +2236,7 @@ export class ChatDocumentationCitationService {
     if (!isPreciseLookup) return [];
 
     const topClearlyStronger =
-      (this.queryService.isContactLookupQuery(userQuery) &&
+      (this.queryService.isPersonnelDirectoryQuery(userQuery) &&
         top.contactEvidenceScore >= second.contactEvidenceScore + 3 &&
         top.subjectCoverage >= second.subjectCoverage) ||
       (top.explicitEvidenceScore >= second.explicitEvidenceScore + 2 &&
@@ -2453,7 +2454,7 @@ export class ChatDocumentationCitationService {
     a: SourceEvidenceProfile,
     b: SourceEvidenceProfile,
   ): boolean {
-    if (this.queryService.isContactLookupQuery(userQuery)) {
+    if (this.queryService.isPersonnelDirectoryQuery(userQuery)) {
       if (this.hasConflictingValueSet(a.emailValues, b.emailValues)) {
         return true;
       }

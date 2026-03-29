@@ -126,6 +126,31 @@ describe('ChatDocumentationCitationService', () => {
     ).toHaveLength(16);
   });
 
+  it('prioritizes company contact sheets for role-based personnel directory queries', () => {
+    const citations = [
+      {
+        sourceTitle: 'Fleet Safety Circular.pdf',
+        snippet:
+          'Managers must foster a professional and respectful environment across the fleet.',
+        score: 0.98,
+      },
+      {
+        sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+        snippet:
+          'Zoe Bolt Falconer - The Netherlands Fleet Compliance Manager, DPA & CSO (M) +31 633 010 685 zoe@jmsyachting.com Tom Vannieuwenhuyse - Palma Fleet Manager DPA/CSO (M) +34 666 884 852 tom@jmsyachting.com',
+        score: 0.66,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'list all managers',
+      'list all managers',
+      citations,
+    );
+
+    expect(refined[0].sourceTitle).toBe('JMS Company Contact Details Jan 26.pdf');
+  });
+
   it('prioritizes oil-relevant generator maintenance citations over unrelated generator rows', () => {
     const citations = [
       {

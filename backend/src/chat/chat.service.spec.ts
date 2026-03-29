@@ -1781,4 +1781,141 @@ describe('ChatService telemetry clarification', () => {
       expect.any(Array),
     );
   });
+
+  it('returns all matching DPA contacts from the cited contact sheet instead of collapsing to one person', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet:
+            'JMs Yachting Company Contact Details Franc Jansen - Monaco franc@jmsyachting.com JMS Founder, Director & DPA (M) +33 612 639 648 Sam Thompson - Monaco Commercial Director +33 784 123 373 sam@jmsyachting.com Zoe Bolt Falconer - The Netherlands Fleet Compliance Manager, DPA & CSO (M) +31 633 010 685 zoe@jmsyachting.com Tom Vannieuwenhuyse - Palma Fleet Manager DPA/CSO (M) +34 666 884 852 tom@jmsyachting.com',
+        },
+      ],
+      previousUserQuery: "who is vessel's dpa?",
+      retrievalQuery: 'who vessel dpa contact details',
+      resolvedSubjectQuery: 'who vessel dpa contact details',
+      answerQuery: 'who vessel dpa contact details',
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'provide his contacts',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls[0][1];
+
+    expect(content).toContain('Franc Jansen');
+    expect(content).toContain('Zoe Bolt Falconer');
+    expect(content).toContain('Tom Vannieuwenhuyse');
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.any(String),
+      expect.objectContaining({
+        resolvedSubjectQuery: 'who vessel dpa contact details',
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+        }),
+      ]),
+    );
+  });
+
+  it('lists unique roles from the cited contact sheet for role-inventory follow-ups', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet:
+            'JMs Yachting Company Contact Details Franc Jansen - Monaco franc@jmsyachting.com JMS Founder, Director & DPA (M) +33 612 639 648 Sam Thompson - Monaco Commercial Director +33 784 123 373 sam@jmsyachting.com Zoe Bolt Falconer - The Netherlands Fleet Compliance Manager, DPA & CSO (M) +31 633 010 685 zoe@jmsyachting.com Tom Vannieuwenhuyse - Palma Fleet Manager DPA/CSO (M) +34 666 884 852 tom@jmsyachting.com',
+        },
+      ],
+      previousUserQuery: "who is vessel's dpa?",
+      retrievalQuery: 'who vessel dpa roles',
+      resolvedSubjectQuery: 'who vessel dpa roles',
+      answerQuery: 'who vessel dpa roles',
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'what other roles are there?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls[0][1];
+
+    expect(content).toContain('JMS Founder, Director & DPA');
+    expect(content).toContain('Commercial Director');
+    expect(content).toContain('Fleet Compliance Manager, DPA & CSO');
+    expect(content).toContain('Fleet Manager DPA/CSO');
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
+  it('returns all people matching another requested role from the cited contact sheet', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'list all managers',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet:
+            'JMs Yachting Company Contact Details Franc Jansen - Monaco franc@jmsyachting.com JMS Founder, Director & DPA (M) +33 612 639 648 Sam Thompson - Monaco Commercial Director +33 784 123 373 sam@jmsyachting.com Zoe Bolt Falconer - The Netherlands Fleet Compliance Manager, DPA & CSO (M) +31 633 010 685 zoe@jmsyachting.com Tom Vannieuwenhuyse - Palma Fleet Manager DPA/CSO (M) +34 666 884 852 tom@jmsyachting.com',
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'list all managers',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'list all managers',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls[0][1];
+
+    expect(content).toContain('Zoe Bolt Falconer');
+    expect(content).toContain('Tom Vannieuwenhuyse');
+    expect(content).not.toContain('Sam Thompson');
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
 });

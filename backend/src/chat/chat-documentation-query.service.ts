@@ -396,8 +396,25 @@ export class ChatDocumentationQueryService {
     );
   }
 
+  isRoleInventoryQuery(query: string): boolean {
+    return (
+      /\b(role|roles|position|positions|title|titles)\b/i.test(query) &&
+      /\b(list|show|what|which|other|else|available|mentioned|listed|there)\b/i.test(
+        query,
+      )
+    );
+  }
+
+  isPersonnelDirectoryQuery(query: string): boolean {
+    return (
+      this.isContactLookupQuery(query) ||
+      this.isRoleInventoryQuery(query) ||
+      this.isRoleHolderLookupQuery(query)
+    );
+  }
+
   extractContactAnchorTerms(query: string): string[] {
-    if (!this.isContactLookupQuery(query)) {
+    if (!this.isPersonnelDirectoryQuery(query)) {
       return [];
     }
 
@@ -425,11 +442,32 @@ export class ChatDocumentationQueryService {
       'staff',
       'person',
       'people',
+      'role',
+      'roles',
+      'position',
+      'positions',
+      'title',
+      'titles',
+      'listed',
+      'list',
+      'show',
+      'who',
+      'what',
+      'which',
+      'other',
+      'else',
+      'there',
+      'available',
+      'mentioned',
     ]);
 
-    return this.extractRetrievalSubjectTerms(query).filter(
-      (term) => !genericTerms.has(term),
-    );
+    return [
+      ...new Set(
+        this.extractRetrievalSubjectTerms(query)
+          .map((term) => this.normalizePersonnelAnchorTerm(term))
+          .filter((term) => !genericTerms.has(term)),
+      ),
+    ];
   }
 
   isPartsQuery(query: string): boolean {
@@ -910,7 +948,19 @@ export class ChatDocumentationQueryService {
       return true;
     }
 
-    return /\b(?:provide|give|share|send|show|write|list)\b[\s\S]{0,24}\b(contact|contacts|email|emails|phone|telephone|mobile|number|numbers|address|details?)\b/i.test(
+    if (
+      /\b(?:his|her|him|their|them|its|this|that|these|those)\b[\s\S]{0,24}\b(role|roles|position|positions|title|titles)\b/i.test(
+        trimmed,
+      ) ||
+      /\b(?:what|which)\b[\s\S]{0,24}\b(other|else)\b[\s\S]{0,24}\b(role|roles|position|positions|title|titles)\b/i.test(
+        trimmed,
+      ) ||
+      /\bwho\s+else\b/i.test(trimmed)
+    ) {
+      return true;
+    }
+
+    return /\b(?:provide|give|share|send|show|write|list|what|which|who)\b[\s\S]{0,32}\b(contact|contacts|email|emails|phone|telephone|mobile|number|numbers|address|details?|role|roles|position|positions|title|titles)\b/i.test(
       trimmed,
     );
   }
@@ -969,12 +1019,47 @@ export class ChatDocumentationQueryService {
     if (/\baddress\b/.test(normalized)) {
       focusTerms.push('address');
     }
+    if (/\broles?\b/.test(normalized)) {
+      focusTerms.push('roles');
+    }
+    if (/\bpositions?\b/.test(normalized)) {
+      focusTerms.push('positions');
+    }
+    if (/\btitles?\b/.test(normalized)) {
+      focusTerms.push('titles');
+    }
 
     if (focusTerms.length === 0) {
       return null;
     }
 
     return [...new Set(focusTerms)].join(' ');
+  }
+
+  private isRoleHolderLookupQuery(query: string): boolean {
+    return (
+      /\b(?:who|which|what|list|show|give|provide|find|extract|share)\b/i.test(
+        query,
+      ) &&
+      /\b(?:manager|managers|director|directors|officer|officers|engineer|engineers|captain|master|founder|president|head|dpa|cso)\b/i.test(
+        query,
+      )
+    );
+  }
+
+  private normalizePersonnelAnchorTerm(term: string): string {
+    const normalized = term.toLowerCase();
+    const singularMap: Record<string, string> = {
+      managers: 'manager',
+      directors: 'director',
+      officers: 'officer',
+      engineers: 'engineer',
+      roles: 'role',
+      positions: 'position',
+      titles: 'title',
+    };
+
+    return singularMap[normalized] ?? normalized;
   }
 
   private hasExplicitSourceRequest(query: string): boolean {

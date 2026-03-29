@@ -206,6 +206,31 @@ describe('ChatDocumentationQueryService', () => {
     ).toEqual(['operations', 'director']);
   });
 
+  it('treats role-based personnel lookups as directory queries and singularizes role anchors', () => {
+    expect(service.isPersonnelDirectoryQuery('list all managers')).toBe(true);
+    expect(service.extractContactAnchorTerms('list all managers')).toEqual([
+      'manager',
+    ]);
+  });
+
+  it('inherits the previous subject for role-inventory follow-up questions', () => {
+    const retrievalQuery = service.buildRetrievalQuery(
+      'what other roles are there?',
+      "who is vessel's dpa?",
+    );
+
+    expect(retrievalQuery).toContain('vessel');
+    expect(retrievalQuery).toContain('dpa');
+    expect(retrievalQuery).toContain('roles');
+    expect(
+      service.shouldPromoteRetrievalQueryToAnswerQuery(
+        'what other roles are there?',
+        "who is vessel's dpa?",
+        retrievalQuery,
+      ),
+    ).toBe(true);
+  });
+
   it('inherits the previous certificate subject for completeness-check follow-ups', () => {
     const retrievalQuery = service.buildRetrievalQuery(
       'Are you sure there are all certificates?',
