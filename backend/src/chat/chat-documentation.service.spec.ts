@@ -303,6 +303,117 @@ Reference ID: 1P47`,
     ).toBe('How do I change oil in the port generator');
   });
 
+  it('keeps short contact-detail clarification replies attached to the pending subject', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => {
+            citations: ChatCitation[];
+            compareBySource: boolean;
+            sourceComparisonTitles: string[];
+          }
+        >()
+        .mockImplementation((_query, _userQuery, citations) => ({
+          citations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        })),
+      limitCitationsForLlm: jest
+        .fn<
+          (
+            userQuery: string,
+            citations: ChatCitation[],
+            compareBySource: boolean,
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const messageHistory = [
+      {
+        role: 'user',
+        content: 'provide his contacts',
+      },
+      {
+        role: 'assistant',
+        content:
+          'I need clarification on what specific contacts you are looking for.',
+        ragflowContext: {
+          awaitingClarification: true,
+          pendingClarificationQuery: 'emergency dpa contacts',
+        },
+      },
+      {
+        role: 'user',
+        content: 'yes, contact details',
+      },
+    ];
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'yes, contact details',
+      messageHistory,
+    });
+
+    expect(result.retrievalQuery).toBe('emergency dpa contacts contact details');
+    expect(result.answerQuery).toBe(result.retrievalQuery);
+    expect(contextService.findContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'emergency dpa contacts contact details',
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
   it('promotes analytical temporal follow-ups into answerQuery for downstream reasoning', async () => {
     const contextService = {
       findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
