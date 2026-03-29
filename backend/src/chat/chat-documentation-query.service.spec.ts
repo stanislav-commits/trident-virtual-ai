@@ -156,6 +156,59 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(false);
   });
 
+  it('inherits the previous subject for pronoun-based contact detail follow-ups', () => {
+    const retrievalQuery = service.buildRetrievalQuery(
+      'provide his contacts',
+      "who is vessel's dpa?",
+    );
+
+    expect(retrievalQuery).toContain('vessel');
+    expect(retrievalQuery).toContain('dpa');
+    expect(retrievalQuery).toContain('contact details');
+    expect(
+      service.shouldPromoteRetrievalQueryToAnswerQuery(
+        'provide his contacts',
+        "who is vessel's dpa?",
+        retrievalQuery,
+      ),
+    ).toBe(true);
+  });
+
+  it('normalizes short clarification replies that only select contact details', () => {
+    const pendingClarificationQuery = 'emergency dpa contacts';
+    const userReply = 'yes, contact details';
+
+    expect(
+      service.shouldTreatAsClarificationReply(
+        userReply,
+        pendingClarificationQuery,
+      ),
+    ).toBe(true);
+    expect(
+      service.buildClarificationResolvedQuery(
+        pendingClarificationQuery,
+        userReply,
+      ),
+    ).toBe('emergency dpa contacts contact details');
+  });
+
+  it('inherits the previous certificate subject for completeness-check follow-ups', () => {
+    const retrievalQuery = service.buildRetrievalQuery(
+      'Are you sure there are all certificates?',
+      'write the list of expired certificates',
+    );
+
+    expect(retrievalQuery).toContain('expired');
+    expect(retrievalQuery).toContain('certificates');
+    expect(
+      service.shouldPromoteRetrievalQueryToAnswerQuery(
+        'Are you sure there are all certificates?',
+        'write the list of expired certificates',
+        retrievalQuery,
+      ),
+    ).toBe(true);
+  });
+
   it('inherits the previous subject for vague next-maintenance follow-up questions', () => {
     expect(
       service.buildRetrievalQuery(
