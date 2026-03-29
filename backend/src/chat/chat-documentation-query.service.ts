@@ -132,6 +132,12 @@ export class ChatDocumentationQueryService {
         .trim();
     }
 
+    const normalizedPersonnelQuery =
+      this.buildPersonnelDirectoryRetrievalQuery(trimmed);
+    if (normalizedPersonnelQuery) {
+      return normalizedPersonnelQuery;
+    }
+
     const shouldCarryPreviousSubject =
       Boolean(normalizedPreviousUserQuery) &&
       !this.isSelfContainedSubjectQuery(trimmed) &&
@@ -397,6 +403,18 @@ export class ChatDocumentationQueryService {
   }
 
   isRoleInventoryQuery(query: string): boolean {
+    if (this.isRoleDescriptionQuery(query)) {
+      return false;
+    }
+
+    if (
+      /\bwho\b/i.test(query) ||
+      /\bwho\s+else\b/i.test(query) ||
+      (/\bhas\b/i.test(query) && /\brole\b/i.test(query))
+    ) {
+      return false;
+    }
+
     return (
       /\b(role|roles|position|positions|title|titles)\b/i.test(query) &&
       /\b(list|show|what|which|other|else|available|mentioned|listed|there)\b/i.test(
@@ -442,6 +460,17 @@ export class ChatDocumentationQueryService {
       'staff',
       'person',
       'people',
+      'has',
+      'his',
+      'her',
+      'him',
+      'their',
+      'them',
+      'its',
+      'this',
+      'that',
+      'these',
+      'those',
       'role',
       'roles',
       'position',
@@ -1037,13 +1066,25 @@ export class ChatDocumentationQueryService {
   }
 
   private isRoleHolderLookupQuery(query: string): boolean {
-    return (
-      /\b(?:who|which|what|list|show|give|provide|find|extract|share)\b/i.test(
-        query,
-      ) &&
+    if (this.isRoleDescriptionQuery(query)) {
+      return false;
+    }
+
+    const hasRoleAnchor =
       /\b(?:manager|managers|director|directors|officer|officers|engineer|engineers|captain|master|founder|president|head|dpa|cso)\b/i.test(
         query,
-      )
+      );
+    if (!hasRoleAnchor) {
+      return false;
+    }
+
+    return (
+      /\b(?:who|which|list|show|give|provide|find|extract|share)\b/i.test(
+        query,
+      ) ||
+      /\bwho\s+else\b/i.test(query) ||
+      /\bhas\s+the\b[\s\S]{0,24}\brole\b/i.test(query) ||
+      (/\bwhat\b/i.test(query) && this.isContactLookupQuery(query))
     );
   }
 
@@ -1393,8 +1434,55 @@ export class ChatDocumentationQueryService {
 
   private isSelfContainedSubjectQuery(query: string): boolean {
     if (/\b1p\d{2,}\b/i.test(query)) return true;
+    if (
+      (this.isPersonnelDirectoryQuery(query) || this.isRoleDescriptionQuery(query)) &&
+      this.extractContactAnchorTerms(query).length > 0
+    ) {
+      return true;
+    }
+
     return /\b(generator|genset|engine|pump|compressor|watermaker|manual|filter|alarm|fault|error|telemetry)\b/i.test(
       query,
+    );
+  }
+
+  private buildPersonnelDirectoryRetrievalQuery(query: string): string | null {
+    const anchorTerms = this.extractContactAnchorTerms(query);
+    if (anchorTerms.length === 0) {
+      return null;
+    }
+
+    const normalizedAnchors = [...new Set(anchorTerms)].join(' ');
+
+    if (
+      this.isContactLookupQuery(query) ||
+      /\bwho\s+else\b/i.test(query) ||
+      /\b(list|show)\b/i.test(query) ||
+      /\ball\b/i.test(query)
+    ) {
+      return `${normalizedAnchors} contact details`;
+    }
+
+    if (this.isRoleInventoryQuery(query)) {
+      return `${normalizedAnchors} contact details roles`;
+    }
+
+    return null;
+  }
+
+  private isRoleDescriptionQuery(query: string): boolean {
+    return (
+      /\bwhat\s+does\b[\s\S]{0,40}\b(?:dpa|cso|manager|director|officer|engineer|captain|master|founder|president|head|role)\b/i.test(
+        query,
+      ) ||
+      /\b(?:role|responsibilit(?:y|ies)|job)\b[\s\S]{0,20}\b(?:of|for)\b/i.test(
+        query,
+      ) ||
+      /\bwhat\s+is\s+(?:the\s+)?(?:role|responsibility|job)\b/i.test(query) ||
+      /\bwhat\s+is\b[\s\S]{0,40}\bresponsible\s+for\b/i.test(query) ||
+      /\b(?:describe|explain)\b[\s\S]{0,24}\b(?:role|responsibilit(?:y|ies)|dpa|cso)\b/i.test(
+        query,
+      )
     );
   }
 

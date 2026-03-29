@@ -213,6 +213,34 @@ describe('ChatDocumentationQueryService', () => {
     ]);
   });
 
+  it('keeps explicit personnel role lookups self-contained instead of inheriting the previous subject', () => {
+    expect(
+      service.buildRetrievalQuery(
+        'list all managers with their contact details',
+        "who is vessel's dpa?",
+      ),
+    ).toBe('manager contact details');
+
+    expect(
+      service.buildRetrievalQuery(
+        'who else has the dpa role?',
+        "who is vessel's dpa?",
+      ),
+    ).toBe('dpa contact details');
+  });
+
+  it('does not confuse role-holder lookup with role inventory or role description intents', () => {
+    expect(service.isRoleInventoryQuery('who else has the dpa role?')).toBe(
+      false,
+    );
+    expect(service.isPersonnelDirectoryQuery('who else has the dpa role?')).toBe(
+      true,
+    );
+    expect(
+      service.isPersonnelDirectoryQuery('what is the role of dpa?'),
+    ).toBe(false);
+  });
+
   it('inherits the previous subject for role-inventory follow-up questions', () => {
     const retrievalQuery = service.buildRetrievalQuery(
       'what other roles are there?',

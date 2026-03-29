@@ -1247,7 +1247,16 @@ export class ChatService {
       return null;
     }
 
-    const selectedEntries = matchingEntries.slice(0, 6);
+    const wantsExhaustiveList =
+      /\b(list\s+all|all\s+contacts|all\s+managers|all\s+directors|all\s+roles|everyone|everybody)\b/i.test(
+        userQuery,
+      );
+    const maxEntries = wantsExhaustiveList ? 12 : 6;
+    const selectedEntries = matchingEntries.slice(0, maxEntries);
+    const omittedEntriesCount = Math.max(
+      0,
+      matchingEntries.length - selectedEntries.length,
+    );
     const matchedCitations = [
       ...new Set(selectedEntries.map((entry) => entry.citation)),
     ];
@@ -1295,6 +1304,16 @@ export class ChatService {
 
           return `- ${details.join(' | ')}`;
         }),
+        ...(omittedEntriesCount > 0
+          ? [
+              '',
+              `Showing the first ${selectedEntries.length} of ${matchingEntries.length} matching contacts. ${
+                omittedEntriesCount === 1
+                  ? '1 additional contact is listed'
+                  : `${omittedEntriesCount} additional contacts are listed`
+              } in the source document.`,
+            ]
+          : []),
         '',
         `These contacts are sourced from ${sourceLabel} [Contact: ${sourceLabel}].`,
       ].join('\n'),
@@ -1769,7 +1788,32 @@ export class ChatService {
       .replace(/\s+/g, ' ')
       .trim();
 
-    return role || null;
+    const sanitizedRole = this.sanitizeDeterministicContactRole(role);
+
+    return sanitizedRole || null;
+  }
+
+  private sanitizeDeterministicContactRole(role: string): string | null {
+    let sanitized = role;
+    const sectionMarkers = [
+      /\bJMs?\s+Yachting\s+Company\s+Contact\s+Details\b/i,
+      /\bGlobalHSQE\b/i,
+      /\bOps\s+Team\s*\d+\b/i,
+      /\bWebsite\s*\/?\s*I[t1]\b/i,
+    ];
+
+    for (const marker of sectionMarkers) {
+      const match = sanitized.match(marker);
+      if (!match || match.index === undefined || match.index === 0) {
+        continue;
+      }
+
+      sanitized = sanitized.slice(0, match.index).trim();
+    }
+
+    sanitized = sanitized.replace(/\s+/g, ' ').replace(/^[-,\s]+|[-,\s]+$/g, '');
+
+    return sanitized || null;
   }
 
   private extractDeterministicContactPhone(segment: string): string | null {

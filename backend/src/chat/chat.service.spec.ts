@@ -1815,7 +1815,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (service.addAssistantMessage as jest.Mock).mock.calls[0][1];
+    const content = (
+      service.addAssistantMessage as jest.Mock
+    ).mock.calls.at(-1)?.[1];
 
     expect(content).toContain('Franc Jansen');
     expect(content).toContain('Zoe Bolt Falconer');
@@ -1869,12 +1871,58 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (service.addAssistantMessage as jest.Mock).mock.calls[0][1];
+    const content = (
+      service.addAssistantMessage as jest.Mock
+    ).mock.calls.at(-1)?.[1];
 
     expect(content).toContain('JMS Founder, Director & DPA');
     expect(content).toContain('Commercial Director');
     expect(content).toContain('Fleet Compliance Manager, DPA & CSO');
     expect(content).toContain('Fleet Manager DPA/CSO');
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
+  it('returns all people holding a role instead of switching to a role-description answer', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet:
+            'JMs Yachting Company Contact Details Franc Jansen - Monaco franc@jmsyachting.com JMS Founder, Director & DPA (M) +33 612 639 648 Sam Thompson - Monaco Commercial Director +33 784 123 373 sam@jmsyachting.com Zoe Bolt Falconer - The Netherlands Fleet Compliance Manager, DPA & CSO (M) +31 633 010 685 zoe@jmsyachting.com Tom Vannieuwenhuyse - Palma Fleet Manager DPA/CSO (M) +34 666 884 852 tom@jmsyachting.com',
+        },
+      ],
+      previousUserQuery: "who is vessel's dpa?",
+      retrievalQuery: 'dpa contact details',
+      resolvedSubjectQuery: 'dpa contact details',
+      answerQuery: undefined,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'who else has the dpa role?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const content = (
+      service.addAssistantMessage as jest.Mock
+    ).mock.calls.at(-1)?.[1];
+
+    expect(content).toContain('Franc Jansen');
+    expect(content).toContain('Zoe Bolt Falconer');
+    expect(content).toContain('Tom Vannieuwenhuyse');
+    expect(content).not.toContain('responsibility');
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
@@ -1911,11 +1959,92 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (service.addAssistantMessage as jest.Mock).mock.calls[0][1];
+    const content = (
+      service.addAssistantMessage as jest.Mock
+    ).mock.calls.at(-1)?.[1];
 
     expect(content).toContain('Zoe Bolt Falconer');
     expect(content).toContain('Tom Vannieuwenhuyse');
     expect(content).not.toContain('Sam Thompson');
     expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
+  it('mentions when a personnel-directory answer is truncated by the output limit', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'list all managers with their contact details',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet:
+            'Alice Smith - Monaco Fleet Manager (M) +33 100 000 001 alice@jmsyachting.com Bob Jones - Palma Technical Manager (M) +33 100 000 002 bob@jmsyachting.com Carol White - Dubai Operations Manager (M) +33 100 000 003 carol@jmsyachting.com David Black - London Marketing Manager (M) +33 100 000 004 david@jmsyachting.com Emma Green - Nice HR Manager (M) +33 100 000 005 emma@jmsyachting.com Frank Brown - Miami Yacht Manager (M) +33 100 000 006 frank@jmsyachting.com Grace Blue - Rome Commercial Manager (M) +33 100 000 007 grace@jmsyachting.com Hannah Gold - UK Office Manager (M) +33 100 000 008 hannah@jmsyachting.com Ian Silver - Malta Service Manager (M) +33 100 000 009 ian@jmsyachting.com Julia Red - Lisbon Compliance Manager (M) +33 100 000 010 julia@jmsyachting.com Kate Grey - Athens Crew Manager (M) +33 100 000 011 kate@jmsyachting.com Liam White - Monaco Project Manager (M) +33 100 000 012 liam@jmsyachting.com Mike Orange - Palma Technical Manager (M) +33 100 000 013 mike@jmsyachting.com',
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'manager contact details',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'list all managers with their contact details',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls[0][1];
+
+    expect(content).toContain('Showing the first 12 of 13 matching contacts.');
+    expect(content).toContain('additional contact is listed in the source document.');
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
+  it('keeps role-description questions on the documentation-answer path instead of forcing a directory lookup', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'what is the role of dpa?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS 01 SMS ADMINISTRATION 2 March 26.pdf',
+          pageNumber: 29,
+          snippet:
+            'Responsibility It is the responsibility of the Designated Person Ashore to approve amendments and to ensure that the most recent texts are kept in all locations.',
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'what is the role of dpa?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'The DPA is responsible for approving amendments and ensuring the most recent texts are kept in all locations.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'what is the role of dpa?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalled();
   });
 });
