@@ -120,30 +120,42 @@ export class ChatDocumentationQueryService {
   ): string {
     const trimmed = userQuery.trim();
     if (!trimmed) return trimmed;
+    const normalizedPreviousUserQuery = previousUserQuery?.trim() ?? '';
 
     if (
-      previousUserQuery &&
+      normalizedPreviousUserQuery &&
       this.isTemporalRangeFollowUpQuery(trimmed) &&
-      this.isAnalyticalContinuationContext(previousUserQuery)
+      this.isAnalyticalContinuationContext(normalizedPreviousUserQuery)
     ) {
-      return `${previousUserQuery.trim().replace(/[?!.]+$/g, '')} ${trimmed}`
+      return `${normalizedPreviousUserQuery.replace(/[?!.]+$/g, '')} ${trimmed}`
         .replace(/\s+/g, ' ')
         .trim();
     }
 
-    if (
-      !previousUserQuery ||
-      (!this.isContextualFollowUpQuery(trimmed) &&
-        !this.shouldInheritPreviousSubject(trimmed, previousUserQuery)) ||
-      this.isSelfContainedSubjectQuery(trimmed)
-    ) {
+    const shouldCarryPreviousSubject =
+      Boolean(normalizedPreviousUserQuery) &&
+      !this.isSelfContainedSubjectQuery(trimmed) &&
+      (this.isContextualFollowUpQuery(trimmed) ||
+        this.shouldInheritPreviousSubject(
+          trimmed,
+          normalizedPreviousUserQuery,
+        ) ||
+        this.isSubjectDetailFollowUpQuery(trimmed) ||
+        this.isCompletenessVerificationFollowUpQuery(trimmed));
+
+    if (!normalizedPreviousUserQuery || !shouldCarryPreviousSubject) {
       return trimmed;
     }
 
-    const followUpSubject = this.extractFollowUpSubject(previousUserQuery);
+    const followUpSubject = this.extractFollowUpSubject(
+      normalizedPreviousUserQuery,
+    );
     if (!followUpSubject) return trimmed;
 
-    return `${followUpSubject} ${trimmed}`.trim();
+    const normalizedFollowUp = this.normalizeInheritedFollowUpQuery(trimmed);
+    return `${followUpSubject} ${normalizedFollowUp || trimmed}`
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   shouldPromoteRetrievalQueryToAnswerQuery(
@@ -163,8 +175,10 @@ export class ChatDocumentationQueryService {
     }
 
     return (
-      this.isTemporalRangeFollowUpQuery(trimmed) &&
-      this.isAnalyticalContinuationContext(previousUserQuery)
+      (this.isTemporalRangeFollowUpQuery(trimmed) &&
+        this.isAnalyticalContinuationContext(previousUserQuery)) ||
+      this.isSubjectDetailFollowUpQuery(trimmed) ||
+      this.isCompletenessVerificationFollowUpQuery(trimmed)
     );
   }
 
@@ -173,7 +187,10 @@ export class ChatDocumentationQueryService {
     clarificationReply: string,
   ): string {
     const base = pendingClarificationQuery.trim().replace(/[?!.]+$/g, '');
-    const reply = clarificationReply.trim().replace(/\s+/g, ' ');
+    const normalizedReply =
+      this.normalizeInheritedFollowUpQuery(clarificationReply) ||
+      clarificationReply;
+    const reply = normalizedReply.trim().replace(/\s+/g, ' ');
     if (!base) return reply;
     if (!reply) return base;
     return `${base} ${reply}`.replace(/\s+/g, ' ').trim();
@@ -190,7 +207,12 @@ export class ChatDocumentationQueryService {
     if (this.shouldSkipDocumentationRetrieval(trimmed)) return false;
 
     const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
-    if (wordCount <= 8 && !this.looksLikeFreshQuestion(trimmed)) {
+    if (
+      wordCount <= 8 &&
+      (!this.looksLikeFreshQuestion(trimmed) ||
+        this.isSubjectDetailFollowUpQuery(trimmed) ||
+        this.isBroadContinuationQuery(trimmed))
+    ) {
       return true;
     }
 
@@ -223,8 +245,11 @@ export class ChatDocumentationQueryService {
 
     if (
       previousUserQuery &&
-      this.isContextualFollowUpQuery(trimmed) &&
-      this.isSelfContainedSubjectQuery(previousUserQuery)
+      (this.isContextualFollowUpQuery(trimmed) ||
+        this.isSubjectDetailFollowUpQuery(trimmed) ||
+        this.isCompletenessVerificationFollowUpQuery(trimmed)) &&
+      (this.isSelfContainedSubjectQuery(previousUserQuery) ||
+        this.hasStrongSpecificAnchor(previousUserQuery))
     ) {
       return false;
     }
@@ -806,7 +831,7 @@ export class ChatDocumentationQueryService {
   }
 
   private isContextualFollowUpQuery(query: string): boolean {
-    return /\b(it|that|this|they|them|those|these|same|next one|this one)\b/i.test(
+    return /\b(it|its|that|this|they|them|their|those|these|same|next one|this one|his|her|him)\b/i.test(
       query,
     );
   }
@@ -820,6 +845,93 @@ export class ChatDocumentationQueryService {
     if (!this.hasStrongSpecificAnchor(previousUserQuery)) return false;
 
     return this.isBroadContinuationQuery(query);
+  }
+
+  private isSubjectDetailFollowUpQuery(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed) return false;
+
+    if (
+      /\b(his|her|him|their|them|its)\b[\s\S]{0,24}\b(contact|contacts|email|emails|phone|telephone|mobile|number|numbers|address|details?)\b/i.test(
+        trimmed,
+      )
+    ) {
+      return true;
+    }
+
+    if (
+      /^(?:yes|yeah|yep|ok|okay|please|just|only)\b[\s,.:;-]*(?:the\s+)?(?:contact|contacts|contact\s+details?|details?|email|emails|phone|telephone|mobile|number|numbers|address)\b/i.test(
+        trimmed,
+      )
+    ) {
+      return true;
+    }
+
+    return /\b(?:provide|give|share|send|show|write|list)\b[\s\S]{0,24}\b(contact|contacts|email|emails|phone|telephone|mobile|number|numbers|address|details?)\b/i.test(
+      trimmed,
+    );
+  }
+
+  private isCompletenessVerificationFollowUpQuery(query: string): boolean {
+    return /\b(are you sure|is that all|is this all|complete list|full list|did you miss|missing any|missing some|any more|anything else|any others|all of them|all certificates)\b/i.test(
+      query,
+    );
+  }
+
+  private normalizeInheritedFollowUpQuery(query: string): string {
+    const trimmed = query.trim().replace(/\s+/g, ' ');
+    if (!trimmed) {
+      return trimmed;
+    }
+
+    const withoutAffirmation = trimmed.replace(
+      /^(?:yes|yeah|yep|ok|okay|please|just|only)\b[\s,.:;-]*/i,
+      '',
+    );
+    const detailFocus = this.extractDetailFocus(withoutAffirmation);
+    if (detailFocus) {
+      return detailFocus;
+    }
+
+    return withoutAffirmation || trimmed;
+  }
+
+  private extractDetailFocus(query: string): string | null {
+    if (!this.isSubjectDetailFollowUpQuery(query)) {
+      return null;
+    }
+
+    const focusTerms: string[] = [];
+    const normalized = query.toLowerCase();
+
+    if (/\bcontacts?\b|\bcontact\s+details?\b|\bdetails?\b/.test(normalized)) {
+      focusTerms.push('contact details');
+    }
+    if (/\bemails?\b/.test(normalized)) {
+      focusTerms.push('email');
+    }
+    if (/\b(phone|telephone)\b/.test(normalized)) {
+      focusTerms.push('phone');
+    }
+    if (/\bmobile\b/.test(normalized)) {
+      focusTerms.push('mobile');
+    }
+    if (
+      /\bnumbers?\b/.test(normalized) &&
+      !focusTerms.includes('phone') &&
+      !focusTerms.includes('mobile')
+    ) {
+      focusTerms.push('contact number');
+    }
+    if (/\baddress\b/.test(normalized)) {
+      focusTerms.push('address');
+    }
+
+    if (focusTerms.length === 0) {
+      return null;
+    }
+
+    return [...new Set(focusTerms)].join(' ');
   }
 
   private hasExplicitSourceRequest(query: string): boolean {
