@@ -18,6 +18,7 @@ import { ChatDocumentationService } from './chat-documentation.service';
 import {
   ChatAnswerRoute,
   ChatCitation,
+  ChatHistoryMessage,
   ChatNormalizedQuery,
 } from './chat.types';
 import { sortChatSessions } from './chat-session-order';
@@ -441,6 +442,11 @@ export class ChatService {
             where: { deletedAt: null },
             orderBy: { createdAt: 'asc' },
             take: 10,
+            include: {
+              contextReferences: {
+                include: { shipManual: { select: { shipId: true } } },
+              },
+            },
           },
         },
       });
@@ -449,6 +455,15 @@ export class ChatService {
         role: message.role,
         content: message.content,
         ragflowContext: message.ragflowContext ?? undefined,
+        contextReferences: (message.contextReferences || []).map((reference) => ({
+          shipManualId: reference.shipManualId ?? undefined,
+          chunkId: reference.chunkId ?? undefined,
+          score: reference.score ?? undefined,
+          pageNumber: reference.pageNumber ?? undefined,
+          snippet: reference.snippet ?? undefined,
+          sourceTitle: reference.sourceTitle ?? undefined,
+          sourceUrl: reference.sourceUrl ?? undefined,
+        })),
       }));
       const normalizedQuery = this.queryNormalizationService.normalizeTurn({
         userQuery,
@@ -781,7 +796,18 @@ export class ChatService {
         documentationIntentPattern,
       );
 
-      const citationsForAnswer = telemetryOnlyQuery ? [] : citations;
+      const carriedForwardDocumentationCitations =
+        this.getCarriedForwardDocumentationCitations({
+          userQuery,
+          normalizedQuery: effectiveNormalizedQuery,
+          previousUserQuery,
+          messageHistory,
+        });
+      const citationsForAnswer = telemetryOnlyQuery
+        ? []
+        : carriedForwardDocumentationCitations.length > 0
+          ? carriedForwardDocumentationCitations
+          : citations;
       const llmTelemetryContext = this.selectTelemetryContextForLlm(
         queryPlan,
         effectiveUserQuery,
@@ -846,11 +872,17 @@ export class ChatService {
       }
 
       const deterministicContactAnswer =
-        this.buildDeterministicContactLookupAnswer(
+        this.shouldBypassDeterministicContactFollowUp(
           userQuery,
-          effectiveUserQuery,
-          citationsForAnswer,
-        );
+          effectiveNormalizedQuery,
+          carriedForwardDocumentationCitations,
+        )
+          ? null
+          : this.buildDeterministicContactLookupAnswer(
+              userQuery,
+              effectiveUserQuery,
+              citationsForAnswer,
+            );
       if (deterministicContactAnswer) {
         return this.addRoutedAssistantMessage({
           sessionId,
@@ -1104,6 +1136,128 @@ export class ChatService {
           clarificationDomain === 'historical_telemetry' ||
           ragflowContext?.historicalTelemetry === true),
     };
+  }
+
+  private getCarriedForwardDocumentationCitations(params: {
+    userQuery: string;
+    normalizedQuery: ChatNormalizedQuery;
+    previousUserQuery?: string;
+    messageHistory?: ChatHistoryMessage[];
+  }): ChatCitation[] {
+    const { userQuery, normalizedQuery, previousUserQuery, messageHistory } =
+      params;
+    if (
+      normalizedQuery.followUpMode !== 'follow_up' ||
+      !this.isPersonnelDetailFollowUpQuery(userQuery) ||
+      !messageHistory?.length
+    ) {
+      return [];
+    }
+
+    const priorSubject = (
+      previousUserQuery ??
+      normalizedQuery.previousUserQuery ??
+      ''
+    ).trim();
+    if (
+      !priorSubject ||
+      !this.looksLikePersonnelDirectorySubject(priorSubject)
+    ) {
+      return [];
+    }
+
+    for (let index = messageHistory.length - 1; index >= 0; index -= 1) {
+      const message = messageHistory[index];
+      if (message.role !== 'assistant') {
+        continue;
+      }
+
+      const references = message.contextReferences ?? [];
+      if (references.length === 0) {
+        continue;
+      }
+
+      const context =
+        message.ragflowContext && typeof message.ragflowContext === 'object'
+          ? (message.ragflowContext as Record<string, unknown>)
+          : null;
+      if (context?.usedDocumentation !== true) {
+        continue;
+      }
+
+      return this.dedupeChatCitations(references);
+    }
+
+    return [];
+  }
+
+  private shouldBypassDeterministicContactFollowUp(
+    userQuery: string,
+    normalizedQuery: ChatNormalizedQuery,
+    carriedForwardDocumentationCitations: ChatCitation[],
+  ): boolean {
+    if (
+      normalizedQuery.followUpMode !== 'follow_up' ||
+      carriedForwardDocumentationCitations.length === 0
+    ) {
+      return false;
+    }
+
+    const trimmed = userQuery.trim();
+    return (
+      /^(?:(?:only)\s+)?(?:the\s+)?(?:email|emails|phone|telephone|mobile|number|numbers|address|role|roles|position|positions|title|titles)(?:\s+only)?[!.?]*$/i.test(
+        trimmed,
+      ) ||
+      /\b(?:other|another|same)\s+one\b/i.test(trimmed) ||
+      /\bwhat\s+about\s+(?:the\s+)?(?:other|another|same)\b/i.test(trimmed)
+    );
+  }
+
+  private isPersonnelDetailFollowUpQuery(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    return (
+      /^(?:(?:only)\s+)?(?:the\s+)?(?:contact|contacts|contact\s+details?|details?|email|emails|phone|telephone|mobile|number|numbers|address|role|roles|position|positions|title|titles)(?:\s+only)?[!.?]*$/i.test(
+        trimmed,
+      ) ||
+      /\b(?:other|another|same)\s+one\b/i.test(trimmed) ||
+      /\bwhat\s+about\s+(?:the\s+)?(?:other|another|same)\b/i.test(trimmed)
+    );
+  }
+
+  private looksLikePersonnelDirectorySubject(value: string): boolean {
+    return (
+      this.documentationQueryService.isPersonnelDirectoryQuery(value) ||
+      /\b(contact|contacts|email|emails|phone|telephone|mobile|number|numbers|address|role|roles|position|positions|title|titles|dpa|cso|manager|director|officer|engineer|captain|master)\b/i.test(
+        value,
+      )
+    );
+  }
+
+  private dedupeChatCitations(citations: ChatCitation[]): ChatCitation[] {
+    const seen = new Set<string>();
+    const deduped: ChatCitation[] = [];
+
+    for (const citation of citations) {
+      const key = [
+        citation.shipManualId ?? '',
+        citation.chunkId ?? '',
+        citation.pageNumber ?? '',
+        citation.sourceTitle ?? '',
+        citation.snippet ?? '',
+      ].join('|');
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      deduped.push(citation);
+    }
+
+    return deduped;
   }
 
   private buildStructuredConversationState(

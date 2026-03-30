@@ -13,6 +13,7 @@ export interface ChatHistoryMessage {
   role: string;
   content: string;
   ragflowContext?: unknown;
+  contextReferences?: ChatCitation[];
 }
 
 export interface ChatSuggestionAction {
