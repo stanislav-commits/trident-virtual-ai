@@ -4,6 +4,7 @@ import {
   ChatCitation,
   ChatDocumentationContext,
   ChatHistoryMessage,
+  ChatNormalizedQuery,
 } from './chat.types';
 import { ChatDocumentationCitationService } from './chat-documentation-citation.service';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
@@ -27,24 +28,31 @@ export class ChatDocumentationService {
     role: string;
     userQuery: string;
     messageHistory?: ChatHistoryMessage[];
+    normalizedQuery?: ChatNormalizedQuery;
   }): Promise<ChatDocumentationContext> {
-    const { shipId, role, userQuery, messageHistory } = params;
+    const { shipId, role, userQuery, messageHistory, normalizedQuery } = params;
     let citations: ChatCitation[] = [];
     let analysisCitations: ChatCitation[] | undefined;
     const previousUserQuery =
+      normalizedQuery?.previousUserQuery ??
       this.queryService.getPreviousResolvedUserQuery(messageHistory);
     const pendingClarificationQuery =
+      normalizedQuery?.pendingClarificationQuery ??
       this.queryService.getPendingClarificationQuery(messageHistory);
-    const isClarificationReply = this.queryService.shouldTreatAsClarificationReply(
-      userQuery,
-      pendingClarificationQuery,
-    );
-    const retrievalQuery = isClarificationReply
-      ? this.queryService.buildClarificationResolvedQuery(
-          pendingClarificationQuery!,
-          userQuery,
-        )
-      : this.queryService.buildRetrievalQuery(userQuery, previousUserQuery);
+    const isClarificationReply =
+      normalizedQuery?.isClarificationReply ??
+      this.queryService.shouldTreatAsClarificationReply(
+        userQuery,
+        pendingClarificationQuery,
+      );
+    const retrievalQuery =
+      normalizedQuery?.retrievalQuery ??
+      (isClarificationReply
+        ? this.queryService.buildClarificationResolvedQuery(
+            pendingClarificationQuery!,
+            userQuery,
+          )
+        : this.queryService.buildRetrievalQuery(userQuery, previousUserQuery));
     const shouldPromoteRetrievalQueryToAnswerQuery =
       !isClarificationReply &&
       this.queryService.shouldPromoteRetrievalQueryToAnswerQuery(
@@ -53,9 +61,10 @@ export class ChatDocumentationService {
         retrievalQuery,
       );
     const effectiveUserQuery =
-      isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
+      normalizedQuery?.effectiveQuery ??
+      (isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
         ? retrievalQuery
-        : userQuery;
+        : userQuery);
 
     if (
       this.queryService.shouldAskClarifyingQuestion({
@@ -75,6 +84,7 @@ export class ChatDocumentationService {
       return {
         previousUserQuery: previousUserQuery ?? undefined,
         retrievalQuery,
+        normalizedQuery,
         citations,
         needsClarification: true,
         clarificationQuestion:
@@ -395,6 +405,7 @@ export class ChatDocumentationService {
       return {
         previousUserQuery: previousUserQuery ?? undefined,
         retrievalQuery,
+        normalizedQuery,
         answerQuery:
           isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
             ? retrievalQuery
@@ -411,16 +422,17 @@ export class ChatDocumentationService {
       );
     }
 
-      return {
-        previousUserQuery: previousUserQuery ?? undefined,
-        retrievalQuery,
-        answerQuery:
-          isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
-            ? retrievalQuery
-            : undefined,
-        citations,
-        analysisCitations: citations,
-      };
+    return {
+      previousUserQuery: previousUserQuery ?? undefined,
+      retrievalQuery,
+      normalizedQuery,
+      answerQuery:
+        isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
+          ? retrievalQuery
+          : undefined,
+      citations,
+      analysisCitations: citations,
+    };
   }
 
   private shouldAugmentBroadCertificateExpiryLookup(

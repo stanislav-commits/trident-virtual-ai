@@ -100,8 +100,12 @@ describe('ChatService telemetry clarification', () => {
       "I couldn't find a direct telemetry metric that exactly measures the requested reading, but I did find related metrics for the same topic. Which one do you want to inspect?",
       expect.objectContaining({
         awaitingClarification: true,
+        answerRoute: 'clarification',
         clarificationReason: 'related_telemetry_options',
         telemetryShips: ['Simens'],
+        normalizedQuery: expect.objectContaining({
+          sourceHints: expect.arrayContaining(['TELEMETRY']),
+        }),
         clarificationActions: [
           expect.objectContaining({
             label: 'Simens: SIEMENS-MASE-GENSET-PS.Diesel Fuel Rate (l/h)',
@@ -151,6 +155,7 @@ describe('ChatService telemetry clarification', () => {
       'Which year do you mean for 14 March?',
       expect.objectContaining({
         awaitingClarification: true,
+        answerRoute: 'clarification',
         clarificationReason: 'historical_telemetry_query',
         pendingClarificationQuery: 'What was the yacht position on 14 March?',
       }),
@@ -195,7 +200,13 @@ describe('ChatService telemetry clarification', () => {
       'session-1',
       'Based on historical telemetry from 2026-02-25 23:10 UTC to 2026-03-27 23:10 UTC, the total across the matched metrics was 4,384 liters [Telemetry History].',
       expect.objectContaining({
+        answerRoute: 'historical_telemetry',
         historicalTelemetry: true,
+        normalizedQuery: expect.objectContaining({
+          timeIntent: expect.objectContaining({
+            kind: 'historical_range',
+          }),
+        }),
       }),
       [],
     );
@@ -244,11 +255,15 @@ describe('ChatService telemetry clarification', () => {
       'ship-1',
       'What was the average generator load over the last 7 days?',
       undefined,
+      expect.objectContaining({
+        sourceHints: expect.arrayContaining(['TELEMETRY', 'HISTORY']),
+      }),
     );
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
       'Based on historical telemetry from 2026-03-20 23:12 UTC to 2026-03-27 23:12 UTC, the average across the matched metrics was 4.52 % [Telemetry History].',
       expect.objectContaining({
+        answerRoute: 'historical_telemetry',
         historicalTelemetry: true,
         telemetryShips: ['SeaWolfX'],
       }),

@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateMetricDefinitionDto } from './dto/create-metric-definition.dto';
 import { MetricDescriptionService } from './metric-description.service';
 import { UpdateMetricDefinitionDto } from './dto/update-metric-definition.dto';
+import type { ChatNormalizedQuery } from '../chat/chat.types';
 
 const METRIC_SELECT = {
   key: true,
@@ -95,11 +96,20 @@ interface ShipHistoricalTelemetryResolution {
 
 interface ParsedHistoricalTelemetryRequest {
   metricQuery: string;
-  operation: 'point' | 'average' | 'min' | 'max' | 'sum' | 'delta' | 'position';
+  operation:
+    | 'point'
+    | 'average'
+    | 'min'
+    | 'max'
+    | 'sum'
+    | 'delta'
+    | 'position'
+    | 'event';
   range: InfluxHistoricalQueryRange;
   pointInTime?: Date;
   rangeLabel: string;
   clarificationQuestion?: string;
+  eventType?: 'bunkering' | 'fuel_increase';
 }
 
 @Injectable()
@@ -557,6 +567,7 @@ export class MetricsService implements OnModuleInit {
     shipId: string,
     query: string,
     resolvedSubjectQuery?: string,
+    normalizedQuery?: ChatNormalizedQuery,
   ): Promise<ShipHistoricalTelemetryResolution> {
     this.logger.debug(
       `Historical telemetry resolver input ship=${shipId} query="${this.truncateTelemetryLogValue(
@@ -568,6 +579,7 @@ export class MetricsService implements OnModuleInit {
     const parsedRequest = this.parseHistoricalTelemetryRequest(
       query,
       resolvedSubjectQuery,
+      normalizedQuery,
     );
     if (!parsedRequest) {
       this.logger.debug(
@@ -852,6 +864,24 @@ export class MetricsService implements OnModuleInit {
     entries: ShipTelemetryEntry[],
     request: ParsedHistoricalTelemetryRequest,
   ): ShipTelemetryEntry[] {
+    if (request.operation === 'event') {
+      const normalizedMetricQuery = this.normalizeTelemetryText(
+        request.metricQuery,
+      );
+      const fuelTankEntries = entries
+        .filter((entry) => this.isDirectTankStorageEntry(entry, 'fuel'))
+        .sort((left, right) => {
+          const tankRank =
+            this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
+          return tankRank || left.key.localeCompare(right.key);
+        });
+      if (fuelTankEntries.length > 0) {
+        return fuelTankEntries;
+      }
+
+      return this.findRelevantTelemetryEntries(entries, normalizedMetricQuery);
+    }
+
     if (request.operation === 'position') {
       return this.findLocationTelemetryEntries(
         entries,
@@ -950,6 +980,23 @@ export class MetricsService implements OnModuleInit {
         matchedEntries,
         organizationName,
         request,
+      );
+    }
+
+    if (effectiveOperation === 'event') {
+      return this.buildHistoricalEventAnswer(
+        matchedEntries,
+        organizationName,
+        request,
+      );
+    }
+
+    if (request.pointInTime && effectiveOperation !== 'point') {
+      return this.buildHistoricalPointAggregateAnswer(
+        matchedEntries,
+        organizationName,
+        request,
+        effectiveOperation,
       );
     }
 
@@ -1073,6 +1120,189 @@ export class MetricsService implements OnModuleInit {
     }
 
     return `For ${request.rangeLabel}, the recorded vessel position was Latitude ${singlePosition.latitude.toFixed(6)}, Longitude ${singlePosition.longitude.toFixed(6)} at ${this.formatHistoricalTimestamp(singlePosition.time)} [Telemetry History].`;
+  }
+
+  private async buildHistoricalPointAggregateAnswer(
+    matchedEntries: ShipTelemetryEntry[],
+    organizationName: string,
+    request: ParsedHistoricalTelemetryRequest,
+    operation: 'average' | 'min' | 'max' | 'sum' | 'delta',
+  ): Promise<string | null> {
+    if (!request.pointInTime || operation === 'delta') {
+      return null;
+    }
+
+    const rows = await this.influxdb.queryHistoricalNearestValues(
+      matchedEntries.map((entry) => entry.key),
+      request.pointInTime,
+      organizationName,
+    );
+    const nearestRows = this.pickNearestHistoricalRows(rows, request.pointInTime);
+    if (nearestRows.length === 0) {
+      return null;
+    }
+
+    const rowsByKey = new Map(nearestRows.map((row) => [row.key, row]));
+    const values = matchedEntries
+      .map((entry) => {
+        const row = rowsByKey.get(entry.key);
+        const numericValue = this.parseHistoricalNumericValue(row?.value);
+        if (!row || numericValue == null) {
+          return null;
+        }
+
+        return {
+          entry,
+          value: numericValue,
+        };
+      })
+      .filter(
+        (
+          value,
+        ): value is {
+          entry: ShipTelemetryEntry;
+          value: number;
+        } => Boolean(value),
+      );
+    if (values.length === 0) {
+      return null;
+    }
+
+    const unit = this.getConsistentHistoricalUnit(values.map((item) => item.entry));
+    const unitSuffix = unit ? ` ${unit}` : '';
+    const labelMap: Record<'average' | 'min' | 'max' | 'sum', string> = {
+      average: 'average',
+      min: 'minimum',
+      max: 'maximum',
+      sum: 'total',
+    };
+    const overallValue =
+      operation === 'min'
+        ? Math.min(...values.map((item) => item.value))
+        : operation === 'max'
+          ? Math.max(...values.map((item) => item.value))
+          : operation === 'sum'
+            ? values.reduce((sum, item) => sum + item.value, 0)
+            : values.reduce((sum, item) => sum + item.value, 0) / values.length;
+
+    if (values.length === 1) {
+      return `At ${request.rangeLabel}, the ${labelMap[operation]} ${this.buildTelemetrySuggestionLabel(values[0].entry)} was ${this.formatAggregateNumber(values[0].value)}${unitSuffix} [Telemetry History].`;
+    }
+
+    const lines = values.map(
+      (item) =>
+        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.value)}${unitSuffix}`,
+    );
+
+    return [
+      `At ${request.rangeLabel}, the ${labelMap[operation]} across the matched historical telemetry readings was ${this.formatAggregateNumber(overallValue)}${unitSuffix} [Telemetry History].`,
+      '',
+      ...lines,
+    ].join('\n');
+  }
+
+  private async buildHistoricalEventAnswer(
+    matchedEntries: ShipTelemetryEntry[],
+    organizationName: string,
+    request: ParsedHistoricalTelemetryRequest,
+  ): Promise<string | null> {
+    const rows = await this.influxdb.queryHistoricalSeries(
+      matchedEntries.map((entry) => entry.key),
+      request.range,
+      organizationName,
+    );
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const rowsByKey = new Map<string, InfluxMetricValue[]>();
+    for (const row of rows) {
+      const existing = rowsByKey.get(row.key) ?? [];
+      existing.push(row);
+      rowsByKey.set(row.key, existing);
+    }
+
+    const positiveEvents = matchedEntries
+      .flatMap((entry) => {
+        const series = [...(rowsByKey.get(entry.key) ?? [])].sort(
+          (left, right) => Date.parse(left.time) - Date.parse(right.time),
+        );
+        const events: Array<{
+          entry: ShipTelemetryEntry;
+          time: Date;
+          delta: number;
+          fromValue: number;
+          toValue: number;
+        }> = [];
+
+        for (let index = 1; index < series.length; index += 1) {
+          const previousValue = this.parseHistoricalNumericValue(
+            series[index - 1]?.value,
+          );
+          const currentValue = this.parseHistoricalNumericValue(
+            series[index]?.value,
+          );
+          if (previousValue == null || currentValue == null) {
+            continue;
+          }
+
+          const delta = currentValue - previousValue;
+          if (delta <= this.getHistoricalPositiveDeltaThreshold(entry)) {
+            continue;
+          }
+
+          const eventTime = new Date(series[index].time);
+          if (Number.isNaN(eventTime.getTime())) {
+            continue;
+          }
+
+          events.push({
+            entry,
+            time: eventTime,
+            delta,
+            fromValue: previousValue,
+            toValue: currentValue,
+          });
+        }
+
+        return events;
+      })
+      .sort((left, right) => right.time.getTime() - left.time.getTime());
+
+    if (positiveEvents.length === 0) {
+      return null;
+    }
+
+    const latestTimestamp = positiveEvents[0].time.getTime();
+    const clusteredEvents = positiveEvents.filter(
+      (event) => latestTimestamp - event.time.getTime() <= 30 * 60 * 1000,
+    );
+    const clusteredEntries = clusteredEvents.map((event) => event.entry);
+    const unit = this.getConsistentHistoricalUnit(clusteredEntries);
+    const unitSuffix = unit ? ` ${unit}` : '';
+    const totalDelta = clusteredEvents.reduce((sum, event) => sum + event.delta, 0);
+    const lines = clusteredEvents.slice(0, 4).map(
+      (event) =>
+        `- ${this.buildTelemetrySuggestionLabel(event.entry)}: ${this.formatAggregateNumber(event.fromValue)}${unitSuffix} -> ${this.formatAggregateNumber(event.toValue)}${unitSuffix} (${this.formatAggregateNumber(event.delta)}${unitSuffix})`,
+    );
+    const timestamp = this.formatHistoricalTimestamp(
+      new Date(latestTimestamp),
+    );
+    const eventLabel =
+      request.eventType === 'bunkering'
+        ? 'bunkering-like fuel increase'
+        : 'fuel increase';
+
+    if (clusteredEvents.length === 1) {
+      const [event] = clusteredEvents;
+      return `The latest historical ${eventLabel} was at ${timestamp}, when ${this.buildTelemetrySuggestionLabel(event.entry)} increased by ${this.formatAggregateNumber(event.delta)}${unitSuffix} [Telemetry History].`;
+    }
+
+    return [
+      `The latest historical ${eventLabel} was at ${timestamp}, when the matched fuel readings increased by ${this.formatAggregateNumber(totalDelta)}${unitSuffix} [Telemetry History].`,
+      '',
+      ...lines,
+    ].join('\n');
   }
 
   private async buildHistoricalDeltaAnswer(
@@ -1261,11 +1491,16 @@ export class MetricsService implements OnModuleInit {
   private parseHistoricalTelemetryRequest(
     query: string,
     resolvedSubjectQuery?: string,
+    normalizedQuery?: ChatNormalizedQuery,
   ): ParsedHistoricalTelemetryRequest | null {
     const searchSpace = `${query}\n${resolvedSubjectQuery ?? ''}`;
     const normalized = this.normalizeTelemetryText(searchSpace);
     const positionQuery = this.isTelemetryLocationQuery(normalized);
-    const operation = this.detectHistoricalOperation(searchSpace, positionQuery);
+    const operation = this.detectHistoricalOperation(
+      searchSpace,
+      positionQuery,
+      normalizedQuery,
+    );
     const missingYearFragment = this.findHistoricalDateWithoutYear(searchSpace);
     if (missingYearFragment) {
       return {
@@ -1280,8 +1515,34 @@ export class MetricsService implements OnModuleInit {
     const relativeRange = this.parseRelativeHistoricalRange(searchSpace);
     const explicitDate = this.parseExplicitHistoricalDate(searchSpace);
     const explicitTime = this.parseHistoricalTimeOfDay(searchSpace);
+    const relativePointInTime = this.parseRelativeHistoricalPoint(
+      searchSpace,
+      normalizedQuery,
+    );
+    const metricQuery = this.sanitizeHistoricalMetricQuery(
+      normalizedQuery?.subject?.trim()
+        ? normalizedQuery.subject
+        : resolvedSubjectQuery?.trim()
+          ? resolvedSubjectQuery
+          : query,
+    );
 
-    if (!relativeRange && !explicitDate) {
+    if (operation === 'event') {
+      const range = this.buildDefaultHistoricalEventRange();
+      return {
+        metricQuery: metricQuery || 'fuel tank',
+        operation,
+        range,
+        rangeLabel: this.formatHistoricalRange(range),
+        eventType:
+          normalizedQuery?.timeIntent.eventType ??
+          (/\b(bunkering|refill)\b/i.test(searchSpace)
+            ? 'bunkering'
+            : 'fuel_increase'),
+      };
+    }
+
+    if (!relativeRange && !explicitDate && !relativePointInTime) {
       return null;
     }
 
@@ -1294,11 +1555,20 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
-    const metricQuery = this.sanitizeHistoricalMetricQuery(
-      resolvedSubjectQuery?.trim() ? resolvedSubjectQuery : query,
-    );
-
     if (operation === 'point' || operation === 'position') {
+      if (relativePointInTime) {
+        return {
+          metricQuery,
+          operation,
+          range: {
+            start: relativePointInTime,
+            stop: relativePointInTime,
+          },
+          pointInTime: relativePointInTime,
+          rangeLabel: this.formatHistoricalTimestamp(relativePointInTime),
+        };
+      }
+
       if (!explicitTime) {
         if (operation === 'position') {
           const singleDayRange = explicitDate
@@ -1362,6 +1632,19 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
+    if (relativePointInTime) {
+      return {
+        metricQuery,
+        operation,
+        range: {
+          start: relativePointInTime,
+          stop: relativePointInTime,
+        },
+        pointInTime: relativePointInTime,
+        rangeLabel: this.formatHistoricalTimestamp(relativePointInTime),
+      };
+    }
+
     const range = relativeRange ?? this.buildFullDayHistoricalRange(explicitDate!);
     return {
       metricQuery,
@@ -1382,12 +1665,24 @@ export class MetricsService implements OnModuleInit {
   private detectHistoricalOperation(
     query: string,
     positionQuery: boolean,
-  ): 'point' | 'average' | 'min' | 'max' | 'sum' | 'delta' | 'position' {
+    normalizedQuery?: ChatNormalizedQuery,
+  ): 'point' | 'average' | 'min' | 'max' | 'sum' | 'delta' | 'position' | 'event' {
     if (positionQuery) {
       return 'position';
     }
 
+    if (normalizedQuery?.operation === 'event') {
+      return 'event';
+    }
+
     const normalized = this.normalizeTelemetryText(query);
+    if (
+      /\b(last\s+bunkering|last\s+increase|fuel\s+last\s+increase|most\s+recent\s+refill|latest\s+refill)\b/i.test(
+        normalized,
+      )
+    ) {
+      return 'event';
+    }
     if (/\b(average|avg|mean)\b/i.test(normalized)) {
       return 'average';
     }
@@ -1430,6 +1725,27 @@ export class MetricsService implements OnModuleInit {
       return { start, stop: now };
     }
 
+    const agoMatch = normalized.match(
+      /\b(\d+)\s+(hour|hours|day|days|week|weeks|month|months)\s+ago\b/i,
+    );
+    if (agoMatch) {
+      const amount = Number.parseInt(agoMatch[1], 10);
+      const unit = agoMatch[2].toLowerCase();
+      const pointInTime = new Date(now);
+      if (unit.startsWith('hour'))
+        pointInTime.setUTCHours(pointInTime.getUTCHours() - amount);
+      if (unit.startsWith('day'))
+        pointInTime.setUTCDate(pointInTime.getUTCDate() - amount);
+      if (unit.startsWith('week'))
+        pointInTime.setUTCDate(pointInTime.getUTCDate() - amount * 7);
+      if (unit.startsWith('month'))
+        pointInTime.setUTCMonth(pointInTime.getUTCMonth() - amount);
+      return {
+        start: this.startOfUtcDay(pointInTime),
+        stop: this.endOfUtcDay(pointInTime),
+      };
+    }
+
     if (/\byesterday\b/i.test(normalized)) {
       const start = this.startOfUtcDay(new Date(now.getTime() - 24 * 60 * 60 * 1000));
       const stop = this.endOfUtcDay(start);
@@ -1467,6 +1783,55 @@ export class MetricsService implements OnModuleInit {
     }
 
     return null;
+  }
+
+  private parseRelativeHistoricalPoint(
+    query: string,
+    normalizedQuery?: ChatNormalizedQuery,
+  ): Date | null {
+    if (normalizedQuery?.timeIntent.kind !== 'historical_point') {
+      const normalized = this.normalizeTelemetryText(query);
+      if (!/\b\d+\s+(hour|hours|day|days|week|weeks|month|months)\s+ago\b/i.test(normalized)) {
+        return null;
+      }
+    }
+
+    const normalized = this.normalizeTelemetryText(query);
+    const agoMatch = normalized.match(
+      /\b(\d+)\s+(hour|hours|day|days|week|weeks|month|months)\s+ago\b/i,
+    );
+    if (!agoMatch) {
+      return null;
+    }
+
+    const amount = Number.parseInt(agoMatch[1], 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return null;
+    }
+
+    const unit = agoMatch[2].toLowerCase();
+    const pointInTime = new Date();
+    if (unit.startsWith('hour')) {
+      pointInTime.setUTCHours(pointInTime.getUTCHours() - amount);
+    }
+    if (unit.startsWith('day')) {
+      pointInTime.setUTCDate(pointInTime.getUTCDate() - amount);
+    }
+    if (unit.startsWith('week')) {
+      pointInTime.setUTCDate(pointInTime.getUTCDate() - amount * 7);
+    }
+    if (unit.startsWith('month')) {
+      pointInTime.setUTCMonth(pointInTime.getUTCMonth() - amount);
+    }
+
+    return pointInTime;
+  }
+
+  private buildDefaultHistoricalEventRange(): InfluxHistoricalQueryRange {
+    const stop = new Date();
+    const start = new Date(stop);
+    start.setUTCMonth(start.getUTCMonth() - 6);
+    return { start, stop };
   }
 
   private parseExplicitHistoricalDate(query: string): Date | null {
@@ -1684,6 +2049,15 @@ export class MetricsService implements OnModuleInit {
     }
 
     return unit;
+  }
+
+  private getHistoricalPositiveDeltaThreshold(entry: ShipTelemetryEntry): number {
+    const unit = this.getTelemetryDisplayUnit(entry);
+    if (unit === '%') {
+      return 1;
+    }
+
+    return 20;
   }
 
   private getTelemetryDisplayUnit(entry: ShipTelemetryEntry): string | null {

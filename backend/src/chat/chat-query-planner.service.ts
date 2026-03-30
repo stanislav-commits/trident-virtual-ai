@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ChatNormalizedQuery } from './chat.types';
 
 export type ChatQueryIntent =
   | 'telemetry_list'
@@ -38,12 +39,25 @@ export interface ChatQueryPlan {
 
 @Injectable()
 export class ChatQueryPlannerService {
-  planQuery(query: string, resolvedSubjectQuery?: string): ChatQueryPlan {
-    const primaryIntent = this.classifyPrimaryIntent(query);
-    const subjectContext = `${query}\n${resolvedSubjectQuery ?? ''}`;
+  planQuery(
+    query: string | ChatNormalizedQuery,
+    resolvedSubjectQuery?: string,
+  ): ChatQueryPlan {
+    const normalizedQuery = typeof query === 'string' ? undefined : query;
+    const effectiveQuery =
+      typeof query === 'string' ? query : query.effectiveQuery;
+    const primaryIntent = this.classifyPrimaryIntent(query, resolvedSubjectQuery);
+    const subjectContext = [
+      effectiveQuery,
+      resolvedSubjectQuery ?? '',
+      normalizedQuery?.subject ?? '',
+      normalizedQuery?.asset ?? '',
+    ]
+      .filter(Boolean)
+      .join('\n');
     const secondaryIntents = this.detectSecondaryIntents(
       primaryIntent,
-      query,
+      effectiveQuery,
       subjectContext,
     );
 
@@ -61,6 +75,7 @@ export class ChatQueryPlannerService {
         primaryIntent,
         secondaryIntents,
         subjectContext,
+        normalizedQuery,
       ),
       allowsMaintenanceCalculation: primaryIntent === 'next_due_calculation',
       prefersExactDocumentRows: this.prefersExactDocumentRows(
@@ -75,9 +90,24 @@ export class ChatQueryPlannerService {
     };
   }
 
-  classifyPrimaryIntent(query: string): ChatQueryIntent {
-    const normalized = query.trim();
+  classifyPrimaryIntent(
+    query: string | ChatNormalizedQuery,
+    resolvedSubjectQuery?: string,
+  ): ChatQueryIntent {
+    const normalizedQuery = typeof query === 'string' ? undefined : query;
+    const normalized =
+      typeof query === 'string' ? query.trim() : query.effectiveQuery.trim();
     const lowered = normalized.toLowerCase();
+
+    if (
+      normalizedQuery &&
+      this.isHistoricalTelemetryIntentFromNormalized(
+        normalizedQuery,
+        resolvedSubjectQuery,
+      )
+    ) {
+      return 'telemetry_history';
+    }
 
     if (this.isMaintenanceCalculationQuery(lowered)) {
       return 'next_due_calculation';
@@ -336,7 +366,18 @@ export class ChatQueryPlannerService {
     primaryIntent: ChatQueryIntent,
     secondaryIntents: ChatQueryIntent[],
     subjectContext: string,
+    normalizedQuery?: ChatNormalizedQuery,
   ): boolean {
+    if (
+      normalizedQuery &&
+      this.isHistoricalTelemetryIntentFromNormalized(
+        normalizedQuery,
+        subjectContext,
+      )
+    ) {
+      return true;
+    }
+
     return (
       primaryIntent === 'telemetry_history' ||
       primaryIntent === 'analytics_forecast' ||
@@ -344,6 +385,34 @@ export class ChatQueryPlannerService {
       /\b(last\s+\d+\s+(?:days?|weeks?|months?)|over\s+the\s+last|history|historical|trend|forecast|position\s+(?:on|at))\b/i.test(
         subjectContext,
       )
+    );
+  }
+
+  private isHistoricalTelemetryIntentFromNormalized(
+    normalizedQuery: ChatNormalizedQuery,
+    resolvedSubjectQuery?: string,
+  ): boolean {
+    if (
+      normalizedQuery.timeIntent.kind !== 'historical_point' &&
+      normalizedQuery.timeIntent.kind !== 'historical_range' &&
+      normalizedQuery.timeIntent.kind !== 'historical_event'
+    ) {
+      return false;
+    }
+
+    if (normalizedQuery.sourceHints.includes('TELEMETRY')) {
+      return true;
+    }
+
+    const searchSpace = [
+      normalizedQuery.subject ?? '',
+      normalizedQuery.asset ?? '',
+      normalizedQuery.effectiveQuery,
+      resolvedSubjectQuery ?? '',
+    ].join(' ');
+
+    return /\b(tank|fuel|oil|coolant|temperature|pressure|voltage|load|rpm|runtime|hours?|position|latitude|longitude|telemetry|metric)\b/i.test(
+      searchSpace,
     );
   }
 

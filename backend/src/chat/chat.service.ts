@@ -15,13 +15,18 @@ import {
   ChatMessageResponseDto,
 } from './dto/chat-response.dto';
 import { ChatDocumentationService } from './chat-documentation.service';
-import { ChatCitation } from './chat.types';
+import {
+  ChatAnswerRoute,
+  ChatCitation,
+  ChatNormalizedQuery,
+} from './chat.types';
 import { sortChatSessions } from './chat-session-order';
 import {
   ChatQueryPlan,
   ChatQueryPlannerService,
 } from './chat-query-planner.service';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
+import { ChatQueryNormalizationService } from './chat-query-normalization.service';
 
 interface TelemetryClarificationAction {
   label: string;
@@ -56,6 +61,8 @@ export class ChatService {
   private readonly queryPlanner = new ChatQueryPlannerService();
   private readonly documentationQueryService =
     new ChatDocumentationQueryService();
+  private readonly queryNormalizationService =
+    new ChatQueryNormalizationService(this.documentationQueryService);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -438,16 +445,23 @@ export class ChatService {
         },
       });
 
+      const messageHistory = session?.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+        ragflowContext: message.ragflowContext ?? undefined,
+      }));
+      const normalizedQuery = this.queryNormalizationService.normalizeTurn({
+        userQuery,
+        messageHistory,
+      });
+
       const documentationContext =
         await this.documentationService.prepareDocumentationContext({
           shipId,
           role,
           userQuery,
-          messageHistory: session?.messages.map((message) => ({
-            role: message.role,
-            content: message.content,
-            ragflowContext: message.ragflowContext ?? undefined,
-          })),
+          messageHistory,
+          normalizedQuery,
         });
 
       const {
@@ -463,6 +477,11 @@ export class ChatService {
         exactResolvedSubjectQuery ??
         (retrievalQuery !== userQuery ? retrievalQuery : undefined);
       const effectiveUserQuery = answerQuery ?? userQuery;
+      const effectiveNormalizedQuery: ChatNormalizedQuery = {
+        ...normalizedQuery,
+        retrievalQuery,
+        effectiveQuery: effectiveUserQuery,
+      };
       this.logger.debug(
         `Chat query context session=${sessionId} ship=${shipId ?? 'none'} userQuery="${this.truncateForLog(
           userQuery,
@@ -470,10 +489,10 @@ export class ChatService {
           effectiveUserQuery,
         )}" resolvedSubjectQuery="${this.truncateForLog(
           resolvedSubjectQuery ?? '',
-        )}"`,
+        )}" normalizedQuery=${JSON.stringify(effectiveNormalizedQuery)}`,
       );
       const queryPlan = this.queryPlanner.planQuery(
-        effectiveUserQuery,
+        effectiveNormalizedQuery,
         resolvedSubjectQuery,
       );
 
@@ -481,10 +500,13 @@ export class ChatService {
         documentationContext.needsClarification &&
         documentationContext.clarificationQuestion
       ) {
-        return this.addAssistantMessage(
+        return this.addRoutedAssistantMessage({
           sessionId,
-          documentationContext.clarificationQuestion,
-          {
+          content: documentationContext.clarificationQuestion,
+          route: 'clarification',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['documentation:clarification'],
+          ragflowContext: {
             awaitingClarification: true,
             pendingClarificationQuery:
               documentationContext.pendingClarificationQuery ?? userQuery.trim(),
@@ -498,8 +520,8 @@ export class ChatService {
                 }
               : {}),
           },
-          [],
-        );
+          contextReferences: [],
+        });
       }
 
       const historicalTelemetryMatch =
@@ -510,6 +532,7 @@ export class ChatService {
           userQuery,
           effectiveUserQuery,
           resolvedSubjectQuery,
+          normalizedQuery: effectiveNormalizedQuery,
         });
 
       if (historicalTelemetryMatch) {
@@ -520,10 +543,13 @@ export class ChatService {
           historicalTelemetryResolution.kind === 'clarification' &&
           historicalTelemetryResolution.clarificationQuestion
         ) {
-          return this.addAssistantMessage(
+          return this.addRoutedAssistantMessage({
             sessionId,
-            historicalTelemetryResolution.clarificationQuestion,
-            {
+            content: historicalTelemetryResolution.clarificationQuestion,
+            route: 'clarification',
+            normalizedQuery: effectiveNormalizedQuery,
+            routeTrace: ['historical_telemetry:clarification'],
+            ragflowContext: {
               awaitingClarification: true,
               pendingClarificationQuery:
                 historicalTelemetryResolution.pendingQuery ?? userQuery.trim(),
@@ -543,26 +569,29 @@ export class ChatService {
                   ? { resolvedSubjectQuery: retrievalQuery }
                   : {}),
             },
-            [],
-          );
+            contextReferences: [],
+          });
         }
 
         if (
           historicalTelemetryResolution.kind === 'answer' &&
           historicalTelemetryResolution.content
         ) {
-          return this.addAssistantMessage(
+          return this.addRoutedAssistantMessage({
             sessionId,
-            historicalTelemetryResolution.content,
-            {
+            content: historicalTelemetryResolution.content,
+            route: 'historical_telemetry',
+            normalizedQuery: effectiveNormalizedQuery,
+            routeTrace: ['historical_telemetry:answer'],
+            ragflowContext: {
               historicalTelemetry: true,
               ...(historicalTelemetryMatch.shipName
                 ? { telemetryShips: [historicalTelemetryMatch.shipName] }
                 : {}),
               resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             },
-            [],
-          );
+            contextReferences: [],
+          });
         }
       }
 
@@ -643,10 +672,13 @@ export class ChatService {
         this.logger.debug(
           `Returning telemetry clarification for query="${effectiveUserQuery}" with ${telemetryClarification.actions.length} actions`,
         );
-        return this.addAssistantMessage(
+        return this.addRoutedAssistantMessage({
           sessionId,
-          telemetryClarification.question,
-          {
+          content: telemetryClarification.question,
+          route: 'clarification',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['current_telemetry:clarification'],
+          ragflowContext: {
             awaitingClarification: true,
             pendingClarificationQuery: telemetryClarification.pendingQuery,
             clarificationReason: 'related_telemetry_options',
@@ -660,8 +692,8 @@ export class ChatService {
                 ? { resolvedSubjectQuery: retrievalQuery }
                 : {}),
           },
-          [],
-        );
+          contextReferences: [],
+        });
       }
 
       const documentationIntentPattern =
@@ -692,18 +724,21 @@ export class ChatService {
           telemetry,
         });
       if (deterministicForecastAnswer) {
-        return this.addAssistantMessage(
+        return this.addRoutedAssistantMessage({
           sessionId,
-          deterministicForecastAnswer,
-          {
+          content: deterministicForecastAnswer,
+          route: 'analytics_forecast',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['analytics_forecast:deterministic'],
+          ragflowContext: {
             resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
             noDocumentation: true,
           },
-          [],
-        );
+          contextReferences: [],
+        });
       }
 
       const deterministicCertificateAnswer =
@@ -715,17 +750,20 @@ export class ChatService {
             : citationsForAnswer,
         );
       if (deterministicCertificateAnswer) {
-        return this.addAssistantMessage(
+        return this.addRoutedAssistantMessage({
           sessionId,
-          deterministicCertificateAnswer.content,
-          {
+          content: deterministicCertificateAnswer.content,
+          route: 'deterministic_certificate',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['certificate:deterministic'],
+          ragflowContext: {
             resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
           },
-          deterministicCertificateAnswer.citations,
-        );
+          contextReferences: deterministicCertificateAnswer.citations,
+        });
       }
 
       const deterministicContactAnswer =
@@ -735,17 +773,20 @@ export class ChatService {
           citationsForAnswer,
         );
       if (deterministicContactAnswer) {
-        return this.addAssistantMessage(
+        return this.addRoutedAssistantMessage({
           sessionId,
-          deterministicContactAnswer.content,
-          {
+          content: deterministicContactAnswer.content,
+          route: 'deterministic_contact',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['contact:deterministic'],
+          ragflowContext: {
             resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
           },
-          deterministicContactAnswer.citations,
-        );
+          contextReferences: deterministicContactAnswer.citations,
+        });
       }
 
       const deterministicDocumentationAnswer =
@@ -755,17 +796,20 @@ export class ChatService {
           citationsForAnswer,
         );
       if (deterministicDocumentationAnswer) {
-        return this.addAssistantMessage(
+        return this.addRoutedAssistantMessage({
           sessionId,
-          deterministicDocumentationAnswer,
-          {
+          content: deterministicDocumentationAnswer,
+          route: 'deterministic_document',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['documentation:deterministic'],
+          ragflowContext: {
             resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
           },
-          citationsForAnswer,
-        );
+          contextReferences: citationsForAnswer,
+        });
       }
 
       const deterministicTelemetryUnavailableAnswer =
@@ -777,17 +821,20 @@ export class ChatService {
           citationsForAnswer,
         );
       if (deterministicTelemetryUnavailableAnswer) {
-        return this.addAssistantMessage(
+        return this.addRoutedAssistantMessage({
           sessionId,
-          deterministicTelemetryUnavailableAnswer.content,
-          {
+          content: deterministicTelemetryUnavailableAnswer.content,
+          route: 'current_telemetry',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['current_telemetry:deterministic_unavailable'],
+          ragflowContext: {
             resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
           },
-          deterministicTelemetryUnavailableAnswer.citations,
-        );
+          contextReferences: deterministicTelemetryUnavailableAnswer.citations,
+        });
       }
 
       const deterministicTelemetryAnswer = this.buildDeterministicTelemetryAnswer(
@@ -798,10 +845,13 @@ export class ChatService {
         telemetryMatchMode,
       );
       if (deterministicTelemetryAnswer) {
-        return this.addAssistantMessage(
+        return this.addRoutedAssistantMessage({
           sessionId,
-          deterministicTelemetryAnswer,
-          {
+          content: deterministicTelemetryAnswer,
+          route: 'current_telemetry',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['current_telemetry:deterministic_answer'],
+          ragflowContext: {
             resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
@@ -810,8 +860,8 @@ export class ChatService {
               ? { noDocumentation: true }
               : {}),
           },
-          citationsForAnswer,
-        );
+          contextReferences: citationsForAnswer,
+        });
       }
 
       const response = await this.llmService.generateResponse({
@@ -836,16 +886,19 @@ export class ChatService {
         telemetry: llmTelemetryContext.telemetry,
         telemetryPrefiltered: llmTelemetryContext.telemetryPrefiltered,
         telemetryMatchMode: llmTelemetryContext.telemetryMatchMode,
-        chatHistory: session?.messages.map((message) => ({
+        chatHistory: messageHistory?.map((message) => ({
           role: message.role,
           content: message.content,
         })),
       });
 
-      return this.addAssistantMessage(
+      return this.addRoutedAssistantMessage({
         sessionId,
-        response,
-        {
+        content: response,
+        route: 'llm_generation',
+        normalizedQuery: effectiveNormalizedQuery,
+        routeTrace: ['llm:generation'],
+        ragflowContext: {
           resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
           ...(telemetryShips.length > 0
             ? { telemetryShips: [...new Set(telemetryShips)] }
@@ -854,12 +907,54 @@ export class ChatService {
             ? { noDocumentation: true }
             : {}),
         },
-        citationsForAnswer,
-      );
+        contextReferences: citationsForAnswer,
+      });
     } catch (error) {
       const fallback = `I encountered an issue processing your query: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`;
-      return this.addAssistantMessage(sessionId, fallback);
+      const fallbackNormalizedQuery = this.queryNormalizationService.normalizeTurn({
+        userQuery,
+      });
+      return this.addRoutedAssistantMessage({
+        sessionId,
+        content: fallback,
+        route: 'llm_generation',
+        normalizedQuery: fallbackNormalizedQuery,
+        routeTrace: ['error:fallback'],
+        contextReferences: [],
+      });
     }
+  }
+
+  private addRoutedAssistantMessage(params: {
+    sessionId: string;
+    content: string;
+    route: ChatAnswerRoute;
+    normalizedQuery: ChatNormalizedQuery;
+    routeTrace?: string[];
+    ragflowContext?: Record<string, unknown>;
+    contextReferences?: ChatCitation[];
+  }): Promise<ChatMessageResponseDto> {
+    const {
+      sessionId,
+      content,
+      route,
+      normalizedQuery,
+      routeTrace,
+      ragflowContext,
+      contextReferences,
+    } = params;
+
+    return this.addAssistantMessage(
+      sessionId,
+      content,
+      {
+        ...(ragflowContext ?? {}),
+        answerRoute: route,
+        normalizedQuery,
+        ...(routeTrace?.length ? { routeTrace } : {}),
+      },
+      contextReferences,
+    );
   }
 
   private truncateForLog(value: string, maxLength = 180): string {
@@ -878,6 +973,7 @@ export class ChatService {
     userQuery: string;
     effectiveUserQuery: string;
     resolvedSubjectQuery?: string;
+    normalizedQuery: ChatNormalizedQuery;
   }): Promise<{
     resolution: Awaited<
       ReturnType<MetricsService['resolveHistoricalTelemetryQuery']>
@@ -892,6 +988,7 @@ export class ChatService {
       userQuery,
       effectiveUserQuery,
       resolvedSubjectQuery,
+      normalizedQuery,
     } = params;
 
     if (shipId) {
@@ -902,6 +999,7 @@ export class ChatService {
           userQuery,
           effectiveUserQuery,
           resolvedSubjectQuery,
+          normalizedQuery,
         }),
         shipId,
       };
@@ -936,6 +1034,7 @@ export class ChatService {
         userQuery,
         effectiveUserQuery,
         resolvedSubjectQuery,
+        normalizedQuery,
       });
       if (resolution.kind === 'none') {
         continue;
@@ -981,6 +1080,7 @@ export class ChatService {
     userQuery: string;
     effectiveUserQuery: string;
     resolvedSubjectQuery?: string;
+    normalizedQuery: ChatNormalizedQuery;
   }): Promise<
     Awaited<ReturnType<MetricsService['resolveHistoricalTelemetryQuery']>>
   > {
@@ -990,6 +1090,7 @@ export class ChatService {
       userQuery,
       effectiveUserQuery,
       resolvedSubjectQuery,
+      normalizedQuery,
     } = params;
     const historicalResolutionAttempts = [
       { source: 'user', query: userQuery },
@@ -1009,12 +1110,13 @@ export class ChatService {
           resolvedSubjectQuery ?? '',
         )}"`,
       );
-      const candidateResolution =
-        await this.metricsService.resolveHistoricalTelemetryQuery(
-          shipId,
-          attempt.query,
-          resolvedSubjectQuery,
-        );
+        const candidateResolution =
+          await this.metricsService.resolveHistoricalTelemetryQuery(
+            shipId,
+            attempt.query,
+            resolvedSubjectQuery,
+            normalizedQuery,
+          );
       this.logger.debug(
         `Historical telemetry result session=${sessionId} ship=${shipId} source=${attempt.source} kind=${candidateResolution.kind} clarification="${this.truncateForLog(
           candidateResolution.clarificationQuestion ?? '',
@@ -1947,6 +2049,10 @@ export class ChatService {
     }
 
     const historyBasisQuery = this.buildFuelForecastHistoricalBasisQuery(userQuery);
+    const historicalBasisNormalizedQuery =
+      this.queryNormalizationService.normalizeTurn({
+        userQuery: historyBasisQuery,
+      });
     const historicalMatch = await this.resolveHistoricalTelemetryForContext({
       shipId,
       role,
@@ -1954,6 +2060,7 @@ export class ChatService {
       userQuery: historyBasisQuery,
       effectiveUserQuery: historyBasisQuery,
       resolvedSubjectQuery: historyBasisQuery,
+      normalizedQuery: historicalBasisNormalizedQuery,
     });
 
     if (
