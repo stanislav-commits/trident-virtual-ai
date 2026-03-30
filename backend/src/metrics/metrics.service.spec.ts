@@ -2164,7 +2164,7 @@ describe('MetricsService historical telemetry', () => {
       expect.any(Array),
       expect.any(Object),
       'SeaWolfX',
-      { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
+      { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
     );
   });
 
@@ -2331,14 +2331,14 @@ describe('MetricsService historical telemetry', () => {
       expect.any(Array),
       expect.any(Object),
       'SeaWolfX',
-      { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
+      { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
     );
     expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
       2,
       expect.any(Array),
       expect.any(Object),
       'SeaWolfX',
-      { windowEvery: '1d', windowMs: 24 * 60 * 60 * 1000 },
+      { windowEvery: '6h', windowMs: 6 * 60 * 60 * 1000 },
     );
   });
 });

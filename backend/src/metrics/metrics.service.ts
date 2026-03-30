@@ -1269,62 +1269,53 @@ export class MetricsService implements OnModuleInit {
     request: ParsedHistoricalTelemetryRequest,
   ): Promise<string | null> {
     const seriesKeys = matchedEntries.map((entry) => entry.key);
-    let rows: InfluxMetricValue[] = [];
+    let positiveEvents: HistoricalPositiveTelemetryEvent[] = [];
+    let selectedRange = request.range;
     let selectedSeriesOptions:
       | (InfluxHistoricalSeriesOptions & { windowMs: number })
       | undefined;
-    const coarseSeriesOptionCandidates = this.getHistoricalEventSeriesOptions(
+    let lastError: Error | null = null;
+
+    for (const searchRange of this.getHistoricalEventSearchRanges(
       request.range,
-    );
-
-    if (coarseSeriesOptionCandidates.length === 0) {
-      rows = await this.influxdb.queryHistoricalSeries(
-        seriesKeys,
-        request.range,
-        organizationName,
-      );
-    } else {
-      let lastError: Error | null = null;
-      for (const candidate of coarseSeriesOptionCandidates) {
-        try {
-          rows = await this.influxdb.queryHistoricalSeries(
-            seriesKeys,
-            request.range,
-            organizationName,
-            candidate,
-          );
-          selectedSeriesOptions = candidate;
-          if (rows.length > 0) {
-            break;
-          }
-        } catch (error) {
-          lastError = error instanceof Error ? error : new Error(String(error));
-          this.logger.warn(
-            `Historical event series query failed for window=${candidate.windowEvery}. ${lastError.message}`,
-          );
+    )) {
+      try {
+        const result = await this.queryHistoricalEventSeriesWithFallback(
+          seriesKeys,
+          searchRange,
+          organizationName,
+        );
+        const candidateEvents = this.detectHistoricalPositiveEvents(
+          matchedEntries,
+          result.rows,
+        );
+        if (candidateEvents.length === 0) {
+          continue;
         }
-      }
 
-      if (rows.length === 0 && lastError) {
-        throw lastError;
+        positiveEvents = candidateEvents;
+        selectedRange = searchRange;
+        selectedSeriesOptions = result.selectedSeriesOptions;
+        break;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
       }
     }
 
-    if (rows.length === 0) {
+    if (positiveEvents.length === 0 && lastError) {
+      throw lastError;
+    }
+
+    if (positiveEvents.length === 0) {
       return null;
     }
 
-    let positiveEvents = this.detectHistoricalPositiveEvents(
-      matchedEntries,
-      rows,
-    );
     if (
-      positiveEvents.length > 0 &&
       selectedSeriesOptions?.windowEvery &&
       selectedSeriesOptions.windowMs > 0
     ) {
       const refinementRange = this.buildHistoricalEventRefinementRange(
-        request.range,
+        selectedRange,
         positiveEvents[0].time,
         selectedSeriesOptions.windowMs,
       );
@@ -1475,6 +1466,110 @@ export class MetricsService implements OnModuleInit {
       { windowEvery: '30m', windowMs: 30 * 60 * 1000 },
       { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
     ];
+  }
+
+  private getHistoricalEventSearchRanges(
+    range: InfluxHistoricalQueryRange,
+  ): InfluxHistoricalQueryRange[] {
+    const start = new Date(range.start);
+    const stop = new Date(range.stop);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(stop.getTime())) {
+      return [range];
+    }
+
+    const durationMs = stop.getTime() - start.getTime();
+    if (durationMs <= 0) {
+      return [range];
+    }
+
+    const candidateWindowsMs: number[] = [];
+    if (durationMs > 120 * 24 * 60 * 60 * 1000) {
+      candidateWindowsMs.push(
+        14 * 24 * 60 * 60 * 1000,
+        30 * 24 * 60 * 60 * 1000,
+        90 * 24 * 60 * 60 * 1000,
+      );
+    } else if (durationMs > 30 * 24 * 60 * 60 * 1000) {
+      candidateWindowsMs.push(
+        7 * 24 * 60 * 60 * 1000,
+        14 * 24 * 60 * 60 * 1000,
+        30 * 24 * 60 * 60 * 1000,
+      );
+    } else if (durationMs > 14 * 24 * 60 * 60 * 1000) {
+      candidateWindowsMs.push(
+        7 * 24 * 60 * 60 * 1000,
+        14 * 24 * 60 * 60 * 1000,
+      );
+    }
+
+    const candidates = candidateWindowsMs
+      .filter((windowMs) => durationMs > windowMs)
+      .map((windowMs) => ({
+        start: new Date(stop.getTime() - windowMs),
+        stop,
+      }));
+
+    candidates.push({ start, stop });
+
+    const deduped = new Map<string, InfluxHistoricalQueryRange>();
+    for (const candidate of candidates) {
+      const key = `${candidate.start.toISOString()}::${candidate.stop.toISOString()}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, candidate);
+      }
+    }
+
+    return [...deduped.values()];
+  }
+
+  private async queryHistoricalEventSeriesWithFallback(
+    seriesKeys: string[],
+    range: InfluxHistoricalQueryRange,
+    organizationName: string,
+  ): Promise<{
+    rows: InfluxMetricValue[];
+    selectedSeriesOptions?:
+      | (InfluxHistoricalSeriesOptions & { windowMs: number })
+      | undefined;
+  }> {
+    const coarseSeriesOptionCandidates =
+      this.getHistoricalEventSeriesOptions(range);
+
+    if (coarseSeriesOptionCandidates.length === 0) {
+      return {
+        rows: await this.influxdb.queryHistoricalSeries(
+          seriesKeys,
+          range,
+          organizationName,
+        ),
+      };
+    }
+
+    let lastError: Error | null = null;
+    for (const candidate of coarseSeriesOptionCandidates) {
+      try {
+        return {
+          rows: await this.influxdb.queryHistoricalSeries(
+            seriesKeys,
+            range,
+            organizationName,
+            candidate,
+          ),
+          selectedSeriesOptions: candidate,
+        };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.logger.warn(
+          `Historical event series query failed for window=${candidate.windowEvery}. ${lastError.message}`,
+        );
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    return { rows: [] };
   }
 
   private getHistoricalRangeDurationMs(
