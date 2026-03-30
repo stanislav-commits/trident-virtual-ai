@@ -102,6 +102,10 @@ describe('ChatService telemetry clarification', () => {
         awaitingClarification: true,
         answerRoute: 'clarification',
         clarificationReason: 'related_telemetry_options',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+        usedHistoricalTelemetry: false,
         telemetryShips: ['Simens'],
         normalizedQuery: expect.objectContaining({
           sourceHints: expect.arrayContaining(['TELEMETRY']),
@@ -202,6 +206,10 @@ describe('ChatService telemetry clarification', () => {
       expect.objectContaining({
         answerRoute: 'historical_telemetry',
         historicalTelemetry: true,
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: false,
+        usedHistoricalTelemetry: true,
         normalizedQuery: expect.objectContaining({
           timeIntent: expect.objectContaining({
             kind: 'historical_range',
@@ -1353,7 +1361,12 @@ describe('ChatService telemetry clarification', () => {
       'session-1',
       'The current matched telemetry reading is Tanks.Fuel_Level: 63 % [Telemetry].',
       expect.objectContaining({
+        answerRoute: 'current_telemetry',
         resolvedSubjectQuery: 'What is the current fuel level?',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+        usedHistoricalTelemetry: false,
       }),
       [],
     );
@@ -1837,7 +1850,12 @@ describe('ChatService telemetry clarification', () => {
       'session-1',
       'Check the documented dipstick range before taking action.',
       expect.objectContaining({
+        answerRoute: 'llm_generation',
         resolvedSubjectQuery: 'Based on the current oil level, what should I do next?',
+        usedLlm: true,
+        usedDocumentation: true,
+        usedCurrentTelemetry: true,
+        usedHistoricalTelemetry: false,
       }),
       expect.any(Array),
     );
@@ -1889,7 +1907,12 @@ describe('ChatService telemetry clarification', () => {
       'session-1',
       expect.any(String),
       expect.objectContaining({
+        answerRoute: 'deterministic_contact',
         resolvedSubjectQuery: 'who vessel dpa contact details',
+        usedLlm: false,
+        usedDocumentation: true,
+        usedCurrentTelemetry: false,
+        usedHistoricalTelemetry: false,
       }),
       expect.arrayContaining([
         expect.objectContaining({

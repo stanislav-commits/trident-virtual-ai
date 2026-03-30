@@ -812,6 +812,9 @@ export class ChatService {
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
             noDocumentation: true,
+            usedHistoricalTelemetry: true,
+            usedCurrentTelemetry:
+              this.sumCurrentFuelTankTelemetry(telemetry) !== null,
           },
           contextReferences: [],
         });
@@ -982,6 +985,9 @@ export class ChatService {
           ...(citationsForAnswer.length === 0 && !telemetryOnlyQuery
             ? { noDocumentation: true }
             : {}),
+          usedDocumentation: citationsForAnswer.length > 0,
+          usedCurrentTelemetry:
+            Object.keys(llmTelemetryContext.telemetry).length > 0,
         },
         contextReferences: citationsForAnswer,
       });
@@ -996,6 +1002,9 @@ export class ChatService {
         route: 'llm_generation',
         normalizedQuery: fallbackNormalizedQuery,
         routeTrace: ['error:fallback'],
+        ragflowContext: {
+          usedLlm: false,
+        },
         contextReferences: [],
       });
     }
@@ -1019,18 +1028,80 @@ export class ChatService {
       ragflowContext,
       contextReferences,
     } = params;
+    const provenance = this.buildAnswerProvenance({
+      route,
+      ragflowContext,
+      contextReferences,
+    });
 
     return this.addAssistantMessage(
       sessionId,
       content,
       {
         ...(ragflowContext ?? {}),
+        ...provenance,
         answerRoute: route,
         normalizedQuery,
         ...(routeTrace?.length ? { routeTrace } : {}),
       },
       contextReferences,
     );
+  }
+
+  private buildAnswerProvenance(params: {
+    route: ChatAnswerRoute;
+    ragflowContext?: Record<string, unknown>;
+    contextReferences?: ChatCitation[];
+  }): {
+    usedLlm: boolean;
+    usedDocumentation: boolean;
+    usedCurrentTelemetry: boolean;
+    usedHistoricalTelemetry: boolean;
+  } {
+    const { route, ragflowContext, contextReferences } = params;
+    const clarificationDomain =
+      ragflowContext?.clarificationDomain === 'documentation' ||
+      ragflowContext?.clarificationDomain === 'current_telemetry' ||
+      ragflowContext?.clarificationDomain === 'historical_telemetry'
+        ? ragflowContext.clarificationDomain
+        : null;
+    const explicitUsedLlm =
+      typeof ragflowContext?.usedLlm === 'boolean'
+        ? ragflowContext.usedLlm
+        : undefined;
+    const explicitUsedDocumentation =
+      typeof ragflowContext?.usedDocumentation === 'boolean'
+        ? ragflowContext.usedDocumentation
+        : undefined;
+    const explicitUsedCurrentTelemetry =
+      typeof ragflowContext?.usedCurrentTelemetry === 'boolean'
+        ? ragflowContext.usedCurrentTelemetry
+        : undefined;
+    const explicitUsedHistoricalTelemetry =
+      typeof ragflowContext?.usedHistoricalTelemetry === 'boolean'
+        ? ragflowContext.usedHistoricalTelemetry
+        : undefined;
+    const hasDocumentationEvidence = (contextReferences?.length ?? 0) > 0;
+
+    return {
+      usedLlm: explicitUsedLlm ?? route === 'llm_generation',
+      usedDocumentation:
+        explicitUsedDocumentation ??
+        (route === 'deterministic_document' ||
+          route === 'deterministic_contact' ||
+          route === 'deterministic_certificate' ||
+          clarificationDomain === 'documentation' ||
+          hasDocumentationEvidence),
+      usedCurrentTelemetry:
+        explicitUsedCurrentTelemetry ??
+        (route === 'current_telemetry' ||
+          clarificationDomain === 'current_telemetry'),
+      usedHistoricalTelemetry:
+        explicitUsedHistoricalTelemetry ??
+        (route === 'historical_telemetry' ||
+          clarificationDomain === 'historical_telemetry' ||
+          ragflowContext?.historicalTelemetry === true),
+    };
   }
 
   private truncateForLog(value: string, maxLength = 180): string {
