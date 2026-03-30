@@ -503,8 +503,7 @@ describe('MetricsService telemetry matching', () => {
         valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
         metric: {
           label: 'Temperatures.STBD ENGINE ROOM TEMPERATURE',
-          description:
-            'Temperature reading from the starboard engine room.',
+          description: 'Temperature reading from the starboard engine room.',
           unit: 'C',
           bucket: 'Trending',
           measurement: 'Temperatures',
@@ -1269,7 +1268,8 @@ describe('MetricsService historical telemetry', () => {
       shipMetricsConfig: {
         findMany: jest.fn().mockResolvedValue([
           {
-            metricKey: 'Trending::SIEMENS-GENSET-PS::Actual motor (generator) speed (rpm)',
+            metricKey:
+              'Trending::SIEMENS-GENSET-PS::Actual motor (generator) speed (rpm)',
             latestValue: 1500,
             valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
             metric: {
@@ -1297,7 +1297,8 @@ describe('MetricsService historical telemetry', () => {
             },
           },
           {
-            metricKey: 'Trending::SIEMENS-GENSET-SB::Actual motor (generator) speed (rpm)',
+            metricKey:
+              'Trending::SIEMENS-GENSET-SB::Actual motor (generator) speed (rpm)',
             latestValue: 1500,
             valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
             metric: {
@@ -1381,7 +1382,8 @@ describe('MetricsService historical telemetry', () => {
       shipMetricsConfig: {
         findMany: jest.fn().mockResolvedValue([
           {
-            metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Diesel Fuel Rate (l/h)',
+            metricKey:
+              'Trending::SIEMENS-MASE-GENSET-PS::Diesel Fuel Rate (l/h)',
             latestValue: 12,
             valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
             metric: {
@@ -1514,8 +1516,12 @@ describe('MetricsService historical telemetry', () => {
 
     expect(result.kind).toBe('answer');
     expect(result.content).toContain('4,384 liters');
-    expect(result.content).toContain('SIEMENS-MASE-GENSET-PS.Total Fuel Used (l)');
-    expect(result.content).toContain('SIEMENS-MASE-GENSET-SB.Total Fuel Used (l)');
+    expect(result.content).toContain(
+      'SIEMENS-MASE-GENSET-PS.Total Fuel Used (l)',
+    );
+    expect(result.content).toContain(
+      'SIEMENS-MASE-GENSET-SB.Total Fuel Used (l)',
+    );
     expect(result.content).not.toContain('Fuel Pressure');
     expect(result.content).not.toContain('Diesel Fuel Rate');
     expect(influxdb.queryHistoricalFirstLast).toHaveBeenCalledWith(
@@ -1938,6 +1944,121 @@ describe('MetricsService historical telemetry', () => {
     expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalled();
   });
 
+  it('prefers fuel tank inventory over fuel-used counters for historical total fuel lookups', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::Tanks::Fuel Tank 1P',
+            latestValue: 3100,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks.Fuel Tank 1P',
+              description: 'Fuel tank quantity.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks',
+              field: 'Fuel Tank 1P',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks::Fuel Tank 2S',
+            latestValue: 2416,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks.Fuel Tank 2S',
+              description: 'Fuel tank quantity.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks',
+              field: 'Fuel Tank 2S',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Generators::Total Fuel Used PS',
+            latestValue: 9150,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Generators.Total Fuel Used PS',
+              description: 'Total fuel used by generator PS.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Generators',
+              field: 'Total Fuel Used PS',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Generators::Total Fuel Used SB',
+            latestValue: 8920,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Generators.Total Fuel Used SB',
+              description: 'Total fuel used by generator SB.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Generators',
+              field: 'Total Fuel Used SB',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalNearestValues: jest.fn().mockResolvedValue([
+        {
+          key: 'Trending::Tanks::Fuel Tank 1P',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fuel Tank 1P',
+          value: 3100,
+          time: '2026-03-25T18:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks::Fuel Tank 2S',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fuel Tank 2S',
+          value: 2416,
+          time: '2026-03-25T18:00:00.000Z',
+        },
+      ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'what was total fuel 5 days ago?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('5,516 liters');
+    expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalledWith(
+      ['Trending::Tanks::Fuel Tank 1P', 'Trending::Tanks::Fuel Tank 2S'],
+      expect.any(Date),
+      'SeaWolfX',
+    );
+  });
+
   it('detects the latest bunkering-style fuel increase from historical telemetry series', async () => {
     const prisma = {
       ship: {
@@ -2033,9 +2154,18 @@ describe('MetricsService historical telemetry', () => {
     );
 
     expect(result.kind).toBe('answer');
-    expect(result.content).toContain('latest historical bunkering-like fuel increase');
+    expect(result.content).toContain(
+      'latest historical bunkering-like fuel increase',
+    );
     expect(result.content).toContain('2026-03-24 08:20 UTC');
-    expect(influxdb.queryHistoricalSeries).toHaveBeenCalled();
+    expect(influxdb.queryHistoricalSeries).toHaveBeenCalledTimes(2);
+    expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Array),
+      expect.any(Object),
+      'SeaWolfX',
+      { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
+    );
   });
 
   it('treats fuel last increase phrasing as a historical event answer', async () => {
@@ -2105,5 +2235,6 @@ describe('MetricsService historical telemetry', () => {
     expect(result.kind).toBe('answer');
     expect(result.content).toContain('latest historical fuel increase');
     expect(result.content).toContain('Fuel Tank 3P');
+    expect(influxdb.queryHistoricalSeries).toHaveBeenCalledTimes(2);
   });
 });

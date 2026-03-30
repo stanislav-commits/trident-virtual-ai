@@ -28,6 +28,10 @@ export interface InfluxHistoricalQueryRange {
   stop: Date | string;
 }
 
+export interface InfluxHistoricalSeriesOptions {
+  windowEvery?: string;
+}
+
 export interface InfluxHistoricalAggregateValue extends InfluxMetricValue {}
 
 export interface InfluxHistoricalFirstLastValues {
@@ -222,7 +226,10 @@ export class InfluxdbService {
           metrics.map((metric) => [metric.field, metric.key]),
         );
 
-        for (const metricsBatch of this.chunk(metrics, this.latestValuesBatchSize)) {
+        for (const metricsBatch of this.chunk(
+          metrics,
+          this.latestValuesBatchSize,
+        )) {
           const fieldFilter =
             metricsBatch.length === 1
               ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
@@ -265,8 +272,9 @@ export class InfluxdbService {
     keys: string[],
     range: InfluxHistoricalQueryRange,
     orgName?: string,
+    options?: InfluxHistoricalSeriesOptions,
   ): Promise<InfluxMetricValue[]> {
-    return this.queryHistoricalRows(keys, range, orgName);
+    return this.queryHistoricalRows(keys, range, orgName, options);
   }
 
   async queryHistoricalAggregate(
@@ -293,7 +301,10 @@ export class InfluxdbService {
           metrics.map((metric) => [metric.field, metric.key]),
         );
 
-        for (const metricsBatch of this.chunk(metrics, this.latestValuesBatchSize)) {
+        for (const metricsBatch of this.chunk(
+          metrics,
+          this.latestValuesBatchSize,
+        )) {
           const fieldFilter =
             metricsBatch.length === 1
               ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
@@ -346,8 +357,18 @@ export class InfluxdbService {
     orgName?: string,
   ): Promise<InfluxHistoricalFirstLastValues> {
     return {
-      first: await this.queryHistoricalBoundaryValues('first', keys, range, orgName),
-      last: await this.queryHistoricalBoundaryValues('last', keys, range, orgName),
+      first: await this.queryHistoricalBoundaryValues(
+        'first',
+        keys,
+        range,
+        orgName,
+      ),
+      last: await this.queryHistoricalBoundaryValues(
+        'last',
+        keys,
+        range,
+        orgName,
+      ),
     };
   }
 
@@ -419,6 +440,7 @@ export class InfluxdbService {
     keys: string[],
     range: InfluxHistoricalQueryRange,
     orgName?: string,
+    options?: InfluxHistoricalSeriesOptions,
   ): Promise<InfluxMetricValue[]> {
     if (!keys.length) return [];
 
@@ -438,7 +460,10 @@ export class InfluxdbService {
           metrics.map((metric) => [metric.field, metric.key]),
         );
 
-        for (const metricsBatch of this.chunk(metrics, this.latestValuesBatchSize)) {
+        for (const metricsBatch of this.chunk(
+          metrics,
+          this.latestValuesBatchSize,
+        )) {
           const fieldFilter =
             metricsBatch.length === 1
               ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
@@ -451,11 +476,16 @@ export class InfluxdbService {
             `  |> range(start: ${this.toFluxTime(range.start)}, stop: ${this.toFluxTime(range.stop)})`,
             `  |> filter(fn: (r) => r._measurement == ${this.toFluxString(measurement)})`,
             `  |> filter(fn: (r) => ${fieldFilter})`,
+            ...(options?.windowEvery
+              ? [
+                  `  |> aggregateWindow(every: ${options.windowEvery}, fn: last, createEmpty: false)`,
+                ]
+              : []),
             '  |> sort(columns: ["_time"])',
           ].join('\n');
 
           this.logger.debug(
-            `Influx historical series query org=${effectiveOrg} bucket=${bucket} measurement=${measurement} metrics=${metricsBatch.length} start=${this.toFluxTime(
+            `Influx historical series query org=${effectiveOrg} bucket=${bucket} measurement=${measurement} metrics=${metricsBatch.length} window=${options?.windowEvery ?? 'raw'} start=${this.toFluxTime(
               range.start,
             )} stop=${this.toFluxTime(range.stop)}`,
           );
@@ -508,7 +538,10 @@ export class InfluxdbService {
           metrics.map((metric) => [metric.field, metric.key]),
         );
 
-        for (const metricsBatch of this.chunk(metrics, this.latestValuesBatchSize)) {
+        for (const metricsBatch of this.chunk(
+          metrics,
+          this.latestValuesBatchSize,
+        )) {
           const fieldFilter =
             metricsBatch.length === 1
               ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
@@ -622,7 +655,9 @@ export class InfluxdbService {
 
     const trimmed = value.trim();
     if (!trimmed) {
-      throw new ServiceUnavailableException('InfluxDB query time cannot be empty');
+      throw new ServiceUnavailableException(
+        'InfluxDB query time cannot be empty',
+      );
     }
 
     if (/^[+-]?\d+[smhdw]$/i.test(trimmed)) {
