@@ -137,6 +137,15 @@ export class ChatQueryNormalizationService {
   ): ChatTimeIntent {
     const normalized = this.normalizeText(searchSpace);
 
+    const absoluteDate = this.extractAbsoluteDate(searchSpace);
+    if (absoluteDate) {
+      return {
+        kind: 'historical_point',
+        expression: absoluteDate.expression,
+        absoluteDate: absoluteDate.isoDate,
+      };
+    }
+
     if (operation === 'event') {
       return {
         kind: 'historical_event',
@@ -171,15 +180,6 @@ export class ChatQueryNormalizationService {
         expression: rollingRangeMatch[0],
         relativeAmount: Number.parseInt(rollingRangeMatch[1], 10),
         relativeUnit: this.normalizeRelativeUnit(rollingRangeMatch[2]),
-      };
-    }
-
-    const absoluteDate = this.extractAbsoluteDate(searchSpace);
-    if (absoluteDate) {
-      return {
-        kind: 'historical_point',
-        expression: absoluteDate.expression,
-        absoluteDate: absoluteDate.isoDate,
       };
     }
 
@@ -368,6 +368,23 @@ export class ChatQueryNormalizationService {
       };
     }
 
+    const ordinalDayMonthMatch = value.match(
+      /\b(\d{1,2})(?:st|nd|rd|th)\s+(?:of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(\d{4}))?\b/i,
+    );
+    if (ordinalDayMonthMatch) {
+      return {
+        expression: ordinalDayMonthMatch[0],
+        isoDate: this.toIsoDate(
+          Number.parseInt(
+            ordinalDayMonthMatch[3] ?? String(new Date().getUTCFullYear()),
+            10,
+          ),
+          this.getMonthIndex(ordinalDayMonthMatch[2]) + 1,
+          Number.parseInt(ordinalDayMonthMatch[1], 10),
+        ),
+      };
+    }
+
     const monthDayMatch = value.match(
       /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{4})\b/i,
     );
@@ -378,6 +395,23 @@ export class ChatQueryNormalizationService {
           Number.parseInt(monthDayMatch[3], 10),
           this.getMonthIndex(monthDayMatch[1]) + 1,
           Number.parseInt(monthDayMatch[2], 10),
+        ),
+      };
+    }
+
+    const monthOrdinalDayMatch = value.match(
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)(?:,?\s+(\d{4}))?\b/i,
+    );
+    if (monthOrdinalDayMatch) {
+      return {
+        expression: monthOrdinalDayMatch[0],
+        isoDate: this.toIsoDate(
+          Number.parseInt(
+            monthOrdinalDayMatch[3] ?? String(new Date().getUTCFullYear()),
+            10,
+          ),
+          this.getMonthIndex(monthOrdinalDayMatch[1]) + 1,
+          Number.parseInt(monthOrdinalDayMatch[2], 10),
         ),
       };
     }

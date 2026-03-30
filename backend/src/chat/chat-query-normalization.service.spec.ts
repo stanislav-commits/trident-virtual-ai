@@ -3,6 +3,14 @@ import { ChatQueryNormalizationService } from './chat-query-normalization.servic
 describe('ChatQueryNormalizationService', () => {
   const service = new ChatQueryNormalizationService();
 
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-31T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('normalizes equivalent historical tank-level phrasings to the same material query meaning', () => {
     const queries = [
       'what was the tank level 2026-03-25?',
@@ -160,5 +168,32 @@ describe('ChatQueryNormalizationService', () => {
     expect(otherOne.retrievalQuery).toBe(
       'vessel dpa contact email what about the other one?',
     );
+  });
+
+  it('prefers explicit ordinal dates over duplicated relative fragments in historical continuations', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: '5 days ago, on 25th of March',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'how many total fuel in tanks 5 days ago?',
+        },
+        {
+          role: 'assistant',
+          content: 'Here is the historical fuel answer.',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'how many total fuel in tanks 5 days ago',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe(
+      'how many total fuel in tanks on 2026-03-25',
+    );
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.timeIntent.absoluteDate).toBe('2026-03-25');
   });
 });

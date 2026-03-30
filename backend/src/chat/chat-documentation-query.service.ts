@@ -193,9 +193,10 @@ export class ChatDocumentationQueryService {
       this.isTemporalRangeFollowUpQuery(trimmed) &&
       this.isAnalyticalContinuationContext(normalizedPreviousUserQuery)
     ) {
-      return `${normalizedPreviousUserQuery.replace(/[?!.]+$/g, '')} ${trimmed}`
-        .replace(/\s+/g, ' ')
-        .trim();
+      return this.buildTemporalContinuationQuery(
+        normalizedPreviousUserQuery,
+        trimmed,
+      );
     }
 
     const normalizedPersonnelQuery =
@@ -1405,6 +1406,12 @@ export class ChatDocumentationQueryService {
       ) ||
       /\b(?:this|last)\s+(?:week|month|year)\b/i.test(query) ||
       /\b(?:today|yesterday)\b/i.test(query) ||
+      /\bon\s+\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+\d{4})?\b/i.test(
+        query,
+      ) ||
+      /\bon\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?\b/i.test(
+        query,
+      ) ||
       /\b\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b/i.test(
         query,
       )
@@ -1421,6 +1428,193 @@ export class ChatDocumentationQueryService {
           query,
         ))
     );
+  }
+
+  private buildTemporalContinuationQuery(
+    previousUserQuery: string,
+    followUpQuery: string,
+  ): string {
+    const previous = previousUserQuery.trim().replace(/[?!.]+$/g, '');
+    const followUp = followUpQuery.trim().replace(/[?!.]+$/g, '');
+    if (!previous) {
+      return followUp;
+    }
+    if (!followUp) {
+      return previous;
+    }
+
+    if (/^(?:based on|for|using)\b/i.test(followUp)) {
+      return `${this.stripHistoricalContinuationTime(previous)} ${followUp}`
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    const canonicalTime =
+      this.extractCanonicalHistoricalContinuationTime(followUp) ??
+      this.extractCanonicalHistoricalContinuationTime(previous);
+
+    if (this.hasStandaloneTemporalContinuationSubject(followUp)) {
+      return this.composeTemporalContinuationQuery(
+        this.stripHistoricalContinuationTime(followUp),
+        canonicalTime,
+      );
+    }
+
+    const subject = this.stripHistoricalContinuationTime(previous);
+    if (!canonicalTime) {
+      return `${subject} ${followUp}`.replace(/\s+/g, ' ').trim();
+    }
+
+    return this.composeTemporalContinuationQuery(subject, canonicalTime);
+  }
+
+  private composeTemporalContinuationQuery(
+    subject: string,
+    canonicalTime: string | null,
+  ): string {
+    const normalizedSubject = subject.trim().replace(/\s+/g, ' ');
+    if (!canonicalTime) {
+      return normalizedSubject;
+    }
+
+    if (!normalizedSubject) {
+      return canonicalTime;
+    }
+
+    return `${normalizedSubject} ${canonicalTime}`
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private hasStandaloneTemporalContinuationSubject(query: string): boolean {
+    return /\b(fuel|tank|tanks|oil|coolant|water|generator|engine|telemetry|load|voltage|pressure|temperature|position|coordinates?|location|bunkering|refill|increase|consumption|used|remaining|total|average|onboard)\b/i.test(
+      query,
+    );
+  }
+
+  private stripHistoricalContinuationTime(value: string): string {
+    return value
+      .replace(
+        /\b(?:based on|for|using)\b[\s\S]{0,40}\b(last|past|previous|this)\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\b/gi,
+        ' ',
+      )
+      .replace(
+        /\b(?:last|past|previous)\s+\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\b/gi,
+        ' ',
+      )
+      .replace(/\b(?:this|last)\s+(?:week|month|year)\b/gi, ' ')
+      .replace(/\b(?:today|yesterday)\b/gi, ' ')
+      .replace(
+        /\b\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b/gi,
+        ' ',
+      )
+      .replace(/\bon\s+\d{4}-\d{2}-\d{2}\b/gi, ' ')
+      .replace(
+        /\bon\s+\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+\d{4})?\b/gi,
+        ' ',
+      )
+      .replace(
+        /\bon\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?\b/gi,
+        ' ',
+      )
+      .replace(
+        /\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?(?:\s*utc)?\b/gi,
+        ' ',
+      )
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private extractCanonicalHistoricalContinuationTime(value: string): string | null {
+    const absoluteDate = this.extractHistoricalAbsoluteDateForContinuation(value);
+    if (absoluteDate) {
+      return `on ${absoluteDate}`;
+    }
+
+    const relativeMatch = value.match(
+      /\b\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b/i,
+    );
+    if (relativeMatch?.[0]) {
+      return relativeMatch[0].trim().toLowerCase();
+    }
+
+    const explicitRangeMatch = value.match(
+      /\b(?:last|past|previous)\s+\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\b/i,
+    );
+    if (explicitRangeMatch?.[0]) {
+      return explicitRangeMatch[0].trim().toLowerCase();
+    }
+
+    if (/\b(?:today|yesterday)\b/i.test(value)) {
+      return value.match(/\b(?:today|yesterday)\b/i)?.[0]?.toLowerCase() ?? null;
+    }
+
+    if (/\b(?:this|last)\s+(?:week|month|year)\b/i.test(value)) {
+      return (
+        value.match(/\b(?:this|last)\s+(?:week|month|year)\b/i)?.[0] ?? null
+      )?.toLowerCase() ?? null;
+    }
+
+    return null;
+  }
+
+  private extractHistoricalAbsoluteDateForContinuation(value: string): string | null {
+    const isoMatch = value.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+    if (isoMatch) {
+      return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    }
+
+    const dayMonthMatch = value.match(
+      /\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(\d{4}))?\b/i,
+    );
+    if (dayMonthMatch) {
+      return this.formatHistoricalContinuationIsoDate(
+        Number.parseInt(dayMonthMatch[3] ?? String(new Date().getUTCFullYear()), 10),
+        this.getHistoricalContinuationMonthIndex(dayMonthMatch[2]) + 1,
+        Number.parseInt(dayMonthMatch[1], 10),
+      );
+    }
+
+    const monthDayMatch = value.match(
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/i,
+    );
+    if (monthDayMatch) {
+      return this.formatHistoricalContinuationIsoDate(
+        Number.parseInt(monthDayMatch[3] ?? String(new Date().getUTCFullYear()), 10),
+        this.getHistoricalContinuationMonthIndex(monthDayMatch[1]) + 1,
+        Number.parseInt(monthDayMatch[2], 10),
+      );
+    }
+
+    return null;
+  }
+
+  private getHistoricalContinuationMonthIndex(monthName: string): number {
+    return [
+      'january',
+      'february',
+      'march',
+      'april',
+      'may',
+      'june',
+      'july',
+      'august',
+      'september',
+      'october',
+      'november',
+      'december',
+    ].indexOf(monthName.toLowerCase());
+  }
+
+  private formatHistoricalContinuationIsoDate(
+    year: number,
+    month: number,
+    day: number,
+  ): string {
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(
+      2,
+      '0',
+    )}-${String(day).padStart(2, '0')}`;
   }
 
   private isBroadActionOrLookupQuery(query: string): boolean {

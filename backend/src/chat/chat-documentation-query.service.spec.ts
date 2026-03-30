@@ -3,6 +3,14 @@ import { ChatDocumentationQueryService } from './chat-documentation-query.servic
 describe('ChatDocumentationQueryService', () => {
   const service = new ChatDocumentationQueryService();
 
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-31T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('asks for clarification on broad maintenance questions without a concrete subject', () => {
     const userQuery = 'How do I change oil?';
 
@@ -428,5 +436,21 @@ describe('ChatDocumentationQueryService', () => {
 
     expect(service.isTelemetryListQuery(query)).toBe(true);
     expect(service.shouldSkipDocumentationRetrieval(query)).toBe(true);
+  });
+
+  it('keeps historical continuation rewrites canonical instead of concatenating repeated fragments', () => {
+    expect(
+      service.buildRetrievalQuery(
+        'how many total fuel in tanks 5 days ago?',
+        'how many fuel was 5 days ago?',
+      ),
+    ).toBe('how many total fuel in tanks 5 days ago');
+
+    expect(
+      service.buildRetrievalQuery(
+        '5 days ago, on 25th of March',
+        'how many total fuel in tanks 5 days ago?',
+      ),
+    ).toBe('how many total fuel in tanks on 2026-03-25');
   });
 });
