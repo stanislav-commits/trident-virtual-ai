@@ -565,6 +565,10 @@ export class ChatDocumentationQueryService {
       'staff',
       'person',
       'people',
+      'only',
+      'same',
+      'another',
+      'one',
       'has',
       'his',
       'her',
@@ -1054,6 +1058,10 @@ export class ChatDocumentationQueryService {
   private isContextualFollowUpQuery(query: string): boolean {
     return /\b(it|its|that|this|they|them|their|those|these|same|next one|this one|his|her|him)\b/i.test(
       query,
+    ) || /\b(?:other|another|same)\s+one\b/i.test(
+      query,
+    ) || /\bwhat\s+about\s+(?:the\s+)?(?:other|another|same)\b/i.test(
+      query,
     );
   }
 
@@ -1071,6 +1079,14 @@ export class ChatDocumentationQueryService {
   private isSubjectDetailFollowUpQuery(query: string): boolean {
     const trimmed = query.trim();
     if (!trimmed) return false;
+
+    if (
+      /^(?:(?:only)\s+)?(?:the\s+)?(?:contact|contacts|contact\s+details?|details?|email|emails|phone|telephone|mobile|number|numbers|address|role|roles|position|positions|title|titles)(?:\s+only)?[!.?]*$/i.test(
+        trimmed,
+      )
+    ) {
+      return true;
+    }
 
     if (
       /\b(his|her|him|their|them|its)\b[\s\S]{0,24}\b(contact|contacts|email|emails|phone|telephone|mobile|number|numbers|address|details?)\b/i.test(

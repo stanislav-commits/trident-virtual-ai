@@ -115,4 +115,50 @@ describe('ChatQueryNormalizationService', () => {
     expect(normalized.retrievalQuery).toBe('dpa contact details');
     expect(normalized.isClarificationReply).toBe(false);
   });
+
+  it('keeps bare contact shorthand and other-one follow-ups on the prior DPA subject', () => {
+    const contacts = service.normalizeTurn({
+      userQuery: 'contacts',
+      messageHistory: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+        },
+        {
+          role: 'assistant',
+          content: 'The vessel DPA is JMS.',
+          ragflowContext: {
+            answerRoute: 'llm_generation',
+            resolvedSubjectQuery: "who is vessel's dpa?",
+          },
+        },
+      ],
+    });
+
+    expect(contacts.followUpMode).toBe('follow_up');
+    expect(contacts.retrievalQuery).toBe('vessel dpa contact details');
+
+    const otherOne = service.normalizeTurn({
+      userQuery: 'what about the other one?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+        },
+        {
+          role: 'assistant',
+          content: 'I found multiple matching DPA contacts.',
+          ragflowContext: {
+            answerRoute: 'deterministic_contact',
+            resolvedSubjectQuery: 'vessel dpa contact email',
+          },
+        },
+      ],
+    });
+
+    expect(otherOne.followUpMode).toBe('follow_up');
+    expect(otherOne.retrievalQuery).toBe(
+      'vessel dpa contact email what about the other one?',
+    );
+  });
 });

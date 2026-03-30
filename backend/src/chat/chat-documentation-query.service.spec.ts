@@ -174,6 +174,16 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(true);
   });
 
+  it('inherits the previous subject for bare contact-detail shorthand follow-ups', () => {
+    expect(
+      service.buildRetrievalQuery('contacts', "who is vessel's dpa?"),
+    ).toBe('vessel dpa contact details');
+
+    expect(
+      service.buildRetrievalQuery('email only', 'vessel dpa contact details'),
+    ).toBe('vessel dpa contact email');
+  });
+
   it('normalizes short clarification replies that only select contact details', () => {
     const pendingClarificationQuery = 'emergency dpa contacts';
     const userReply = 'yes, contact details';
@@ -280,6 +290,15 @@ describe('ChatDocumentationQueryService', () => {
         retrievalQuery,
       ),
     ).toBe(true);
+  });
+
+  it('inherits the previous subject for vague other-one follow-ups', () => {
+    expect(
+      service.buildRetrievalQuery(
+        'what about the other one?',
+        'vessel dpa contact email',
+      ),
+    ).toBe('vessel dpa contact email what about the other one?');
   });
 
   it('inherits the previous certificate subject for completeness-check follow-ups', () => {
