@@ -1449,26 +1449,26 @@ export class MetricsService implements OnModuleInit {
 
     if (durationMs > 120 * 24 * 60 * 60 * 1000) {
       return [
-        { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
         { windowEvery: '1d', windowMs: 24 * 60 * 60 * 1000 },
+        { windowEvery: '3d', windowMs: 3 * 24 * 60 * 60 * 1000 },
       ];
     }
     if (durationMs > 30 * 24 * 60 * 60 * 1000) {
       return [
-        { windowEvery: '6h', windowMs: 6 * 60 * 60 * 1000 },
         { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
+        { windowEvery: '1d', windowMs: 24 * 60 * 60 * 1000 },
       ];
     }
     if (durationMs > 7 * 24 * 60 * 60 * 1000) {
       return [
-        { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
-        { windowEvery: '6h', windowMs: 6 * 60 * 60 * 1000 },
+        { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
+        { windowEvery: '1d', windowMs: 24 * 60 * 60 * 1000 },
       ];
     }
 
     return [
-      { windowEvery: '30m', windowMs: 30 * 60 * 1000 },
       { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
+      { windowEvery: '6h', windowMs: 6 * 60 * 60 * 1000 },
     ];
   }
 
@@ -1489,6 +1489,7 @@ export class MetricsService implements OnModuleInit {
     const candidateWindowsMs: number[] = [];
     if (durationMs > 120 * 24 * 60 * 60 * 1000) {
       candidateWindowsMs.push(
+        7 * 24 * 60 * 60 * 1000,
         14 * 24 * 60 * 60 * 1000,
         30 * 24 * 60 * 60 * 1000,
         90 * 24 * 60 * 60 * 1000,

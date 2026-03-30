@@ -481,7 +481,6 @@ export class InfluxdbService {
                   `  |> aggregateWindow(every: ${options.windowEvery}, fn: last, createEmpty: false)`,
                 ]
               : []),
-            '  |> sort(columns: ["_time"])',
           ].join('\n');
 
           this.logger.debug(
