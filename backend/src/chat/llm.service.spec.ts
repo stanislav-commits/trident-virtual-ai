@@ -2,8 +2,18 @@ import { LlmService } from './llm.service';
 import { IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT } from './chat-core-system-prompt.constants';
 
 describe('LlmService maintenance calculation guard', () => {
+  const originalModel = process.env.LLM_MODEL;
+
   beforeAll(() => {
     process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key';
+  });
+
+  afterEach(() => {
+    if (originalModel) {
+      process.env.LLM_MODEL = originalModel;
+    } else {
+      delete process.env.LLM_MODEL;
+    }
   });
 
   it('classifies oil change procedure questions as maintenance procedures instead of parts requests', () => {
@@ -118,6 +128,56 @@ describe('LlmService maintenance calculation guard', () => {
     expect(create.mock.calls[0][0].messages[0].content).toBe(
       IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT,
     );
+  });
+
+  it('uses max_completion_tokens for GPT-5 chat completions', async () => {
+    process.env.LLM_MODEL = 'gpt-5.4';
+
+    const service = new LlmService();
+    const create = jest.fn().mockResolvedValue({
+      choices: [{ message: { content: 'ok' } }],
+    });
+    (service as any).client = {
+      chat: {
+        completions: {
+          create,
+        },
+      },
+    };
+
+    await service.generateResponse({
+      userQuery: 'Who is the vessel DPA?',
+      citations: [],
+    });
+
+    expect(create).toHaveBeenCalled();
+    expect(create.mock.calls[0][0].max_completion_tokens).toBe(1500);
+    expect(create.mock.calls[0][0].max_tokens).toBeUndefined();
+  });
+
+  it('keeps using max_tokens for non-GPT-5 chat completions', async () => {
+    process.env.LLM_MODEL = 'gpt-4o-mini';
+
+    const service = new LlmService();
+    const create = jest.fn().mockResolvedValue({
+      choices: [{ message: { content: 'ok' } }],
+    });
+    (service as any).client = {
+      chat: {
+        completions: {
+          create,
+        },
+      },
+    };
+
+    await service.generateResponse({
+      userQuery: 'Who is the vessel DPA?',
+      citations: [],
+    });
+
+    expect(create).toHaveBeenCalled();
+    expect(create.mock.calls[0][0].max_tokens).toBe(1500);
+    expect(create.mock.calls[0][0].max_completion_tokens).toBeUndefined();
   });
 
   it('labels documentation sources with category-aware inline source tags', () => {

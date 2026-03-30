@@ -4,6 +4,7 @@ import { GrafanaLlmService } from '../grafana-llm/grafana-llm.service';
 describe('MetricDescriptionService', () => {
   const originalApiKey = process.env.OPENAI_API_KEY;
   const originalProvider = process.env.METRIC_DESCRIPTION_PROVIDER;
+  const originalModel = process.env.LLM_MODEL;
 
   beforeEach(() => {
     delete process.env.OPENAI_API_KEY;
@@ -21,6 +22,12 @@ describe('MetricDescriptionService', () => {
       process.env.METRIC_DESCRIPTION_PROVIDER = originalProvider;
     } else {
       delete process.env.METRIC_DESCRIPTION_PROVIDER;
+    }
+
+    if (originalModel) {
+      process.env.LLM_MODEL = originalModel;
+    } else {
+      delete process.env.LLM_MODEL;
     }
   });
 
@@ -185,5 +192,40 @@ describe('MetricDescriptionService', () => {
     } as unknown as GrafanaLlmService);
 
     expect(service.isConfigured()).toBe(false);
+  });
+
+  it('uses max_completion_tokens for GPT-5 OpenAI metric descriptions', async () => {
+    process.env.METRIC_DESCRIPTION_PROVIDER = 'openai';
+    process.env.OPENAI_API_KEY = 'sk-test';
+    process.env.LLM_MODEL = 'gpt-5.4';
+
+    const service = new MetricDescriptionService({
+      isConfigured: () => false,
+      createChatCompletion: jest.fn(),
+    } as unknown as GrafanaLlmService);
+    const create = jest.fn().mockResolvedValue({
+      choices: [{ message: { content: 'Reports the current battery voltage.' } }],
+    });
+    (service as any).openAiClient = {
+      chat: {
+        completions: {
+          create,
+        },
+      },
+    };
+
+    await expect(
+      service.generateDescription({
+        key: 'Trending::Electrical::Battery voltage (V)',
+        bucket: 'Trending',
+        measurement: 'Electrical',
+        field: 'Battery voltage (V)',
+        label: 'Electrical.Battery voltage (V)',
+      }),
+    ).resolves.toBe('Reports the current battery voltage.');
+
+    expect(create).toHaveBeenCalled();
+    expect(create.mock.calls[0][0].max_completion_tokens).toBeDefined();
+    expect(create.mock.calls[0][0].max_tokens).toBeUndefined();
   });
 });

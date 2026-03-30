@@ -194,7 +194,7 @@ export class MetricDescriptionService {
       const response = await this.openAiClient.chat.completions.create({
         model: this.openAiModel,
         temperature: prompt.temperature,
-        max_tokens: prompt.maxTokens,
+        ...this.buildTokenLimitParam(this.openAiModel, prompt.maxTokens),
         messages: [
           { role: 'system', content: prompt.systemPrompt },
           { role: 'user', content: prompt.userPrompt },
@@ -210,6 +210,17 @@ export class MetricDescriptionService {
       );
       return null;
     }
+  }
+
+  private buildTokenLimitParam(model: string, maxTokens: number): {
+    max_tokens?: number;
+    max_completion_tokens?: number;
+  } {
+    if (/^gpt-5(?:[.-]|$)/i.test(model.trim())) {
+      return { max_completion_tokens: maxTokens };
+    }
+
+    return { max_tokens: maxTokens };
   }
 
   private extractPrimarySubject(metric: MetricDescriptionInput): string | null {

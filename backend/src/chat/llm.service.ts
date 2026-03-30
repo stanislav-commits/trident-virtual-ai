@@ -136,7 +136,7 @@ export class LlmService {
       const response = await this.client.chat.completions.create({
         model: this.model,
         temperature: this.temperature,
-        max_tokens: this.maxTokens,
+        ...this.buildTokenLimitParam(this.model, this.maxTokens),
         messages,
       });
 
@@ -158,7 +158,7 @@ export class LlmService {
       const response = await this.client.chat.completions.create({
         model: this.model,
         temperature: 0.5,
-        max_tokens: 20,
+        ...this.buildTokenLimitParam(this.model, 20),
         messages: [
           {
             role: 'system',
@@ -189,6 +189,17 @@ export class LlmService {
       );
       return IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT;
     }
+  }
+
+  private buildTokenLimitParam(model: string, maxTokens: number): {
+    max_tokens?: number;
+    max_completion_tokens?: number;
+  } {
+    if (/^gpt-5(?:[.-]|$)/i.test(model.trim())) {
+      return { max_completion_tokens: maxTokens };
+    }
+
+    return { max_tokens: maxTokens };
   }
 
   private buildSystemPrompt(
