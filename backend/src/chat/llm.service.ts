@@ -16,6 +16,7 @@ export interface LLMContext {
   userQuery: string;
   previousUserQuery?: string;
   resolvedSubjectQuery?: string;
+  structuredConversationState?: string;
   compareBySource?: boolean;
   sourceComparisonTitles?: string[];
   citations?: Array<{
@@ -231,6 +232,12 @@ export class LlmService {
         `Follow-up context:\n` +
         `Previous user question: ${context.previousUserQuery}\n` +
         `Interpret the current question as continuing that subject unless the current question clearly changes topic.\n\n`;
+    }
+
+    if (context.structuredConversationState?.trim()) {
+      prompt +=
+        `Structured conversation state:\n` +
+        `${context.structuredConversationState.trim()}\n\n`;
     }
 
     if (

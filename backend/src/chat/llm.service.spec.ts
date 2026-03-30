@@ -236,6 +236,28 @@ describe('LlmService maintenance calculation guard', () => {
     jest.useRealTimers();
   });
 
+  it('includes a compact structured conversation state block when provided', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'what about the other one?',
+      previousUserQuery: 'email only',
+      resolvedSubjectQuery: 'vessel dpa contact details',
+      structuredConversationState:
+        `Recent assistant states:
+- answerRoute=llm_generation; generator=llm; sources=documentation; resolvedSubject="who is vessel's dpa?"
+- answerRoute=deterministic_contact; generator=deterministic; sources=documentation; resolvedSubject="vessel dpa contact details"; followUpMode=follow_up`,
+    });
+
+    expect(prompt).toContain('Structured conversation state:');
+    expect(prompt).toContain(
+      'answerRoute=deterministic_contact; generator=deterministic',
+    );
+    expect(prompt).toContain(
+      'resolvedSubject="vessel dpa contact details"',
+    );
+  });
+
   it('warns the procedure prompt not to invent drain-fill steps or derive oil quantity from parts rows', () => {
     const service = new LlmService();
 

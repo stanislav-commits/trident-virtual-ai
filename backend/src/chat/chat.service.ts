@@ -948,10 +948,12 @@ export class ChatService {
         previousUserQuery:
           answerQuery
             ? undefined
-            : retrievalQuery !== userQuery
+              : retrievalQuery !== userQuery
               ? previousUserQuery
               : undefined,
         resolvedSubjectQuery,
+        structuredConversationState:
+          this.buildStructuredConversationState(messageHistory),
         compareBySource: documentationContext.compareBySource,
         sourceComparisonTitles: documentationContext.sourceComparisonTitles,
         citations: citationsForAnswer.map((citation) => ({
@@ -1102,6 +1104,113 @@ export class ChatService {
           clarificationDomain === 'historical_telemetry' ||
           ragflowContext?.historicalTelemetry === true),
     };
+  }
+
+  private buildStructuredConversationState(
+    messageHistory?: Array<{
+      role: string;
+      content: string;
+      ragflowContext?: unknown;
+    }>,
+  ): string | undefined {
+    if (!messageHistory?.length) {
+      return undefined;
+    }
+
+    const assistantStateLines = messageHistory
+      .filter((message) => message.role === 'assistant')
+      .map((message) =>
+        this.summarizeAssistantConversationState(message.ragflowContext),
+      )
+      .filter((line): line is string => Boolean(line))
+      .slice(-3);
+    const activeClarification =
+      this.documentationQueryService.getPendingClarificationState(messageHistory);
+    const lines: string[] = [];
+
+    if (assistantStateLines.length > 0) {
+      lines.push('Recent assistant states:');
+      lines.push(...assistantStateLines.map((line) => `- ${line}`));
+    }
+
+    if (activeClarification) {
+      lines.push(
+        `Active clarification: domain=${activeClarification.clarificationDomain}; pendingQuery="${this.truncateForLog(
+          activeClarification.pendingQuery,
+          80,
+        )}"; requiredFields=${
+          activeClarification.requiredFields?.join(', ') || 'none'
+        }`,
+      );
+    }
+
+    return lines.length > 0 ? lines.join('\n') : undefined;
+  }
+
+  private summarizeAssistantConversationState(
+    ragflowContext: unknown,
+  ): string | null {
+    if (!ragflowContext || typeof ragflowContext !== 'object') {
+      return null;
+    }
+
+    const context = ragflowContext as Record<string, unknown>;
+    const normalizedQuery =
+      context.normalizedQuery && typeof context.normalizedQuery === 'object'
+        ? (context.normalizedQuery as Record<string, unknown>)
+        : null;
+    const parts: string[] = [];
+    const answerRoute =
+      typeof context.answerRoute === 'string' ? context.answerRoute.trim() : '';
+    if (answerRoute) {
+      parts.push(`answerRoute=${answerRoute}`);
+    }
+
+    if (typeof context.usedLlm === 'boolean') {
+      parts.push(`generator=${context.usedLlm ? 'llm' : 'deterministic'}`);
+    }
+
+    const sourceFlags: string[] = [];
+    if (context.usedDocumentation === true) {
+      sourceFlags.push('documentation');
+    }
+    if (context.usedCurrentTelemetry === true) {
+      sourceFlags.push('current_telemetry');
+    }
+    if (context.usedHistoricalTelemetry === true) {
+      sourceFlags.push('historical_telemetry');
+    }
+    if (sourceFlags.length > 0) {
+      parts.push(`sources=${sourceFlags.join('+')}`);
+    }
+
+    const resolvedSubjectQuery =
+      typeof context.resolvedSubjectQuery === 'string'
+        ? context.resolvedSubjectQuery.trim()
+        : '';
+    if (resolvedSubjectQuery) {
+      parts.push(
+        `resolvedSubject="${this.truncateForLog(resolvedSubjectQuery, 80)}"`,
+      );
+    }
+
+    const subject =
+      typeof normalizedQuery?.subject === 'string'
+        ? normalizedQuery.subject.trim()
+        : '';
+    if (subject) {
+      parts.push(`subject="${this.truncateForLog(subject, 48)}"`);
+    }
+
+    const followUpMode =
+      typeof normalizedQuery?.followUpMode === 'string'
+        ? normalizedQuery.followUpMode.trim()
+        : '';
+    if (followUpMode) {
+      parts.push(`followUpMode=${followUpMode}`);
+    }
+
+    return parts.length > 0 ? parts.join('; ') : null;
   }
 
   private truncateForLog(value: string, maxLength = 180): string {

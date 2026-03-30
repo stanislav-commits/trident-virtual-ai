@@ -1861,6 +1861,95 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('passes compact structured conversation state from recent ragflow metadata into the LLM context', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content: 'The DPA contact is JMS.',
+          ragflowContext: {
+            answerRoute: 'llm_generation',
+            usedLlm: true,
+            usedDocumentation: true,
+            resolvedSubjectQuery: "who is vessel's dpa?",
+            normalizedQuery: {
+              followUpMode: 'standalone',
+              subject: 'vessel dpa',
+            },
+          },
+        },
+        {
+          role: 'user',
+          content: 'contacts',
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content: 'I found multiple contacts that match this request.',
+          ragflowContext: {
+            answerRoute: 'deterministic_contact',
+            usedLlm: false,
+            usedDocumentation: true,
+            resolvedSubjectQuery: 'vessel dpa contact details',
+            normalizedQuery: {
+              followUpMode: 'follow_up',
+              subject: 'vessel dpa contact',
+            },
+          },
+        },
+        {
+          role: 'user',
+          content: 'what about the other one?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          snippet:
+            'Franc Jansen - Monaco franc@jmsyachting.com Zoe Bolt Falconer - The Netherlands zoe@jmsyachting.com',
+        },
+      ],
+      previousUserQuery: 'contacts',
+      retrievalQuery: 'what about the other one?',
+      resolvedSubjectQuery: 'vessel dpa contact details',
+      answerQuery: undefined,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'The other matching DPA contact is Zoe Bolt Falconer.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'what about the other one?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        structuredConversationState: expect.stringContaining(
+          'answerRoute=deterministic_contact',
+        ),
+      }),
+    );
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        structuredConversationState: expect.stringContaining(
+          'resolvedSubject="vessel dpa contact details"',
+        ),
+      }),
+    );
+  });
+
   it('returns all matching DPA contacts from the cited contact sheet instead of collapsing to one person', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
