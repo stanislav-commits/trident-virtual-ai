@@ -2052,6 +2052,87 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('does not carry forward broad DPA citations before the contact sheet has been established', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content: 'The documented DPA contact is JMS Ltd.',
+          ragflowContext: {
+            answerRoute: 'llm_generation',
+            usedLlm: true,
+            usedDocumentation: true,
+            resolvedSubjectQuery: "who is vessel's dpa?",
+            normalizedQuery: {
+              followUpMode: 'standalone',
+              subject: 'vessel dpa',
+            },
+          },
+          contextReferences: [
+            {
+              shipManualId: 'manual-legacy',
+              chunkId: 'chunk-legacy',
+              score: 0.8,
+              pageNumber: 36,
+              snippet: 'DPA - JMS Ltd / Jansen',
+              sourceTitle: 'Seawolf X SOPEP.pdf',
+              sourceUrl: null,
+              shipManual: { shipId: 'ship-1' },
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: 'contacts',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet:
+            'Franc Jansen - Monaco franc@jmsyachting.com Zoe Bolt Falconer - The Netherlands zoe@jmsyachting.com Tom Vannieuwenhuyse - Palma tom@jmsyachting.com',
+        },
+      ],
+      previousUserQuery: "who is vessel's dpa?",
+      retrievalQuery: 'vessel dpa contact details',
+      resolvedSubjectQuery: 'vessel dpa contact details',
+      answerQuery: undefined,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'contacts',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('Franc Jansen'),
+      expect.objectContaining({
+        answerRoute: 'deterministic_contact',
+        resolvedSubjectQuery: 'vessel dpa contact details',
+        usedLlm: false,
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+        }),
+      ]),
+    );
+  });
+
   it('returns all matching DPA contacts from the cited contact sheet instead of collapsing to one person', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

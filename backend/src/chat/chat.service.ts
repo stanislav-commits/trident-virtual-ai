@@ -1185,6 +1185,25 @@ export class ChatService {
         continue;
       }
 
+      const answerRoute =
+        typeof context?.answerRoute === 'string'
+          ? context.answerRoute.trim()
+          : '';
+      const priorNormalizedQuery =
+        context?.normalizedQuery && typeof context.normalizedQuery === 'object'
+          ? (context.normalizedQuery as Record<string, unknown>)
+          : null;
+      const priorFollowUpMode =
+        typeof priorNormalizedQuery?.followUpMode === 'string'
+          ? priorNormalizedQuery.followUpMode.trim()
+          : '';
+      if (
+        answerRoute !== 'deterministic_contact' &&
+        priorFollowUpMode !== 'follow_up'
+      ) {
+        continue;
+      }
+
       return this.dedupeChatCitations(references);
     }
 
