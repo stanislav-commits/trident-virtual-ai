@@ -2059,6 +2059,127 @@ describe('MetricsService historical telemetry', () => {
     );
   });
 
+  it('ignores temperature-only dedicated fuel tank metrics for historical fuel inventory lookups', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            latestValue: 3100,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_1P',
+              description:
+                'Fuel Oil level reading for the Fuel Tank 1P. What it measures: The current fuel oil level inside the Fuel Tank 1P.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_1P',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            latestValue: 2416,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_2S',
+              description:
+                'Fuel Oil level reading for the second starboard fuel tank. What it measures: The current Fuel Oil level inside Fuel Tank 2S. Unit: litres',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_2S',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_3P',
+            latestValue: 19.1,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_3P',
+              description:
+                'Temperature reading for the Fuel Tank 3P. What it measures: The current temperature inside the Fuel Tank 3P.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_3P',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_4S',
+            latestValue: 18.2,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_4S',
+              description:
+                'Temperature reading for Fuel Tank 4S. What it measures: The current temperature inside Fuel Tank 4S.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_4S',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalNearestValues: jest.fn().mockResolvedValue([
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_1P',
+          value: 3100,
+          time: '2026-03-25T18:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_2S',
+          value: 2416,
+          time: '2026-03-25T18:00:00.000Z',
+        },
+      ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'what was total fuel 5 days ago?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalledWith(
+      [
+        'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+        'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+      ],
+      expect.any(Date),
+      'SeaWolfX',
+    );
+  });
+
   it('detects the latest bunkering-style fuel increase from historical telemetry series', async () => {
     const prisma = {
       ship: {
@@ -2236,6 +2357,145 @@ describe('MetricsService historical telemetry', () => {
     expect(result.content).toContain('latest historical fuel increase');
     expect(result.content).toContain('Fuel Tank 3P');
     expect(influxdb.queryHistoricalSeries).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores temperature-only dedicated fuel tank metrics for historical bunkering events', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            latestValue: 2900,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_1P',
+              description:
+                'Fuel Oil level reading for the Fuel Tank 1P. What it measures: The current fuel oil level inside the Fuel Tank 1P.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_1P',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            latestValue: 2750,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_2S',
+              description:
+                'Fuel Oil level reading for the second starboard fuel tank. What it measures: The current Fuel Oil level inside Fuel Tank 2S. Unit: litres',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_2S',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_3P',
+            latestValue: 19.1,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_3P',
+              description:
+                'Temperature reading for the Fuel Tank 3P. What it measures: The current temperature inside the Fuel Tank 3P.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_3P',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_4S',
+            latestValue: 18.2,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_4S',
+              description:
+                'Temperature reading for Fuel Tank 4S. What it measures: The current temperature inside Fuel Tank 4S.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_4S',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalSeries: jest.fn().mockResolvedValue([
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_1P',
+          value: 2100,
+          time: '2026-03-24T08:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_1P',
+          value: 2625,
+          time: '2026-03-24T08:20:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_2S',
+          value: 2050,
+          time: '2026-03-24T08:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_2S',
+          value: 2475,
+          time: '2026-03-24T08:18:00.000Z',
+        },
+      ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'when was last bunkering?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
+      1,
+      [
+        'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+        'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+      ],
+      expect.any(Object),
+      'SeaWolfX',
+      { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
+    );
   });
 
   it('falls back to a coarser historical event window after a timeout', async () => {

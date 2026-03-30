@@ -878,7 +878,7 @@ export class MetricsService implements OnModuleInit {
         request.metricQuery,
       );
       const fuelTankEntries = entries
-        .filter((entry) => this.isDirectTankStorageEntry(entry, 'fuel'))
+        .filter((entry) => this.isHistoricalTankStorageEntry(entry, 'fuel'))
         .sort((left, right) => {
           const tankRank =
             this.getTelemetryTankOrder(left) -
@@ -973,6 +973,10 @@ export class MetricsService implements OnModuleInit {
     const explicitAggregateEntries = this.findAggregateTankTelemetryEntries(
       entries,
       request.metricQuery,
+      undefined,
+      {
+        strictDedicatedTankStorage: true,
+      },
     );
     if (explicitAggregateEntries.length > 0) {
       return explicitAggregateEntries;
@@ -985,7 +989,7 @@ export class MetricsService implements OnModuleInit {
     }
 
     return entries
-      .filter((entry) => this.isDirectTankStorageEntry(entry, 'fuel'))
+      .filter((entry) => this.isHistoricalTankStorageEntry(entry, 'fuel'))
       .sort((left, right) => {
         const tankRank =
           this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
@@ -2719,6 +2723,9 @@ export class MetricsService implements OnModuleInit {
     entries: ShipTelemetryEntry[],
     query: string,
     resolvedSubjectQuery?: string,
+    options?: {
+      strictDedicatedTankStorage?: boolean;
+    },
   ): ShipTelemetryEntry[] {
     const searchSpace = this.normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
@@ -2729,7 +2736,11 @@ export class MetricsService implements OnModuleInit {
     }
 
     const selected = entries
-      .filter((entry) => this.isDirectTankStorageEntry(entry, fluid))
+      .filter((entry) =>
+        options?.strictDedicatedTankStorage
+          ? this.isHistoricalTankStorageEntry(entry, fluid)
+          : this.isDirectTankStorageEntry(entry, fluid),
+      )
       .sort((left, right) => {
         const tankRank =
           this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
@@ -4137,6 +4148,40 @@ export class MetricsService implements OnModuleInit {
       return false;
     }
     return true;
+  }
+
+  private isHistoricalTankStorageEntry(
+    entry: ShipTelemetryEntry,
+    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+  ): boolean {
+    return (
+      this.isDirectTankStorageEntry(entry, fluid) &&
+      !this.isDedicatedTankTemperatureEntry(entry)
+    );
+  }
+
+  private isDedicatedTankTemperatureEntry(entry: ShipTelemetryEntry): boolean {
+    const semanticText = this.normalizeTelemetryText(
+      [
+        entry.description ?? '',
+        entry.unit ?? '',
+        this.getTelemetryDisplayUnit(entry) ?? '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+    if (!semanticText) {
+      return false;
+    }
+
+    const indicatesTemperature =
+      /\b(temp|temperature|celsius|fahrenheit|degree)\b/i.test(semanticText);
+    const indicatesQuantity =
+      /\b(level|quantity|volume|contents?|capacity|liter|litre|gallon|m3|percent|percentage|onboard)\b/i.test(
+        semanticText,
+      );
+
+    return indicatesTemperature && !indicatesQuantity;
   }
 
   private getTelemetryTankOrder(entry: ShipTelemetryEntry): number {
