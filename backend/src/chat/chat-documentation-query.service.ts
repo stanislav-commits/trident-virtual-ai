@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { ChatCitation, ChatHistoryMessage } from './chat.types';
+import {
+  ChatCitation,
+  ChatClarificationDomain,
+  ChatClarificationField,
+  ChatClarificationState,
+  ChatHistoryMessage,
+  ChatNormalizedQuery,
+} from './chat.types';
 
 const DEFAULT_RAGFLOW_CONTEXT_TOP_K = (() => {
   const parsed = Number.parseInt(process.env.RAGFLOW_CONTEXT_TOP_K ?? '', 10);
@@ -75,6 +82,12 @@ export class ChatDocumentationQueryService {
   }
 
   getPendingClarificationQuery(messages?: ChatHistoryMessage[]): string | null {
+    return this.getPendingClarificationState(messages)?.pendingQuery ?? null;
+  }
+
+  getPendingClarificationState(
+    messages?: ChatHistoryMessage[],
+  ): ChatClarificationState | null {
     if (!messages?.length) return null;
 
     let skippedLatestUser = false;
@@ -96,22 +109,75 @@ export class ChatDocumentationQueryService {
         message.ragflowContext && typeof message.ragflowContext === 'object'
           ? (message.ragflowContext as Record<string, unknown>)
           : null;
-      const pendingClarificationQuery =
-        ragflowContext?.pendingClarificationQuery;
       const awaitingClarification = ragflowContext?.awaitingClarification;
 
-      if (
-        awaitingClarification === true &&
-        typeof pendingClarificationQuery === 'string' &&
-        pendingClarificationQuery.trim()
-      ) {
-        return pendingClarificationQuery.trim();
+      if (awaitingClarification === true) {
+        return this.extractClarificationState(ragflowContext);
       }
 
       return null;
     }
 
     return null;
+  }
+
+  buildClarificationState(params: {
+    clarificationDomain: ChatClarificationDomain;
+    pendingQuery: string;
+    normalizedQuery?: ChatNormalizedQuery;
+    clarificationReason?: string;
+    resolvedSubjectQuery?: string;
+    requiredFields?: ChatClarificationField[];
+    resolvedFields?: Partial<Record<ChatClarificationField, string>>;
+  }): ChatClarificationState {
+    const pendingQuery = params.pendingQuery.trim();
+    const requiredFields =
+      params.requiredFields?.filter((field) => field.trim()) ??
+      this.deriveRequiredClarificationFields(params);
+    const resolvedFields = {
+      ...this.deriveResolvedClarificationFields(params.normalizedQuery),
+      ...(params.resolvedFields ?? {}),
+    };
+    const resolvedSubjectQuery = params.resolvedSubjectQuery?.trim();
+
+    return {
+      clarificationDomain: params.clarificationDomain,
+      pendingQuery,
+      ...(requiredFields.length > 0 ? { requiredFields } : {}),
+      ...(Object.keys(resolvedFields).length > 0 ? { resolvedFields } : {}),
+      ...(resolvedSubjectQuery ? { resolvedSubjectQuery } : {}),
+    };
+  }
+
+  resolveClarificationState(
+    clarificationState: ChatClarificationState,
+    clarificationReply: string,
+  ): ChatClarificationState {
+    const resolvedFields = {
+      ...(clarificationState.resolvedFields ?? {}),
+    } as Partial<Record<ChatClarificationField, string>>;
+    const normalizedTimeReply =
+      this.normalizeHistoricalTimeReply(clarificationReply);
+    if (normalizedTimeReply) {
+      resolvedFields.time_of_day = normalizedTimeReply;
+    }
+
+    const normalizedDateReply =
+      this.normalizeHistoricalDateReply(clarificationReply);
+    if (normalizedDateReply) {
+      resolvedFields.date = normalizedDateReply;
+    }
+
+    const normalizedYearReply =
+      this.normalizeHistoricalYearReply(clarificationReply);
+    if (normalizedYearReply) {
+      resolvedFields.year = normalizedYearReply;
+    }
+
+    return {
+      ...clarificationState,
+      ...(Object.keys(resolvedFields).length > 0 ? { resolvedFields } : {}),
+    };
   }
 
   buildRetrievalQuery(
@@ -159,9 +225,10 @@ export class ChatDocumentationQueryService {
     if (!followUpSubject) return trimmed;
 
     const normalizedFollowUp = this.normalizeInheritedFollowUpQuery(trimmed);
-    return `${followUpSubject} ${normalizedFollowUp || trimmed}`
-      .replace(/\s+/g, ' ')
-      .trim();
+    return this.mergeFollowUpSubjectAndReply(
+      followUpSubject,
+      normalizedFollowUp || trimmed,
+    );
   }
 
   shouldPromoteRetrievalQueryToAnswerQuery(
@@ -189,10 +256,31 @@ export class ChatDocumentationQueryService {
   }
 
   buildClarificationResolvedQuery(
-    pendingClarificationQuery: string,
+    pendingClarification:
+      | ChatClarificationState
+      | string
+      | null
+      | undefined,
     clarificationReply: string,
   ): string {
-    const base = pendingClarificationQuery.trim().replace(/[?!.]+$/g, '');
+    const clarificationState =
+      this.normalizeClarificationStateInput(pendingClarification);
+    const baseQuery = clarificationState?.pendingQuery ?? pendingClarification;
+    if (clarificationState) {
+      const structuredResolvedQuery =
+        this.buildStructuredClarificationResolvedQuery(
+          clarificationState,
+          clarificationReply,
+        );
+      if (structuredResolvedQuery) {
+        return structuredResolvedQuery;
+      }
+    }
+
+    const base =
+      (typeof baseQuery === 'string' ? baseQuery : '')
+        .trim()
+        .replace(/[?!.]+$/g, '');
     const normalizedReply =
       this.normalizeInheritedFollowUpQuery(clarificationReply) ||
       clarificationReply;
@@ -204,13 +292,27 @@ export class ChatDocumentationQueryService {
 
   shouldTreatAsClarificationReply(
     userQuery: string,
-    pendingClarificationQuery: string | null,
+    pendingClarification:
+      | ChatClarificationState
+      | string
+      | null
+      | undefined,
   ): boolean {
+    const clarificationState =
+      this.normalizeClarificationStateInput(pendingClarification);
+    const pendingClarificationQuery = clarificationState?.pendingQuery ?? null;
     if (!pendingClarificationQuery?.trim()) return false;
 
     const trimmed = userQuery.trim();
     if (!trimmed) return false;
     if (this.shouldSkipDocumentationRetrieval(trimmed)) return false;
+
+    if (
+      clarificationState &&
+      this.matchesStructuredClarificationReply(trimmed, clarificationState)
+    ) {
+      return true;
+    }
 
     const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
     if (
@@ -1027,6 +1129,35 @@ export class ChatDocumentationQueryService {
     return withoutAffirmation || trimmed;
   }
 
+  private mergeFollowUpSubjectAndReply(
+    subject: string,
+    followUp: string,
+  ): string {
+    const normalizedSubject = subject.trim().replace(/\s+/g, ' ');
+    const normalizedFollowUp = followUp.trim().replace(/\s+/g, ' ');
+    if (!normalizedSubject) {
+      return normalizedFollowUp;
+    }
+    if (!normalizedFollowUp) {
+      return normalizedSubject;
+    }
+
+    const subjectTokens = normalizedSubject.split(' ');
+    const followUpTokens = normalizedFollowUp.split(' ');
+    let overlap = 0;
+    const maxOverlap = Math.min(subjectTokens.length, followUpTokens.length);
+    for (let size = maxOverlap; size > 0; size -= 1) {
+      const subjectTail = subjectTokens.slice(-size).join(' ').toLowerCase();
+      const followUpHead = followUpTokens.slice(0, size).join(' ').toLowerCase();
+      if (subjectTail === followUpHead) {
+        overlap = size;
+        break;
+      }
+    }
+
+    return [...subjectTokens, ...followUpTokens.slice(overlap)].join(' ').trim();
+  }
+
   private extractDetailFocus(query: string): string | null {
     if (!this.isSubjectDetailFollowUpQuery(query)) {
       return null;
@@ -1556,5 +1687,403 @@ export class ChatDocumentationQueryService {
     if (!referenceId) return null;
 
     return `${referenceId} spare name quantity location manufacturer part supplier part`;
+  }
+
+  private extractClarificationState(
+    ragflowContext: Record<string, unknown> | null,
+  ): ChatClarificationState | null {
+    if (!ragflowContext) {
+      return null;
+    }
+
+    const rawState =
+      ragflowContext.clarificationState &&
+      typeof ragflowContext.clarificationState === 'object'
+        ? (ragflowContext.clarificationState as Record<string, unknown>)
+        : null;
+    const pendingQuery =
+      typeof rawState?.pendingQuery === 'string' && rawState.pendingQuery.trim()
+        ? rawState.pendingQuery.trim()
+        : typeof ragflowContext.pendingClarificationQuery === 'string' &&
+            ragflowContext.pendingClarificationQuery.trim()
+          ? ragflowContext.pendingClarificationQuery.trim()
+          : null;
+    if (!pendingQuery) {
+      return null;
+    }
+
+    const normalizedQuery =
+      ragflowContext.normalizedQuery &&
+      typeof ragflowContext.normalizedQuery === 'object'
+        ? (ragflowContext.normalizedQuery as ChatNormalizedQuery)
+        : undefined;
+    const clarificationReason =
+      typeof ragflowContext.clarificationReason === 'string'
+        ? ragflowContext.clarificationReason
+        : undefined;
+    const resolvedSubjectQuery =
+      typeof rawState?.resolvedSubjectQuery === 'string' &&
+      rawState.resolvedSubjectQuery.trim()
+        ? rawState.resolvedSubjectQuery.trim()
+        : typeof ragflowContext.resolvedSubjectQuery === 'string' &&
+            ragflowContext.resolvedSubjectQuery.trim()
+          ? ragflowContext.resolvedSubjectQuery.trim()
+          : undefined;
+    const clarificationDomain =
+      this.readClarificationDomain(rawState?.clarificationDomain) ??
+      this.deriveClarificationDomain(ragflowContext);
+    const requiredFields =
+      this.normalizeClarificationFields(rawState?.requiredFields) ??
+      this.deriveRequiredClarificationFields({
+        clarificationDomain,
+        pendingQuery,
+        normalizedQuery,
+        clarificationReason,
+        resolvedSubjectQuery,
+      });
+    const resolvedFields = {
+      ...this.deriveResolvedClarificationFields(normalizedQuery),
+      ...(this.normalizeResolvedClarificationFields(rawState?.resolvedFields) ??
+        {}),
+    };
+
+    return {
+      clarificationDomain,
+      pendingQuery,
+      ...(requiredFields.length > 0 ? { requiredFields } : {}),
+      ...(Object.keys(resolvedFields).length > 0 ? { resolvedFields } : {}),
+      ...(resolvedSubjectQuery ? { resolvedSubjectQuery } : {}),
+    };
+  }
+
+  private normalizeClarificationStateInput(
+    pendingClarification:
+      | ChatClarificationState
+      | string
+      | null
+      | undefined,
+  ): ChatClarificationState | null {
+    if (!pendingClarification) {
+      return null;
+    }
+
+    if (typeof pendingClarification === 'string') {
+      const pendingQuery = pendingClarification.trim();
+      return pendingQuery
+        ? {
+            clarificationDomain: 'documentation',
+            pendingQuery,
+          }
+        : null;
+    }
+
+    const pendingQuery = pendingClarification.pendingQuery?.trim();
+    if (!pendingQuery) {
+      return null;
+    }
+
+    return {
+      ...pendingClarification,
+      pendingQuery,
+      ...(pendingClarification.requiredFields?.length
+        ? { requiredFields: [...pendingClarification.requiredFields] }
+        : {}),
+      ...(pendingClarification.resolvedFields &&
+      Object.keys(pendingClarification.resolvedFields).length > 0
+        ? {
+            resolvedFields: { ...pendingClarification.resolvedFields },
+          }
+        : {}),
+      ...(pendingClarification.resolvedSubjectQuery?.trim()
+        ? {
+            resolvedSubjectQuery:
+              pendingClarification.resolvedSubjectQuery.trim(),
+          }
+        : {}),
+    };
+  }
+
+  private buildStructuredClarificationResolvedQuery(
+    clarificationState: ChatClarificationState,
+    clarificationReply: string,
+  ): string | null {
+    if (clarificationState.clarificationDomain !== 'historical_telemetry') {
+      return null;
+    }
+
+    const base = clarificationState.pendingQuery.trim().replace(/[?!.]+$/g, '');
+    if (!base) {
+      return null;
+    }
+
+    const normalizedTimeReply =
+      this.normalizeHistoricalTimeReply(clarificationReply);
+    if (normalizedTimeReply) {
+      return `${base.replace(
+        /\bat\s+\d{1,2}(?::\d{2})?\s*(am|pm)?(?:\s*utc)?\b/i,
+        '',
+      ).trim()} at ${normalizedTimeReply}`
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    const normalizedDateReply =
+      this.normalizeHistoricalDateReply(clarificationReply);
+    if (
+      normalizedDateReply &&
+      !/\b\d{4}-\d{2}-\d{2}\b/.test(base) &&
+      !/\b\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/i.test(
+        base,
+      )
+    ) {
+      return `${base} on ${normalizedDateReply}`.replace(/\s+/g, ' ').trim();
+    }
+
+    const normalizedYearReply =
+      this.normalizeHistoricalYearReply(clarificationReply);
+    if (
+      normalizedYearReply &&
+      /\b\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(
+        base,
+      ) &&
+      !/\b\d{4}\b/.test(base)
+    ) {
+      return `${base} ${normalizedYearReply}`.replace(/\s+/g, ' ').trim();
+    }
+
+    return null;
+  }
+
+  private matchesStructuredClarificationReply(
+    userQuery: string,
+    clarificationState: ChatClarificationState,
+  ): boolean {
+    const requiredFields = clarificationState.requiredFields ?? [];
+    if (
+      (requiredFields.includes('time_of_day') ||
+        clarificationState.clarificationDomain === 'historical_telemetry') &&
+      this.normalizeHistoricalTimeReply(userQuery)
+    ) {
+      return true;
+    }
+
+    if (
+      requiredFields.includes('date') &&
+      this.normalizeHistoricalDateReply(userQuery)
+    ) {
+      return true;
+    }
+
+    if (
+      requiredFields.includes('year') &&
+      this.normalizeHistoricalYearReply(userQuery)
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private readClarificationDomain(
+    value: unknown,
+  ): ChatClarificationDomain | null {
+    if (
+      value === 'documentation' ||
+      value === 'current_telemetry' ||
+      value === 'historical_telemetry'
+    ) {
+      return value;
+    }
+
+    return null;
+  }
+
+  private deriveClarificationDomain(
+    ragflowContext: Record<string, unknown>,
+  ): ChatClarificationDomain {
+    const answerRoute =
+      typeof ragflowContext.answerRoute === 'string'
+        ? ragflowContext.answerRoute
+        : '';
+    const clarificationReason =
+      typeof ragflowContext.clarificationReason === 'string'
+        ? ragflowContext.clarificationReason
+        : '';
+
+    if (
+      answerRoute === 'historical_telemetry' ||
+      /^historical_telemetry(?:_|$)/i.test(clarificationReason) ||
+      clarificationReason === 'historical_current_fallback_blocked' ||
+      ragflowContext.historicalTelemetry === true
+    ) {
+      return 'historical_telemetry';
+    }
+
+    if (
+      answerRoute === 'current_telemetry' ||
+      clarificationReason === 'related_telemetry_options'
+    ) {
+      return 'current_telemetry';
+    }
+
+    return 'documentation';
+  }
+
+  private deriveRequiredClarificationFields(params: {
+    clarificationDomain: ChatClarificationDomain;
+    pendingQuery: string;
+    normalizedQuery?: ChatNormalizedQuery;
+    clarificationReason?: string;
+    resolvedSubjectQuery?: string;
+  }): ChatClarificationField[] {
+    if (
+      params.clarificationDomain === 'historical_telemetry' &&
+      params.normalizedQuery?.ambiguityFlags.includes('missing_year')
+    ) {
+      return ['year'];
+    }
+
+    if (
+      params.clarificationDomain === 'historical_telemetry' &&
+      params.normalizedQuery?.timeIntent.absoluteDate &&
+      params.normalizedQuery.ambiguityFlags.includes('missing_explicit_time')
+    ) {
+      return ['time_of_day'];
+    }
+
+    if (
+      params.clarificationDomain === 'current_telemetry' &&
+      params.clarificationReason === 'related_telemetry_options'
+    ) {
+      return ['metric_selection'];
+    }
+
+    if (
+      params.clarificationDomain === 'historical_telemetry' &&
+      params.clarificationReason === 'historical_current_fallback_blocked'
+    ) {
+      return ['metric_or_time_window'];
+    }
+
+    if (params.clarificationDomain === 'documentation') {
+      return ['subject'];
+    }
+
+    return [];
+  }
+
+  private deriveResolvedClarificationFields(
+    normalizedQuery?: ChatNormalizedQuery,
+  ): Partial<Record<ChatClarificationField, string>> {
+    const resolvedFields: Partial<Record<ChatClarificationField, string>> = {};
+
+    if (normalizedQuery?.timeIntent.absoluteDate) {
+      resolvedFields.date = normalizedQuery.timeIntent.absoluteDate;
+    }
+
+    if (normalizedQuery?.subject?.trim()) {
+      resolvedFields.subject = normalizedQuery.subject.trim();
+    }
+
+    return resolvedFields;
+  }
+
+  private normalizeClarificationFields(
+    value: unknown,
+  ): ChatClarificationField[] | null {
+    if (!Array.isArray(value)) {
+      return null;
+    }
+
+    const fields = value.filter(
+      (field): field is ChatClarificationField =>
+        field === 'subject' ||
+        field === 'metric_selection' ||
+        field === 'year' ||
+        field === 'date' ||
+        field === 'time_of_day' ||
+        field === 'metric_or_time_window',
+    );
+
+    return [...new Set(fields)];
+  }
+
+  private normalizeResolvedClarificationFields(
+    value: unknown,
+  ): Partial<Record<ChatClarificationField, string>> | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+
+    const normalized: Partial<Record<ChatClarificationField, string>> = {};
+    for (const [key, fieldValue] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      if (
+        (key === 'subject' ||
+          key === 'metric_selection' ||
+          key === 'year' ||
+          key === 'date' ||
+          key === 'time_of_day' ||
+          key === 'metric_or_time_window') &&
+        typeof fieldValue === 'string' &&
+        fieldValue.trim()
+      ) {
+        normalized[key] = fieldValue.trim();
+      }
+    }
+
+    return normalized;
+  }
+
+  private normalizeHistoricalTimeReply(reply: string): string | null {
+    const trimmed = reply.trim().replace(/[?!.]+$/g, '');
+    if (!trimmed) {
+      return null;
+    }
+
+    const clockWithMinutes = trimmed.match(
+      /^(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?(?:\s*utc)?$/i,
+    );
+    const meridiemOnly = trimmed.match(
+      /^(?:at\s+)?(\d{1,2})\s*(am|pm)(?:\s*utc)?$/i,
+    );
+    const match = clockWithMinutes ?? meridiemOnly;
+    if (!match) {
+      return null;
+    }
+
+    let hours = Number.parseInt(match[1], 10);
+    const minutes = Number.parseInt(match[2] ?? '0', 10);
+    const meridiem = match[3]?.toLowerCase();
+    if (meridiem === 'pm' && hours < 12) {
+      hours += 12;
+    } else if (meridiem === 'am' && hours === 12) {
+      hours = 0;
+    }
+
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      return null;
+    }
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(
+      2,
+      '0',
+    )} UTC`;
+  }
+
+  private normalizeHistoricalDateReply(reply: string): string | null {
+    const trimmed = reply.trim().replace(/[?!.]+$/g, '');
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    }
+
+    return null;
+  }
+
+  private normalizeHistoricalYearReply(reply: string): string | null {
+    const trimmed = reply.trim().replace(/[?!.]+$/g, '');
+    return /^\d{4}$/.test(trimmed) ? trimmed : null;
   }
 }

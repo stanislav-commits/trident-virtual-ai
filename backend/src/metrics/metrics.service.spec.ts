@@ -1860,6 +1860,72 @@ describe('MetricsService historical telemetry', () => {
     expect(influxdb.queryHistoricalFirstLast).toHaveBeenCalled();
   });
 
+  it('accepts bare UTC time replies when the historical date is carried in the resolved subject query', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::Tanks::Fuel Tank 1P',
+            latestValue: 3155,
+            valueUpdatedAt: new Date('2026-03-25T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks.Fuel Tank 1P',
+              description: 'Fuel tank level reading.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks',
+              field: 'Fuel Tank 1P',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalNearestValues: jest.fn().mockResolvedValue([
+        {
+          key: 'Trending::Tanks::Fuel Tank 1P',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fuel Tank 1P',
+          value: 3155,
+          time: '2026-03-25T12:00:00.000Z',
+        },
+      ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      '12:00 UTC',
+      'what was the tank level 2026-03-25?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('2026-03-25 12:00 UTC');
+    expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalledWith(
+      ['Trending::Tanks::Fuel Tank 1P'],
+      new Date('2026-03-25T12:00:00.000Z'),
+      'SeaWolfX',
+    );
+  });
+
   it('answers bare relative fuel-onboard questions from historical point-in-time telemetry', async () => {
     const prisma = {
       ship: {

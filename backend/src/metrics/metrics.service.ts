@@ -2235,16 +2235,32 @@ export class MetricsService implements OnModuleInit {
   private parseHistoricalTimeOfDay(
     query: string,
   ): { hours: number; minutes: number } | null {
-    const clockMatch = query.match(
-      /\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i,
+    const atClockMatch = query.match(
+      /\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*utc)?\b/i,
     );
-    if (!clockMatch) {
+    const bareClockMatch = query.match(
+      /\b(\d{1,2}):(\d{2})\s*(am|pm)?(?:\s*utc)?\b/i,
+    );
+    const meridiemOnlyMatch = query.match(
+      /\b(\d{1,2})\s*(am|pm)(?:\s*utc)?\b/i,
+    );
+
+    const hoursText =
+      atClockMatch?.[1] ?? bareClockMatch?.[1] ?? meridiemOnlyMatch?.[1];
+    if (!hoursText) {
       return null;
     }
 
-    let hours = Number.parseInt(clockMatch[1], 10);
-    const minutes = Number.parseInt(clockMatch[2] ?? '0', 10);
-    const meridiem = clockMatch[3]?.toLowerCase();
+    let hours = Number.parseInt(hoursText, 10);
+    const minutes = Number.parseInt(
+      atClockMatch?.[2] ?? bareClockMatch?.[2] ?? '0',
+      10,
+    );
+    const meridiem = (
+      atClockMatch?.[3] ??
+      bareClockMatch?.[3] ??
+      meridiemOnlyMatch?.[2]
+    )?.toLowerCase();
     if (meridiem === 'pm' && hours < 12) {
       hours += 12;
     } else if (meridiem === 'am' && hours === 12) {

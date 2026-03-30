@@ -21,19 +21,20 @@ export class ChatQueryNormalizationService {
       this.documentationQueryService.getPreviousResolvedUserQuery(
         params.messageHistory,
       ) ?? undefined;
-    const pendingClarificationQuery =
-      this.documentationQueryService.getPendingClarificationQuery(
+    const clarificationState =
+      this.documentationQueryService.getPendingClarificationState(
         params.messageHistory,
       ) ?? undefined;
+    const pendingClarificationQuery = clarificationState?.pendingQuery;
     const isClarificationReply =
       this.documentationQueryService.shouldTreatAsClarificationReply(
         rawQuery,
-        pendingClarificationQuery ?? null,
+        clarificationState ?? pendingClarificationQuery ?? null,
       );
     const retrievalQuery =
-      isClarificationReply && pendingClarificationQuery
+      isClarificationReply && (clarificationState ?? pendingClarificationQuery)
         ? this.documentationQueryService.buildClarificationResolvedQuery(
-            pendingClarificationQuery,
+            clarificationState ?? pendingClarificationQuery,
             rawQuery,
           )
         : this.documentationQueryService.buildRetrievalQuery(
@@ -65,6 +66,13 @@ export class ChatQueryNormalizationService {
       effectiveQuery,
       previousUserQuery,
       pendingClarificationQuery,
+      clarificationState:
+        isClarificationReply && clarificationState
+          ? this.documentationQueryService.resolveClarificationState(
+              clarificationState,
+              rawQuery,
+            )
+          : clarificationState,
       followUpMode: isClarificationReply
         ? 'clarification_reply'
         : previousUserQuery &&

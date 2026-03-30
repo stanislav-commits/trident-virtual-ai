@@ -21,6 +21,27 @@ export interface ChatSuggestionAction {
   kind?: 'suggestion' | 'all';
 }
 
+export type ChatClarificationDomain =
+  | 'documentation'
+  | 'current_telemetry'
+  | 'historical_telemetry';
+
+export type ChatClarificationField =
+  | 'subject'
+  | 'metric_selection'
+  | 'year'
+  | 'date'
+  | 'time_of_day'
+  | 'metric_or_time_window';
+
+export interface ChatClarificationState {
+  clarificationDomain: ChatClarificationDomain;
+  pendingQuery: string;
+  requiredFields?: ChatClarificationField[];
+  resolvedFields?: Partial<Record<ChatClarificationField, string>>;
+  resolvedSubjectQuery?: string;
+}
+
 export interface ChatDocumentationContext {
   previousUserQuery?: string;
   retrievalQuery: string;
@@ -33,6 +54,7 @@ export interface ChatDocumentationContext {
   clarificationQuestion?: string;
   clarificationReason?: string;
   pendingClarificationQuery?: string;
+  clarificationState?: ChatClarificationState;
   clarificationActions?: ChatSuggestionAction[];
   compareBySource?: boolean;
   sourceComparisonTitles?: string[];
@@ -84,6 +106,7 @@ export interface ChatNormalizedQuery {
   effectiveQuery: string;
   previousUserQuery?: string;
   pendingClarificationQuery?: string;
+  clarificationState?: ChatClarificationState;
   followUpMode: ChatFollowUpMode;
   subject?: string;
   asset?: string;

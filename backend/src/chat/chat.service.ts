@@ -500,6 +500,16 @@ export class ChatService {
         documentationContext.needsClarification &&
         documentationContext.clarificationQuestion
       ) {
+        const clarificationState =
+          documentationContext.clarificationState ??
+          this.documentationQueryService.buildClarificationState({
+            clarificationDomain: 'documentation',
+            pendingQuery:
+              documentationContext.pendingClarificationQuery ?? userQuery.trim(),
+            clarificationReason:
+              documentationContext.clarificationReason ?? 'underspecified_query',
+            normalizedQuery: effectiveNormalizedQuery,
+          });
         return this.addRoutedAssistantMessage({
           sessionId,
           content: documentationContext.clarificationQuestion,
@@ -508,10 +518,11 @@ export class ChatService {
           routeTrace: ['documentation:clarification'],
           ragflowContext: {
             awaitingClarification: true,
-            pendingClarificationQuery:
-              documentationContext.pendingClarificationQuery ?? userQuery.trim(),
+            clarificationDomain: clarificationState.clarificationDomain,
+            pendingClarificationQuery: clarificationState.pendingQuery,
             clarificationReason:
               documentationContext.clarificationReason ?? 'underspecified_query',
+            clarificationState,
             ...(documentationContext.clarificationActions &&
             documentationContext.clarificationActions.length > 0
               ? {
@@ -543,6 +554,15 @@ export class ChatService {
           historicalTelemetryResolution.kind === 'clarification' &&
           historicalTelemetryResolution.clarificationQuestion
         ) {
+          const clarificationState =
+            this.documentationQueryService.buildClarificationState({
+              clarificationDomain: 'historical_telemetry',
+              pendingQuery:
+                historicalTelemetryResolution.pendingQuery ?? userQuery.trim(),
+              clarificationReason: 'historical_telemetry_query',
+              normalizedQuery: effectiveNormalizedQuery,
+              resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            });
           return this.addRoutedAssistantMessage({
             sessionId,
             content: historicalTelemetryResolution.clarificationQuestion,
@@ -551,9 +571,10 @@ export class ChatService {
             routeTrace: ['historical_telemetry:clarification'],
             ragflowContext: {
               awaitingClarification: true,
-              pendingClarificationQuery:
-                historicalTelemetryResolution.pendingQuery ?? userQuery.trim(),
+              clarificationDomain: clarificationState.clarificationDomain,
+              pendingClarificationQuery: clarificationState.pendingQuery,
               clarificationReason: 'historical_telemetry_query',
+              clarificationState,
               ...(historicalTelemetryResolution.clarificationActions?.length
                 ? {
                     clarificationActions:
@@ -605,6 +626,14 @@ export class ChatService {
         this.logger.debug(
           `Blocking current telemetry fallback for unresolved historical query="${effectiveUserQuery}"`,
         );
+        const clarificationState =
+          this.documentationQueryService.buildClarificationState({
+            clarificationDomain: 'historical_telemetry',
+            pendingQuery: userQuery.trim(),
+            clarificationReason: 'historical_current_fallback_blocked',
+            normalizedQuery: effectiveNormalizedQuery,
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+          });
         return this.addRoutedAssistantMessage({
           sessionId,
           content:
@@ -614,8 +643,10 @@ export class ChatService {
           routeTrace: ['historical_telemetry:fallback_blocked'],
           ragflowContext: {
             awaitingClarification: true,
-            pendingClarificationQuery: userQuery.trim(),
+            clarificationDomain: clarificationState.clarificationDomain,
+            pendingClarificationQuery: clarificationState.pendingQuery,
             clarificationReason: 'historical_current_fallback_blocked',
+            clarificationState,
             currentTelemetryFallbackAllowed: false,
             currentTelemetryFallbackReason:
               'historical_intent_requires_explicit_downgrade',
@@ -707,6 +738,14 @@ export class ChatService {
         this.logger.debug(
           `Returning telemetry clarification for query="${effectiveUserQuery}" with ${telemetryClarification.actions.length} actions`,
         );
+        const clarificationState =
+          this.documentationQueryService.buildClarificationState({
+            clarificationDomain: 'current_telemetry',
+            pendingQuery: telemetryClarification.pendingQuery,
+            clarificationReason: 'related_telemetry_options',
+            normalizedQuery: effectiveNormalizedQuery,
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+          });
         return this.addRoutedAssistantMessage({
           sessionId,
           content: telemetryClarification.question,
@@ -715,8 +754,10 @@ export class ChatService {
           routeTrace: ['current_telemetry:clarification'],
           ragflowContext: {
             awaitingClarification: true,
-            pendingClarificationQuery: telemetryClarification.pendingQuery,
+            clarificationDomain: clarificationState.clarificationDomain,
+            pendingClarificationQuery: clarificationState.pendingQuery,
             clarificationReason: 'related_telemetry_options',
+            clarificationState,
             clarificationActions: telemetryClarification.actions,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }

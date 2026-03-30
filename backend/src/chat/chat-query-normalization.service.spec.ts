@@ -36,4 +36,83 @@ describe('ChatQueryNormalizationService', () => {
     expect(increase.timeIntent.kind).toBe('historical_event');
     expect(increase.timeIntent.eventType).toBe('fuel_increase');
   });
+
+  it('attaches a time-only reply to the active historical clarification state', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: '12:00 UTC',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what was the tank level 2026-03-25?',
+        },
+        {
+          role: 'assistant',
+          content: 'Please specify the exact time for this historical telemetry lookup.',
+          ragflowContext: {
+            awaitingClarification: true,
+            answerRoute: 'clarification',
+            clarificationReason: 'historical_telemetry_query',
+            pendingClarificationQuery: 'what was the tank level 2026-03-25?',
+            normalizedQuery: {
+              rawQuery: 'what was the tank level 2026-03-25?',
+              normalizedQuery: 'what was the tank level 2026-03-25?',
+              retrievalQuery: 'what was the tank level 2026-03-25?',
+              effectiveQuery: 'what was the tank level 2026-03-25?',
+              followUpMode: 'standalone',
+              subject: 'tank level',
+              operation: 'lookup',
+              timeIntent: {
+                kind: 'historical_point',
+                expression: '2026-03-25',
+                absoluteDate: '2026-03-25',
+              },
+              sourceHints: ['TELEMETRY', 'HISTORY'],
+              isClarificationReply: false,
+              ambiguityFlags: ['missing_explicit_time'],
+            },
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('clarification_reply');
+    expect(normalized.retrievalQuery).toContain('at 12:00 UTC');
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.ambiguityFlags).not.toContain('missing_explicit_time');
+    expect(normalized.clarificationState).toEqual(
+      expect.objectContaining({
+        clarificationDomain: 'historical_telemetry',
+        pendingQuery: 'what was the tank level 2026-03-25?',
+        requiredFields: ['time_of_day'],
+        resolvedFields: expect.objectContaining({
+          date: '2026-03-25',
+          time_of_day: '12:00 UTC',
+        }),
+      }),
+    );
+  });
+
+  it('keeps DPA contact follow-ups on the previous resolved subject after clarification-state refactoring', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'provide contacts',
+      messageHistory: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+        },
+        {
+          role: 'assistant',
+          content: 'The vessel DPA is John Doe.',
+          ragflowContext: {
+            answerRoute: 'deterministic_contact',
+            resolvedSubjectQuery: 'dpa contact details',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe('dpa contact details');
+    expect(normalized.isClarificationReply).toBe(false);
+  });
 });

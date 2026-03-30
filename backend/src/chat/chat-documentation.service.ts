@@ -36,20 +36,24 @@ export class ChatDocumentationService {
     const previousUserQuery =
       normalizedQuery?.previousUserQuery ??
       this.queryService.getPreviousResolvedUserQuery(messageHistory);
+    const pendingClarificationState =
+      normalizedQuery?.clarificationState ??
+      this.queryService.getPendingClarificationState(messageHistory);
     const pendingClarificationQuery =
       normalizedQuery?.pendingClarificationQuery ??
+      pendingClarificationState?.pendingQuery ??
       this.queryService.getPendingClarificationQuery(messageHistory);
     const isClarificationReply =
       normalizedQuery?.isClarificationReply ??
       this.queryService.shouldTreatAsClarificationReply(
         userQuery,
-        pendingClarificationQuery,
+        pendingClarificationState ?? pendingClarificationQuery,
       );
     const retrievalQuery =
       normalizedQuery?.retrievalQuery ??
       (isClarificationReply
         ? this.queryService.buildClarificationResolvedQuery(
-            pendingClarificationQuery!,
+            pendingClarificationState ?? pendingClarificationQuery!,
             userQuery,
           )
         : this.queryService.buildRetrievalQuery(userQuery, previousUserQuery));
@@ -91,6 +95,12 @@ export class ChatDocumentationService {
           this.queryService.buildClarificationQuestion(userQuery),
         clarificationReason: 'underspecified_query',
         pendingClarificationQuery: userQuery.trim(),
+        clarificationState: this.queryService.buildClarificationState({
+          clarificationDomain: 'documentation',
+          pendingQuery: userQuery.trim(),
+          clarificationReason: 'underspecified_query',
+          normalizedQuery,
+        }),
         clarificationActions,
       };
     }
