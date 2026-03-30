@@ -2164,7 +2164,7 @@ describe('MetricsService historical telemetry', () => {
       expect.any(Array),
       expect.any(Object),
       'SeaWolfX',
-      { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
+      { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
     );
   });
 
@@ -2236,5 +2236,109 @@ describe('MetricsService historical telemetry', () => {
     expect(result.content).toContain('latest historical fuel increase');
     expect(result.content).toContain('Fuel Tank 3P');
     expect(influxdb.queryHistoricalSeries).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to a coarser historical event window after a timeout', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::Tanks::Fuel Tank 3P',
+            latestValue: 1900,
+            valueUpdatedAt: new Date('2026-03-27T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks.Fuel Tank 3P',
+              description: 'Fuel tank quantity.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks',
+              field: 'Fuel Tank 3P',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalSeries: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('Request timed out'))
+        .mockResolvedValueOnce([
+          {
+            key: 'Trending::Tanks::Fuel Tank 3P',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fuel Tank 3P',
+            value: 1400,
+            time: '2026-03-20T00:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks::Fuel Tank 3P',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fuel Tank 3P',
+            value: 1680,
+            time: '2026-03-21T00:00:00.000Z',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            key: 'Trending::Tanks::Fuel Tank 3P',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fuel Tank 3P',
+            value: 1400,
+            time: '2026-03-20T06:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks::Fuel Tank 3P',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fuel Tank 3P',
+            value: 1680,
+            time: '2026-03-20T06:10:00.000Z',
+          },
+        ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'check it based on fuel last increase',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('2026-03-20 06:10 UTC');
+    expect(influxdb.queryHistoricalSeries).toHaveBeenCalledTimes(3);
+    expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Array),
+      expect.any(Object),
+      'SeaWolfX',
+      { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
+    );
+    expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Array),
+      expect.any(Object),
+      'SeaWolfX',
+      { windowEvery: '1d', windowMs: 24 * 60 * 60 * 1000 },
+    );
   });
 });

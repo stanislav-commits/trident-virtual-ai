@@ -1269,15 +1269,47 @@ export class MetricsService implements OnModuleInit {
     request: ParsedHistoricalTelemetryRequest,
   ): Promise<string | null> {
     const seriesKeys = matchedEntries.map((entry) => entry.key);
-    const coarseSeriesOptions = this.getHistoricalEventSeriesOptions(
+    let rows: InfluxMetricValue[] = [];
+    let selectedSeriesOptions:
+      | (InfluxHistoricalSeriesOptions & { windowMs: number })
+      | undefined;
+    const coarseSeriesOptionCandidates = this.getHistoricalEventSeriesOptions(
       request.range,
     );
-    const rows = await this.influxdb.queryHistoricalSeries(
-      seriesKeys,
-      request.range,
-      organizationName,
-      coarseSeriesOptions,
-    );
+
+    if (coarseSeriesOptionCandidates.length === 0) {
+      rows = await this.influxdb.queryHistoricalSeries(
+        seriesKeys,
+        request.range,
+        organizationName,
+      );
+    } else {
+      let lastError: Error | null = null;
+      for (const candidate of coarseSeriesOptionCandidates) {
+        try {
+          rows = await this.influxdb.queryHistoricalSeries(
+            seriesKeys,
+            request.range,
+            organizationName,
+            candidate,
+          );
+          selectedSeriesOptions = candidate;
+          if (rows.length > 0) {
+            break;
+          }
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          this.logger.warn(
+            `Historical event series query failed for window=${candidate.windowEvery}. ${lastError.message}`,
+          );
+        }
+      }
+
+      if (rows.length === 0 && lastError) {
+        throw lastError;
+      }
+    }
+
     if (rows.length === 0) {
       return null;
     }
@@ -1288,13 +1320,13 @@ export class MetricsService implements OnModuleInit {
     );
     if (
       positiveEvents.length > 0 &&
-      coarseSeriesOptions?.windowEvery &&
-      coarseSeriesOptions.windowMs > 0
+      selectedSeriesOptions?.windowEvery &&
+      selectedSeriesOptions.windowMs > 0
     ) {
       const refinementRange = this.buildHistoricalEventRefinementRange(
         request.range,
         positiveEvents[0].time,
-        coarseSeriesOptions.windowMs,
+        selectedSeriesOptions.windowMs,
       );
       if (refinementRange) {
         try {
@@ -1414,23 +1446,35 @@ export class MetricsService implements OnModuleInit {
 
   private getHistoricalEventSeriesOptions(
     range: InfluxHistoricalQueryRange,
-  ): (InfluxHistoricalSeriesOptions & { windowMs: number }) | undefined {
+  ): Array<InfluxHistoricalSeriesOptions & { windowMs: number }> {
     const durationMs = this.getHistoricalRangeDurationMs(range);
     if (durationMs == null || durationMs <= 2 * 24 * 60 * 60 * 1000) {
-      return undefined;
+      return [];
     }
 
     if (durationMs > 120 * 24 * 60 * 60 * 1000) {
-      return { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 };
+      return [
+        { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
+        { windowEvery: '1d', windowMs: 24 * 60 * 60 * 1000 },
+      ];
     }
     if (durationMs > 30 * 24 * 60 * 60 * 1000) {
-      return { windowEvery: '1h', windowMs: 60 * 60 * 1000 };
+      return [
+        { windowEvery: '6h', windowMs: 6 * 60 * 60 * 1000 },
+        { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
+      ];
     }
     if (durationMs > 7 * 24 * 60 * 60 * 1000) {
-      return { windowEvery: '30m', windowMs: 30 * 60 * 1000 };
+      return [
+        { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
+        { windowEvery: '6h', windowMs: 6 * 60 * 60 * 1000 },
+      ];
     }
 
-    return { windowEvery: '10m', windowMs: 10 * 60 * 1000 };
+    return [
+      { windowEvery: '30m', windowMs: 30 * 60 * 1000 },
+      { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
+    ];
   }
 
   private getHistoricalRangeDurationMs(
