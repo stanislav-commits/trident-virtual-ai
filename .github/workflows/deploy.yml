@@ -15,5 +15,40 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            ./deploy.sh
+            set -euo pipefail
+
+            APP_DIR="${{ secrets.DEPLOY_PATH }}"
+            BACKEND_DIR="$APP_DIR/backend"
+            FRONTEND_DIR="$APP_DIR/frontend"
+
+            echo "== Pull latest =="
+            cd "$APP_DIR"
+            git fetch --all
+            git reset --hard origin/main
+
+            echo "== Backend =="
+            cd "$BACKEND_DIR"
+            npm ci
+            npx prisma generate
+            npx prisma migrate deploy || true
+
+            # Previous manual changes left root-owned build artifacts behind.
+            # Clean only compiled output so the deploy user can rebuild safely.
+            sudo rm -rf "$BACKEND_DIR/dist"
+
+            npm run build
+
+            sudo pm2 restart trident-backend --update-env
+            sudo pm2 save
+
+            echo "== Frontend =="
+            cd "$FRONTEND_DIR"
+            npm ci
+            npm run build
+
+            echo "== Nginx reload =="
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            echo "== Done =="
+            sudo pm2 status
