@@ -214,6 +214,52 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
+  it('does not silently fall back to current telemetry for unresolved historical telemetry intent', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'what was fuel onboard yesterday?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'what was fuel onboard yesterday?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.resolveHistoricalTelemetryQuery.mockResolvedValue({
+      kind: 'none',
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'what was fuel onboard yesterday?',
+      'SeaWolfX',
+      'user',
+    );
+
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        'I am not substituting current values as a fallback',
+      ),
+      expect.objectContaining({
+        awaitingClarification: true,
+        answerRoute: 'clarification',
+        clarificationReason: 'historical_current_fallback_blocked',
+        currentTelemetryFallbackAllowed: false,
+      }),
+      [],
+    );
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
   it('returns a historical telemetry answer for admin global chat sessions without a bound ship', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

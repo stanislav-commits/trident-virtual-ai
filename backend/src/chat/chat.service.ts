@@ -595,6 +595,41 @@ export class ChatService {
         }
       }
 
+      if (
+        this.shouldBlockCurrentTelemetryBecauseHistoricalIntent(
+          queryPlan,
+          effectiveNormalizedQuery,
+          historicalTelemetryMatch?.resolution.kind ?? 'none',
+        )
+      ) {
+        this.logger.debug(
+          `Blocking current telemetry fallback for unresolved historical query="${effectiveUserQuery}"`,
+        );
+        return this.addRoutedAssistantMessage({
+          sessionId,
+          content:
+            'I could not resolve the requested historical telemetry from the available data, so I am not substituting current values as a fallback. Please restate the metric or provide a more specific time window.',
+          route: 'clarification',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['historical_telemetry:fallback_blocked'],
+          ragflowContext: {
+            awaitingClarification: true,
+            pendingClarificationQuery: userQuery.trim(),
+            clarificationReason: 'historical_current_fallback_blocked',
+            currentTelemetryFallbackAllowed: false,
+            currentTelemetryFallbackReason:
+              'historical_intent_requires_explicit_downgrade',
+            historicalTelemetry: true,
+            ...(resolvedSubjectQuery
+              ? { resolvedSubjectQuery }
+              : retrievalQuery
+                ? { resolvedSubjectQuery: retrievalQuery }
+                : {}),
+          },
+          contextReferences: [],
+        });
+      }
+
       let telemetry: Record<string, unknown> = {};
       let telemetryPrefiltered = false;
       let telemetryMatchMode: TelemetryMatchMode = 'none';
@@ -3163,6 +3198,30 @@ export class ChatService {
       (/\b(how\s+many|how\s+much|total|combined|sum)\b/i.test(normalized) &&
         /\b(fuel|oil|water|coolant)\b/i.test(normalized))
     );
+  }
+
+  private shouldBlockCurrentTelemetryBecauseHistoricalIntent(
+    queryPlan: ChatQueryPlan,
+    normalizedQuery: ChatNormalizedQuery,
+    historicalResolutionKind: 'none' | 'clarification' | 'answer',
+  ): boolean {
+    if (historicalResolutionKind !== 'none') {
+      return false;
+    }
+
+    if (!queryPlan.requiresTelemetryHistory) {
+      return false;
+    }
+
+    if (
+      normalizedQuery.timeIntent.kind !== 'historical_point' &&
+      normalizedQuery.timeIntent.kind !== 'historical_range' &&
+      normalizedQuery.timeIntent.kind !== 'historical_event'
+    ) {
+      return false;
+    }
+
+    return normalizedQuery.sourceHints.includes('TELEMETRY');
   }
 
   private isCurrentTelemetryGuidedQuery(userQuery: string): boolean {
