@@ -4,6 +4,69 @@ import { ChatDocumentationScanService } from './chat-documentation-scan.service'
 describe('ChatDocumentationScanService', () => {
   const queryService = new ChatDocumentationQueryService();
 
+  it('filters scan contexts to the allowed document categories before fallback selection', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-manual',
+              ragflowDocumentId: 'doc-manual',
+              filename: 'Volvo Penta operators manual.pdf',
+              category: 'MANUALS',
+            },
+            {
+              id: 'manual-history',
+              ragflowDocumentId: 'doc-history',
+              filename: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+              category: 'HISTORY_PROCEDURES',
+            },
+          ],
+        }),
+        findMany: jest.fn(),
+      },
+    };
+    const service = new ChatDocumentationScanService(
+      prisma as never,
+      { isConfigured: jest.fn().mockReturnValue(true) } as never,
+      queryService,
+      {} as never,
+    );
+
+    const contexts = await (
+      service as unknown as {
+        loadDocumentScanContexts: (
+          shipId: string | null,
+          citations: unknown[],
+          allowedDocumentCategories?: string[],
+        ) => Promise<
+          Array<{
+            ragflowDatasetId: string;
+            manuals: Array<{ id: string; filename: string; category: string }>;
+            score: number;
+          }>
+        >;
+      }
+    ).loadDocumentScanContexts('ship-1', [], ['MANUALS']);
+
+    expect(contexts).toEqual([
+      {
+        ragflowDatasetId: 'dataset-1',
+        manuals: [
+          {
+            id: 'manual-manual',
+            ragflowDocumentId: 'doc-manual',
+            filename: 'Volvo Penta operators manual.pdf',
+            category: 'MANUALS',
+          },
+        ],
+        score: Number.MAX_SAFE_INTEGER,
+      },
+    ]);
+    expect(prisma.ship.findMany).not.toHaveBeenCalled();
+  });
+
   it('limits personnel-directory scans to dedicated contact documents when they are available', async () => {
     const ragflowService = {
       isConfigured: jest.fn().mockReturnValue(true),
@@ -43,11 +106,13 @@ describe('ChatDocumentationScanService', () => {
             id: 'manual-contact',
             ragflowDocumentId: 'doc-contact',
             filename: 'JMS Company Contact Details Jan 26.pdf',
+            category: 'MANUALS',
           },
           {
             id: 'manual-ntvrp',
             ragflowDocumentId: 'doc-ntvrp',
             filename: 'SEAWOLF X - NTVRP 2025.pdf',
+            category: 'HISTORY_PROCEDURES',
           },
         ],
         score: 1,
@@ -114,11 +179,13 @@ describe('ChatDocumentationScanService', () => {
             id: 'manual-tanks',
             ragflowDocumentId: 'doc-tanks',
             filename: 'Fuel Tank Sounding Table.pdf',
+            category: 'MANUALS',
           },
           {
             id: 'manual-volvo',
             ragflowDocumentId: 'doc-volvo',
             filename: 'Volvo Penta operators manual.pdf',
+            category: 'MANUALS',
           },
         ],
         score: 1,
@@ -130,6 +197,7 @@ describe('ChatDocumentationScanService', () => {
       'show tank capacities for fuel tanks',
       'show tank capacities for fuel tanks',
       [],
+      ['MANUALS'],
     );
 
     expect(ragflowService.listDocumentChunks).toHaveBeenCalledTimes(1);
@@ -181,11 +249,13 @@ describe('ChatDocumentationScanService', () => {
               id: 'manual-sopep',
               ragflowDocumentId: 'doc-sopep',
               filename: 'Seawolf X SOPEP.pdf',
+              category: 'MANUALS',
             },
             {
               id: 'manual-volvo',
               ragflowDocumentId: 'doc-volvo',
               filename: 'Volvo Penta operators manual.pdf',
+              category: 'MANUALS',
             },
           ],
           score: 1,
@@ -197,6 +267,7 @@ describe('ChatDocumentationScanService', () => {
       'show tank capacities for fuel tanks',
       'show tank capacities for fuel tanks',
       [],
+      ['MANUALS'],
     );
 
     expect(ragflowService.searchDataset).toHaveBeenCalled();

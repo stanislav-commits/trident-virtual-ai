@@ -325,6 +325,7 @@ Reference ID: 1P47`,
       'How do I change oil in the port generator',
       'How do I change oil in the port generator',
       [],
+      ['MANUALS'],
     ]);
     expect(
       (
@@ -833,13 +834,19 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     );
     expect(
       (scanService.expandReferenceDocumentChunkCitations as jest.Mock).mock.calls.some(
-        (call) => call[1] === resolvedSubjectQuery,
+        (call) =>
+          call[1] === resolvedSubjectQuery &&
+          JSON.stringify(call[4]) === JSON.stringify(['MANUALS']),
       ),
     ).toBe(true);
     expect(
       (
         scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock
-      ).mock.calls.some((call) => call[1] === resolvedSubjectQuery),
+      ).mock.calls.some(
+        (call) =>
+          call[1] === resolvedSubjectQuery &&
+          JSON.stringify(call[4]) === JSON.stringify(['MANUALS']),
+      ),
     ).toBe(true);
     expect(result.resolvedSubjectQuery).toBe(resolvedSubjectQuery);
   });
@@ -1151,6 +1158,7 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       'show tank capacities for fuel tanks',
       'show tank capacities for fuel tanks',
       [],
+      ['MANUALS'],
     ]);
     expect(result.citations).toEqual(
       expect.arrayContaining([
@@ -1159,5 +1167,99 @@ Location: BOX 25 VOLVO PENTA SPARES`,
         }),
       ]),
     );
+  });
+
+  it('passes history-procedure restrictions into scan fallbacks for last-maintenance queries', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest.fn().mockImplementation(
+        (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+          citations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        }),
+      ),
+      limitCitationsForLlm: jest
+        .fn()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'when was the last separator overhaul?',
+    });
+
+    expect(
+      (scanService.expandReferenceDocumentChunkCitations as jest.Mock).mock
+        .calls[0],
+    ).toEqual([
+      'ship-1',
+      'when was the last separator overhaul?',
+      'when was the last separator overhaul?',
+      [],
+      ['HISTORY_PROCEDURES'],
+    ]);
+    expect(
+      (
+        scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock
+      ).mock.calls[0],
+    ).toEqual([
+      'ship-1',
+      'when was the last separator overhaul?',
+      'when was the last separator overhaul?',
+      [],
+      ['HISTORY_PROCEDURES'],
+    ]);
   });
 });

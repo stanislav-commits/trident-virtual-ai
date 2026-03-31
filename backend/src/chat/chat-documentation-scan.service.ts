@@ -1,14 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
+import {
+  DEFAULT_SHIP_MANUAL_CATEGORY,
+  parseShipManualCategory,
+  type ShipManualCategory,
+} from '../ships/manual-category';
 import { ChatCitation } from './chat.types';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
+import { type ChatDocumentSourceCategory } from './chat-query-planner.service';
 import { ChatReferenceExtractionService } from './chat-reference-extraction.service';
 
 interface DocumentScanManual {
   id: string;
   ragflowDocumentId: string;
   filename: string;
+  category: ShipManualCategory;
 }
 
 interface DocumentScanContext {
@@ -50,6 +57,7 @@ export class ChatDocumentationScanService {
     retrievalQuery: string,
     userQuery: string,
     citations: ChatCitation[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -66,7 +74,11 @@ export class ChatDocumentationScanService {
     ];
     if (referenceIds.length !== 1) return [];
 
-    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    const scanContexts = await this.loadDocumentScanContexts(
+      shipId,
+      citations,
+      allowedDocumentCategories,
+    );
     if (scanContexts.length === 0) {
       this.logger.debug(
         `Reference document chunk scan skipped: no contexts available for ${referenceIds[0]}`,
@@ -270,6 +282,7 @@ export class ChatDocumentationScanService {
     retrievalQuery: string,
     userQuery: string,
     citations: ChatCitation[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -293,7 +306,11 @@ export class ChatDocumentationScanService {
     const directionalSide = this.queryService.detectDirectionalSide(normalized);
     if (!directionalSide) return [];
 
-    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    const scanContexts = await this.loadDocumentScanContexts(
+      shipId,
+      citations,
+      allowedDocumentCategories,
+    );
     if (scanContexts.length === 0) {
       this.logger.debug(
         `Maintenance document chunk scan skipped: no contexts available for ${directionalSide} generator`,
@@ -373,6 +390,7 @@ export class ChatDocumentationScanService {
     retrievalQuery: string,
     userQuery: string,
     citations: ChatCitation[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -384,7 +402,11 @@ export class ChatDocumentationScanService {
       return [];
     }
 
-    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    const scanContexts = await this.loadDocumentScanContexts(
+      shipId,
+      citations,
+      allowedDocumentCategories,
+    );
     if (scanContexts.length === 0) {
       this.logger.debug(
         'Certificate document chunk scan skipped: no contexts available',
@@ -496,6 +518,7 @@ export class ChatDocumentationScanService {
     retrievalQuery: string,
     userQuery: string,
     citations: ChatCitation[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -507,7 +530,11 @@ export class ChatDocumentationScanService {
       return [];
     }
 
-    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    const scanContexts = await this.loadDocumentScanContexts(
+      shipId,
+      citations,
+      allowedDocumentCategories,
+    );
     if (scanContexts.length === 0) {
       this.logger.debug(
         'Personnel directory document chunk scan skipped: no contexts available',
@@ -575,6 +602,7 @@ export class ChatDocumentationScanService {
     retrievalQuery: string,
     userQuery: string,
     citations: ChatCitation[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -586,7 +614,11 @@ export class ChatDocumentationScanService {
       return [];
     }
 
-    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    const scanContexts = await this.loadDocumentScanContexts(
+      shipId,
+      citations,
+      allowedDocumentCategories,
+    );
     if (scanContexts.length === 0) {
       this.logger.debug(
         'Tank capacity document chunk scan skipped: no contexts available',
@@ -662,6 +694,7 @@ export class ChatDocumentationScanService {
     retrievalQuery: string,
     userQuery: string,
     citations: ChatCitation[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -673,7 +706,11 @@ export class ChatDocumentationScanService {
       return [];
     }
 
-    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    const scanContexts = await this.loadDocumentScanContexts(
+      shipId,
+      citations,
+      allowedDocumentCategories,
+    );
     if (scanContexts.length === 0) {
       this.logger.debug(
         'Audit checklist document chunk scan skipped: no contexts available',
@@ -747,6 +784,7 @@ export class ChatDocumentationScanService {
   private async loadDocumentScanContexts(
     shipId: string | null,
     citations: ChatCitation[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
   ): Promise<DocumentScanContext[]> {
     const contexts: DocumentScanContext[] = [];
 
@@ -756,15 +794,27 @@ export class ChatDocumentationScanService {
         select: {
           ragflowDatasetId: true,
           manuals: {
-            select: { id: true, ragflowDocumentId: true, filename: true },
+            select: {
+              id: true,
+              ragflowDocumentId: true,
+              filename: true,
+              category: true,
+            },
           },
         },
       });
 
-      if (ship?.ragflowDatasetId) {
+      const shipManuals = ship
+        ? this.filterScanManualsByAllowedCategories(
+            ship.manuals,
+            allowedDocumentCategories,
+          )
+        : [];
+
+      if (ship?.ragflowDatasetId && shipManuals.length > 0) {
         contexts.push({
           ragflowDatasetId: ship.ragflowDatasetId,
-          manuals: ship.manuals.filter((manual) => Boolean(manual.ragflowDocumentId)),
+          manuals: shipManuals,
           score: Number.MAX_SAFE_INTEGER,
         });
       }
@@ -795,7 +845,12 @@ export class ChatDocumentationScanService {
       select: {
         ragflowDatasetId: true,
         manuals: {
-          select: { id: true, ragflowDocumentId: true, filename: true },
+          select: {
+            id: true,
+            ragflowDocumentId: true,
+            filename: true,
+            category: true,
+          },
         },
       },
     });
@@ -803,7 +858,10 @@ export class ChatDocumentationScanService {
     for (const ship of ships) {
       if (!ship.ragflowDatasetId) continue;
 
-      const manuals = ship.manuals.filter((manual) => Boolean(manual.ragflowDocumentId));
+      const manuals = this.filterScanManualsByAllowedCategories(
+        ship.manuals,
+        allowedDocumentCategories,
+      );
       if (manuals.length === 0) continue;
 
       const score = this.scoreDocumentScanContext(
@@ -829,6 +887,49 @@ export class ChatDocumentationScanService {
     }
 
     return contexts.sort((a, b) => b.score - a.score).slice(0, 4);
+  }
+
+  private filterScanManualsByAllowedCategories(
+    manuals: Array<{
+      id: string;
+      ragflowDocumentId: string | null;
+      filename: string;
+      category?: string | null;
+    }>,
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
+  ): DocumentScanManual[] {
+    const allowedCategories =
+      allowedDocumentCategories && allowedDocumentCategories.length > 0
+        ? new Set(allowedDocumentCategories)
+        : null;
+
+    return manuals
+      .map((manual) => {
+        if (!manual.ragflowDocumentId) {
+          return null;
+        }
+
+        const category = this.normalizeDocumentCategory(manual.category);
+        if (allowedCategories && !allowedCategories.has(category)) {
+          return null;
+        }
+
+        return {
+          id: manual.id,
+          ragflowDocumentId: manual.ragflowDocumentId,
+          filename: manual.filename,
+          category,
+        };
+      })
+      .filter((manual): manual is DocumentScanManual => Boolean(manual));
+  }
+
+  private normalizeDocumentCategory(
+    category?: string | null,
+  ): ShipManualCategory {
+    return (
+      parseShipManualCategory(category) ?? DEFAULT_SHIP_MANUAL_CATEGORY
+    );
   }
 
   private scoreDocumentScanContext(
@@ -1436,7 +1537,7 @@ export class ChatDocumentationScanService {
   }
 
   private mapDocumentChunkToCitation(
-    manual: Pick<DocumentScanManual, 'id' | 'filename'>,
+    manual: Pick<DocumentScanManual, 'id' | 'filename' | 'category'>,
     chunk: RagflowChunk,
     fallbackScore: number,
     snippetOverride?: string,
@@ -1449,7 +1550,7 @@ export class ChatDocumentationScanService {
       pageNumber: this.extractChunkPageNumber(chunk),
       snippet: snippetOverride ?? chunk.content ?? '',
       sourceTitle: manual.filename,
-      ...(sourceCategory ? { sourceCategory } : {}),
+      sourceCategory: sourceCategory ?? manual.category,
     };
   }
 

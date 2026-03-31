@@ -15,6 +15,14 @@ import {
   ChatQueryPlannerService,
 } from './chat-query-planner.service';
 
+type ChatScanExpansion = (
+  shipId: string | null,
+  retrievalQuery: string,
+  userQuery: string,
+  citations: ChatCitation[],
+  allowedDocumentCategories?: ChatDocumentSourceCategory[],
+) => Promise<ChatCitation[]>;
+
 @Injectable()
 export class ChatDocumentationService {
   private readonly logger = new Logger(ChatDocumentationService.name);
@@ -295,20 +303,25 @@ export class ChatDocumentationService {
         );
       }
 
-      const referenceDocumentFallbackCitations =
-        await this.scanService.expandReferenceDocumentChunkCitations(
-          shipId,
-          retrievalQuery,
-          effectiveUserQuery,
-          citations,
-        );
+      const referenceDocumentFallbackCitations = await this.expandScanCitations(
+        this.scanService.expandReferenceDocumentChunkCitations.bind(
+          this.scanService,
+        ),
+        shipId,
+        retrievalQuery,
+        effectiveUserQuery,
+        citations,
+      );
       citations = this.citationService.mergeCitations(
         citations,
         referenceDocumentFallbackCitations,
       );
 
       const maintenanceDocumentFallbackCitations =
-        await this.scanService.expandMaintenanceAssetDocumentChunkCitations(
+        await this.expandScanCitations(
+          this.scanService.expandMaintenanceAssetDocumentChunkCitations.bind(
+            this.scanService,
+          ),
           shipId,
           retrievalQuery,
           effectiveUserQuery,
@@ -320,7 +333,10 @@ export class ChatDocumentationService {
       );
 
       const certificateDocumentFallbackCitations =
-        await this.scanService.expandCertificateExpiryDocumentChunkCitations(
+        await this.expandScanCitations(
+          this.scanService.expandCertificateExpiryDocumentChunkCitations.bind(
+            this.scanService,
+          ),
           shipId,
           retrievalQuery,
           effectiveUserQuery,
@@ -331,7 +347,10 @@ export class ChatDocumentationService {
         certificateDocumentFallbackCitations,
       );
       const personnelDirectoryFallbackCitations =
-        await this.scanService.expandPersonnelDirectoryDocumentChunkCitations(
+        await this.expandScanCitations(
+          this.scanService.expandPersonnelDirectoryDocumentChunkCitations.bind(
+            this.scanService,
+          ),
           shipId,
           retrievalQuery,
           effectiveUserQuery,
@@ -341,24 +360,28 @@ export class ChatDocumentationService {
         citations,
         personnelDirectoryFallbackCitations,
       );
-      const tankCapacityFallbackCitations =
-        await this.scanService.expandTankCapacityDocumentChunkCitations(
-          shipId,
-          retrievalQuery,
-          effectiveUserQuery,
-          citations,
-        );
+      const tankCapacityFallbackCitations = await this.expandScanCitations(
+        this.scanService.expandTankCapacityDocumentChunkCitations.bind(
+          this.scanService,
+        ),
+        shipId,
+        retrievalQuery,
+        effectiveUserQuery,
+        citations,
+      );
       citations = this.citationService.mergeCitations(
         citations,
         tankCapacityFallbackCitations,
       );
-      const auditChecklistFallbackCitations =
-        await this.scanService.expandAuditChecklistDocumentChunkCitations(
-          shipId,
-          retrievalQuery,
-          effectiveUserQuery,
-          citations,
-        );
+      const auditChecklistFallbackCitations = await this.expandScanCitations(
+        this.scanService.expandAuditChecklistDocumentChunkCitations.bind(
+          this.scanService,
+        ),
+        shipId,
+        retrievalQuery,
+        effectiveUserQuery,
+        citations,
+      );
       citations = this.citationService.mergeCitations(
         citations,
         auditChecklistFallbackCitations,
@@ -414,7 +437,10 @@ export class ChatDocumentationService {
         }
 
         const resolvedReferenceDocumentFallbackCitations =
-          await this.scanService.expandReferenceDocumentChunkCitations(
+          await this.expandScanCitations(
+            this.scanService.expandReferenceDocumentChunkCitations.bind(
+              this.scanService,
+            ),
             shipId,
             resolvedSubjectQuery,
             effectiveUserQuery,
@@ -426,7 +452,10 @@ export class ChatDocumentationService {
         );
 
         const resolvedMaintenanceDocumentFallbackCitations =
-          await this.scanService.expandMaintenanceAssetDocumentChunkCitations(
+          await this.expandScanCitations(
+            this.scanService.expandMaintenanceAssetDocumentChunkCitations.bind(
+              this.scanService,
+            ),
             shipId,
             resolvedSubjectQuery,
             effectiveUserQuery,
@@ -725,6 +754,29 @@ export class ChatDocumentationService {
       );
       return [];
     }
+  }
+
+  private expandScanCitations(
+    expand: ChatScanExpansion,
+    shipId: string | null,
+    retrievalQuery: string,
+    userQuery: string,
+    citations: ChatCitation[],
+  ): Promise<ChatCitation[]> {
+    const hardDocumentCategories = this.getHardDocumentCategories(
+      userQuery,
+      retrievalQuery,
+    );
+
+    return hardDocumentCategories?.length
+      ? expand(
+          shipId,
+          retrievalQuery,
+          userQuery,
+          citations,
+          hardDocumentCategories,
+        )
+      : expand(shipId, retrievalQuery, userQuery, citations);
   }
 
   private getHardDocumentCategories(
