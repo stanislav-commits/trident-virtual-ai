@@ -541,6 +541,70 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('answers tank capacity table questions deterministically from structured tank rows', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'show tank capacities for fuel tanks',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Fuel Tank Sounding Table.pdf',
+          pageNumber: 3,
+          snippet:
+            'Fuel Tank 1P capacity 3,142 liters Fuel Tank 2S capacity 2,381 liters',
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'show tank capacities for fuel tanks',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'show tank capacities for fuel tanks',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('Fuel Tank 1P: 3,142 liters'),
+      expect.objectContaining({
+        answerRoute: 'deterministic_document',
+        usedLlm: false,
+        usedDocumentation: true,
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Fuel Tank Sounding Table.pdf',
+        }),
+      ]),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('Fuel Tank 2S: 2,381 liters'),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it('answers broad certificate expiry questions deterministically from explicit certificate dates', async () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
@@ -612,6 +676,67 @@ describe('ChatService telemetry clarification', () => {
             sourceTitle: 'Fire Suppression Survey.pdf',
           }),
         ],
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('answers broad certification expiry wording deterministically from explicit certificate dates', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 28));
+    try {
+      prisma.chatSession.findUnique.mockResolvedValue({
+        messages: [
+          {
+            role: 'user',
+            content: 'Which certifications will expire soon?',
+            ragflowContext: null,
+          },
+        ],
+      });
+      documentationService.prepareDocumentationContext.mockResolvedValue({
+        citations: [
+          {
+            sourceTitle: 'Fire Suppression Survey.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'Fixed fire suppression system survey. Certificate valid until 14 August 2026.',
+            pageNumber: 1,
+          },
+        ],
+        previousUserQuery: undefined,
+        retrievalQuery: 'Which certifications will expire soon?',
+        resolvedSubjectQuery: undefined,
+        answerQuery: undefined,
+      });
+      metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+        telemetry: {},
+        totalActiveMetrics: 0,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+        clarification: null,
+      });
+
+      await (service as any).generateAssistantResponse(
+        'ship-1',
+        'session-1',
+        'Which certifications will expire soon?',
+        'Sea Wolf X',
+        'user',
+      );
+
+      expect(llmService.generateResponse).not.toHaveBeenCalled();
+      expect(service.addAssistantMessage).toHaveBeenCalledWith(
+        'session-1',
+        expect.stringContaining('14 August 2026'),
+        expect.objectContaining({
+          answerRoute: 'deterministic_certificate',
+          usedLlm: false,
+        }),
+        [expect.objectContaining({ sourceTitle: 'Fire Suppression Survey.pdf' })],
       );
     } finally {
       nowSpy.mockRestore();

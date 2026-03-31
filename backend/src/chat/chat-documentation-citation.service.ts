@@ -1126,7 +1126,7 @@ export class ChatDocumentationCitationService {
 
   private isBroadCertificateSoonQuery(query: string): boolean {
     return (
-      /\bcertificates?\b/i.test(query) &&
+      /\b(certificates?|certifications?)\b/i.test(query) &&
       /\b(expire|expiry|expiries|expiring|valid\s+until|due\s+to\s+expire)\b/i.test(
         query,
       ) &&

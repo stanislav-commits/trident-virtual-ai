@@ -642,6 +642,22 @@ export class ChatDocumentationQueryService {
     );
   }
 
+  isAuditChecklistLookupQuery(query: string): boolean {
+    return /\b(audit|audits|compliance|inspection|inspections|checklist|checklists|survey|surveys)\b/i.test(
+      query,
+    );
+  }
+
+  isTankCapacityLookupQuery(query: string): boolean {
+    return (
+      /\btanks?\b/i.test(query) &&
+      /\b(capacity|capacities)\b/i.test(query) &&
+      !/\b(current|currently|level|levels|reading|readings|status|value|values)\b/i.test(
+        query,
+      )
+    );
+  }
+
   isTelemetryListQuery(query: string): boolean {
     return (
       /\b(show|list|display|give|return|output)\b/i.test(query) &&

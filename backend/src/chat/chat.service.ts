@@ -56,6 +56,12 @@ interface DeterministicContactEntry {
   citation: ChatCitation;
 }
 
+interface DeterministicTankCapacityEntry {
+  label: string;
+  capacity: string;
+  citation: ChatCitation;
+}
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -1714,6 +1720,22 @@ export class ChatService {
     }
 
     if (primaryIntent === 'manual_specification') {
+      const auditChecklistAnswer = this.buildDeterministicAuditChecklistAnswer(
+        userQuery,
+        citations,
+      );
+      if (auditChecklistAnswer) {
+        return auditChecklistAnswer;
+      }
+
+      const tankCapacityAnswer = this.buildDeterministicTankCapacityAnswer(
+        userQuery,
+        citations,
+      );
+      if (tankCapacityAnswer) {
+        return tankCapacityAnswer;
+      }
+
       return this.buildDeterministicManualSpecificationAnswer(
         userQuery,
         citations,
@@ -1794,19 +1816,25 @@ export class ChatService {
 
     if (selectedEntries.length === 1) {
       const [entry] = selectedEntries;
+      const details = [
+        entry.name,
+        entry.role,
+        entry.email,
+        entry.phone,
+      ].filter(Boolean);
       const lines = [
         'The contact details I found are:',
         '',
-        `- Name: ${entry.name}`,
+        `- ${details.join(' - ')}`,
       ];
 
-      if (entry.role) {
+      if (false) {
         lines.push(`- Position: ${entry.role}`);
       }
-      if (entry.phone) {
+      if (false) {
         lines.push(`- Mobile: ${entry.phone}`);
       }
-      if (entry.email) {
+      if (false) {
         lines.push(`- Email: ${entry.email}`);
       }
 
@@ -1828,12 +1856,12 @@ export class ChatService {
         ...selectedEntries.map((entry) => {
           const details = [
             entry.name,
-            entry.role ? `Role: ${entry.role}` : null,
-            entry.phone ? `Mobile: ${entry.phone}` : null,
-            entry.email ? `Email: ${entry.email}` : null,
+            entry.role,
+            entry.phone,
+            entry.email,
           ].filter(Boolean);
 
-          return `- ${details.join(' | ')}`;
+          return `- ${details.join(' - ')}`;
         }),
         ...(omittedEntriesCount > 0
           ? [
@@ -2529,7 +2557,7 @@ export class ChatService {
   private isBroadCertificateSoonQuery(query: string): boolean {
     const normalized = query.toLowerCase();
     return (
-      /\bcertificates?\b/.test(normalized) &&
+      /\b(certificates?|certifications?)\b/.test(normalized) &&
       /\b(expire|expiry|expiries|expiring|valid\s+until|due\s+to\s+expire)\b/.test(
         normalized,
       ) &&
@@ -2781,6 +2809,117 @@ export class ChatService {
     return null;
   }
 
+  private buildDeterministicTankCapacityAnswer(
+    userQuery: string,
+    citations: ChatCitation[],
+  ): string | null {
+    if (!this.documentationQueryService.isTankCapacityLookupQuery(userQuery)) {
+      return null;
+    }
+
+    const entries = this.dedupeDeterministicTankCapacityEntries(
+      citations.flatMap((citation) =>
+        this.extractDeterministicTankCapacityEntries(citation, userQuery),
+      ),
+    );
+    if (entries.length === 0) {
+      return null;
+    }
+
+    const selectedEntries = entries.slice(0, 12);
+    const omittedEntriesCount = Math.max(0, entries.length - selectedEntries.length);
+    const sourceLabel = citations[0]?.sourceTitle ?? 'the cited tank table';
+
+    return [
+      'The tank capacities I found in the provided documentation are:',
+      '',
+      ...selectedEntries.map((entry) => `- ${entry.label}: ${entry.capacity}`),
+      ...(omittedEntriesCount > 0
+        ? [
+            '',
+            `Showing the first ${selectedEntries.length} of ${entries.length} matching tank-capacity rows from the source documentation.`,
+          ]
+        : []),
+      '',
+      `These capacities are sourced from ${sourceLabel} [Manual: ${sourceLabel}].`,
+    ].join('\n');
+  }
+
+  private buildDeterministicAuditChecklistAnswer(
+    userQuery: string,
+    citations: ChatCitation[],
+  ): string | null {
+    if (!this.documentationQueryService.isAuditChecklistLookupQuery(userQuery)) {
+      return null;
+    }
+
+    const entries = this.dedupeDeterministicAuditChecklistEntries(
+      citations.flatMap((citation) =>
+        this.extractDeterministicAuditChecklistEntries(citation),
+      ),
+    );
+    if (entries.length === 0) {
+      return null;
+    }
+
+    const selectedEntries = entries.slice(0, 15);
+    const omittedEntriesCount = Math.max(0, entries.length - selectedEntries.length);
+    const sourceLabel = citations[0]?.sourceTitle ?? 'the cited audit documentation';
+
+    return [
+      'The audit or checklist points I extracted are:',
+      '',
+      ...selectedEntries.map((entry) => `- [${entry.status}] ${entry.point}`),
+      ...(omittedEntriesCount > 0
+        ? [
+            '',
+            `Showing the first ${selectedEntries.length} of ${entries.length} matching checklist items from the source documentation.`,
+          ]
+        : []),
+      '',
+      `These items are sourced from ${sourceLabel} [Manual: ${sourceLabel}].`,
+    ].join('\n');
+  }
+
+  private extractDeterministicAuditChecklistEntries(
+    citation: ChatCitation,
+  ): Array<{ status: string; point: string }> {
+    const raw = (citation.snippet ?? '').replace(/\s+/g, ' ').trim();
+    if (!raw) return [];
+
+    const lines = raw.split(/(?:(?<=[a-z0-9])\s*\|\s*(?=[a-z0-9])|(?<=[.?!])\s+(?=[A-Z]))/i);
+    const results: Array<{ status: string; point: string }> = [];
+
+    const passFailRegex = /\b(pass|fail|ok|yes|no|finding|defect)\s*[:-]?\s*(.+)/i;
+    
+    for (const line of lines) {
+      const match = line.match(passFailRegex);
+      if (match) {
+        const [, status, point] = match;
+        if (point.trim().length > 3) {
+          results.push({
+            status: status.trim().toUpperCase(),
+            point: point.trim(),
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  private dedupeDeterministicAuditChecklistEntries(
+    entries: Array<{ status: string; point: string }>,
+  ): Array<{ status: string; point: string }> {
+    const seen = new Set<string>();
+    return entries.filter((entry) => {
+      const key = entry.point.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (key.length < 5 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   private matchesManualRangeCitationSubject(
     userQuery: string,
     citation: ChatCitation,
@@ -2924,6 +3063,81 @@ export class ChatService {
       return '°F';
     }
     return normalized;
+  }
+
+  private extractDeterministicTankCapacityEntries(
+    citation: ChatCitation,
+    userQuery: string,
+  ): DeterministicTankCapacityEntry[] {
+    const normalized = this.normalizeDeterministicContactText(
+      citation.snippet ?? '',
+    );
+    if (!normalized) {
+      return [];
+    }
+
+    const haystack = `${citation.sourceTitle ?? ''}\n${normalized}`.toLowerCase();
+    if (!/\btank\b/i.test(haystack)) {
+      return [];
+    }
+
+    const requiresFuel = /\bfuel\b/i.test(userQuery);
+    const requiresWater = /\bwater\b/i.test(userQuery);
+    if (requiresFuel && !/\bfuel\b/i.test(haystack)) {
+      return [];
+    }
+    if (requiresWater && !/\bwater\b/i.test(haystack)) {
+      return [];
+    }
+
+    const pattern =
+      /\b((?:(?:fuel|diesel|day|service|settling|storage|fresh\s*water|water|grey|gray|black|waste|holding)\s+)?tank(?:\s+[a-z0-9./-]{1,12}){0,2})(?:\s+(?:capacity|cap\.?|volume))?\s*[:=-]?\s*(\d[\d, .]*\s*(?:l|liters?|litres?|m3|m³|gal|gallons?))\b/gi;
+
+    return [...normalized.matchAll(pattern)]
+      .map((match) => {
+        const label = match[1]
+          ?.replace(/\s+/g, ' ')
+          .replace(/\s+(?:capacity|cap\.?|volume)$/i, '')
+          .trim();
+        const capacity = match[2]?.replace(/\s+/g, ' ').trim();
+        if (!label || !capacity) {
+          return null;
+        }
+
+        return {
+          label,
+          capacity,
+          citation,
+        };
+      })
+      .filter(
+        (entry): entry is DeterministicTankCapacityEntry => Boolean(entry),
+      );
+  }
+
+  private dedupeDeterministicTankCapacityEntries(
+    entries: DeterministicTankCapacityEntry[],
+  ): DeterministicTankCapacityEntry[] {
+    const deduped = new Map<string, DeterministicTankCapacityEntry>();
+
+    for (const entry of entries) {
+      const key = `${entry.label.toLowerCase()}::${entry.capacity.toLowerCase()}`;
+      const existing = deduped.get(key);
+      if (!existing) {
+        deduped.set(key, entry);
+        continue;
+      }
+
+      const existingScore = existing.citation.score ?? 0;
+      const nextScore = entry.citation.score ?? 0;
+      if (nextScore > existingScore) {
+        deduped.set(key, entry);
+      }
+    }
+
+    return [...deduped.values()].sort((left, right) =>
+      left.label.localeCompare(right.label),
+    );
   }
 
   private buildDeterministicAggregateTelemetryAnswer(

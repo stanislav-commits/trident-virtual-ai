@@ -491,6 +491,283 @@ export class ChatDocumentationScanService {
     return collected;
   }
 
+  async expandPersonnelDirectoryDocumentChunkCitations(
+    shipId: string | null,
+    retrievalQuery: string,
+    userQuery: string,
+    citations: ChatCitation[],
+  ): Promise<ChatCitation[]> {
+    if (!this.ragflowService.isConfigured()) return [];
+
+    const queryContext =
+      retrievalQuery.trim().length >= userQuery.trim().length
+        ? retrievalQuery
+        : userQuery;
+    if (!this.queryService.isPersonnelDirectoryQuery(queryContext)) {
+      return [];
+    }
+
+    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    if (scanContexts.length === 0) {
+      this.logger.debug(
+        'Personnel directory document chunk scan skipped: no contexts available',
+      );
+      return [];
+    }
+
+    const anchorTerms = this.queryService.extractContactAnchorTerms(queryContext);
+    const wantsRoleInventory = this.queryService.isRoleInventoryQuery(queryContext);
+    const collected: ChatCitation[] = [];
+    let scannedManualCount = 0;
+
+    for (const scanContext of scanContexts) {
+      const candidateManuals = this.selectCandidateManualsForContactScan(
+        scanContext.manuals,
+        citations,
+      ).slice(0, 6);
+      scannedManualCount += candidateManuals.length;
+
+      for (const manual of candidateManuals) {
+        try {
+          const chunks = await this.ragflowService.listDocumentChunks(
+            scanContext.ragflowDatasetId,
+            manual.ragflowDocumentId,
+            300,
+          );
+
+          const relevantChunks = chunks
+            .filter((chunk) => {
+              const content = (chunk.content ?? '').replace(/\s+/g, ' ').trim();
+              if (!content) {
+                return false;
+              }
+
+              const haystack = `${manual.filename}\n${content}`.toLowerCase();
+              const hasContactSignals =
+                /\b(contact\s+details|contact\s+list|company\s+contact|emergency\s+contact|directory|fleet\s+manager|technical\s+manager|director|dpa|cso|captain|master)\b/i.test(
+                  haystack,
+                ) ||
+                /\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/i.test(
+                  content,
+                ) ||
+                /\+\s*\d[\d\s()./-]{5,}\d\b/i.test(content);
+              if (!hasContactSignals) {
+                return false;
+              }
+
+              if (wantsRoleInventory || anchorTerms.length === 0) {
+                return true;
+              }
+
+              return anchorTerms.some((term) => haystack.includes(term));
+            })
+            .slice(0, 12);
+
+          collected.push(
+            ...relevantChunks.map((chunk) =>
+              this.mapDocumentChunkToCitation(manual, chunk, 1.0),
+            ),
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Personnel directory document chunk scan skipped for ${manual.filename}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+
+    this.logger.debug(
+      `Personnel directory document chunk scan completed: contexts=${scanContexts.length}, manuals=${scannedManualCount}, collected=${collected.length}`,
+    );
+
+    return collected;
+  }
+
+  async expandTankCapacityDocumentChunkCitations(
+    shipId: string | null,
+    retrievalQuery: string,
+    userQuery: string,
+    citations: ChatCitation[],
+  ): Promise<ChatCitation[]> {
+    if (!this.ragflowService.isConfigured()) return [];
+
+    const queryContext =
+      retrievalQuery.trim().length >= userQuery.trim().length
+        ? retrievalQuery
+        : userQuery;
+    if (!this.queryService.isTankCapacityLookupQuery(queryContext)) {
+      return [];
+    }
+
+    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    if (scanContexts.length === 0) {
+      this.logger.debug(
+        'Tank capacity document chunk scan skipped: no contexts available',
+      );
+      return [];
+    }
+
+    const requiresFuel = /\bfuel\b/i.test(queryContext);
+    const requiresWater = /\bwater\b/i.test(queryContext);
+    const collected: ChatCitation[] = [];
+    let scannedManualCount = 0;
+
+    for (const scanContext of scanContexts) {
+      const candidateManuals = this.selectCandidateManualsForTankCapacityScan(
+        scanContext.manuals,
+        citations,
+      ).slice(0, 8);
+      scannedManualCount += candidateManuals.length;
+
+      for (const manual of candidateManuals) {
+        try {
+          const chunks = await this.ragflowService.listDocumentChunks(
+            scanContext.ragflowDatasetId,
+            manual.ragflowDocumentId,
+            300,
+          );
+
+          const relevantChunks = chunks
+            .filter((chunk) => {
+              const content = (chunk.content ?? '').replace(/\s+/g, ' ').trim();
+              if (!content) {
+                return false;
+              }
+
+              const haystack = `${manual.filename}\n${content}`.toLowerCase();
+              if (!/\btank\b/i.test(haystack)) {
+                return false;
+              }
+              if (
+                !/\b\d+(?:[.,]\d+)?\s*(?:l|liters?|litres?|m3|m³|gal|gallons?)\b/i.test(
+                  haystack,
+                )
+              ) {
+                return false;
+              }
+              if (
+                !/\b(capacity|capacities|volume|sounding)\b/i.test(haystack)
+              ) {
+                return false;
+              }
+              if (requiresFuel && !/\bfuel\b/i.test(haystack)) {
+                return false;
+              }
+              if (requiresWater && !/\bwater\b/i.test(haystack)) {
+                return false;
+              }
+
+              return true;
+            })
+            .slice(0, 16);
+
+          collected.push(
+            ...relevantChunks.map((chunk) =>
+              this.mapDocumentChunkToCitation(manual, chunk, 1.0),
+            ),
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Tank capacity document chunk scan skipped for ${manual.filename}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+
+    this.logger.debug(
+      `Tank capacity document chunk scan completed: contexts=${scanContexts.length}, manuals=${scannedManualCount}, collected=${collected.length}`,
+    );
+
+    return collected;
+  }
+
+  async expandAuditChecklistDocumentChunkCitations(
+    shipId: string | null,
+    retrievalQuery: string,
+    userQuery: string,
+    citations: ChatCitation[],
+  ): Promise<ChatCitation[]> {
+    if (!this.ragflowService.isConfigured()) return [];
+
+    const queryContext =
+      retrievalQuery.trim().length >= userQuery.trim().length
+        ? retrievalQuery
+        : userQuery;
+    if (!this.queryService.isAuditChecklistLookupQuery(queryContext)) {
+      return [];
+    }
+
+    const scanContexts = await this.loadDocumentScanContexts(shipId, citations);
+    if (scanContexts.length === 0) {
+      this.logger.debug(
+        'Audit checklist document chunk scan skipped: no contexts available',
+      );
+      return [];
+    }
+
+    const collected: ChatCitation[] = [];
+    let scannedManualCount = 0;
+
+    for (const scanContext of scanContexts) {
+      const candidateManuals = this.selectCandidateManualsForAuditScan(
+        scanContext.manuals,
+        citations,
+      ).slice(0, 8);
+      scannedManualCount += candidateManuals.length;
+
+      for (const manual of candidateManuals) {
+        try {
+          const chunks = await this.ragflowService.listDocumentChunks(
+            scanContext.ragflowDatasetId,
+            manual.ragflowDocumentId,
+            300,
+          );
+
+          const relevantChunks = chunks
+            .filter((chunk) => {
+              const content = (chunk.content ?? '').replace(/\s+/g, ' ').trim();
+              if (!content) {
+                return false;
+              }
+
+              const haystack = `${manual.filename}\n${content}`.toLowerCase();
+              if (!/\b(audit|compliance|inspection|survey|checklist)\b/i.test(haystack)) {
+                return false;
+              }
+              
+              if (
+                !/\b(pass|fail|finding|status|ok|yes|no|defect|corrective\s+action|signature|date|checked)\b/i.test(
+                  haystack,
+                ) &&
+                !/\b(item|point|question)\b/i.test(haystack)
+              ) {
+                return false;
+              }
+
+              return true;
+            })
+            .slice(0, 16);
+
+          collected.push(
+            ...relevantChunks.map((chunk) =>
+              this.mapDocumentChunkToCitation(manual, chunk, 1.0),
+            ),
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Audit checklist document chunk scan skipped for ${manual.filename}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+
+    this.logger.debug(
+      `Audit checklist document chunk scan completed: contexts=${scanContexts.length}, manuals=${scannedManualCount}, collected=${collected.length}`,
+    );
+
+    return collected;
+  }
+
   private async loadDocumentScanContexts(
     shipId: string | null,
     citations: ChatCitation[],
@@ -705,6 +982,182 @@ export class ChatDocumentationScanService {
     });
   }
 
+  private selectCandidateManualsForContactScan(
+    manuals: DocumentScanManual[],
+    citations: ChatCitation[],
+  ): DocumentScanManual[] {
+    const baseOrdered = this.selectCandidateManualsForDocumentScan(
+      manuals,
+      citations,
+    );
+    const contactLike = baseOrdered
+      .filter((manual) => this.isContactScanCandidateManual(manual.filename))
+      .sort((left, right) => {
+        const leftScore = this.scoreContactScanManual(left.filename);
+        const rightScore = this.scoreContactScanManual(right.filename);
+        if (leftScore !== rightScore) {
+          return rightScore - leftScore;
+        }
+
+        return (
+          baseOrdered.findIndex((manual) => manual.id === left.id) -
+          baseOrdered.findIndex((manual) => manual.id === right.id)
+        );
+      });
+    const ordered = [...contactLike, ...baseOrdered];
+    const seen = new Set<string>();
+
+    return ordered.filter((manual) => {
+      const key = `${manual.id}::${manual.ragflowDocumentId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private selectCandidateManualsForTankCapacityScan(
+    manuals: DocumentScanManual[],
+    citations: ChatCitation[],
+  ): DocumentScanManual[] {
+    const baseOrdered = this.selectCandidateManualsForDocumentScan(
+      manuals,
+      citations,
+    );
+    const tankLike = baseOrdered
+      .filter((manual) => this.isTankCapacityScanCandidateManual(manual.filename))
+      .sort((left, right) => {
+        const leftScore = this.scoreTankCapacityScanManual(left.filename);
+        const rightScore = this.scoreTankCapacityScanManual(right.filename);
+        if (leftScore !== rightScore) {
+          return rightScore - leftScore;
+        }
+
+        return (
+          baseOrdered.findIndex((manual) => manual.id === left.id) -
+          baseOrdered.findIndex((manual) => manual.id === right.id)
+        );
+      });
+    const ordered = [...tankLike, ...baseOrdered];
+    const seen = new Set<string>();
+
+    return ordered.filter((manual) => {
+      const key = `${manual.id}::${manual.ragflowDocumentId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private selectCandidateManualsForAuditScan(
+    manuals: DocumentScanManual[],
+    citations: ChatCitation[],
+  ): DocumentScanManual[] {
+    const baseOrdered = this.selectCandidateManualsForDocumentScan(
+      manuals,
+      citations,
+    );
+    const auditLike = baseOrdered
+      .filter((manual) => this.isAuditScanCandidateManual(manual.filename))
+      .sort((left, right) => {
+        const leftScore = this.scoreAuditScanManual(left.filename);
+        const rightScore = this.scoreAuditScanManual(right.filename);
+        if (leftScore !== rightScore) {
+          return rightScore - leftScore;
+        }
+
+        return (
+          baseOrdered.findIndex((manual) => manual.id === left.id) -
+          baseOrdered.findIndex((manual) => manual.id === right.id)
+        );
+      });
+    const ordered = [...auditLike, ...baseOrdered];
+    const seen = new Set<string>();
+
+    return ordered.filter((manual) => {
+      const key = `${manual.id}::${manual.ragflowDocumentId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private scoreContactScanManual(filename: string): number {
+    const normalized = filename.toLowerCase();
+    let score = 0;
+
+    if (/\bcontact\s+details\b/.test(normalized)) {
+      score += 60;
+    }
+    if (/\b(company\s+contact|contact|directory|phone|email)\b/.test(normalized)) {
+      score += 30;
+    }
+    if (/\b(crew\s+list|emergency\s+contact)\b/.test(normalized)) {
+      score += 10;
+    }
+    if (
+      /\b(manual|guide|guidelines|handbook|instruction|procedure|schedule|history)\b/.test(
+        normalized,
+      )
+    ) {
+      score -= 20;
+    }
+
+    return score;
+  }
+
+  private isContactScanCandidateManual(filename: string): boolean {
+    return /\b(contact|directory|phone|email|crew\s+list)\b/i.test(filename);
+  }
+
+  private scoreTankCapacityScanManual(filename: string): number {
+    const normalized = filename.toLowerCase();
+    let score = 0;
+
+    if (/\b(tank|tanks|sounding)\b/.test(normalized)) {
+      score += 40;
+    }
+    if (/\b(capacity|capacities|table|tables)\b/.test(normalized)) {
+      score += 30;
+    }
+    if (/\b(fuel|diesel|water|waste|holding)\b/.test(normalized)) {
+      score += 20;
+    }
+    if (
+      /\b(manual|guide|guidelines|handbook|instruction|procedure|schedule|history)\b/.test(
+        normalized,
+      )
+    ) {
+      score -= 10;
+    }
+
+    return score;
+  }
+
+  private isTankCapacityScanCandidateManual(filename: string): boolean {
+    return /\b(tank|tanks|sounding|capacity|capacities)\b/i.test(filename);
+  }
+
+  private scoreAuditScanManual(filename: string): number {
+    const normalized = filename.toLowerCase();
+    let score = 0;
+
+    if (/\b(audit|compliance|survey|inspection)\b/.test(normalized)) {
+      score += 40;
+    }
+    if (/\b(checklist|checklists|report|defect)\b/.test(normalized)) {
+      score += 30;
+    }
+    if (/\b(manual|guide|guidelines|handbook|instruction)\b/.test(normalized)) {
+      score -= 10;
+    }
+
+    return score;
+  }
+
+  private isAuditScanCandidateManual(filename: string): boolean {
+    return /\b(audit|audits|compliance|survey|surveys|inspection|inspections|checklist|checklists)\b/i.test(filename);
+  }
+
   private scoreCertificateScanManual(filename: string): number {
     const normalized = filename.toLowerCase();
     let score = 0;
@@ -802,7 +1255,7 @@ export class ChatDocumentationScanService {
 
   private isBroadCertificateSoonQuery(query: string): boolean {
     return (
-      /\bcertificates?\b/i.test(query) &&
+      /\b(certificates?|certifications?)\b/i.test(query) &&
       /\b(expire|expiry|expiries|expiring|valid\s+until|due\s+to\s+expire)\b/i.test(
         query,
       ) &&

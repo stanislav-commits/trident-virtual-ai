@@ -496,7 +496,7 @@ export class ChatQueryPlannerService {
   }
 
   private isCertificateQuery(query: string): boolean {
-    return /\b(certificate|survey|class\s+certificate|expires?|expiry|valid\s+until|renewal)\b/i.test(
+    return /\b(certificates?|certifications?|survey|class\s+certificate|expires?|expiry|valid\s+until|renewal)\b/i.test(
       query,
     );
   }
@@ -573,7 +573,14 @@ export class ChatQueryPlannerService {
       /\b(normal|recommended|specified|operating)\b[\s\S]{0,40}\b(range|limit|limits|grade|viscosity|temperature|pressure|oil)\b/i.test(
         query,
       ) ||
+      /\b(?:show|list|what|which)\b[\s\S]{0,40}\btanks?\b[\s\S]{0,40}\b(capacity|capacities)\b/i.test(
+        query,
+      ) ||
+      /\b(capacity|capacities)\b[\s\S]{0,40}\btanks?\b/i.test(query) ||
       /\b(range|limit|limits|grade|viscosity|capacity|torque|spec(?:ification)?)\b[\s\S]{0,40}\b(?:manual|handbook|guide|volvo|mase)\b/i.test(
+        query,
+      ) ||
+      /\b(?:show|list|what|which)\b[\s\S]{0,40}\b(audit|audits|compliance|inspection|inspections|checklist|checklists|survey|surveys)\b/i.test(
         query,
       )
     );

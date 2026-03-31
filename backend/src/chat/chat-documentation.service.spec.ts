@@ -77,6 +77,10 @@ Reference ID: 1P47`,
       expandCertificateExpiryDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const clarificationActions = [
       {
@@ -204,6 +208,26 @@ Reference ID: 1P47`,
         >()
         .mockResolvedValue([]),
       expandCertificateExpiryDocumentChunkCitations: jest
+        .fn<
+          (
+            shipId: string | null,
+            retrievalQuery: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => Promise<ChatCitation[]>
+        >()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn<
+          (
+            shipId: string | null,
+            retrievalQuery: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => Promise<ChatCitation[]>
+        >()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest
         .fn<
           (
             shipId: string | null,
@@ -363,6 +387,10 @@ Reference ID: 1P47`,
       expandCertificateExpiryDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
@@ -474,6 +502,10 @@ Reference ID: 1P47`,
       expandCertificateExpiryDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
@@ -601,6 +633,10 @@ Reference ID: 1P47`,
       expandCertificateExpiryDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest
@@ -735,6 +771,10 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       expandCertificateExpiryDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest
@@ -859,6 +899,10 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       expandCertificateExpiryDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue(certificateScanCitations),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
@@ -888,6 +932,193 @@ Location: BOX 25 VOLVO PENTA SPARES`,
         }),
         expect.objectContaining({
           sourceTitle: 'JMS Crew MLC Certificate Feb 2023.pdf',
+        }),
+      ]),
+    );
+  });
+
+  it('merges structured personnel-directory scan citations for broad contact-sheet queries', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest.fn().mockImplementation(
+        (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+          citations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        }),
+      ),
+      limitCitationsForLlm: jest
+        .fn()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanCitation: ChatCitation = {
+      sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+      snippet:
+        'Rob Pijper - Palma Operations Director (M) +31 636 219 315 rob@jmsyachting.com',
+      score: 1,
+    };
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([scanCitation]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'list all managers with their contact details',
+    });
+
+    expect(
+      (
+        scanService.expandPersonnelDirectoryDocumentChunkCitations as jest.Mock
+      ).mock.calls[0],
+    ).toEqual([
+      'ship-1',
+      'manager contact details',
+      'list all managers with their contact details',
+      [],
+    ]);
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+        }),
+      ]),
+    );
+  });
+
+  it('merges structured tank-capacity scan citations for tank table lookups', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest.fn().mockImplementation(
+        (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+          citations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        }),
+      ),
+      limitCitationsForLlm: jest
+        .fn()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const tankCitation: ChatCitation = {
+      sourceTitle: 'Fuel Tank Sounding Table.pdf',
+      snippet:
+        'Fuel Tank 1P capacity 3,142 liters Fuel Tank 2S capacity 2,381 liters',
+      score: 1,
+    };
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([tankCitation]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'show tank capacities for fuel tanks',
+    });
+
+    expect(
+      (scanService.expandTankCapacityDocumentChunkCitations as jest.Mock).mock
+        .calls[0],
+    ).toEqual([
+      'ship-1',
+      'show tank capacities for fuel tanks',
+      'show tank capacities for fuel tanks',
+      [],
+    ]);
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Fuel Tank Sounding Table.pdf',
         }),
       ]),
     );

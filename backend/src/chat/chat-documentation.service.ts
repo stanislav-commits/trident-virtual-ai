@@ -301,6 +301,39 @@ export class ChatDocumentationService {
         citations,
         certificateDocumentFallbackCitations,
       );
+      const personnelDirectoryFallbackCitations =
+        await this.scanService.expandPersonnelDirectoryDocumentChunkCitations(
+          shipId,
+          retrievalQuery,
+          effectiveUserQuery,
+          citations,
+        );
+      citations = this.citationService.mergeCitations(
+        citations,
+        personnelDirectoryFallbackCitations,
+      );
+      const tankCapacityFallbackCitations =
+        await this.scanService.expandTankCapacityDocumentChunkCitations(
+          shipId,
+          retrievalQuery,
+          effectiveUserQuery,
+          citations,
+        );
+      citations = this.citationService.mergeCitations(
+        citations,
+        tankCapacityFallbackCitations,
+      );
+      const auditChecklistFallbackCitations =
+        await this.scanService.expandAuditChecklistDocumentChunkCitations(
+          shipId,
+          retrievalQuery,
+          effectiveUserQuery,
+          citations,
+        );
+      citations = this.citationService.mergeCitations(
+        citations,
+        auditChecklistFallbackCitations,
+      );
       if (this.isBroadCertificateSoonQuery(effectiveUserQuery)) {
         analysisCitations = [...citations];
       }
@@ -484,7 +517,7 @@ export class ChatDocumentationService {
 
   private isBroadCertificateSoonQuery(query: string): boolean {
     return (
-      /\bcertificates?\b/i.test(query) &&
+      /\b(certificates?|certifications?)\b/i.test(query) &&
       /\b(expire|expiry|expiries|expiring|valid\s+until|due\s+to\s+expire)\b/i.test(
         query,
       ) &&
