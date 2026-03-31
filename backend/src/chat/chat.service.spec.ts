@@ -647,10 +647,17 @@ describe('ChatService telemetry clarification', () => {
     );
 
     const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[1];
+    const contextRefs = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[3];
     expect(content).toContain('FO1.PS - Midship/Aft Port Fuel Tank: 4970 liters');
     expect(content).toContain(
       'FO2.STBD - Midship/Aft Starboard Fuel Tank: 4970 liters',
     );
+    expect(content).toContain('Seawolf X SOPEP.pdf');
+    expect(contextRefs).toEqual([
+      expect.objectContaining({
+        sourceTitle: 'Seawolf X SOPEP.pdf',
+      }),
+    ]);
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 

@@ -915,7 +915,7 @@ export class ChatService {
       if (deterministicDocumentationAnswer) {
         return this.addRoutedAssistantMessage({
           sessionId,
-          content: deterministicDocumentationAnswer,
+          content: deterministicDocumentationAnswer.content,
           route: 'deterministic_document',
           normalizedQuery: effectiveNormalizedQuery,
           routeTrace: ['documentation:deterministic'],
@@ -925,7 +925,8 @@ export class ChatService {
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
           },
-          contextReferences: citationsForAnswer,
+          contextReferences:
+            deterministicDocumentationAnswer.citations ?? citationsForAnswer,
         });
       }
 
@@ -1714,7 +1715,7 @@ export class ChatService {
     userQuery: string,
     primaryIntent: string,
     citations: ChatCitation[],
-  ): string | null {
+  ): { content: string; citations?: ChatCitation[] } | null {
     if (citations.length === 0) {
       return null;
     }
@@ -1725,7 +1726,7 @@ export class ChatService {
         citations,
       );
       if (auditChecklistAnswer) {
-        return auditChecklistAnswer;
+        return { content: auditChecklistAnswer };
       }
 
       const tankCapacityAnswer = this.buildDeterministicTankCapacityAnswer(
@@ -1736,10 +1737,13 @@ export class ChatService {
         return tankCapacityAnswer;
       }
 
-      return this.buildDeterministicManualSpecificationAnswer(
+      const manualSpecificationAnswer = this.buildDeterministicManualSpecificationAnswer(
         userQuery,
         citations,
       );
+      return manualSpecificationAnswer
+        ? { content: manualSpecificationAnswer }
+        : null;
     }
 
     return null;
@@ -3122,7 +3126,7 @@ export class ChatService {
   private buildDeterministicTankCapacityAnswer(
     userQuery: string,
     citations: ChatCitation[],
-  ): string | null {
+  ): { content: string; citations: ChatCitation[] } | null {
     if (!this.documentationQueryService.isTankCapacityLookupQuery(userQuery)) {
       return null;
     }
@@ -3136,23 +3140,86 @@ export class ChatService {
       return null;
     }
 
-    const selectedEntries = entries.slice(0, 12);
-    const omittedEntriesCount = Math.max(0, entries.length - selectedEntries.length);
-    const sourceLabel = citations[0]?.sourceTitle ?? 'the cited tank table';
+    const sourceScopedEntries =
+      this.preferDeterministicTankCapacitySourceEntries(entries);
+    const selectedEntries = sourceScopedEntries.slice(0, 12);
+    const omittedEntriesCount = Math.max(
+      0,
+      sourceScopedEntries.length - selectedEntries.length,
+    );
+    const matchedCitations = [
+      ...new Set(selectedEntries.map((entry) => entry.citation)),
+    ];
+    const sourceLabel =
+      matchedCitations[0]?.sourceTitle ?? 'the cited tank table';
 
-    return [
-      'The tank capacities I found in the provided documentation are:',
-      '',
-      ...selectedEntries.map((entry) => `- ${entry.label}: ${entry.capacity}`),
-      ...(omittedEntriesCount > 0
-        ? [
-            '',
-            `Showing the first ${selectedEntries.length} of ${entries.length} matching tank-capacity rows from the source documentation.`,
-          ]
-        : []),
-      '',
-      `These capacities are sourced from ${sourceLabel} [Manual: ${sourceLabel}].`,
-    ].join('\n');
+    return {
+      content: [
+        'The tank capacities I found in the provided documentation are:',
+        '',
+        ...selectedEntries.map((entry) => `- ${entry.label}: ${entry.capacity}`),
+        ...(omittedEntriesCount > 0
+          ? [
+              '',
+              `Showing the first ${selectedEntries.length} of ${sourceScopedEntries.length} matching tank-capacity rows from the source documentation.`,
+            ]
+          : []),
+        '',
+        `These capacities are sourced from ${sourceLabel} [Manual: ${sourceLabel}].`,
+      ].join('\n'),
+      citations: matchedCitations,
+    };
+  }
+
+  private preferDeterministicTankCapacitySourceEntries(
+    entries: DeterministicTankCapacityEntry[],
+  ): DeterministicTankCapacityEntry[] {
+    if (entries.length <= 1) {
+      return entries;
+    }
+
+    const grouped = new Map<string, DeterministicTankCapacityEntry[]>();
+    for (const entry of entries) {
+      const sourceKey = (entry.citation.sourceTitle ?? '').trim().toLowerCase();
+      const bucket = grouped.get(sourceKey) ?? [];
+      bucket.push(entry);
+      grouped.set(sourceKey, bucket);
+    }
+
+    if (grouped.size <= 1) {
+      return entries;
+    }
+
+    const rankedGroups = [...grouped.values()]
+      .map((groupEntries) => ({
+        entries: groupEntries,
+        entryCount: groupEntries.length,
+        totalScore: groupEntries.reduce(
+          (sum, entry) => sum + (entry.citation.score ?? 0),
+          0,
+        ),
+      }))
+      .sort((left, right) => {
+        if (right.entryCount !== left.entryCount) {
+          return right.entryCount - left.entryCount;
+        }
+
+        return right.totalScore - left.totalScore;
+      });
+
+    const [bestGroup, secondGroup] = rankedGroups;
+    if (!bestGroup) {
+      return entries;
+    }
+
+    if (
+      bestGroup.entryCount >= (secondGroup?.entryCount ?? 0) + 2 ||
+      bestGroup.totalScore > (secondGroup?.totalScore ?? 0) + 0.5
+    ) {
+      return bestGroup.entries;
+    }
+
+    return entries;
   }
 
   private buildDeterministicAuditChecklistAnswer(
