@@ -485,11 +485,19 @@ export class MetricsService implements OnModuleInit {
     );
 
     if (matchedEntries.length > 0) {
-      const matchMode = this.determineTelemetryMatchMode(
+      const baseMatchMode = this.determineTelemetryMatchMode(
         matchedEntries,
         query,
         resolvedSubjectQuery,
       );
+      const forcedClarificationReason =
+        this.getTelemetryForcedClarificationReason(
+          baseMatchMode,
+          matchedEntries,
+          query,
+          resolvedSubjectQuery,
+        );
+      const matchMode = forcedClarificationReason ? 'related' : baseMatchMode;
       return {
         telemetry: this.toTelemetryMap(matchedEntries),
         totalActiveMetrics: entries.length,
@@ -501,6 +509,7 @@ export class MetricsService implements OnModuleInit {
           matchedEntries,
           query,
           resolvedSubjectQuery,
+          forcedClarificationReason,
         ),
       };
     }
@@ -3502,8 +3511,9 @@ export class MetricsService implements OnModuleInit {
     entries: ShipTelemetryEntry[],
     query: string,
     resolvedSubjectQuery?: string,
+    forcedClarificationReason?: 'ambiguous_tank_reading' | null,
   ): ShipTelemetryContext['clarification'] {
-    if (matchMode !== 'related') {
+    if (matchMode !== 'related' && !forcedClarificationReason) {
       return null;
     }
 
@@ -3518,10 +3528,35 @@ export class MetricsService implements OnModuleInit {
 
     return {
       question:
-        "I couldn't find a direct telemetry metric that exactly measures the requested reading, but I did find related metrics for the same topic. Which one do you want to inspect?",
+        forcedClarificationReason === 'ambiguous_tank_reading'
+          ? 'I found multiple current tank readings that could match this question. Which tank do you want to inspect?'
+          : "I couldn't find a direct telemetry metric that exactly measures the requested reading, but I did find related metrics for the same topic. Which one do you want to inspect?",
       pendingQuery: this.buildTelemetryClarificationPendingQuery(query),
       actions,
     };
+  }
+
+  private getTelemetryForcedClarificationReason(
+    matchMode: 'exact' | 'direct' | 'related',
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): 'ambiguous_tank_reading' | null {
+    if (matchMode !== 'direct') {
+      return null;
+    }
+
+    if (!this.shouldOfferTelemetryClarification(query, resolvedSubjectQuery)) {
+      return null;
+    }
+
+    const normalizedQuery = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+
+    return this.shouldForceTankTelemetryClarification(entries, normalizedQuery)
+      ? 'ambiguous_tank_reading'
+      : null;
   }
 
   private shouldOfferTelemetryClarification(
@@ -4248,6 +4283,53 @@ export class MetricsService implements OnModuleInit {
     }
 
     return kinds;
+  }
+
+  private shouldForceTankTelemetryClarification(
+    entries: ShipTelemetryEntry[],
+    normalizedQuery: string,
+  ): boolean {
+    if (entries.length <= 1 || !/\btank\b/i.test(normalizedQuery)) {
+      return false;
+    }
+
+    const queryKinds = this.extractTelemetryMeasurementKinds(normalizedQuery);
+    const asksForTankReading =
+      queryKinds.has('level') ||
+      /\b(status|reading|value|available|remaining|left)\b/i.test(
+        normalizedQuery,
+      );
+    if (!asksForTankReading) {
+      return false;
+    }
+
+    const tankLabels = [
+      ...new Set(
+        entries
+          .map(
+            (entry) =>
+              this.getDedicatedTankDisplayLabel(entry) ??
+              this.buildTelemetrySuggestionLabel(entry),
+          )
+          .map((label) => this.normalizeTelemetryText(label))
+          .filter((label) => /\btank\b/i.test(label)),
+      ),
+    ];
+
+    if (tankLabels.length <= 1) {
+      return false;
+    }
+
+    return !this.hasSpecificTankSelectorInQuery(normalizedQuery);
+  }
+
+  private hasSpecificTankSelectorInQuery(normalizedQuery: string): boolean {
+    return (
+      /\btank\s+\d{1,3}[a-z]?\b/i.test(normalizedQuery) ||
+      /\b(port|starboard|ps|stbd|sb|aft|forward|fwd|midship)\b/i.test(
+        normalizedQuery,
+      )
+    );
   }
 
   private getExplicitTelemetryCoordinateKinds(

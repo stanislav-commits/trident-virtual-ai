@@ -1049,6 +1049,171 @@ describe('MetricsService telemetry matching', () => {
     },
   );
 
+  it('forces clarification for broad tank level queries when multiple tank readings match', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel Tank 1P',
+        latestValue: 3142,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel Tank 1P',
+          description: 'Fuel tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel Tank 1P',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel Tank 1S',
+        latestValue: 3188,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel Tank 1S',
+          description: 'Fuel tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel Tank 1S',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fresh Water Tank 1',
+        latestValue: 870,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fresh Water Tank 1',
+          description: 'Fresh water tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fresh Water Tank 1',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what the current tank level',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('related');
+    expect(result.clarification?.question).toContain(
+      'multiple current tank readings',
+    );
+    expect(
+      result.clarification?.actions.some((action) =>
+        action.label.includes('Fuel Tank 1P'),
+      ),
+    ).toBe(true);
+    expect(
+      result.clarification?.actions.some((action) =>
+        action.label.includes('Fuel Tank 1S'),
+      ),
+    ).toBe(true);
+  });
+
+  it('forces clarification for generic water tank level queries when multiple water tanks match', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fresh Water Tank 1',
+        latestValue: 870,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fresh Water Tank 1',
+          description: 'Fresh water tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fresh Water Tank 1',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fresh Water Tank 2',
+        latestValue: 910,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fresh Water Tank 2',
+          description: 'Fresh water tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fresh Water Tank 2',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel Tank 1P',
+        latestValue: 3142,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel Tank 1P',
+          description: 'Fuel tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel Tank 1P',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what is the water tank level',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('related');
+    expect(result.clarification?.question).toContain(
+      'multiple current tank readings',
+    );
+    expect(
+      Object.keys(result.telemetry).every((key) => key.includes('Water Tank')),
+    ).toBe(true);
+  });
+
+  it('keeps exact tank queries on the direct path', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel Tank 1P',
+        latestValue: 3142,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel Tank 1P',
+          description: 'Fuel tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel Tank 1P',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel Tank 1S',
+        latestValue: 3188,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel Tank 1S',
+          description: 'Fuel tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel Tank 1S',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what is fuel tank 1p level',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('exact');
+    expect(result.clarification).toBeNull();
+    expect(Object.keys(result.telemetry)).toHaveLength(1);
+    expect(Object.keys(result.telemetry)[0]).toContain('Fuel Tank 1P');
+  });
+
   it('uses action-oriented clarification prompts for recommendation queries without a direct metric', async () => {
     const service = buildService([
       {
