@@ -103,13 +103,12 @@ describe('LlmService maintenance calculation guard', () => {
     };
     const service = new LlmService(systemPromptService as never);
     const create = jest.fn().mockResolvedValue({
-      choices: [{ message: { content: 'ok' } }],
+      id: 'resp_123',
+      output_text: 'ok',
     });
     (service as any).client = {
-      chat: {
-        completions: {
-          create,
-        },
+      responses: {
+        create,
       },
     };
 
@@ -125,23 +124,22 @@ describe('LlmService maintenance calculation guard', () => {
     });
 
     expect(create).toHaveBeenCalled();
-    expect(create.mock.calls[0][0].messages[0].content).toBe(
+    expect(create.mock.calls[0][0].instructions).toBe(
       IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT,
     );
   });
 
-  it('uses max_completion_tokens for GPT-5 chat completions', async () => {
+  it('uses max_output_tokens for Responses API generation', async () => {
     process.env.LLM_MODEL = 'gpt-5.4';
 
     const service = new LlmService();
     const create = jest.fn().mockResolvedValue({
-      choices: [{ message: { content: 'ok' } }],
+      id: 'resp_456',
+      output_text: 'ok',
     });
     (service as any).client = {
-      chat: {
-        completions: {
-          create,
-        },
+      responses: {
+        create,
       },
     };
 
@@ -151,33 +149,65 @@ describe('LlmService maintenance calculation guard', () => {
     });
 
     expect(create).toHaveBeenCalled();
-    expect(create.mock.calls[0][0].max_completion_tokens).toBe(1500);
-    expect(create.mock.calls[0][0].max_tokens).toBeUndefined();
+    expect(create.mock.calls[0][0].max_output_tokens).toBe(1500);
   });
 
-  it('keeps using max_tokens for non-GPT-5 chat completions', async () => {
+  it('forwards previous_response_id for chained Responses API turns', async () => {
     process.env.LLM_MODEL = 'gpt-4o-mini';
 
     const service = new LlmService();
     const create = jest.fn().mockResolvedValue({
-      choices: [{ message: { content: 'ok' } }],
+      id: 'resp_789',
+      output_text: 'ok',
     });
     (service as any).client = {
-      chat: {
-        completions: {
-          create,
-        },
+      responses: {
+        create,
       },
     };
 
     await service.generateResponse({
       userQuery: 'Who is the vessel DPA?',
+      previousResponseId: 'resp_prev',
       citations: [],
     });
 
     expect(create).toHaveBeenCalled();
-    expect(create.mock.calls[0][0].max_tokens).toBe(1500);
-    expect(create.mock.calls[0][0].max_completion_tokens).toBeUndefined();
+    expect(create.mock.calls[0][0].previous_response_id).toBe('resp_prev');
+    expect(create.mock.calls[0][0].input).toEqual(expect.any(String));
+  });
+
+  it('replays chat history statelessly when no previous response id is available', async () => {
+    const service = new LlmService();
+    const create = jest.fn().mockResolvedValue({
+      id: 'resp_hist',
+      output_text: 'ok',
+    });
+    (service as any).client = {
+      responses: {
+        create,
+      },
+    };
+
+    await service.generateResponse({
+      userQuery: 'What about the other one?',
+      chatHistory: [
+        { role: 'user', content: "who is vessel's dpa?" },
+        { role: 'assistant', content: 'The DPA contact is JMS.' },
+        { role: 'user', content: 'What about the other one?' },
+      ],
+      citations: [],
+    });
+
+    expect(create).toHaveBeenCalled();
+    expect(create.mock.calls[0][0].input).toEqual([
+      { role: 'user', content: "who is vessel's dpa?" },
+      { role: 'assistant', content: 'The DPA contact is JMS.' },
+      {
+        role: 'user',
+        content: expect.stringContaining('Question: What about the other one?'),
+      },
+    ]);
   });
 
   it('labels documentation sources with category-aware inline source tags', () => {

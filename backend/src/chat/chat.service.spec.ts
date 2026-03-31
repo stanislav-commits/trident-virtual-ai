@@ -2084,9 +2084,10 @@ describe('ChatService telemetry clarification', () => {
       matchMode: 'direct',
       clarification: null,
     });
-    llmService.generateResponse.mockResolvedValue(
-      'Check the documented dipstick range before taking action.',
-    );
+    llmService.generateResponse.mockResolvedValue({
+      content: 'Check the documented dipstick range before taking action.',
+      responseId: 'resp_guidance_1',
+    });
 
     await (service as any).generateAssistantResponse(
       'ship-1',
@@ -2103,12 +2104,77 @@ describe('ChatService telemetry clarification', () => {
       expect.objectContaining({
         answerRoute: 'llm_generation',
         resolvedSubjectQuery: 'Based on the current oil level, what should I do next?',
+        llmResponseId: 'resp_guidance_1',
         usedLlm: true,
         usedDocumentation: true,
         usedCurrentTelemetry: true,
         usedHistoricalTelemetry: false,
       }),
       expect.any(Array),
+    );
+  });
+
+  it('passes the latest LLM response id from the immediately preceding assistant turn', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What is the role of DPA?',
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content: 'The DPA approves amendments and ensures current texts are kept.',
+          ragflowContext: {
+            answerRoute: 'llm_generation',
+            usedLlm: true,
+            usedDocumentation: true,
+            llmResponseId: 'resp_prev_123',
+            resolvedSubjectQuery: 'what is the role of dpa?',
+          },
+        },
+        {
+          role: 'user',
+          content: 'Summarize that in one line.',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS 01 SMS ADMINISTRATION 2 March 26.pdf',
+          snippet:
+            'Responsibility It is the responsibility of the Designated Person Ashore to approve amendments and to ensure that the most recent texts are kept in all locations.',
+        },
+      ],
+      previousUserQuery: 'What is the role of DPA?',
+      retrievalQuery: 'Summarize that in one line.',
+      resolvedSubjectQuery: 'what is the role of dpa?',
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+    llmService.generateResponse.mockResolvedValue('The DPA keeps documentation current.');
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'Summarize that in one line.',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousResponseId: 'resp_prev_123',
+      }),
     );
   });
 

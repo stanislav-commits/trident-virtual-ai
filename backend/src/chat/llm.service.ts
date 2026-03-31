@@ -15,6 +15,7 @@ import {
 export interface LLMContext {
   userQuery: string;
   previousUserQuery?: string;
+  previousResponseId?: string;
   resolvedSubjectQuery?: string;
   structuredConversationState?: string;
   compareBySource?: boolean;
@@ -34,6 +35,11 @@ export interface LLMContext {
     role: 'user' | 'assistant' | 'system';
     content: string;
   }>;
+}
+
+export interface LlmGeneratedResponse {
+  content: string;
+  responseId?: string;
 }
 
 interface HourTelemetryEntry {
@@ -93,7 +99,7 @@ export class LlmService {
     this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || '1500', 10);
   }
 
-  async generateResponse(context: LLMContext): Promise<string> {
+  async generateResponse(context: LLMContext): Promise<LlmGeneratedResponse> {
     try {
       // Chat generation intentionally uses an immutable core prompt so
       // admin-edited prompt text cannot change routing or evidence handling.
@@ -111,6 +117,9 @@ export class LlmService {
 
       // Add previous chat history — skip for fragment inputs to avoid context bleed
       const intent = this.classifyQueryIntent(context.userQuery);
+      const usePreviousResponseId =
+        intent !== 'fragment_reference' &&
+        Boolean(context.previousResponseId?.trim());
       if (
         intent !== 'fragment_reference' &&
         context.chatHistory &&
@@ -134,19 +143,51 @@ export class LlmService {
       // Add current user query
       messages.push({ role: 'user', content: userPrompt });
 
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        temperature: this.temperature,
-        ...this.buildTokenLimitParam(this.model, this.maxTokens),
-        messages,
-      });
+      const responseInput = messages.slice(1).map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
+      let response: OpenAI.Responses.Response;
 
-      const content = response.choices[0]?.message?.content;
+      try {
+        response = await this.client.responses.create({
+          model: this.model,
+          temperature: this.temperature,
+          ...this.buildTokenLimitParam(this.maxTokens),
+          instructions: systemPrompt,
+          input: usePreviousResponseId ? userPrompt : responseInput,
+          ...(usePreviousResponseId
+            ? {
+                previous_response_id: context.previousResponseId?.trim(),
+              }
+            : {}),
+        });
+      } catch (error) {
+        if (!usePreviousResponseId) {
+          throw error;
+        }
+
+        this.logger.warn(
+          `Responses API chaining failed; retrying statelessly with manual history: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        response = await this.client.responses.create({
+          model: this.model,
+          temperature: this.temperature,
+          ...this.buildTokenLimitParam(this.maxTokens),
+          instructions: systemPrompt,
+          input: responseInput,
+        });
+      }
+
+      const content = response.output_text;
       if (!content) {
         throw new Error('Empty response from LLM');
       }
 
-      return content.trim();
+      return {
+        content: content.trim(),
+        responseId: response.id,
+      };
     } catch (err) {
       throw new ServiceUnavailableException(
         `LLM generation failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -156,21 +197,16 @@ export class LlmService {
 
   async generateTitle(userMessage: string): Promise<string> {
     try {
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: this.model,
         temperature: 0.5,
-        ...this.buildTokenLimitParam(this.model, 20),
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Generate a very short chat title (3-6 words, no quotes) summarizing the user message. Respond with ONLY the title, nothing else.',
-          },
-          { role: 'user', content: userMessage },
-        ],
+        ...this.buildTokenLimitParam(20),
+        instructions:
+          'Generate a very short chat title (3-6 words, no quotes) summarizing the user message. Respond with ONLY the title, nothing else.',
+        input: userMessage,
       });
 
-      const title = response.choices[0]?.message?.content?.trim();
+      const title = response.output_text?.trim();
       return title || 'New Chat';
     } catch {
       return 'New Chat';
@@ -192,15 +228,10 @@ export class LlmService {
     }
   }
 
-  private buildTokenLimitParam(model: string, maxTokens: number): {
-    max_tokens?: number;
-    max_completion_tokens?: number;
+  private buildTokenLimitParam(maxTokens: number): {
+    max_output_tokens: number;
   } {
-    if (/^gpt-5(?:[.-]|$)/i.test(model.trim())) {
-      return { max_completion_tokens: maxTokens };
-    }
-
-    return { max_tokens: maxTokens };
+    return { max_output_tokens: maxTokens };
   }
 
   private buildSystemPrompt(

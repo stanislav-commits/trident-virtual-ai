@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { LlmService } from './llm.service';
+import { LlmGeneratedResponse, LlmService } from './llm.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { CreateChatSessionDto } from './dto/create-chat-session.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -982,6 +982,8 @@ export class ChatService {
         });
       }
 
+      const previousLlmResponseId =
+        this.getLatestLlmResponseIdFromRecentAssistant(messageHistory);
       const response = await this.llmService.generateResponse({
         userQuery: effectiveUserQuery,
         previousUserQuery:
@@ -990,6 +992,7 @@ export class ChatService {
               : retrievalQuery !== userQuery
               ? previousUserQuery
               : undefined,
+        previousResponseId: previousLlmResponseId,
         resolvedSubjectQuery,
         structuredConversationState:
           this.buildStructuredConversationState(messageHistory),
@@ -1011,10 +1014,11 @@ export class ChatService {
           content: message.content,
         })),
       });
+      const llmResult = this.normalizeGeneratedLlmResponse(response);
 
       return this.addRoutedAssistantMessage({
         sessionId,
-        content: response,
+        content: llmResult.content,
         route: 'llm_generation',
         normalizedQuery: effectiveNormalizedQuery,
         routeTrace: ['llm:generation'],
@@ -1029,6 +1033,12 @@ export class ChatService {
           usedDocumentation: citationsForAnswer.length > 0,
           usedCurrentTelemetry:
             Object.keys(llmTelemetryContext.telemetry).length > 0,
+          ...(llmResult.responseId
+            ? { llmResponseId: llmResult.responseId }
+            : {}),
+          ...(previousLlmResponseId
+            ? { llmPreviousResponseId: previousLlmResponseId }
+            : {}),
         },
         contextReferences: citationsForAnswer,
       });
@@ -1325,6 +1335,47 @@ export class ChatService {
     }
 
     return lines.length > 0 ? lines.join('\n') : undefined;
+  }
+
+  private normalizeGeneratedLlmResponse(
+    response: string | LlmGeneratedResponse,
+  ): LlmGeneratedResponse {
+    if (typeof response === 'string') {
+      return { content: response };
+    }
+
+    return response;
+  }
+
+  private getLatestLlmResponseIdFromRecentAssistant(
+    messageHistory?: Array<{
+      role: string;
+      content: string;
+      ragflowContext?: unknown;
+    }>,
+  ): string | undefined {
+    if (!messageHistory?.length) {
+      return undefined;
+    }
+
+    for (let index = messageHistory.length - 1; index >= 0; index -= 1) {
+      const message = messageHistory[index];
+      if (message.role !== 'assistant') {
+        continue;
+      }
+
+      if (!message.ragflowContext || typeof message.ragflowContext !== 'object') {
+        return undefined;
+      }
+
+      const llmResponseId = (message.ragflowContext as Record<string, unknown>)
+        .llmResponseId;
+      return typeof llmResponseId === 'string' && llmResponseId.trim()
+        ? llmResponseId.trim()
+        : undefined;
+    }
+
+    return undefined;
   }
 
   private summarizeAssistantConversationState(
