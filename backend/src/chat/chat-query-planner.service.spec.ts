@@ -104,6 +104,26 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.requiresTelemetry).toBe(false);
   });
 
+  it('routes replacement-interval maintenance questions to manuals first', () => {
+    const plan = service.planQuery(
+      'What is the replacement interval for the seawater pump impeller?',
+    );
+
+    expect(plan.primaryIntent).toBe('manual_specification');
+    expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
+  });
+
+  it('routes explicit manual phrasing to manuals first', () => {
+    const plan = service.planQuery(
+      'What manual says about replacing the fuel separator element?',
+    );
+
+    expect(plan.primaryIntent).toBe('manual_specification');
+    expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
+  });
+
   it('routes tank capacity table questions to manuals instead of telemetry', () => {
     const plan = service.planQuery('show tank capacities for fuel tanks');
 
