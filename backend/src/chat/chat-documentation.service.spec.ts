@@ -81,6 +81,9 @@ Reference ID: 1P47`,
         .fn()
         .mockResolvedValue([]),
       expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const clarificationActions = [
       {
@@ -228,6 +231,16 @@ Reference ID: 1P47`,
         >()
         .mockResolvedValue([]),
       expandTankCapacityDocumentChunkCitations: jest
+        .fn<
+          (
+            shipId: string | null,
+            retrievalQuery: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => Promise<ChatCitation[]>
+        >()
+        .mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
         .fn<
           (
             shipId: string | null,
@@ -391,6 +404,9 @@ Reference ID: 1P47`,
         .fn()
         .mockResolvedValue([]),
       expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
@@ -506,6 +522,9 @@ Reference ID: 1P47`,
         .fn()
         .mockResolvedValue([]),
       expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
@@ -637,6 +656,9 @@ Reference ID: 1P47`,
         .fn()
         .mockResolvedValue([]),
       expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest
@@ -775,6 +797,9 @@ Location: BOX 25 VOLVO PENTA SPARES`,
         .fn()
         .mockResolvedValue([]),
       expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest
@@ -903,6 +928,9 @@ Location: BOX 25 VOLVO PENTA SPARES`,
         .fn()
         .mockResolvedValue([]),
       expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
@@ -991,6 +1019,9 @@ Location: BOX 25 VOLVO PENTA SPARES`,
         .fn()
         .mockResolvedValue([scanCitation]),
       expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
@@ -1086,6 +1117,9 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       expandTankCapacityDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([tankCitation]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
     } as unknown as ChatDocumentationScanService;
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),

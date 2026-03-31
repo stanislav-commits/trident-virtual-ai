@@ -1159,6 +1159,76 @@ describe('ChatService telemetry clarification', () => {
     }
   });
 
+  it('prefers standalone certificate expiries over embedded manual approvals when both are available', async () => {
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.UTC(2026, 2, 31));
+    try {
+      prisma.chatSession.findUnique.mockResolvedValue({
+        messages: [
+          {
+            role: 'user',
+            content: 'Which certifications will expire soon?',
+            ragflowContext: null,
+          },
+        ],
+      });
+      documentationService.prepareDocumentationContext.mockResolvedValue({
+        citations: [
+          {
+            sourceTitle:
+              "Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf",
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'Product Design Assessment (PDA) Expiry Date 22-DEC-2026. Manufacturing Assessment (MA) Expiry Date 28-OCT-2027.',
+            pageNumber: 161,
+          },
+          {
+            sourceTitle: '26.03.04 Renewal Radio Licence COMMERCIAL.pdf',
+            sourceCategory: 'CERTIFICATES',
+            snippet:
+              'Radio station communication license. Certificate valid until 15 January 2027.',
+            pageNumber: 1,
+          },
+        ],
+        previousUserQuery: undefined,
+        retrievalQuery: 'Which certifications will expire soon?',
+        resolvedSubjectQuery: undefined,
+        answerQuery: undefined,
+      });
+      metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+        telemetry: {},
+        totalActiveMetrics: 0,
+        matchedMetrics: 0,
+        prefiltered: false,
+        matchMode: 'none',
+        clarification: null,
+      });
+
+      await (service as any).generateAssistantResponse(
+        'ship-1',
+        'session-1',
+        'Which certifications will expire soon?',
+        'Sea Wolf X',
+        'user',
+      );
+
+      const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[1];
+      const contextRefs = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[3];
+
+      expect(content).toContain('15 January 2027');
+      expect(content).not.toContain("Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf");
+      expect(contextRefs).toEqual([
+        expect.objectContaining({
+          sourceTitle: '26.03.04 Renewal Radio Licence COMMERCIAL.pdf',
+        }),
+      ]);
+      expect(llmService.generateResponse).not.toHaveBeenCalled();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('does not let broad certificate expiry questions fall back to LLM when snippets lack explicit expiry dates', async () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
@@ -2487,6 +2557,80 @@ describe('ChatService telemetry clarification', () => {
 
     expect(content).toContain('Showing the first 12 of 13 matching contacts.');
     expect(content).toContain('additional contact is listed in the source document.');
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
+  it('prefers the dedicated contact sheet over noisy operational-plan contacts for manager lists', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'list all managers with their contact details',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'SEAWOLF X - NTVRP 2025.pdf',
+          pageNumber: 12,
+          snippet:
+            'Federal On - Insurance Manager 3.Notify P&I representatives. Registrar General - DPA authorities of the relevant flag state shipping.master@cishipping.com +1345 815 1605',
+          score: 0.99,
+        },
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet:
+            'James Kirby - Fleet Manager (M) +34 680 664 753 jamesk@jmsyachting.com Carla Swaine - HR Manager Global HSQE (M) +44 7494 320 951 carla@jmsyachting.com Zoe Bolt Falconer - Fleet Compliance Manager, DPA & CSO (M) +31 633 010 685 zoe@jmsyachting.com',
+          score: 0.95,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'manager contact details',
+      resolvedSubjectQuery: 'manager contact details',
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'list all managers with their contact details',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[1];
+    const contextRefs = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[3];
+
+    expect(content).toContain('James Kirby');
+    expect(content).toContain('Carla Swaine');
+    expect(content).not.toContain('Federal On');
+    expect(content).not.toContain('shipping.master@cishipping.com');
+    expect(content).toContain('JMS Company Contact Details Jan 26.pdf');
+    expect(contextRefs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+        }),
+      ]),
+    );
+    expect(contextRefs).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'SEAWOLF X - NTVRP 2025.pdf',
+        }),
+      ]),
+    );
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 

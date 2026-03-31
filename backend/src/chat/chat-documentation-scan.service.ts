@@ -541,25 +541,12 @@ export class ChatDocumentationScanService {
               if (!content) {
                 return false;
               }
-
-              const haystack = `${manual.filename}\n${content}`.toLowerCase();
-              const hasContactSignals =
-                /\b(contact\s+details|contact\s+list|company\s+contact|emergency\s+contact|directory|fleet\s+manager|technical\s+manager|director|dpa|cso|captain|master)\b/i.test(
-                  haystack,
-                ) ||
-                /\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/i.test(
-                  content,
-                ) ||
-                /\+\s*\d[\d\s()./-]{5,}\d\b/i.test(content);
-              if (!hasContactSignals) {
-                return false;
-              }
-
-              if (wantsRoleInventory || anchorTerms.length === 0) {
-                return true;
-              }
-
-              return anchorTerms.some((term) => haystack.includes(term));
+              return this.isLikelyPersonnelDirectoryChunk(
+                manual.filename,
+                content,
+                anchorTerms,
+                wantsRoleInventory,
+              );
             })
             .slice(0, 12);
 
@@ -645,9 +632,7 @@ export class ChatDocumentationScanService {
               ) {
                 return false;
               }
-              if (
-                !/\b(capacity|capacities|volume|sounding)\b/i.test(haystack)
-              ) {
+              if (!this.containsTankCapacityLikeRow(content)) {
                 return false;
               }
               if (requiresFuel && !/\bfuel\b/i.test(haystack)) {
@@ -955,6 +940,26 @@ export class ChatDocumentationScanService {
       manuals,
       citations,
     );
+    const standaloneCertificateLike = baseOrdered
+      .filter((manual) =>
+        this.isLikelyStandaloneCertificateManual(manual.filename),
+      )
+      .sort((left, right) => {
+        const leftScore = this.scoreCertificateScanManual(left.filename);
+        const rightScore = this.scoreCertificateScanManual(right.filename);
+        if (leftScore !== rightScore) {
+          return rightScore - leftScore;
+        }
+
+        return (
+          baseOrdered.findIndex((manual) => manual.id === left.id) -
+          baseOrdered.findIndex((manual) => manual.id === right.id)
+        );
+      });
+    if (standaloneCertificateLike.length > 0) {
+      return standaloneCertificateLike;
+    }
+
     const certificateLike = baseOrdered
       .filter((manual) =>
         this.isCertificateScanCandidateManual(manual.filename),
@@ -971,7 +976,7 @@ export class ChatDocumentationScanService {
           baseOrdered.findIndex((manual) => manual.id === right.id)
         );
       });
-    const ordered = [...certificateLike, ...baseOrdered];
+    const ordered = certificateLike.length > 0 ? certificateLike : baseOrdered;
     const seen = new Set<string>();
 
     return ordered.filter((manual) => {
@@ -1004,7 +1009,7 @@ export class ChatDocumentationScanService {
           baseOrdered.findIndex((manual) => manual.id === right.id)
         );
       });
-    const ordered = [...contactLike, ...baseOrdered];
+    const ordered = contactLike.length > 0 ? contactLike : baseOrdered;
     const seen = new Set<string>();
 
     return ordered.filter((manual) => {
@@ -1037,7 +1042,7 @@ export class ChatDocumentationScanService {
           baseOrdered.findIndex((manual) => manual.id === right.id)
         );
       });
-    const ordered = [...tankLike, ...baseOrdered];
+    const ordered = tankLike.length > 0 ? tankLike : baseOrdered;
     const seen = new Set<string>();
 
     return ordered.filter((manual) => {
@@ -1109,6 +1114,53 @@ export class ChatDocumentationScanService {
     return /\b(contact|directory|phone|email|crew\s+list)\b/i.test(filename);
   }
 
+  private isLikelyPersonnelDirectoryChunk(
+    filename: string,
+    content: string,
+    anchorTerms: string[],
+    wantsRoleInventory: boolean,
+  ): boolean {
+    const haystack = `${filename}\n${content}`.toLowerCase();
+    const emailMatches =
+      content.match(/\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/gi) ??
+      [];
+    const phoneMatches =
+      content.match(/\+\s*\d[\d\s()./-]{5,}\d\b/g) ?? [];
+    const personLikeMatches =
+      content.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/g) ?? [];
+    const hasDirectoryTitle =
+      /\b(contact\s+details|contact\s+list|company\s+contact|directory|crew\s+list|emergency\s+contact)\b/i.test(
+        haystack,
+      );
+    const hasDenseDirectoryStructure =
+      emailMatches.length >= 2 ||
+      phoneMatches.length >= 2 ||
+      (emailMatches.length >= 1 && personLikeMatches.length >= 2);
+    const hasStrongRoleSignals =
+      /\b(fleet\s+manager|technical\s+manager|operations\s+director|commercial\s+director|director|dpa|cso|manager)\b/i.test(
+        haystack,
+      ) &&
+      (emailMatches.length >= 1 || phoneMatches.length >= 1);
+    const hasOperationalNoise =
+      /\b(ntvrp|response\s+plan|qualified\s+individual|checklist|appendix|national\s+response\s+center|oil\s+spill|figure\s+\d|section\s+\d|owner\/operator|charterer|port\s+agents?)\b/i.test(
+        haystack,
+      );
+
+    if (!(hasDirectoryTitle || hasDenseDirectoryStructure || hasStrongRoleSignals)) {
+      return false;
+    }
+
+    if (hasOperationalNoise && !(hasDirectoryTitle || hasDenseDirectoryStructure)) {
+      return false;
+    }
+
+    if (wantsRoleInventory || anchorTerms.length === 0) {
+      return true;
+    }
+
+    return anchorTerms.some((term) => haystack.includes(term));
+  }
+
   private scoreTankCapacityScanManual(filename: string): number {
     const normalized = filename.toLowerCase();
     let score = 0;
@@ -1135,6 +1187,12 @@ export class ChatDocumentationScanService {
 
   private isTankCapacityScanCandidateManual(filename: string): boolean {
     return /\b(tank|tanks|sounding|capacity|capacities)\b/i.test(filename);
+  }
+
+  private containsTankCapacityLikeRow(text: string): boolean {
+    return /\b((?:(?:fuel|diesel|day|service|settling|storage|fresh\s*water|water|grey|gray|black|waste|holding)\s+)?tank(?:\s+[a-z0-9./-]{1,12}){0,2})(?:\s+(?:capacity|cap\.?|volume))?\s*[:=-]?\s*(\d[\d, .]*\s*(?:l|liters?|litres?|m3|m³|gal|gallons?))\b/i.test(
+      text,
+    );
   }
 
   private scoreAuditScanManual(filename: string): number {

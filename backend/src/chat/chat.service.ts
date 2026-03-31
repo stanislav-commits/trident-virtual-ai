@@ -1766,7 +1766,6 @@ export class ChatService {
     }
 
     const dedupedEntries = this.dedupeDeterministicContactEntries(allEntries);
-    const sourceLabel = citations[0]?.sourceTitle ?? 'the cited contact document';
 
     if (this.documentationQueryService.isRoleInventoryQuery(userQuery)) {
       const roleInventory = this.extractDeterministicRoleInventory(
@@ -1779,6 +1778,8 @@ export class ChatService {
       const matchedCitations = [
         ...new Set(roleInventory.map((entry) => entry.citation)),
       ];
+      const sourceLabel =
+        matchedCitations[0]?.sourceTitle ?? 'the cited contact document';
 
       return {
         content: [
@@ -1804,15 +1805,22 @@ export class ChatService {
       /\b(list\s+all|all\s+contacts|all\s+managers|all\s+directors|all\s+roles|everyone|everybody)\b/i.test(
         userQuery,
       );
+    const sourceScopedEntries = this.preferDeterministicContactSourceEntries(
+      directoryQuery,
+      matchingEntries,
+      wantsExhaustiveList,
+    );
     const maxEntries = wantsExhaustiveList ? 12 : 6;
-    const selectedEntries = matchingEntries.slice(0, maxEntries);
+    const selectedEntries = sourceScopedEntries.slice(0, maxEntries);
     const omittedEntriesCount = Math.max(
       0,
-      matchingEntries.length - selectedEntries.length,
+      sourceScopedEntries.length - selectedEntries.length,
     );
     const matchedCitations = [
       ...new Set(selectedEntries.map((entry) => entry.citation)),
     ];
+    const sourceLabel =
+      matchedCitations[0]?.sourceTitle ?? 'the cited contact document';
 
     if (selectedEntries.length === 1) {
       const [entry] = selectedEntries;
@@ -1866,7 +1874,7 @@ export class ChatService {
         ...(omittedEntriesCount > 0
           ? [
               '',
-              `Showing the first ${selectedEntries.length} of ${matchingEntries.length} matching contacts. ${
+              `Showing the first ${selectedEntries.length} of ${sourceScopedEntries.length} matching contacts. ${
                 omittedEntriesCount === 1
                   ? '1 additional contact is listed'
                   : `${omittedEntriesCount} additional contacts are listed`
@@ -1877,6 +1885,122 @@ export class ChatService {
         `These contacts are sourced from ${sourceLabel} [Contact: ${sourceLabel}].`,
       ].join('\n'),
       citations: matchedCitations,
+    };
+  }
+
+  private preferDeterministicContactSourceEntries(
+    userQuery: string,
+    entries: DeterministicContactEntry[],
+    wantsExhaustiveList: boolean,
+  ): DeterministicContactEntry[] {
+    if (entries.length <= 1) {
+      return entries;
+    }
+
+    const groups = this.groupDeterministicContactEntriesBySource(entries);
+    if (groups.length <= 1) {
+      return entries;
+    }
+
+    const explicitDirectoryRequest =
+      /\b(contact\s+details\s+document|company\s+contact|contact\s+sheet|directory|crew\s+list)\b/i.test(
+        userQuery,
+      );
+    const anchorTerms =
+      this.documentationQueryService.extractContactAnchorTerms(userQuery);
+    const rankedGroups = groups
+      .map((group) => ({
+        ...group,
+        profile: this.buildDeterministicContactSourceProfile(
+          group.entries,
+          anchorTerms,
+        ),
+      }))
+      .sort((left, right) => right.profile.totalScore - left.profile.totalScore);
+    const [bestGroup, secondGroup] = rankedGroups;
+    if (!bestGroup) {
+      return entries;
+    }
+
+    const secondScore = secondGroup?.profile.totalScore ?? Number.NEGATIVE_INFINITY;
+    const strongLead =
+      bestGroup.profile.totalScore >= secondScore + 15 ||
+      bestGroup.profile.directoryScore > (secondGroup?.profile.directoryScore ?? 0);
+    const shouldPreferSingleSource =
+      wantsExhaustiveList ||
+      explicitDirectoryRequest ||
+      bestGroup.profile.directoryScore > 0 ||
+      bestGroup.profile.anchorCoverage > (secondGroup?.profile.anchorCoverage ?? 0);
+
+    return strongLead && shouldPreferSingleSource ? bestGroup.entries : entries;
+  }
+
+  private groupDeterministicContactEntriesBySource(
+    entries: DeterministicContactEntry[],
+  ): Array<{ sourceKey: string; entries: DeterministicContactEntry[] }> {
+    const grouped = new Map<string, DeterministicContactEntry[]>();
+
+    for (const entry of entries) {
+      const sourceKey = (entry.citation.sourceTitle ?? '').trim().toLowerCase();
+      const bucket = grouped.get(sourceKey) ?? [];
+      bucket.push(entry);
+      grouped.set(sourceKey, bucket);
+    }
+
+    return [...grouped.entries()].map(([sourceKey, groupedEntries]) => ({
+      sourceKey,
+      entries: groupedEntries,
+    }));
+  }
+
+  private buildDeterministicContactSourceProfile(
+    entries: DeterministicContactEntry[],
+    anchorTerms: string[],
+  ): {
+    totalScore: number;
+    directoryScore: number;
+    anchorCoverage: number;
+  } {
+    const sourceTitle = entries[0]?.citation.sourceTitle ?? '';
+    const normalizedTitle = sourceTitle.toLowerCase();
+    const directoryScore =
+      /\b(contact\s+details|company\s+contact|directory|crew\s+list)\b/i.test(
+        normalizedTitle,
+      )
+        ? 4
+        : /\b(contact|email|phone)\b/i.test(normalizedTitle)
+          ? 2
+          : 0;
+    const noisePenalty =
+      /\b(ntvrp|response|plan|appendix|checklist|procedure|manual|guide|instruction)\b/i.test(
+        normalizedTitle,
+      )
+        ? 3
+        : 0;
+    const anchorCoverage = anchorTerms.filter((term) =>
+      entries.some((entry) =>
+        [entry.name, entry.role ?? '', entry.email ?? '', entry.phone ?? '']
+          .join('\n')
+          .toLowerCase()
+          .includes(term),
+      ),
+    ).length;
+    const roleCount = entries.filter((entry) => entry.role).length;
+    const contactPointCount = entries.filter(
+      (entry) => entry.email || entry.phone,
+    ).length;
+    const totalScore =
+      directoryScore * 30 +
+      anchorCoverage * 8 +
+      roleCount * 4 +
+      contactPointCount * 2 +
+      entries.length * 6 -
+      noisePenalty * 25;
+
+    return {
+      totalScore,
+      directoryScore,
+      anchorCoverage,
     };
   }
 
@@ -1987,8 +2111,10 @@ export class ChatService {
         return (right.citation.score ?? 0) - (left.citation.score ?? 0);
       },
     );
+    const preferredCertificateEntries =
+      this.preferDeterministicCertificateEntries(certificateEntries);
 
-    if (certificateEntries.length === 0) {
+    if (preferredCertificateEntries.length === 0) {
       const certificateCitations = citations.filter((citation) =>
         this.isDeterministicCertificateExpiryEvidence(citation),
       );
@@ -2005,7 +2131,7 @@ export class ChatService {
     }
 
     const now = Date.now();
-    const upcomingEntries = certificateEntries.filter(
+    const upcomingEntries = preferredCertificateEntries.filter(
       (entry) => entry.timestamp >= now,
     );
 
@@ -2040,7 +2166,7 @@ export class ChatService {
       };
     }
 
-    const expiredEntries = certificateEntries
+    const expiredEntries = preferredCertificateEntries
       .filter((entry) => entry.timestamp < now)
       .sort((left, right) => right.timestamp - left.timestamp)
       .slice(0, 3);
@@ -2465,6 +2591,66 @@ export class ChatService {
       strongSnippetSignal ||
       (strongTitleSignal && !supportDocTitle) ||
       embeddedApprovalSignal
+    );
+  }
+
+  private preferDeterministicCertificateEntries(
+    entries: Array<{
+      citation: ChatCitation;
+      timestamp: number;
+      displayDate: string;
+      sourceLabel: string;
+    }>,
+  ): Array<{
+    citation: ChatCitation;
+    timestamp: number;
+    displayDate: string;
+    sourceLabel: string;
+  }> {
+    const standaloneEntries = entries.filter((entry) =>
+      this.isStandaloneDeterministicCertificateCitation(entry.citation),
+    );
+    if (standaloneEntries.length > 0) {
+      return standaloneEntries;
+    }
+
+    const embeddedManualEntries = entries.filter((entry) =>
+      this.isEmbeddedManualApprovalCertificateCitation(entry.citation),
+    );
+    if (embeddedManualEntries.length > 0) {
+      return embeddedManualEntries;
+    }
+
+    return entries;
+  }
+
+  private isStandaloneDeterministicCertificateCitation(
+    citation: ChatCitation,
+  ): boolean {
+    const title = citation.sourceTitle ?? '';
+    const manualLikeTitle =
+      /\b(manual|guide|guidelines|handbook|instruction|user'?s\s+guide|operator|operators)\b/i.test(
+        title,
+      );
+
+    return this.isDeterministicCertificateExpiryEvidence(citation) && !manualLikeTitle;
+  }
+
+  private isEmbeddedManualApprovalCertificateCitation(
+    citation: ChatCitation,
+  ): boolean {
+    const title = citation.sourceTitle ?? '';
+    const haystack = `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`;
+    const manualLikeTitle =
+      /\b(manual|guide|guidelines|handbook|instruction|user'?s\s+guide|operator|operators)\b/i.test(
+        title,
+      );
+
+    return (
+      manualLikeTitle &&
+      /\b(product\s+design\s+assessment|manufacturing\s+assessment|type\s+approval|declaration\s+of\s+conformity|module\s+[a-z])\b/i.test(
+        haystack,
+      )
     );
   }
 
