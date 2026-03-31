@@ -478,6 +478,28 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
+    const broadTankClarificationEntries = this.findBroadTankClarificationEntries(
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (broadTankClarificationEntries) {
+      return {
+        telemetry: this.toTelemetryMap(broadTankClarificationEntries),
+        totalActiveMetrics: entries.length,
+        matchedMetrics: broadTankClarificationEntries.length,
+        prefiltered: true,
+        matchMode: 'related',
+        clarification: this.buildTelemetryClarification(
+          'related',
+          broadTankClarificationEntries,
+          query,
+          resolvedSubjectQuery,
+          'ambiguous_tank_reading',
+        ),
+      };
+    }
+
     const matchedEntries = this.findRelevantTelemetryEntries(
       entries,
       query,
@@ -4323,12 +4345,76 @@ export class MetricsService implements OnModuleInit {
     return !this.hasSpecificTankSelectorInQuery(normalizedQuery);
   }
 
+  private findBroadTankClarificationEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryEntry[] | null {
+    if (!this.shouldOfferTelemetryClarification(query, resolvedSubjectQuery)) {
+      return null;
+    }
+
+    const normalizedQuery = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    if (
+      !this.shouldForceTankTelemetryClarification(entries, normalizedQuery)
+    ) {
+      return null;
+    }
+
+    const fluid = this.detectStoredFluidSubject(normalizedQuery);
+    if (fluid && this.isAggregateStoredFluidQuery(normalizedQuery, fluid)) {
+      return null;
+    }
+
+    const tankCandidates = entries.filter((entry) =>
+      fluid
+        ? this.isDirectTankStorageEntry(entry, fluid)
+        : this.isAnyDirectTankStorageEntry(entry),
+    );
+
+    const uniqueCandidates = new Map<string, ShipTelemetryEntry>();
+    for (const entry of tankCandidates) {
+      const label = this.normalizeTelemetryText(
+        this.getDedicatedTankDisplayLabel(entry) ??
+          this.buildTelemetrySuggestionLabel(entry),
+      );
+      if (!label || uniqueCandidates.has(label)) {
+        continue;
+      }
+      uniqueCandidates.set(label, entry);
+    }
+
+    const selectedEntries = [...uniqueCandidates.values()]
+      .sort((left, right) => {
+        const orderDiff =
+          this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
+        if (orderDiff !== 0) {
+          return orderDiff;
+        }
+
+        return this.buildTelemetrySuggestionLabel(left).localeCompare(
+          this.buildTelemetrySuggestionLabel(right),
+        );
+      })
+      .slice(0, 8);
+
+    return selectedEntries.length > 1 ? selectedEntries : null;
+  }
+
   private hasSpecificTankSelectorInQuery(normalizedQuery: string): boolean {
     return (
       /\btank\s+\d{1,3}[a-z]?\b/i.test(normalizedQuery) ||
       /\b(port|starboard|ps|stbd|sb|aft|forward|fwd|midship)\b/i.test(
         normalizedQuery,
       )
+    );
+  }
+
+  private isAnyDirectTankStorageEntry(entry: ShipTelemetryEntry): boolean {
+    return (['fuel', 'oil', 'water', 'coolant', 'def'] as const).some((fluid) =>
+      this.isDirectTankStorageEntry(entry, fluid),
     );
   }
 

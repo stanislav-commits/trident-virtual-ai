@@ -1114,6 +1114,71 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(true);
   });
 
+  it('forces clarification for generic tank level queries even when only one candidate explicitly says level', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::DEF Tank level (%)',
+        latestValue: 99,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.DEF Tank level (%)',
+          description: 'Displays the DEF tank level percentage.',
+          unit: '%',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'DEF Tank level (%)',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Fuel Tank 1P',
+        latestValue: 3142,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Fuel Tank 1P',
+          description: 'Fuel tank quantity in liters.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel Tank 1P',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::FRESH WATER TANK 10S LITERS',
+        latestValue: 870,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.FRESH WATER TANK 10S LITERS',
+          description: 'Fresh water tank quantity in liters.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'FRESH WATER TANK 10S LITERS',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what the current tank level',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('related');
+    expect(result.clarification?.question).toContain(
+      'multiple current tank readings',
+    );
+    expect(
+      result.clarification?.actions.some((action) =>
+        action.label.includes('DEF Tank level'),
+      ),
+    ).toBe(true);
+    expect(
+      result.clarification?.actions.some((action) =>
+        action.label.includes('Fuel Tank 1P'),
+      ),
+    ).toBe(true);
+  });
+
   it('forces clarification for generic water tank level queries when multiple water tanks match', async () => {
     const service = buildService([
       {
