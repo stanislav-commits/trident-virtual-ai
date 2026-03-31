@@ -25,10 +25,16 @@ export type ChatSourceCategory =
   | 'REGULATION'
   | 'TELEMETRY';
 
+export type ChatDocumentSourceCategory = Exclude<
+  ChatSourceCategory,
+  'TELEMETRY'
+>;
+
 export interface ChatQueryPlan {
   primaryIntent: ChatQueryIntent;
   secondaryIntents: ChatQueryIntent[];
   sourcePriorities: ChatSourceCategory[];
+  hardDocumentCategories?: ChatDocumentSourceCategory[];
   requiresCurrentDateTime: boolean;
   requiresTelemetry: boolean;
   requiresTelemetryHistory: boolean;
@@ -65,6 +71,11 @@ export class ChatQueryPlannerService {
       primaryIntent,
       secondaryIntents,
       sourcePriorities: this.buildSourcePriorities(primaryIntent, secondaryIntents),
+      hardDocumentCategories: this.buildHardDocumentCategories(
+        primaryIntent,
+        secondaryIntents,
+        subjectContext,
+      ),
       requiresCurrentDateTime: this.requiresCurrentDateTime(
         primaryIntent,
         secondaryIntents,
@@ -326,6 +337,58 @@ export class ChatQueryPlannerService {
     }
 
     return result;
+  }
+
+  private buildHardDocumentCategories(
+    primaryIntent: ChatQueryIntent,
+    secondaryIntents: ChatQueryIntent[],
+    subjectContext: string,
+  ): ChatDocumentSourceCategory[] | undefined {
+    const explicitMultiSourceRequest =
+      /\b(based on|using|together with|and also|plus|combine|both|all relevant)\b/i.test(
+        subjectContext,
+      );
+    const result: ChatDocumentSourceCategory[] = [];
+    const add = (categories: ChatDocumentSourceCategory[]) => {
+      for (const category of categories) {
+        if (!result.includes(category)) {
+          result.push(category);
+        }
+      }
+    };
+
+    add(this.getHardDocumentCategoriesForIntent(primaryIntent));
+
+    if (explicitMultiSourceRequest) {
+      for (const intent of secondaryIntents) {
+        add(this.getHardDocumentCategoriesForIntent(intent));
+      }
+    }
+
+    return result.length > 0 ? result : undefined;
+  }
+
+  private getHardDocumentCategoriesForIntent(
+    intent: ChatQueryIntent,
+  ): ChatDocumentSourceCategory[] {
+    switch (intent) {
+      case 'manual_specification':
+      case 'maintenance_procedure':
+      case 'parts_fluids_consumables':
+      case 'troubleshooting':
+        return ['MANUALS'];
+      case 'maintenance_due_now':
+      case 'next_due_calculation':
+      case 'last_maintenance':
+      case 'analytics_forecast':
+        return ['HISTORY_PROCEDURES'];
+      case 'certificate_status':
+        return ['CERTIFICATES'];
+      case 'regulation_compliance':
+        return ['REGULATION'];
+      default:
+        return [];
+    }
   }
 
   private requiresCurrentDateTime(

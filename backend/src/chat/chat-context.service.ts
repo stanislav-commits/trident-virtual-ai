@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
+import type { ChatDocumentSourceCategory } from './chat-query-planner.service';
 
 const DEFAULT_RAGFLOW_CONTEXT_TOP_K = (() => {
   const parsed = Number.parseInt(process.env.RAGFLOW_CONTEXT_TOP_K ?? '', 10);
@@ -60,6 +61,7 @@ export class ChatContextService {
     query: string,
     topK: number = DEFAULT_RAGFLOW_CONTEXT_TOP_K,
     candidateK: number = DEFAULT_RAGFLOW_CONTEXT_CANDIDATE_K,
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
   ): Promise<{
     citations: ContextCitation[];
     ragflowRequestId?: string;
@@ -90,39 +92,63 @@ export class ChatContextService {
 
     try {
       const retrievalK = Math.max(topK, candidateK);
+      const scopedManuals = this.filterManualsByCategories(
+        ship.manuals,
+        allowedDocumentCategories,
+      );
+      if (allowedDocumentCategories?.length && scopedManuals.length === 0) {
+        return { citations: [] };
+      }
+
+      const allowedDocumentIds =
+        allowedDocumentCategories?.length && scopedManuals.length > 0
+          ? new Set(
+              scopedManuals
+                .map((manual) => manual.ragflowDocumentId?.trim())
+                .filter((value): value is string => Boolean(value)),
+            )
+          : null;
       const snippetCharLimit = this.getSnippetCharLimit(query);
+      const searchPoolSize = this.getSearchPoolSize(
+        retrievalK,
+        Boolean(allowedDocumentIds?.size),
+      );
 
       // RAGFlow API call to search dataset
       const results = await this.ragflow.searchDataset(
         ship.ragflowDatasetId,
         query,
-        retrievalK,
+        searchPoolSize,
       );
 
       // Map RAGFlow results to citations with ShipManual references
       const citations = this.dedupeCitations(
         results
-        .map((result: RAGFlowSearchResult) => {
-          const manual = ship.manuals.find(
-            (m) => m.ragflowDocumentId === result.doc_id,
-          );
+          .filter(
+            (result: RAGFlowSearchResult) =>
+              !allowedDocumentIds || allowedDocumentIds.has(result.doc_id),
+          )
+          .map((result: RAGFlowSearchResult) => {
+            const manual = ship.manuals.find(
+              (m) => m.ragflowDocumentId === result.doc_id,
+            );
 
-          const rawContent = result.content ?? '';
-          const snippet =
-            rawContent.length > snippetCharLimit
-              ? rawContent.slice(0, snippetCharLimit)
-              : rawContent;
+            const rawContent = result.content ?? '';
+            const snippet =
+              rawContent.length > snippetCharLimit
+                ? rawContent.slice(0, snippetCharLimit)
+                : rawContent;
 
-          return {
-            shipManualId: manual?.id,
-            chunkId: result.id,
-            score: result.similarity ?? undefined,
-            snippet,
-            sourceTitle: result.doc_name || manual?.filename || 'Document',
-            sourceCategory: manual?.category,
-            pageNumber: (result.meta?.page_num as number) ?? undefined,
-          };
-        }),
+            return {
+              shipManualId: manual?.id,
+              chunkId: result.id,
+              score: result.similarity ?? undefined,
+              snippet,
+              sourceTitle: result.doc_name || manual?.filename || 'Document',
+              sourceCategory: manual?.category,
+              pageNumber: (result.meta?.page_num as number) ?? undefined,
+            };
+          }),
       ).slice(0, retrievalK);
 
       return {
@@ -140,6 +166,7 @@ export class ChatContextService {
     query: string,
     topK: number = DEFAULT_RAGFLOW_CONTEXT_TOP_K,
     candidateK: number = DEFAULT_RAGFLOW_CONTEXT_CANDIDATE_K,
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
   ): Promise<ContextCitation[]> {
     // Admin search across all ship datasets
     const ships = await this.prisma.ship.findMany({
@@ -170,13 +197,38 @@ export class ChatContextService {
 
     for (const ship of ships) {
       try {
+        const scopedManuals = this.filterManualsByCategories(
+          ship.manuals,
+          allowedDocumentCategories,
+        );
+        if (allowedDocumentCategories?.length && scopedManuals.length === 0) {
+          continue;
+        }
+
+        const allowedDocumentIds =
+          allowedDocumentCategories?.length && scopedManuals.length > 0
+            ? new Set(
+                scopedManuals
+                  .map((manual) => manual.ragflowDocumentId?.trim())
+                  .filter((value): value is string => Boolean(value)),
+              )
+            : null;
+        const searchPoolSize = this.getSearchPoolSize(
+          retrievalK,
+          Boolean(allowedDocumentIds?.size),
+        );
         const results = await this.ragflow.searchDataset(
           ship.ragflowDatasetId!,
           query,
-          retrievalK,
+          searchPoolSize,
         );
 
-        results.forEach((result: RAGFlowSearchResult) => {
+        results
+          .filter(
+            (result: RAGFlowSearchResult) =>
+              !allowedDocumentIds || allowedDocumentIds.has(result.doc_id),
+          )
+          .forEach((result: RAGFlowSearchResult) => {
           const manual = ship.manuals.find(
             (m) => m.ragflowDocumentId === result.doc_id,
           );
@@ -197,7 +249,7 @@ export class ChatContextService {
             sourceCategory: manual?.category,
             pageNumber: (result.meta?.page_num as number) ?? undefined,
           });
-        });
+          });
       } catch {
         // Log and continue with next ship
       }
@@ -239,6 +291,41 @@ export class ChatContextService {
     }
 
     return deduped;
+  }
+
+  private filterManualsByCategories<
+    T extends { category?: string | null; ragflowDocumentId?: string | null },
+  >(
+    manuals: T[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
+  ): T[] {
+    if (!allowedDocumentCategories?.length) {
+      return manuals;
+    }
+
+    const allowedCategories = new Set(
+      allowedDocumentCategories.map((category) => category.toUpperCase()),
+    );
+
+    return manuals.filter((manual) => {
+      const category = manual.category?.trim().toUpperCase();
+      return Boolean(
+        manual.ragflowDocumentId &&
+          category &&
+          allowedCategories.has(category as ChatDocumentSourceCategory),
+      );
+    });
+  }
+
+  private getSearchPoolSize(
+    retrievalK: number,
+    hasCategoryRestriction: boolean,
+  ): number {
+    if (!hasCategoryRestriction) {
+      return retrievalK;
+    }
+
+    return Math.min(Math.max(retrievalK * 6, 48), 180);
   }
 
   private getSnippetCharLimit(query: string): number {

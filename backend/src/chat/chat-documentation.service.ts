@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChatContextService } from './chat-context.service';
 import {
   ChatCitation,
@@ -10,10 +10,15 @@ import { ChatDocumentationCitationService } from './chat-documentation-citation.
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
 import { ChatDocumentationScanService } from './chat-documentation-scan.service';
 import { ChatReferenceExtractionService } from './chat-reference-extraction.service';
+import {
+  ChatDocumentSourceCategory,
+  ChatQueryPlannerService,
+} from './chat-query-planner.service';
 
 @Injectable()
 export class ChatDocumentationService {
   private readonly logger = new Logger(ChatDocumentationService.name);
+  private readonly queryPlanner: ChatQueryPlannerService;
 
   constructor(
     private readonly contextService: ChatContextService,
@@ -21,7 +26,10 @@ export class ChatDocumentationService {
     private readonly citationService: ChatDocumentationCitationService,
     private readonly scanService: ChatDocumentationScanService,
     private readonly referenceExtractionService: ChatReferenceExtractionService,
-  ) {}
+    @Optional() queryPlanner?: ChatQueryPlannerService,
+  ) {
+    this.queryPlanner = queryPlanner ?? new ChatQueryPlannerService();
+  }
 
   async prepareDocumentationContext(params: {
     shipId: string | null;
@@ -115,7 +123,20 @@ export class ChatDocumentationService {
           query,
           effectiveUserQuery,
         );
+        const hardDocumentCategories = this.getHardDocumentCategories(
+          effectiveUserQuery,
+          query,
+        );
         if (role === 'admin' || !shipId) {
+          if (hardDocumentCategories?.length) {
+            return this.contextService.findContextForAdminQuery(
+              query,
+              retrievalWindow.topK,
+              retrievalWindow.candidateK,
+              hardDocumentCategories,
+            );
+          }
+
           return this.contextService.findContextForAdminQuery(
             query,
             retrievalWindow.topK,
@@ -123,12 +144,20 @@ export class ChatDocumentationService {
           );
         }
 
-        const result = await this.contextService.findContextForQuery(
-          shipId,
-          query,
-          retrievalWindow.topK,
-          retrievalWindow.candidateK,
-        );
+        const result = hardDocumentCategories?.length
+          ? await this.contextService.findContextForQuery(
+              shipId,
+              query,
+              retrievalWindow.topK,
+              retrievalWindow.candidateK,
+              hardDocumentCategories,
+            )
+          : await this.contextService.findContextForQuery(
+              shipId,
+              query,
+              retrievalWindow.topK,
+              retrievalWindow.candidateK,
+            );
         return result.citations;
       };
 
@@ -639,7 +668,20 @@ export class ChatDocumentationService {
       );
 
       const search = async (query: string) => {
+        const hardDocumentCategories = this.getHardDocumentCategories(
+          userQuery,
+          query,
+        );
         if (role === 'admin' || !shipId) {
+          if (hardDocumentCategories?.length) {
+            return this.contextService.findContextForAdminQuery(
+              query,
+              topK,
+              candidateK,
+              hardDocumentCategories,
+            );
+          }
+
           return this.contextService.findContextForAdminQuery(
             query,
             topK,
@@ -647,12 +689,20 @@ export class ChatDocumentationService {
           );
         }
 
-        const result = await this.contextService.findContextForQuery(
-          shipId,
-          query,
-          topK,
-          candidateK,
-        );
+        const result = hardDocumentCategories?.length
+          ? await this.contextService.findContextForQuery(
+              shipId,
+              query,
+              topK,
+              candidateK,
+              hardDocumentCategories,
+            )
+          : await this.contextService.findContextForQuery(
+              shipId,
+              query,
+              topK,
+              candidateK,
+            );
         return result.citations;
       };
 
@@ -675,5 +725,13 @@ export class ChatDocumentationService {
       );
       return [];
     }
+  }
+
+  private getHardDocumentCategories(
+    userQuery: string,
+    retrievalQuery: string,
+  ): ChatDocumentSourceCategory[] | undefined {
+    return this.queryPlanner.planQuery(userQuery, retrievalQuery)
+      .hardDocumentCategories;
   }
 }

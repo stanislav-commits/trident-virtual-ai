@@ -14,6 +14,7 @@ describe('ChatQueryPlannerService', () => {
       'TELEMETRY',
       'MANUALS',
     ]);
+    expect(plan.hardDocumentCategories).toEqual(['HISTORY_PROCEDURES']);
     expect(plan.requiresCurrentDateTime).toBe(true);
     expect(plan.requiresTelemetry).toBe(true);
     expect(plan.allowsMaintenanceCalculation).toBe(true);
@@ -52,6 +53,7 @@ describe('ChatQueryPlannerService', () => {
 
     expect(plan.primaryIntent).toBe('maintenance_procedure');
     expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
     expect(plan.prefersExactDocumentRows).toBe(false);
   });
 
@@ -65,6 +67,7 @@ describe('ChatQueryPlannerService', () => {
       'CERTIFICATES',
       'REGULATION',
     ]);
+    expect(plan.hardDocumentCategories).toEqual(['CERTIFICATES']);
     expect(plan.requiresCurrentDateTime).toBe(true);
   });
 
@@ -97,6 +100,7 @@ describe('ChatQueryPlannerService', () => {
 
     expect(plan.primaryIntent).toBe('manual_specification');
     expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
     expect(plan.requiresTelemetry).toBe(false);
   });
 
@@ -115,6 +119,7 @@ describe('ChatQueryPlannerService', () => {
 
     expect(plan.primaryIntent).toBe('regulation_compliance');
     expect(plan.sourcePriorities[0]).toBe('REGULATION');
+    expect(plan.hardDocumentCategories).toEqual(['REGULATION']);
   });
 
   it('routes forecasting questions to historical data with telemetry support', () => {
@@ -127,8 +132,21 @@ describe('ChatQueryPlannerService', () => {
       'HISTORY_PROCEDURES',
       'TELEMETRY',
     ]);
+    expect(plan.hardDocumentCategories).toEqual(['HISTORY_PROCEDURES']);
     expect(plan.requiresTelemetryHistory).toBe(true);
     expect(plan.supportsMultiSourceAggregation).toBe(true);
+  });
+
+  it('allows explicit mixed-source retrieval only when the query asks for both categories', () => {
+    const plan = service.planQuery(
+      'Which certificates expire soon plus all relevant regulations?',
+    );
+
+    expect(plan.primaryIntent).toBe('certificate_status');
+    expect(plan.hardDocumentCategories).toEqual([
+      'CERTIFICATES',
+      'REGULATION',
+    ]);
   });
 
   it('routes coming-month fuel ordering questions to forecasting', () => {

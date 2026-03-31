@@ -129,6 +129,7 @@ Reference ID: 1P47`,
       'How do I change oil?',
       expect.any(Number),
       expect.any(Number),
+      ['MANUALS'],
     );
     expect(
       (
@@ -571,6 +572,7 @@ Reference ID: 1P47`,
       result.retrievalQuery,
       expect.any(Number),
       expect.any(Number),
+      ['HISTORY_PROCEDURES'],
     );
   });
 
@@ -827,6 +829,7 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       resolvedSubjectQuery,
       expect.any(Number),
       expect.any(Number),
+      ['MANUALS'],
     );
     expect(
       (scanService.expandReferenceDocumentChunkCitations as jest.Mock).mock.calls.some(
