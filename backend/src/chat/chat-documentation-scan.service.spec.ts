@@ -145,4 +145,66 @@ describe('ChatDocumentationScanService', () => {
       }),
     ]);
   });
+
+  it('falls back to RAGFlow retrieval when tank tables live in a generically named document', async () => {
+    const ragflowService = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-empty',
+          content: 'General vessel document text without tank-capacity rows.',
+        },
+      ]),
+      searchDataset: jest.fn().mockResolvedValue([
+        {
+          id: 'search-sopep',
+          doc_id: 'doc-sopep',
+          content:
+            "SHIPBOARD OIL POLLUTION EMERGENCY PLAN List Of Tank Capacities <table><caption> FUELOILTANKS</caption> <tr><td >TANK No</td><td >DESCRIPTION</td><td >IMP. GAL.</td><td >CAPACITY (It)</td><td >FRAME</td></tr> <tr><td >FO1.PS</td><td >Midship/Aft Port Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr> <tr><td >FO2.STBD</td><td >Midship/Aft Starboard Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr></table>",
+          similarity: 0.98,
+        },
+      ]),
+    };
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      ragflowService as never,
+      queryService,
+      {} as never,
+    );
+    jest
+      .spyOn(service as never, 'loadDocumentScanContexts' as never)
+      .mockResolvedValue([
+        {
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-sopep',
+              ragflowDocumentId: 'doc-sopep',
+              filename: 'Seawolf X SOPEP.pdf',
+            },
+            {
+              id: 'manual-volvo',
+              ragflowDocumentId: 'doc-volvo',
+              filename: 'Volvo Penta operators manual.pdf',
+            },
+          ],
+          score: 1,
+        },
+      ]);
+
+    const citations = await service.expandTankCapacityDocumentChunkCitations(
+      'ship-1',
+      'show tank capacities for fuel tanks',
+      'show tank capacities for fuel tanks',
+      [],
+    );
+
+    expect(ragflowService.searchDataset).toHaveBeenCalled();
+    expect(citations).toEqual([
+      expect.objectContaining({
+        sourceTitle: 'Seawolf X SOPEP.pdf',
+        snippet: expect.stringContaining('List Of Tank Capacities'),
+      }),
+    ]);
+  });
 });

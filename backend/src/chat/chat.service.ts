@@ -2329,11 +2329,7 @@ export class ChatService {
     const deduped = new Map<string, DeterministicContactEntry>();
 
     for (const entry of entries) {
-      const key = [
-        this.normalizeDeterministicContactText(entry.name).toLowerCase(),
-        entry.email?.toLowerCase() ?? '',
-        (entry.phone ?? '').replace(/\D+/g, ''),
-      ].join('::');
+      const key = this.buildDeterministicContactEntryKey(entry);
 
       const existing = deduped.get(key);
       if (!existing) {
@@ -2341,14 +2337,142 @@ export class ChatService {
         continue;
       }
 
-      const existingScore = existing.citation.score ?? 0;
-      const nextScore = entry.citation.score ?? 0;
-      if (nextScore > existingScore) {
-        deduped.set(key, entry);
-      }
+      deduped.set(
+        key,
+        this.selectPreferredDeterministicContactEntry(existing, entry),
+      );
     }
 
-    return [...deduped.values()];
+    const mergedBySourceAndName = new Map<string, DeterministicContactEntry>();
+    for (const entry of deduped.values()) {
+      const key = this.buildDeterministicContactSourceScopedNameKey(entry);
+      const existing = mergedBySourceAndName.get(key);
+      if (!existing) {
+        mergedBySourceAndName.set(key, entry);
+        continue;
+      }
+
+      mergedBySourceAndName.set(
+        key,
+        this.mergeDeterministicContactEntries(existing, entry),
+      );
+    }
+
+    return [...mergedBySourceAndName.values()];
+  }
+
+  private buildDeterministicContactEntryKey(
+    entry: DeterministicContactEntry,
+  ): string {
+    return [
+      this.normalizeDeterministicContactText(entry.name).toLowerCase(),
+      entry.email?.toLowerCase() ?? '',
+      (entry.phone ?? '').replace(/\D+/g, ''),
+    ].join('::');
+  }
+
+  private buildDeterministicContactSourceScopedNameKey(
+    entry: DeterministicContactEntry,
+  ): string {
+    return [
+      this.normalizeDeterministicContactText(entry.name).toLowerCase(),
+      this.normalizeDeterministicContactText(
+        entry.citation.sourceTitle ?? '',
+      ).toLowerCase(),
+    ].join('::');
+  }
+
+  private selectPreferredDeterministicContactEntry(
+    existing: DeterministicContactEntry,
+    next: DeterministicContactEntry,
+  ): DeterministicContactEntry {
+    const existingCompleteness =
+      this.getDeterministicContactEntryCompleteness(existing);
+    const nextCompleteness = this.getDeterministicContactEntryCompleteness(next);
+    if (nextCompleteness !== existingCompleteness) {
+      return nextCompleteness > existingCompleteness ? next : existing;
+    }
+
+    const existingScore = existing.citation.score ?? 0;
+    const nextScore = next.citation.score ?? 0;
+    if (nextScore !== existingScore) {
+      return nextScore > existingScore ? next : existing;
+    }
+
+    return this.getDeterministicContactEntryTextLength(next) >
+      this.getDeterministicContactEntryTextLength(existing)
+      ? next
+      : existing;
+  }
+
+  private mergeDeterministicContactEntries(
+    left: DeterministicContactEntry,
+    right: DeterministicContactEntry,
+  ): DeterministicContactEntry {
+    const primary = this.selectPreferredDeterministicContactEntry(left, right);
+    const secondary = primary === left ? right : left;
+
+    return {
+      name:
+        primary.name.length >= secondary.name.length
+          ? primary.name
+          : secondary.name,
+      role: this.choosePreferredDeterministicContactField(
+        primary.role,
+        secondary.role,
+      ),
+      email: this.choosePreferredDeterministicContactField(
+        primary.email,
+        secondary.email,
+      ),
+      phone: this.choosePreferredDeterministicContactField(
+        primary.phone,
+        secondary.phone,
+      ),
+      citation:
+        (primary.citation.score ?? 0) >= (secondary.citation.score ?? 0)
+          ? primary.citation
+          : secondary.citation,
+    };
+  }
+
+  private choosePreferredDeterministicContactField(
+    primary?: string,
+    secondary?: string,
+  ): string | undefined {
+    if (!primary) {
+      return secondary ?? undefined;
+    }
+    if (!secondary) {
+      return primary;
+    }
+
+    return secondary.length > primary.length ? secondary : primary;
+  }
+
+  private getDeterministicContactEntryCompleteness(
+    entry: DeterministicContactEntry,
+  ): number {
+    let score = 0;
+    if (entry.role) {
+      score += 2;
+    }
+    if (entry.email) {
+      score += 3;
+    }
+    if (entry.phone) {
+      score += 3;
+    }
+
+    return score;
+  }
+
+  private getDeterministicContactEntryTextLength(
+    entry: DeterministicContactEntry,
+  ): number {
+    return [entry.name, entry.role ?? '', entry.email ?? '', entry.phone ?? '']
+      .join(' ')
+      .length;
   }
 
   private filterDeterministicContactEntriesForQuery(
@@ -3255,50 +3379,167 @@ export class ChatService {
     citation: ChatCitation,
     userQuery: string,
   ): DeterministicTankCapacityEntry[] {
+    const tableEntries = this.extractDeterministicTankCapacityTableEntries(
+      citation,
+      userQuery,
+    );
     const normalized = this.normalizeDeterministicContactText(
       citation.snippet ?? '',
     );
     if (!normalized) {
-      return [];
+      return tableEntries;
     }
 
     const haystack = `${citation.sourceTitle ?? ''}\n${normalized}`.toLowerCase();
     if (!/\btank\b/i.test(haystack)) {
-      return [];
+      return tableEntries;
     }
 
     const requiresFuel = /\bfuel\b/i.test(userQuery);
     const requiresWater = /\bwater\b/i.test(userQuery);
-    if (requiresFuel && !/\bfuel\b/i.test(haystack)) {
-      return [];
+    if (
+      requiresFuel &&
+      !/\b(fuel|fueloil|fuel\s+oil|diesel)\b/i.test(haystack)
+    ) {
+      return tableEntries;
     }
-    if (requiresWater && !/\bwater\b/i.test(haystack)) {
-      return [];
+    if (
+      requiresWater &&
+      !/\b(fresh\s*water|freshwater|water)\b/i.test(haystack)
+    ) {
+      return tableEntries;
     }
 
     const pattern =
       /\b((?:(?:fuel|diesel|day|service|settling|storage|fresh\s*water|water|grey|gray|black|waste|holding)\s+)?tank(?:\s+[a-z0-9./-]{1,12}){0,2})(?:\s+(?:capacity|cap\.?|volume))?\s*[:=-]?\s*(\d[\d, .]*\s*(?:l|liters?|litres?|m3|m³|gal|gallons?))\b/gi;
 
-    return [...normalized.matchAll(pattern)]
-      .map((match) => {
-        const label = match[1]
-          ?.replace(/\s+/g, ' ')
-          .replace(/\s+(?:capacity|cap\.?|volume)$/i, '')
-          .trim();
-        const capacity = match[2]?.replace(/\s+/g, ' ').trim();
-        if (!label || !capacity) {
-          return null;
-        }
+    return [
+      ...tableEntries,
+      ...[...normalized.matchAll(pattern)]
+        .map((match) => {
+          const label = match[1]
+            ?.replace(/\s+/g, ' ')
+            .replace(/\s+(?:capacity|cap\.?|volume)$/i, '')
+            .trim();
+          const capacity = match[2]?.replace(/\s+/g, ' ').trim();
+          if (!label || !capacity) {
+            return null;
+          }
 
-        return {
-          label,
-          capacity,
-          citation,
-        };
-      })
-      .filter(
-        (entry): entry is DeterministicTankCapacityEntry => Boolean(entry),
-      );
+          return {
+            label,
+            capacity,
+            citation,
+          };
+        })
+        .filter(
+          (entry): entry is DeterministicTankCapacityEntry => Boolean(entry),
+        ),
+    ];
+  }
+
+  private extractDeterministicTankCapacityTableEntries(
+    citation: ChatCitation,
+    userQuery: string,
+  ): DeterministicTankCapacityEntry[] {
+    const rawSnippet = citation.snippet ?? '';
+    if (!/<table[\s\S]*?<tr/i.test(rawSnippet)) {
+      return [];
+    }
+
+    const requiresFuel = /\bfuel\b/i.test(userQuery);
+    const requiresWater = /\bwater\b/i.test(userQuery);
+    const tableBlocks = [...rawSnippet.matchAll(/<table[\s\S]*?<\/table>/gi)].map(
+      (match) => match[0],
+    );
+    const blocks = tableBlocks.length > 0 ? tableBlocks : [rawSnippet];
+    const rowPattern =
+      /<tr>\s*<t[dh][^>]*>\s*([^<]+?)\s*<\/t[dh]>\s*<t[dh][^>]*>\s*([^<]*tank[^<]*?)\s*<\/t[dh]>\s*<t[dh][^>]*>[^<]*<\/t[dh]>\s*<t[dh][^>]*>\s*([^<]+?)\s*<\/t[dh]>/gi;
+
+    return blocks.flatMap((block) => {
+      const normalizedBlock =
+        this.normalizeDeterministicContactText(block).toLowerCase();
+      if (
+        requiresFuel &&
+        !/\b(fuel|fueloil|fuel\s+oil|diesel)\b/i.test(normalizedBlock)
+      ) {
+        return [];
+      }
+      if (
+        requiresWater &&
+        !/\b(fresh\s*water|freshwater|water)\b/i.test(normalizedBlock)
+      ) {
+        return [];
+      }
+
+      const unit = this.extractDeterministicTankCapacityHeaderUnit(block);
+      return [...block.matchAll(rowPattern)]
+        .map((match) => {
+          const identifier = this.normalizeDeterministicContactText(
+            match[1] ?? '',
+          );
+          const labelText = this.normalizeDeterministicContactText(
+            match[2] ?? '',
+          );
+          const numericValue = (match[3] ?? '').replace(/\s+/g, ' ').trim();
+          if (!labelText || !numericValue || !/\d/.test(numericValue)) {
+            return null;
+          }
+
+          const label = identifier
+            ? `${identifier} - ${labelText}`
+            : labelText;
+          return {
+            label,
+            capacity: this.formatDeterministicTankCapacityValue(
+              numericValue,
+              unit,
+            ),
+            citation,
+          };
+        })
+        .filter(
+          (entry): entry is DeterministicTankCapacityEntry => Boolean(entry),
+        );
+    });
+  }
+
+  private extractDeterministicTankCapacityHeaderUnit(
+    rawSnippet: string,
+  ): string | null {
+    const normalized = this.normalizeDeterministicContactText(rawSnippet);
+    const headerUnit = normalized.match(/\bcapacity\s*\(([^)]+)\)/i)?.[1];
+    if (!headerUnit) {
+      return null;
+    }
+
+    const unit = headerUnit.toLowerCase().replace(/\s+/g, '');
+    if (/^(?:it|lt|l|ltr|ltrs|liter|liters|litre|litres)$/.test(unit)) {
+      return 'liters';
+    }
+    if (/^(?:m3|m³)$/.test(unit)) {
+      return 'm3';
+    }
+    if (/^(?:gal|gallon|gallons|imp\.?gal)$/.test(unit)) {
+      return 'gallons';
+    }
+
+    return null;
+  }
+
+  private formatDeterministicTankCapacityValue(
+    value: string,
+    unit: string | null,
+  ): string {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (/\b(?:l|liters?|litres?|m3|m³|gal|gallons?)\b/i.test(normalized)) {
+      return normalized;
+    }
+    if (!unit) {
+      return normalized;
+    }
+
+    return `${normalized} ${unit}`;
   }
 
   private dedupeDeterministicTankCapacityEntries(

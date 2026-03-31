@@ -617,32 +617,12 @@ export class ChatDocumentationScanService {
           const relevantChunks = chunks
             .filter((chunk) => {
               const content = (chunk.content ?? '').replace(/\s+/g, ' ').trim();
-              if (!content) {
-                return false;
-              }
-
-              const haystack = `${manual.filename}\n${content}`.toLowerCase();
-              if (!/\btank\b/i.test(haystack)) {
-                return false;
-              }
-              if (
-                !/\b\d+(?:[.,]\d+)?\s*(?:l|liters?|litres?|m3|m³|gal|gallons?)\b/i.test(
-                  haystack,
-                )
-              ) {
-                return false;
-              }
-              if (!this.containsTankCapacityLikeRow(content)) {
-                return false;
-              }
-              if (requiresFuel && !/\bfuel\b/i.test(haystack)) {
-                return false;
-              }
-              if (requiresWater && !/\bwater\b/i.test(haystack)) {
-                return false;
-              }
-
-              return true;
+              return this.isRelevantTankCapacityChunk(
+                manual.filename,
+                content,
+                requiresFuel,
+                requiresWater,
+              );
             })
             .slice(0, 16);
 
@@ -656,6 +636,17 @@ export class ChatDocumentationScanService {
             `Tank capacity document chunk scan skipped for ${manual.filename}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
+      }
+
+      if (collected.length === 0) {
+        collected.push(
+          ...(await this.collectTankCapacitySearchFallbackCitations(
+            scanContext,
+            queryContext,
+            requiresFuel,
+            requiresWater,
+          )),
+        );
       }
     }
 
@@ -1053,6 +1044,102 @@ export class ChatDocumentationScanService {
     });
   }
 
+  private async collectTankCapacitySearchFallbackCitations(
+    scanContext: DocumentScanContext,
+    queryContext: string,
+    requiresFuel: boolean,
+    requiresWater: boolean,
+  ): Promise<ChatCitation[]> {
+    const manualByDocumentId = new Map(
+      scanContext.manuals.map((manual) => [manual.ragflowDocumentId, manual]),
+    );
+
+    for (const query of this.buildTankCapacityFallbackQueries(
+      queryContext,
+      requiresFuel,
+      requiresWater,
+    )) {
+      try {
+        const results = await this.ragflowService.searchDataset(
+          scanContext.ragflowDatasetId,
+          query,
+          18,
+        );
+        const matched = results
+          .map((result) => {
+            const manual = manualByDocumentId.get(result.doc_id);
+            if (!manual) {
+              return null;
+            }
+
+            const content = (result.content ?? '').replace(/\s+/g, ' ').trim();
+            if (
+              !this.isRelevantTankCapacityChunk(
+                manual.filename,
+                content,
+                requiresFuel,
+                requiresWater,
+              )
+            ) {
+              return null;
+            }
+
+            return this.mapDocumentChunkToCitation(
+              manual,
+              {
+                id: result.id,
+                content: result.content,
+                similarity: result.similarity,
+                meta: result.meta,
+                positions: result.positions,
+              },
+              1.02,
+            );
+          })
+          .filter((citation): citation is ChatCitation => Boolean(citation));
+
+        if (matched.length > 0) {
+          this.logger.debug(
+            `Tank capacity search fallback matched ${matched.length} chunk(s) for query="${query}"`,
+          );
+          return matched;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Tank capacity search fallback failed for query="${query}": ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return [];
+  }
+
+  private buildTankCapacityFallbackQueries(
+    queryContext: string,
+    requiresFuel: boolean,
+    requiresWater: boolean,
+  ): string[] {
+    const queries = new Set<string>();
+    const normalizedQuery = queryContext.replace(/\s+/g, ' ').trim();
+    if (normalizedQuery) {
+      queries.add(normalizedQuery);
+    }
+
+    queries.add('list of tank capacities');
+    queries.add('tank capacity table');
+
+    if (requiresFuel) {
+      queries.add('fuel tank capacity');
+      queries.add('fuel tank sounding table');
+      queries.add('fuel oil tanks capacity');
+    } else if (requiresWater) {
+      queries.add('fresh water tank capacity');
+      queries.add('water tank capacity table');
+    }
+
+    return [...queries];
+  }
+
   private selectCandidateManualsForAuditScan(
     manuals: DocumentScanManual[],
     citations: ChatCitation[],
@@ -1189,10 +1276,65 @@ export class ChatDocumentationScanService {
     return /\b(tank|tanks|sounding|capacity|capacities)\b/i.test(filename);
   }
 
+  private isRelevantTankCapacityChunk(
+    filename: string,
+    content: string,
+    requiresFuel: boolean,
+    requiresWater: boolean,
+  ): boolean {
+    if (!content) {
+      return false;
+    }
+
+    const haystack = `${filename}\n${content}`.toLowerCase();
+    if (!/\btank\b/i.test(haystack)) {
+      return false;
+    }
+    if (!this.containsTankCapacityLikeRow(content)) {
+      return false;
+    }
+    if (
+      requiresFuel &&
+      !/\b(fuel|fueloil|fuel\s+oil|diesel)\b/i.test(haystack)
+    ) {
+      return false;
+    }
+    if (
+      requiresWater &&
+      !/\b(fresh\s*water|freshwater|water)\b/i.test(haystack)
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
   private containsTankCapacityLikeRow(text: string): boolean {
-    return /\b((?:(?:fuel|diesel|day|service|settling|storage|fresh\s*water|water|grey|gray|black|waste|holding)\s+)?tank(?:\s+[a-z0-9./-]{1,12}){0,2})(?:\s+(?:capacity|cap\.?|volume))?\s*[:=-]?\s*(\d[\d, .]*\s*(?:l|liters?|litres?|m3|m³|gal|gallons?))\b/i.test(
-      text,
-    );
+    if (
+      /\b((?:(?:fuel|diesel|day|service|settling|storage|fresh\s*water|water|grey|gray|black|waste|holding)\s+)?tank(?:\s+[a-z0-9./-]{1,12}){0,2})(?:\s+(?:capacity|cap\.?|volume))?\s*[:=-]?\s*(\d[\d, .]*\s*(?:l|liters?|litres?|m3|m³|gal|gallons?))\b/i.test(
+        text,
+      )
+    ) {
+      return true;
+    }
+
+    const normalized = text
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const hasTableHeader =
+      /\b(list\s+of\s+tank\s+capacities|tank\s+capacities|fuel\s*oil\s*tanks?|fresh\s*water|capacity\s*\((?:it|lt|l|liter|litre|m3|m³|gal|gallons?)\))\b/i.test(
+        normalized,
+      );
+    const hasStructuredRow =
+      /<tr>\s*<t[dh][^>]*>\s*[^<]+<\/t[dh]>\s*<t[dh][^>]*>\s*[^<]*tank[^<]*<\/t[dh]>[\s\S]{0,140}?<t[dh][^>]*>\s*\d[\d,. ]*\s*<\/t[dh]>/i.test(
+        text,
+      ) ||
+      /\b(?:fo|fw|do|co)\d{1,2}[./-]?\s*(?:ps|stbd|sb|p|s)?\b[\s\S]{0,80}\btank\b[\s\S]{0,60}\b\d[\d,. ]{2,}\b/i.test(
+        normalized,
+      );
+
+    return hasTableHeader && hasStructuredRow;
   }
 
   private scoreAuditScanManual(filename: string): number {

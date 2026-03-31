@@ -605,6 +605,55 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('answers tank capacity table questions from SOPEP-style HTML tables with shared capacity headers', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'show tank capacities for fuel tanks',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Seawolf X SOPEP.pdf',
+          pageNumber: 10,
+          snippet:
+            "SHIPBOARD OIL POLLUTION EMERGENCY PLAN List Of Tank Capacities <table><caption> FUELOILTANKS</caption> <tr><td >TANK No</td><td >DESCRIPTION</td><td >IMP. GAL.</td><td >CAPACITY (It)</td><td >FRAME</td></tr> <tr><td >FO1.PS</td><td >Midship/Aft Port Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr> <tr><td >FO2.STBD</td><td >Midship/Aft Starboard Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr></table>",
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'show tank capacities for fuel tanks',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'show tank capacities for fuel tanks',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[1];
+    expect(content).toContain('FO1.PS - Midship/Aft Port Fuel Tank: 4970 liters');
+    expect(content).toContain(
+      'FO2.STBD - Midship/Aft Starboard Fuel Tank: 4970 liters',
+    );
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
   it('answers broad certificate expiry questions deterministically from explicit certificate dates', async () => {
     const nowSpy = jest
       .spyOn(Date, 'now')
@@ -2631,6 +2680,65 @@ describe('ChatService telemetry clarification', () => {
         }),
       ]),
     );
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
+  it('merges partial duplicate contact rows from the same contact sheet before answering manager lists', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'list all managers with their contact details',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet:
+            'Arne Jansson - Yacht Manager (M) +34 649 231 000 arne@jmsyachting.com James Kirby - Fleet Manager (M) +34 680 664 753 jamesk@jmsyachting.com',
+          score: 0.95,
+        },
+        {
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+          pageNumber: 4,
+          snippet: 'Arne Jansson - Yacht Manager - +34 649 23',
+          score: 0.92,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'manager contact details',
+      resolvedSubjectQuery: 'manager contact details',
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'list all managers with their contact details',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[1];
+    expect(content).toContain(
+      'Arne Jansson - Yacht Manager - +34 649 231 000 - arne@jmsyachting.com',
+    );
+    expect(content).not.toMatch(
+      /Arne Jansson - Yacht Manager - \+34 649 23(?:\s|$)/,
+    );
+    expect(content.match(/Arne Jansson/g)?.length).toBe(1);
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
