@@ -949,6 +949,7 @@ export class ChatService {
           telemetryPrefiltered,
           telemetryMatchMode,
           telemetryMatchedMetrics,
+          telemetryOnlyQuery,
           citationsForAnswer,
         );
       if (deterministicTelemetryUnavailableAnswer) {
@@ -3338,9 +3339,11 @@ export class ChatService {
     telemetryPrefiltered: boolean,
     telemetryMatchMode: TelemetryMatchMode,
     telemetryMatchedMetrics: number,
+    telemetryOnlyQuery: boolean,
     citations: ChatCitation[],
   ): { content: string; citations: ChatCitation[] } | null {
     if (
+      !telemetryOnlyQuery &&
       primaryIntent !== 'telemetry_status' &&
       primaryIntent !== 'telemetry_list'
     ) {
@@ -3363,6 +3366,14 @@ export class ChatService {
           telemetryMatchedMetrics > 0
             ? `I found ${telemetryMatchedMetrics} matched telemetry metrics, but their current values are unavailable.`
             : "I couldn't find matched telemetry metrics for this request.",
+        citations: [],
+      };
+    }
+
+    if (telemetryOnlyQuery && primaryIntent !== 'telemetry_status') {
+      return {
+        content:
+          "I couldn't determine the requested answer from direct matched telemetry data.",
         citations: [],
       };
     }
@@ -4554,6 +4565,10 @@ export class ChatService {
     queryPlan: ChatQueryPlan,
     userQuery: string,
   ): boolean {
+    if (this.isExplicitTelemetrySourceQuery(userQuery)) {
+      return true;
+    }
+
     if (this.isCurrentPositionTelemetryQuery(userQuery)) {
       return true;
     }
@@ -4590,7 +4605,7 @@ export class ChatService {
     queryPlan: ChatQueryPlan,
     userQuery: string,
   ): boolean {
-    if (/\b(from\s+telemetry|telemetry\s+only|from\s+metrics)\b/i.test(userQuery)) {
+    if (this.isExplicitTelemetrySourceQuery(userQuery)) {
       return true;
     }
 
@@ -4606,7 +4621,7 @@ export class ChatService {
     telemetryMatchMode: TelemetryMatchMode,
     documentationIntentPattern: RegExp,
   ): boolean {
-    if (/\bfrom\s+telemetry\b|\btelemetry\s+only\b|\bfrom\s+metrics\b/i.test(userQuery)) {
+    if (this.isExplicitTelemetrySourceQuery(userQuery)) {
       return true;
     }
 
@@ -4629,7 +4644,7 @@ export class ChatService {
     queryPlan: ChatQueryPlan,
     userQuery: string,
   ): boolean {
-    if (/\bfrom\s+telemetry\b|\btelemetry\s+only\b|\bfrom\s+metrics\b/i.test(userQuery)) {
+    if (this.isExplicitTelemetrySourceQuery(userQuery)) {
       return true;
     }
 
@@ -4696,6 +4711,12 @@ export class ChatService {
       /\b(current|currently|reading|value|measured|showing|reads?\s+\d+(?:\.\d+)?|is\s+\d+(?:\.\d+)?|at\s+\d+(?:\.\d+)?)\b/i.test(
         userQuery,
       ) || this.isCurrentPositionTelemetryQuery(userQuery)
+    );
+  }
+
+  private isExplicitTelemetrySourceQuery(userQuery: string): boolean {
+    return /\b(?:based\s+on|from|in|using)\b[\s\S]{0,32}\b(?:the\s+)?(?:telemetry|metrics?)\b/i.test(
+      userQuery,
     );
   }
 
