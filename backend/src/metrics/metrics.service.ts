@@ -4282,8 +4282,13 @@ export class MetricsService implements OnModuleInit {
 
   private isTelemetryLocationQuery(normalizedQuery: string): boolean {
     return (
-      /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location)\b/i.test(
-        normalizedQuery,
+      (
+        /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location)\b/i.test(
+          normalizedQuery,
+        ) ||
+        /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
+          normalizedQuery,
+        )
       ) &&
       !/\b(spare|part|parts|supplier|manufacturer|quantity|reference)\b/i.test(
         normalizedQuery,

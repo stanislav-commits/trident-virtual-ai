@@ -925,6 +925,66 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(true);
   });
 
+  it('treats bare where-is-the-yacht questions as location telemetry queries', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.55,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lon',
+        latestValue: 7.02,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lon',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+        },
+      },
+      {
+        metricKey: 'Trending::Electrical::Battery voltage (V)',
+        latestValue: 26.3,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Electrical.Battery voltage (V)',
+          description: 'Current battery voltage.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'Electrical',
+          field: 'Battery voltage (V)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'Where is the yacht now?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).some((key) => key.includes('lat')),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).some((key) => key.includes('lon')),
+    ).toBe(true);
+  });
+
   it.each([
     {
       query: 'What is the current fuel status?',

@@ -491,6 +491,26 @@ describe('ChatDocumentationQueryService', () => {
     expect(service.shouldSkipDocumentationRetrieval(query)).toBe(true);
   });
 
+  it('skips documentation retrieval for normalized telemetry completeness follow-ups', () => {
+    const retrievalQuery = service.buildRetrievalQuery(
+      'you missed a lot of bilge alarms, write all',
+      'list all available bilge alarm metrics',
+    );
+
+    expect(retrievalQuery).toBe(
+      'available bilge alarm metrics show all available',
+    );
+    expect(
+      service.shouldPromoteRetrievalQueryToAnswerQuery(
+        'you missed a lot of bilge alarms, write all',
+        'list all available bilge alarm metrics',
+        retrievalQuery,
+      ),
+    ).toBe(true);
+    expect(service.isTelemetryListQuery(retrievalQuery)).toBe(true);
+    expect(service.shouldSkipDocumentationRetrieval(retrievalQuery)).toBe(true);
+  });
+
   it('keeps historical continuation rewrites canonical instead of concatenating repeated fragments', () => {
     expect(
       service.buildRetrievalQuery(

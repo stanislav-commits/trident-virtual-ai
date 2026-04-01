@@ -696,9 +696,13 @@ export class ChatDocumentationQueryService {
 
   isTelemetryListQuery(query: string): boolean {
     return (
-      /\b(show|list|display|give|return|output)\b/i.test(query) &&
-      /\b(metrics?|telemetry|readings?|values?)\b/i.test(query) &&
-      /\b(active|connected|enabled|current|random|\d{1,2})\b/i.test(query)
+      /\b(show|list|display|give|return|output|write)\b/i.test(query) &&
+      /\b(metrics?|telemetry|readings?|values?|signals?|sensors?)\b/i.test(
+        query,
+      ) &&
+      /\b(active|connected|enabled|current|random|available|all|\d{1,2})\b/i.test(
+        query,
+      )
     );
   }
 
