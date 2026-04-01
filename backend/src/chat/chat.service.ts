@@ -686,6 +686,7 @@ export class ChatService {
       let telemetry: Record<string, unknown> = {};
       let telemetryPrefiltered = false;
       let telemetryMatchMode: TelemetryMatchMode = 'none';
+      let telemetryMatchedMetrics = 0;
       let telemetryClarification: TelemetryClarification | null = null;
       const telemetryShips: string[] = [];
       const shouldLookupCurrentTelemetry = this.shouldLookupCurrentTelemetry(
@@ -704,6 +705,7 @@ export class ChatService {
           telemetry = telemetryContext.telemetry;
           telemetryPrefiltered = telemetryContext.prefiltered;
           telemetryMatchMode = telemetryContext.matchMode;
+          telemetryMatchedMetrics = telemetryContext.matchedMetrics;
           telemetryClarification = telemetryContext.clarification;
           this.logger.debug(
             `Telemetry context for ship ${shipId}: matchMode=${telemetryMatchMode}, prefiltered=${telemetryPrefiltered}, matchedMetrics=${telemetryContext.matchedMetrics}, clarificationActions=${telemetryClarification?.actions.length ?? 0}`,
@@ -728,6 +730,7 @@ export class ChatService {
               telemetryShips.push(ship.name);
               telemetryPrefiltered =
                 telemetryPrefiltered || telemetryContext.prefiltered;
+              telemetryMatchedMetrics += telemetryContext.matchedMetrics;
               if (telemetryMatchMode === 'none') {
                 telemetryMatchMode = telemetryContext.matchMode;
               }
@@ -945,6 +948,7 @@ export class ChatService {
           queryPlan.primaryIntent,
           telemetryPrefiltered,
           telemetryMatchMode,
+          telemetryMatchedMetrics,
           citationsForAnswer,
         );
       if (deterministicTelemetryUnavailableAnswer) {
@@ -970,6 +974,7 @@ export class ChatService {
         telemetry,
         telemetryPrefiltered,
         telemetryMatchMode,
+        telemetryMatchedMetrics,
       );
       if (deterministicTelemetryAnswer) {
         return this.addRoutedAssistantMessage({
@@ -1957,6 +1962,7 @@ export class ChatService {
     telemetry: Record<string, unknown>,
     telemetryPrefiltered: boolean,
     telemetryMatchMode: TelemetryMatchMode,
+    telemetryMatchedMetrics: number,
   ): string | null {
     if (!this.shouldUseDeterministicTelemetryAnswer(queryPlan, userQuery)) {
       return null;
@@ -1964,6 +1970,21 @@ export class ChatService {
 
     if (!telemetryPrefiltered) {
       return null;
+    }
+
+    if (queryPlan.primaryIntent === 'telemetry_list') {
+      if (
+        telemetryMatchMode !== 'sample' &&
+        telemetryMatchMode !== 'exact' &&
+        telemetryMatchMode !== 'direct'
+      ) {
+        return null;
+      }
+
+      return this.buildDeterministicTelemetryListAnswer(telemetry, {
+        sampled: telemetryMatchMode === 'sample',
+        totalMatchedMetrics: telemetryMatchedMetrics,
+      });
     }
 
     if (telemetryMatchMode !== 'exact' && telemetryMatchMode !== 'direct') {
@@ -3316,9 +3337,13 @@ export class ChatService {
     primaryIntent: string,
     telemetryPrefiltered: boolean,
     telemetryMatchMode: TelemetryMatchMode,
+    telemetryMatchedMetrics: number,
     citations: ChatCitation[],
   ): { content: string; citations: ChatCitation[] } | null {
-    if (primaryIntent !== 'telemetry_status') {
+    if (
+      primaryIntent !== 'telemetry_status' &&
+      primaryIntent !== 'telemetry_list'
+    ) {
       return null;
     }
 
@@ -3330,6 +3355,16 @@ export class ChatService {
       telemetryMatchMode === 'related'
     ) {
       return null;
+    }
+
+    if (primaryIntent === 'telemetry_list') {
+      return {
+        content:
+          telemetryMatchedMetrics > 0
+            ? `I found ${telemetryMatchedMetrics} matched telemetry metrics, but their current values are unavailable.`
+            : "I couldn't find matched telemetry metrics for this request.",
+        citations: [],
+      };
     }
 
     const subject = this.buildTelemetryUnavailableSubject(userQuery);
@@ -4052,6 +4087,58 @@ export class ChatService {
     const lead = entries.some((entry) => entry.available)
       ? 'The current matched telemetry readings are [Telemetry]:'
       : 'I found the matched telemetry metrics, but their current values are unavailable:';
+
+    return [
+      lead,
+      '',
+      ...entries.map((entry) => `- ${entry.label}: ${entry.valueText}`),
+    ].join('\n');
+  }
+
+  private buildDeterministicTelemetryListAnswer(
+    telemetry: Record<string, unknown>,
+    options?: {
+      sampled?: boolean;
+      totalMatchedMetrics?: number;
+    },
+  ): string | null {
+    const entries = Object.entries(telemetry)
+      .map(([label, value]) =>
+        this.parseDeterministicTelemetryReadEntry(label, value),
+      )
+      .filter(
+        (
+          entry,
+        ): entry is {
+          label: string;
+          valueText: string;
+          available: boolean;
+        } => entry !== null,
+      );
+
+    if (entries.length === 0) {
+      return null;
+    }
+
+    const visibleCount = entries.length;
+    const totalMatchedMetrics = Math.max(
+      options?.totalMatchedMetrics ?? visibleCount,
+      visibleCount,
+    );
+
+    if (visibleCount === 1 && !options?.sampled) {
+      const [entry] = entries;
+      if (!entry.available) {
+        return `I found the matched telemetry metric, but its current value is unavailable: ${entry.label}.`;
+      }
+
+      return `The matched telemetry metric is ${entry.label}: ${entry.valueText} [Telemetry].`;
+    }
+
+    const lead =
+      options?.sampled && totalMatchedMetrics > visibleCount
+        ? `I found ${totalMatchedMetrics} matched telemetry metrics. Showing ${visibleCount} sample metrics [Telemetry]:`
+        : 'The matched telemetry metrics are [Telemetry]:';
 
     return [
       lead,

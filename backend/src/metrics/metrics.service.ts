@@ -83,6 +83,11 @@ interface ShipTelemetryContext {
   } | null;
 }
 
+interface TelemetryListRequest {
+  mode: 'sample' | 'full';
+  limit?: number;
+}
+
 interface ShipHistoricalTelemetryResolution {
   kind: 'none' | 'clarification' | 'answer';
   content?: string;
@@ -457,21 +462,21 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
-    const requestedSampleSize = this.getRequestedTelemetrySampleSize(
+    const telemetryListRequest = this.parseTelemetryListRequest(
       query,
       resolvedSubjectQuery,
     );
-    if (requestedSampleSize != null) {
-      const sampleEntries = this.pickTelemetrySampleEntries(
+    if (telemetryListRequest?.mode === 'sample') {
+      const sampleSelection = this.pickTelemetrySampleEntries(
         entries,
         query,
         resolvedSubjectQuery,
-        requestedSampleSize,
+        telemetryListRequest.limit ?? 10,
       );
       return {
-        telemetry: this.toTelemetryMap(sampleEntries),
+        telemetry: this.toTelemetryMap(sampleSelection.entries),
         totalActiveMetrics: entries.length,
-        matchedMetrics: sampleEntries.length,
+        matchedMetrics: sampleSelection.totalMatches,
         prefiltered: true,
         matchMode: 'sample',
         clarification: null,
@@ -504,6 +509,7 @@ export class MetricsService implements OnModuleInit {
       entries,
       query,
       resolvedSubjectQuery,
+      { limitResults: telemetryListRequest?.mode !== 'full' },
     );
 
     if (matchedEntries.length > 0) {
@@ -2721,6 +2727,9 @@ export class MetricsService implements OnModuleInit {
     entries: ShipTelemetryEntry[],
     query: string,
     resolvedSubjectQuery?: string,
+    options?: {
+      limitResults?: boolean;
+    },
   ): ShipTelemetryEntry[] {
     const aggregateTankEntries = this.findAggregateTankTelemetryEntries(
       entries,
@@ -2731,13 +2740,15 @@ export class MetricsService implements OnModuleInit {
       return aggregateTankEntries;
     }
 
-    const locationEntries = this.findLocationTelemetryEntries(
-      entries,
-      query,
-      resolvedSubjectQuery,
-    );
-    if (locationEntries.length > 0) {
-      return locationEntries;
+    if (this.shouldUseLocationTelemetryShortcut(query, resolvedSubjectQuery)) {
+      const locationEntries = this.findLocationTelemetryEntries(
+        entries,
+        query,
+        resolvedSubjectQuery,
+      );
+      if (locationEntries.length > 0) {
+        return locationEntries;
+      }
     }
 
     const querySignals = this.buildTelemetryQuerySignals(
@@ -2762,9 +2773,29 @@ export class MetricsService implements OnModuleInit {
       return [];
     }
 
-    return this.filterScoredTelemetryEntries(narrowed)
-      .slice(0, 12)
-      .map((candidate) => candidate.entry);
+    const filteredEntries = this.filterScoredTelemetryEntries(narrowed).map(
+      (candidate) => candidate.entry,
+    );
+
+    return options?.limitResults === false
+      ? filteredEntries
+      : filteredEntries.slice(0, 12);
+  }
+
+  private shouldUseLocationTelemetryShortcut(
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): boolean {
+    const searchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    if (!this.isTelemetryLocationQuery(searchSpace)) {
+      return false;
+    }
+
+    const queryKinds = this.extractTelemetryMeasurementKinds(searchSpace);
+    queryKinds.delete('location');
+    return queryKinds.size === 0;
   }
 
   private findAggregateTankTelemetryEntries(
@@ -2940,30 +2971,53 @@ export class MetricsService implements OnModuleInit {
     return filtered.slice(0, 8);
   }
 
-  private getRequestedTelemetrySampleSize(
+  private parseTelemetryListRequest(
     query: string,
     resolvedSubjectQuery?: string,
-  ): number | null {
+  ): TelemetryListRequest | null {
     const normalized = this.normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
 
     if (
-      !/\b(show|list|display|give|return|output)\b/i.test(normalized) ||
-      !/\b(metrics?|telemetry|readings?|values?)\b/i.test(normalized)
+      !/\b(metrics?|telemetry|readings?|values?|signals?|sensor(?:s)?)\b/i.test(
+        normalized,
+      ) ||
+      !(
+        /\b(show|list|display|give|return|output|write|provide|enumerate)\b/i.test(
+          normalized,
+        ) ||
+        /\blist\s+of\b/i.test(normalized) ||
+        /\b(all|available|full|complete|entire|every)\b/i.test(normalized)
+      )
     ) {
       return null;
+    }
+
+    const wantsFullList =
+      /\b(all|available|full|complete|entire|every)\b/i.test(normalized) &&
+      !/\b(random|sample|some|few|selection)\b/i.test(normalized);
+    if (wantsFullList) {
+      return { mode: 'full' };
     }
 
     const countMatch = normalized.match(/\b(\d{1,2})\b/);
     if (countMatch) {
       const parsed = Number.parseInt(countMatch[1], 10);
       if (Number.isFinite(parsed) && parsed > 0) {
-        return Math.min(parsed, 25);
+        return { mode: 'sample', limit: Math.min(parsed, 25) };
       }
     }
 
-    return 10;
+    return { mode: 'sample', limit: 10 };
+  }
+
+  private getRequestedTelemetrySampleSize(
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): number | null {
+    const request = this.parseTelemetryListRequest(query, resolvedSubjectQuery);
+    return request?.mode === 'sample' ? request.limit ?? 10 : null;
   }
 
   private buildTelemetryQuerySignals(
@@ -3283,7 +3337,10 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery: string | undefined,
     limit: number,
-  ): ShipTelemetryEntry[] {
+  ): {
+    entries: ShipTelemetryEntry[];
+    totalMatches: number;
+  } {
     const cappedLimit = Math.max(1, Math.min(limit, entries.length));
     const seed = this.createTelemetrySampleSeed(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
@@ -3298,13 +3355,16 @@ export class MetricsService implements OnModuleInit {
     );
     const samplePool = filteredMatches.length > 0 ? filteredMatches : entries;
 
-    return [...samplePool]
-      .sort((left, right) => {
-        const leftScore = this.rankTelemetryEntryForSample(left, seed);
-        const rightScore = this.rankTelemetryEntryForSample(right, seed);
-        return rightScore - leftScore || left.key.localeCompare(right.key);
-      })
-      .slice(0, cappedLimit);
+    return {
+      entries: [...samplePool]
+        .sort((left, right) => {
+          const leftScore = this.rankTelemetryEntryForSample(left, seed);
+          const rightScore = this.rankTelemetryEntryForSample(right, seed);
+          return rightScore - leftScore || left.key.localeCompare(right.key);
+        })
+        .slice(0, cappedLimit),
+      totalMatches: samplePool.length,
+    };
   }
 
   private getScoredTelemetryEntries(
@@ -3585,9 +3645,7 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): boolean {
-    if (
-      this.getRequestedTelemetrySampleSize(query, resolvedSubjectQuery) != null
-    ) {
+    if (this.parseTelemetryListRequest(query, resolvedSubjectQuery) != null) {
       return false;
     }
 

@@ -1742,6 +1742,116 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('answers full telemetry inventory alarm queries deterministically without falling back to documentation', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'List all available bilge alarm metrics',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'bilgmon488_instruction_manual_vAE - 2020.pdf',
+          snippet: 'The bilge alarm has 2 adjustable alarms.',
+        },
+      ],
+      previousUserQuery: undefined,
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Bilge-Alarms.BILGE ALARM 1': 0,
+        'Bilge-Alarms.BILGE ALARM 2': 0,
+        'Bilge-Alarms.BILGE ALARM 3': 0,
+      },
+      totalActiveMetrics: 24,
+      matchedMetrics: 3,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'List all available bilge alarm metrics',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('The matched telemetry metrics are [Telemetry]:'),
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+  });
+
+  it('answers sampled telemetry inventory queries deterministically and says that the response is sampled', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'Show 10 random active metrics for this ship.',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: Object.fromEntries(
+        Array.from({ length: 10 }, (_, index) => [
+          `Misc.Signal_${index}`,
+          index,
+        ]),
+      ),
+      totalActiveMetrics: 30,
+      matchedMetrics: 30,
+      prefiltered: true,
+      matchMode: 'sample',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'Show 10 random active metrics for this ship.',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        'I found 30 matched telemetry metrics. Showing 10 sample metrics [Telemetry]:',
+      ),
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+  });
+
   it('answers multiple direct telemetry readings deterministically without calling the LLM', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

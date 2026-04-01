@@ -206,4 +206,12 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
     expect(plan.requiresTelemetryHistory).toBe(false);
   });
+
+  it('routes explicit metric inventory alarm questions to telemetry list instead of troubleshooting', () => {
+    const plan = service.planQuery('Write all actual metrics of bilge alarms');
+
+    expect(plan.primaryIntent).toBe('telemetry_list');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetry).toBe(true);
+  });
 });

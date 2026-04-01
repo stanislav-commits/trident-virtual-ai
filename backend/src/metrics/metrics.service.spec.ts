@@ -228,6 +228,50 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(true);
   });
 
+  it('returns the full matched telemetry set for explicit all-available metric inventory requests', async () => {
+    const service = buildService([
+      ...Array.from({ length: 18 }, (_, index) => ({
+        metricKey: `Trending::Bilge-Alarms::BILGE ALARM ${index + 1}`,
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: `Bilge-Alarms.BILGE ALARM ${index + 1}`,
+          description: `Status indicator for bilge alarm ${index + 1}.`,
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms',
+          field: `BILGE ALARM ${index + 1}`,
+        },
+      })),
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.55,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'List all available bilge alarm metrics',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.matchedMetrics).toBe(18);
+    expect(Object.keys(result.telemetry)).toHaveLength(18);
+    expect(
+      Object.keys(result.telemetry).every((key) => /bilge alarm/i.test(key)),
+    ).toBe(true);
+  });
+
   it('prioritizes direct battery voltage telemetry over generic voltage metrics', async () => {
     const service = buildService([
       {
@@ -983,6 +1027,78 @@ describe('MetricsService telemetry matching', () => {
     expect(
       Object.keys(result.telemetry).some((key) => key.includes('lon')),
     ).toBe(true);
+  });
+
+  it('keeps location context from hijacking the primary telemetry subject in mixed queries', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.55,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lon',
+        latestValue: 7.02,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lon',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+        },
+      },
+      {
+        metricKey: 'NMEA::environment.wind::speedApparent.value',
+        latestValue: 1.44,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'environment.wind.speedApparent.value',
+          description: 'Current apparent wind speed.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'environment.wind',
+          field: 'speedApparent.value',
+        },
+      },
+      {
+        metricKey: 'NMEA::environment.wind::speedTrue.value',
+        latestValue: 2.87,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'environment.wind.speedTrue.value',
+          description: 'Current true wind speed.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'environment.wind',
+          field: 'speedTrue.value',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'What is the wind speed right now at yacht location?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /wind/i.test(key)),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).some((key) => /lat|lon/i.test(key)),
+    ).toBe(false);
   });
 
   it.each([

@@ -571,8 +571,20 @@ export class ChatQueryPlannerService {
   }
 
   private isTelemetryListQuery(query: string): boolean {
-    return /\b(show|list|display|give)\b.*\b(metrics?|telemetry|signals?|sensor(?:s)?)\b/i.test(
-      query,
+    const mentionsTelemetryInventory =
+      /\b(metrics?|telemetry|readings?|values?|signals?|sensor(?:s)?)\b/i.test(
+        query,
+      );
+    if (!mentionsTelemetryInventory) {
+      return false;
+    }
+
+    return (
+      /\b(show|list|display|give|return|output|write|provide|enumerate)\b/i.test(
+        query,
+      ) ||
+      /\blist\s+of\b/i.test(query) ||
+      /\b(all|available|full|complete|entire|every)\b/i.test(query)
     );
   }
 
