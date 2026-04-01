@@ -244,6 +244,19 @@ describe('MetricsService telemetry matching', () => {
         },
       })),
       {
+        metricKey: 'Trending::mem::available',
+        latestValue: 3981205504,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'mem.available',
+          description: 'Available system memory.',
+          unit: 'bytes',
+          bucket: 'Trending',
+          measurement: 'mem',
+          field: 'available',
+        },
+      },
+      {
         metricKey: 'NMEA::navigation.position::lat',
         latestValue: 43.55,
         valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),

@@ -3404,22 +3404,10 @@ export class MetricsService implements OnModuleInit {
       querySignals.normalizedQuery,
     );
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
-
-    if (queryKinds.size === 0 || subjectTokens.length === 0) {
-      const contextMatched = scored.filter((candidate) =>
-        this.matchesTelemetrySpecificContext(
-          candidate.entry,
-          querySignals.normalizedQuery,
-        ),
+    const isTelemetryInventoryQuery =
+      /\b(metrics?|telemetry|readings?|values?|signals?|sensor(?:s)?)\b/i.test(
+        querySignals.normalizedQuery,
       );
-      if (contextMatched.length > 0) {
-        return contextMatched;
-      }
-      return this.hasStrictTelemetryContext(querySignals.normalizedQuery)
-        ? []
-        : scored;
-    }
-
     const contextMatched = scored.filter((candidate) =>
       this.matchesTelemetrySpecificContext(
         candidate.entry,
@@ -3432,6 +3420,24 @@ export class MetricsService implements OnModuleInit {
         : this.hasStrictTelemetryContext(querySignals.normalizedQuery)
           ? []
           : scored;
+
+    if (queryKinds.size === 0 || subjectTokens.length === 0) {
+      if (queryKinds.size === 0 && subjectTokens.length > 0 && isTelemetryInventoryQuery) {
+        const withSubjectOnly = searchSpace.filter((candidate) =>
+          this.matchesTelemetrySubject(candidate.entry, subjectTokens),
+        );
+        if (withSubjectOnly.length > 0) {
+          return withSubjectOnly;
+        }
+      }
+
+      if (contextMatched.length > 0) {
+        return contextMatched;
+      }
+      return this.hasStrictTelemetryContext(querySignals.normalizedQuery)
+        ? []
+        : scored;
+    }
 
     const withSubject = searchSpace.filter((candidate) =>
       this.matchesTelemetrySubject(candidate.entry, subjectTokens),
