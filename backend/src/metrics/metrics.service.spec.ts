@@ -185,6 +185,63 @@ describe('MetricsService telemetry matching', () => {
     expect(Object.keys(result.telemetry)).toHaveLength(10);
   });
 
+  it('returns the full matched telemetry inventory by default for generic metric list requests', async () => {
+    const service = buildService([
+      ...Array.from({ length: 18 }, (_, index) => ({
+        metricKey: `Trending::Bilge-Alarms::BILGE ALARM ${index + 1}`,
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: `Bilge-Alarms.BILGE ALARM ${index + 1}`,
+          description: `Status indicator for bilge alarm ${index + 1}.`,
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms',
+          field: `BILGE ALARM ${index + 1}`,
+        },
+      })),
+      ...Array.from({ length: 4 }, (_, index) => ({
+        metricKey: `Trending::Bilge-Alarms2::BILGE ALARM ${index + 19}`,
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: `Bilge-Alarms2.BILGE ALARM ${index + 19}`,
+          description: `Status indicator for bilge alarm ${index + 19}.`,
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms2',
+          field: `BILGE ALARM ${index + 19}`,
+        },
+      })),
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.55,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'List of bilge alarm metrics',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.matchedMetrics).toBe(22);
+    expect(Object.keys(result.telemetry)).toHaveLength(22);
+    expect(
+      Object.keys(result.telemetry).every((key) => /bilge alarm/i.test(key)),
+    ).toBe(true);
+  });
+
   it('filters telemetry list requests to the requested subject before sampling', async () => {
     const service = buildService([
       ...Array.from({ length: 8 }, (_, index) => ({

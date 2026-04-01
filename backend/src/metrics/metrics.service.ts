@@ -2994,9 +2994,11 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
+    const wantsSampleList =
+      /\b(random|sample|some|few|selection)\b/i.test(normalized);
     const wantsFullList =
       /\b(all|available|full|complete|entire|every)\b/i.test(normalized) &&
-      !/\b(random|sample|some|few|selection)\b/i.test(normalized);
+      !wantsSampleList;
     if (wantsFullList) {
       return { mode: 'full' };
     }
@@ -3009,7 +3011,11 @@ export class MetricsService implements OnModuleInit {
       }
     }
 
-    return { mode: 'sample', limit: 10 };
+    if (wantsSampleList) {
+      return { mode: 'sample', limit: 10 };
+    }
+
+    return { mode: 'full' };
   }
 
   private getRequestedTelemetrySampleSize(
