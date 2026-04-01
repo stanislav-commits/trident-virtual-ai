@@ -205,6 +205,13 @@ export class ChatDocumentationQueryService {
       return normalizedPersonnelQuery;
     }
 
+    if (
+      normalizedPreviousUserQuery &&
+      this.isSummaryFollowUpQuery(trimmed)
+    ) {
+      return normalizedPreviousUserQuery;
+    }
+
     const shouldCarryPreviousSubject =
       Boolean(normalizedPreviousUserQuery) &&
       !this.isSelfContainedSubjectQuery(trimmed) &&
@@ -502,6 +509,27 @@ export class ChatDocumentationQueryService {
   isContactLookupQuery(query: string): boolean {
     return /\b(contact|contacts|contact\s+details?|email|emails|phone|telephone|mobile|number|numbers|address|reach|call)\b/i.test(
       query,
+    );
+  }
+
+  isSummaryFollowUpQuery(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    const hasSummaryIntent =
+      /\b(?:summari[sz]e|sum\s+up|condense|brief(?:ly)?|in\s+short|one[-\s]?line|one[-\s]?sentence|in\s+one\s+line|in\s+one\s+sentence)\b/i.test(
+        trimmed,
+      ) ||
+      /\b(?:make|keep)\b[\s\S]{0,12}\b(?:brief|short)\b/i.test(trimmed);
+    if (!hasSummaryIntent) {
+      return false;
+    }
+
+    return (
+      this.isContextualFollowUpQuery(trimmed) ||
+      /\b(?:previous|prior|above)\b/i.test(trimmed)
     );
   }
 

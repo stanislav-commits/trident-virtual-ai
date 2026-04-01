@@ -468,6 +468,7 @@ export class ChatService {
           pageNumber: reference.pageNumber ?? undefined,
           snippet: reference.snippet ?? undefined,
           sourceTitle: reference.sourceTitle ?? undefined,
+          sourceCategory: reference.shipManual?.category ?? undefined,
           sourceUrl: reference.sourceUrl ?? undefined,
         })),
       }));
@@ -809,10 +810,18 @@ export class ChatService {
           previousUserQuery,
           messageHistory,
         });
+      const carriedForwardSummaryDocumentationCitations =
+        this.getCarriedForwardSummaryDocumentationCitations({
+          userQuery,
+          normalizedQuery: effectiveNormalizedQuery,
+          messageHistory,
+        });
       const citationsForAnswer = telemetryOnlyQuery
         ? []
         : carriedForwardDocumentationCitations.length > 0
           ? carriedForwardDocumentationCitations
+          : carriedForwardSummaryDocumentationCitations.length > 0
+            ? carriedForwardSummaryDocumentationCitations
           : citations;
       const llmTelemetryContext = this.selectTelemetryContextForLlm(
         queryPlan,
@@ -1392,6 +1401,45 @@ export class ChatService {
         answerRoute !== 'deterministic_contact' &&
         priorFollowUpMode !== 'follow_up'
       ) {
+        continue;
+      }
+
+      return this.dedupeChatCitations(references);
+    }
+
+    return [];
+  }
+
+  private getCarriedForwardSummaryDocumentationCitations(params: {
+    userQuery: string;
+    normalizedQuery: ChatNormalizedQuery;
+    messageHistory?: ChatHistoryMessage[];
+  }): ChatCitation[] {
+    const { userQuery, normalizedQuery, messageHistory } = params;
+    if (
+      normalizedQuery.followUpMode !== 'follow_up' ||
+      !this.documentationQueryService.isSummaryFollowUpQuery(userQuery) ||
+      !messageHistory?.length
+    ) {
+      return [];
+    }
+
+    for (let index = messageHistory.length - 1; index >= 0; index -= 1) {
+      const message = messageHistory[index];
+      if (message.role !== 'assistant') {
+        continue;
+      }
+
+      const references = message.contextReferences ?? [];
+      if (references.length === 0) {
+        continue;
+      }
+
+      const context =
+        message.ragflowContext && typeof message.ragflowContext === 'object'
+          ? (message.ragflowContext as Record<string, unknown>)
+          : null;
+      if (context?.usedDocumentation !== true) {
         continue;
       }
 

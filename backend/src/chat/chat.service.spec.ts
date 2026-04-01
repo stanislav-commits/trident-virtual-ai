@@ -2178,6 +2178,237 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('carries forward regulation citations for summary follow-ups instead of drifting to fresh certificate retrieval', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What is the role of DPA?',
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content:
+            'The DPA approves amendments and ensures current texts are kept.',
+          ragflowContext: {
+            answerRoute: 'llm_generation',
+            usedLlm: true,
+            usedDocumentation: true,
+            llmResponseId: 'resp_prev_123',
+            resolvedSubjectQuery: 'what is the role of dpa?',
+          },
+          contextReferences: [
+            {
+              shipManualId: 'manual-reg-1',
+              shipManual: {
+                shipId: 'ship-1',
+                category: 'REGULATION',
+              },
+              chunkId: 'chunk-reg-1',
+              score: 0.99,
+              pageNumber: 29,
+              snippet:
+                'Responsibility It is the responsibility of the Designated Person Ashore to approve amendments and to ensure that the most recent texts are kept in all locations.',
+              sourceTitle: 'JMS 01 SMS ADMINISTRATION 2 March 26.pdf',
+              sourceUrl: null,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: 'Summarize that in one line.',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          shipManualId: 'manual-cert-1',
+          chunkId: 'chunk-cert-1',
+          pageNumber: 2,
+          snippet: 'Certificate details for a line-throwing appliance.',
+          sourceTitle:
+            'VSS001970 - Ikaros 34 61 00 Line Thrower single Shot_SOLAS Certificato Mod. B.pdf',
+          sourceCategory: 'CERTIFICATES',
+        },
+      ],
+      previousUserQuery: 'what is the role of dpa?',
+      retrievalQuery: 'what is the role of dpa?',
+      resolvedSubjectQuery: 'what is the role of dpa?',
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'The DPA approves SMS changes and must be informed during relevant emergencies.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'Summarize that in one line.',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const llmCall = llmService.generateResponse.mock.calls.at(-1)?.[0];
+    expect(llmCall.citations).toEqual([
+      expect.objectContaining({
+        sourceTitle: 'JMS 01 SMS ADMINISTRATION 2 March 26.pdf',
+        sourceCategory: 'REGULATION',
+        pageNumber: 29,
+      }),
+    ]);
+    expect(llmCall.citations).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle:
+            'VSS001970 - Ikaros 34 61 00 Line Thrower single Shot_SOLAS Certificato Mod. B.pdf',
+        }),
+      ]),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'The DPA approves SMS changes and must be informed during relevant emergencies.',
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        sourceDiagnostics: expect.objectContaining({
+          effectiveCategories: ['REGULATION'],
+        }),
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'JMS 01 SMS ADMINISTRATION 2 March 26.pdf',
+          sourceCategory: 'REGULATION',
+        }),
+      ]),
+    );
+  });
+
+  it('carries forward manual citations for summary follow-ups instead of drifting to history snippets', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What manual says about replacing the fuel separator element?',
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content:
+            'The manual says to replace the separator element at the documented maintenance interval.',
+          ragflowContext: {
+            answerRoute: 'llm_generation',
+            usedLlm: true,
+            usedDocumentation: true,
+            llmResponseId: 'resp_prev_manual_123',
+            resolvedSubjectQuery:
+              'what manual says about replacing the fuel separator element?',
+          },
+          contextReferences: [
+            {
+              shipManualId: 'manual-man-1',
+              shipManual: {
+                shipId: 'ship-1',
+                category: 'MANUALS',
+              },
+              chunkId: 'chunk-man-1',
+              score: 0.97,
+              pageNumber: 80,
+              snippet:
+                'Replace the fuel separator element according to the documented service interval and procedure.',
+              sourceTitle: 'Marine Application Handbook.pdf',
+              sourceUrl: null,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: 'Summarize that briefly.',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          shipManualId: 'manual-hist-1',
+          chunkId: 'chunk-hist-1',
+          pageNumber: 2,
+          snippet:
+            'Take readings of all tanks and compare values with the readings taken earlier.',
+          sourceTitle: 'Procedures - Bunkering and Transfers (3).pdf',
+          sourceCategory: 'HISTORY_PROCEDURES',
+        },
+      ],
+      previousUserQuery:
+        'what manual says about replacing the fuel separator element?',
+      retrievalQuery:
+        'what manual says about replacing the fuel separator element?',
+      resolvedSubjectQuery:
+        'what manual says about replacing the fuel separator element?',
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'Replace the fuel separator element at the documented manual interval.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'Summarize that briefly.',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const llmCall = llmService.generateResponse.mock.calls.at(-1)?.[0];
+    expect(llmCall.citations).toEqual([
+      expect.objectContaining({
+        sourceTitle: 'Marine Application Handbook.pdf',
+        sourceCategory: 'MANUALS',
+        pageNumber: 80,
+      }),
+    ]);
+    expect(llmCall.citations).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Procedures - Bunkering and Transfers (3).pdf',
+        }),
+      ]),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Replace the fuel separator element at the documented manual interval.',
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        sourceDiagnostics: expect.objectContaining({
+          effectiveCategories: ['MANUALS'],
+        }),
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Marine Application Handbook.pdf',
+          sourceCategory: 'MANUALS',
+        }),
+      ]),
+    );
+  });
+
   it('adds compact source diagnostics to assistant ragflow context', async () => {
     await (service as any).addRoutedAssistantMessage({
       sessionId: 'session-1',

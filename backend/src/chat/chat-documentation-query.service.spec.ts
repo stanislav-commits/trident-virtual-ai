@@ -309,6 +309,22 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe('vessel dpa contact email what about the other one?');
   });
 
+  it('reuses the previous subject for contextual summary follow-ups', () => {
+    expect(
+      service.buildRetrievalQuery(
+        'summarize that in one line',
+        'what is the role of dpa?',
+      ),
+    ).toBe('what is the role of dpa?');
+    expect(service.isSummaryFollowUpQuery('summarize that in one line')).toBe(
+      true,
+    );
+  });
+
+  it('does not treat standalone summary requests as contextual follow-ups', () => {
+    expect(service.isSummaryFollowUpQuery('summarize all tanks')).toBe(false);
+  });
+
   it('inherits the previous certificate subject for completeness-check follow-ups', () => {
     const retrievalQuery = service.buildRetrievalQuery(
       'Are you sure there are all certificates?',
