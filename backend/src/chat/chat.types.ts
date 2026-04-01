@@ -6,6 +6,8 @@ export interface ChatCitation {
   snippet?: string;
   sourceTitle?: string;
   sourceCategory?: string;
+  sourceMetadataCategory?: string;
+  sourceMetadataCategoryLabel?: string;
   sourceUrl?: string;
 }
 

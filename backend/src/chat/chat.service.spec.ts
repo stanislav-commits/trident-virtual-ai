@@ -2178,6 +2178,112 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('adds compact source diagnostics to assistant ragflow context', async () => {
+    await (service as any).addRoutedAssistantMessage({
+      sessionId: 'session-1',
+      content: 'Tank capacities are documented in SOPEP.',
+      route: 'llm_generation',
+      normalizedQuery: {
+        rawQuery: 'show tank capacities for fuel tanks',
+        normalizedQuery: 'show tank capacities for fuel tanks',
+        retrievalQuery: 'show tank capacities for fuel tanks',
+        effectiveQuery: 'show tank capacities for fuel tanks',
+        followUpMode: 'standalone',
+        operation: 'lookup',
+        timeIntent: { kind: 'none' },
+        sourceHints: ['DOCUMENTATION'],
+        isClarificationReply: false,
+        ambiguityFlags: [],
+      },
+      ragflowContext: {
+        resolvedSubjectQuery: 'fuel tank capacities',
+      },
+      contextReferences: [
+        {
+          shipManualId: 'manual-1',
+          chunkId: 'chunk-1',
+          pageNumber: 49,
+          sourceTitle: 'Seawolf X SOPEP.pdf',
+          sourceCategory: 'MANUALS',
+          sourceMetadataCategory: 'HISTORY_PROCEDURES',
+          sourceMetadataCategoryLabel: 'History Procedures',
+        },
+        {
+          shipManualId: 'manual-1',
+          chunkId: 'chunk-2',
+          pageNumber: 50,
+          sourceTitle: 'Seawolf X SOPEP.pdf',
+          sourceCategory: 'MANUALS',
+          sourceMetadataCategory: 'HISTORY_PROCEDURES',
+        },
+      ],
+    });
+
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Tank capacities are documented in SOPEP.',
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        sourceDiagnostics: {
+          totalReferences: 2,
+          distinctSourceCount: 1,
+          effectiveCategories: ['MANUALS'],
+          ragflowMetadataCategories: ['HISTORY_PROCEDURES'],
+          mismatchSourceCount: 1,
+          sources: [
+            {
+              sourceTitle: 'Seawolf X SOPEP.pdf',
+              shipManualId: 'manual-1',
+              effectiveSourceCategory: 'MANUALS',
+              ragflowMetadataCategory: 'HISTORY_PROCEDURES',
+              ragflowMetadataCategoryLabel: 'History Procedures',
+              categoryAlignment: 'mismatch',
+              pageNumbers: [49, 50],
+              referenceCount: 2,
+            },
+          ],
+        },
+      }),
+      expect.any(Array),
+    );
+  });
+
+  it('includes source category in formatted message responses', () => {
+    const response = (service as any).formatMessageResponse({
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'Done.',
+      ragflowContext: null,
+      contextReferences: [
+        {
+          id: 'ref-1',
+          shipManualId: 'manual-1',
+          shipManual: {
+            shipId: 'ship-1',
+            category: 'CERTIFICATES',
+          },
+          chunkId: 'chunk-1',
+          score: 0.98,
+          pageNumber: 12,
+          snippet: 'Certificate details',
+          sourceTitle: 'Certificate.pdf',
+          sourceUrl: null,
+        },
+      ],
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      deletedAt: null,
+    });
+
+    expect(response.contextReferences).toEqual([
+      expect.objectContaining({
+        shipManualId: 'manual-1',
+        shipId: 'ship-1',
+        sourceCategory: 'CERTIFICATES',
+        sourceTitle: 'Certificate.pdf',
+      }),
+    ]);
+  });
+
   it('passes compact structured conversation state from recent ragflow metadata into the LLM context', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

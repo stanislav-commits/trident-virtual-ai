@@ -1551,7 +1551,28 @@ export class ChatDocumentationScanService {
       snippet: snippetOverride ?? chunk.content ?? '',
       sourceTitle: manual.filename,
       sourceCategory: sourceCategory ?? manual.category,
+      sourceMetadataCategory: this.extractChunkMetadataValue(
+        chunk,
+        'category',
+      ),
+      sourceMetadataCategoryLabel: this.extractChunkMetadataValue(
+        chunk,
+        'category_label',
+      ),
     };
+  }
+
+  private extractChunkMetadataValue(
+    chunk: Pick<RagflowChunk, 'meta'>,
+    key: string,
+  ): string | undefined {
+    const value = chunk.meta?.[key];
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : undefined;
   }
 
   private isBroadCertificateSoonQuery(query: string): boolean {

@@ -33,7 +33,11 @@ describe('ChatContextService', () => {
           doc_name: 'History Procedures.pdf',
           content: 'Last overhaul procedure details',
           similarity: 0.99,
-          meta: { page_num: 12 },
+          meta: {
+            page_num: 12,
+            category: 'HISTORY_PROCEDURES',
+            category_label: 'History Procedures',
+          },
         },
         {
           id: 'chunk-manual',
@@ -41,7 +45,11 @@ describe('ChatContextService', () => {
           doc_name: 'Engine Manual.pdf',
           content: 'Replacement interval is documented in the manual',
           similarity: 0.94,
-          meta: { page_num: 44 },
+          meta: {
+            page_num: 44,
+            category: 'MANUALS',
+            category_label: 'Manuals',
+          },
         },
       ]),
     };
@@ -62,6 +70,8 @@ describe('ChatContextService', () => {
         chunkId: 'chunk-manual',
         sourceTitle: 'Engine Manual.pdf',
         sourceCategory: 'MANUALS',
+        sourceMetadataCategory: 'MANUALS',
+        sourceMetadataCategoryLabel: 'Manuals',
         pageNumber: 44,
       }),
     ]);

@@ -133,7 +133,7 @@ export class ChatService {
           where: { deletedAt: null },
           include: {
             contextReferences: {
-              include: { shipManual: { select: { shipId: true } } },
+              include: { shipManual: { select: { shipId: true, category: true } } },
             },
           },
           orderBy: { createdAt: 'asc' },
@@ -190,7 +190,7 @@ export class ChatService {
       },
       include: {
         contextReferences: {
-          include: { shipManual: { select: { shipId: true } } },
+          include: { shipManual: { select: { shipId: true, category: true } } },
         },
       },
     });
@@ -247,7 +247,7 @@ export class ChatService {
       },
       include: {
         contextReferences: {
-          include: { shipManual: { select: { shipId: true } } },
+          include: { shipManual: { select: { shipId: true, category: true } } },
         },
       },
     });
@@ -450,7 +450,7 @@ export class ChatService {
             take: 10,
             include: {
               contextReferences: {
-                include: { shipManual: { select: { shipId: true } } },
+                include: { shipManual: { select: { shipId: true, category: true } } },
               },
             },
           },
@@ -1084,6 +1084,7 @@ export class ChatService {
       ragflowContext,
       contextReferences,
     });
+    const sourceDiagnostics = this.buildSourceDiagnostics(contextReferences);
 
     return this.addAssistantMessage(
       sessionId,
@@ -1093,6 +1094,7 @@ export class ChatService {
         ...provenance,
         answerRoute: route,
         normalizedQuery,
+        ...(sourceDiagnostics ? { sourceDiagnostics } : {}),
         ...(routeTrace?.length ? { routeTrace } : {}),
       },
       contextReferences,
@@ -1153,6 +1155,178 @@ export class ChatService {
           clarificationDomain === 'historical_telemetry' ||
           ragflowContext?.historicalTelemetry === true),
     };
+  }
+
+  private buildSourceDiagnostics(
+    contextReferences?: ChatCitation[],
+  ):
+    | {
+        totalReferences: number;
+        distinctSourceCount: number;
+        effectiveCategories: string[];
+        ragflowMetadataCategories: string[];
+        mismatchSourceCount: number;
+        sources: Array<{
+          sourceTitle: string;
+          shipManualId?: string;
+          effectiveSourceCategory?: string;
+          ragflowMetadataCategory?: string;
+          ragflowMetadataCategoryLabel?: string;
+          categoryAlignment:
+            | 'matched'
+            | 'mismatch'
+            | 'metadata_missing'
+            | 'source_missing'
+            | 'unknown';
+          pageNumbers: number[];
+          referenceCount: number;
+        }>;
+      }
+    | undefined {
+    if (!contextReferences?.length) {
+      return undefined;
+    }
+
+    const groupedSources = new Map<
+      string,
+      {
+        sourceTitle: string;
+        shipManualId?: string;
+        effectiveSourceCategory?: string;
+        ragflowMetadataCategory?: string;
+        ragflowMetadataCategoryLabel?: string;
+        pageNumbers: Set<number>;
+        referenceCount: number;
+      }
+    >();
+
+    for (const reference of contextReferences) {
+      const sourceTitle =
+        this.normalizeDiagnosticText(reference.sourceTitle) ?? 'Document';
+      const shipManualId = this.normalizeDiagnosticText(reference.shipManualId);
+      const effectiveSourceCategory = this.normalizeDiagnosticCategory(
+        reference.sourceCategory,
+      );
+      const ragflowMetadataCategory = this.normalizeDiagnosticCategory(
+        reference.sourceMetadataCategory,
+      );
+      const ragflowMetadataCategoryLabel = this.normalizeDiagnosticText(
+        reference.sourceMetadataCategoryLabel,
+      );
+      const key = `${shipManualId ?? ''}::${sourceTitle}`;
+      const existing = groupedSources.get(key) ?? {
+        sourceTitle,
+        shipManualId,
+        effectiveSourceCategory,
+        ragflowMetadataCategory,
+        ragflowMetadataCategoryLabel,
+        pageNumbers: new Set<number>(),
+        referenceCount: 0,
+      };
+
+      if (!existing.effectiveSourceCategory && effectiveSourceCategory) {
+        existing.effectiveSourceCategory = effectiveSourceCategory;
+      }
+      if (!existing.ragflowMetadataCategory && ragflowMetadataCategory) {
+        existing.ragflowMetadataCategory = ragflowMetadataCategory;
+      }
+      if (!existing.ragflowMetadataCategoryLabel && ragflowMetadataCategoryLabel) {
+        existing.ragflowMetadataCategoryLabel = ragflowMetadataCategoryLabel;
+      }
+      if (
+        typeof reference.pageNumber === 'number' &&
+        Number.isFinite(reference.pageNumber)
+      ) {
+        existing.pageNumbers.add(reference.pageNumber);
+      }
+      existing.referenceCount += 1;
+      groupedSources.set(key, existing);
+    }
+
+    const sources = Array.from(groupedSources.values())
+      .map((source) => {
+        const categoryAlignment = this.getSourceCategoryAlignment(source);
+        return {
+          sourceTitle: source.sourceTitle,
+          ...(source.shipManualId ? { shipManualId: source.shipManualId } : {}),
+          ...(source.effectiveSourceCategory
+            ? { effectiveSourceCategory: source.effectiveSourceCategory }
+            : {}),
+          ...(source.ragflowMetadataCategory
+            ? { ragflowMetadataCategory: source.ragflowMetadataCategory }
+            : {}),
+          ...(source.ragflowMetadataCategoryLabel
+            ? {
+                ragflowMetadataCategoryLabel:
+                  source.ragflowMetadataCategoryLabel,
+              }
+            : {}),
+          categoryAlignment,
+          pageNumbers: Array.from(source.pageNumbers).sort(
+            (left, right) => left - right,
+          ),
+          referenceCount: source.referenceCount,
+        };
+      })
+      .sort((left, right) => left.sourceTitle.localeCompare(right.sourceTitle));
+
+    return {
+      totalReferences: contextReferences.length,
+      distinctSourceCount: sources.length,
+      effectiveCategories: this.collectUniqueDiagnosticValues(
+        sources.map((source) => source.effectiveSourceCategory),
+      ),
+      ragflowMetadataCategories: this.collectUniqueDiagnosticValues(
+        sources.map((source) => source.ragflowMetadataCategory),
+      ),
+      mismatchSourceCount: sources.filter(
+        (source) => source.categoryAlignment === 'mismatch',
+      ).length,
+      sources,
+    };
+  }
+
+  private getSourceCategoryAlignment(source: {
+    effectiveSourceCategory?: string;
+    ragflowMetadataCategory?: string;
+  }): 'matched' | 'mismatch' | 'metadata_missing' | 'source_missing' | 'unknown' {
+    if (source.effectiveSourceCategory && source.ragflowMetadataCategory) {
+      return source.effectiveSourceCategory === source.ragflowMetadataCategory
+        ? 'matched'
+        : 'mismatch';
+    }
+
+    if (source.effectiveSourceCategory) {
+      return 'metadata_missing';
+    }
+
+    if (source.ragflowMetadataCategory) {
+      return 'source_missing';
+    }
+
+    return 'unknown';
+  }
+
+  private collectUniqueDiagnosticValues(
+    values: Array<string | undefined>,
+  ): string[] {
+    return Array.from(
+      new Set(values.filter((value): value is string => Boolean(value))),
+    ).sort((left, right) => left.localeCompare(right));
+  }
+
+  private normalizeDiagnosticCategory(value?: string): string | undefined {
+    const normalized = this.normalizeDiagnosticText(value)?.toUpperCase();
+    return normalized?.length ? normalized : undefined;
+  }
+
+  private normalizeDiagnosticText(value?: string): string | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : undefined;
   }
 
   private getCarriedForwardDocumentationCitations(params: {
@@ -1668,6 +1842,7 @@ export class ChatService {
         pageNumber: ref.pageNumber,
         snippet: ref.snippet,
         sourceTitle: ref.sourceTitle,
+        sourceCategory: ref.shipManual?.category ?? undefined,
         sourceUrl: ref.sourceUrl,
       })),
       createdAt: message.createdAt.toISOString(),

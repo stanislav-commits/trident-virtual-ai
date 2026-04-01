@@ -47,6 +47,8 @@ interface ContextCitation {
   snippet?: string;
   sourceTitle?: string;
   sourceCategory?: string;
+  sourceMetadataCategory?: string;
+  sourceMetadataCategoryLabel?: string;
 }
 
 @Injectable()
@@ -146,6 +148,14 @@ export class ChatContextService {
               snippet,
               sourceTitle: result.doc_name || manual?.filename || 'Document',
               sourceCategory: manual?.category,
+              sourceMetadataCategory: this.extractMetadataValue(
+                result.meta,
+                'category',
+              ),
+              sourceMetadataCategoryLabel: this.extractMetadataValue(
+                result.meta,
+                'category_label',
+              ),
               pageNumber: (result.meta?.page_num as number) ?? undefined,
             };
           }),
@@ -247,6 +257,14 @@ export class ChatContextService {
             snippet,
             sourceTitle: `${docName} (${ship.name})`,
             sourceCategory: manual?.category,
+            sourceMetadataCategory: this.extractMetadataValue(
+              result.meta,
+              'category',
+            ),
+            sourceMetadataCategoryLabel: this.extractMetadataValue(
+              result.meta,
+              'category_label',
+            ),
             pageNumber: (result.meta?.page_num as number) ?? undefined,
           });
           });
@@ -338,5 +356,18 @@ export class ChatContextService {
     }
 
     return DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS;
+  }
+
+  private extractMetadataValue(
+    meta: Record<string, unknown> | undefined,
+    key: string,
+  ): string | undefined {
+    const value = meta?.[key];
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : undefined;
   }
 }

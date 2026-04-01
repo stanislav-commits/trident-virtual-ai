@@ -7,6 +7,7 @@ export class ChatContextReferenceDto {
   pageNumber?: number;
   snippet?: string;
   sourceTitle?: string;
+  sourceCategory?: string;
   sourceUrl?: string;
 }
 
