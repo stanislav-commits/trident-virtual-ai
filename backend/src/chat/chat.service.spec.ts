@@ -2458,6 +2458,67 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('returns a telemetry-only unavailable answer when current telemetry matches exist but do not answer the requested event query', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content:
+            'when and which was the bilge alarm last activated based on the telemetry',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'bilgmon488_instruction_manual_vAE - 2020.pdf',
+          sourceCategory: 'MANUALS',
+          snippet:
+            'Downloading the operating log of BilgMon488 can be done through a USB-interface.',
+          pageNumber: 5,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery:
+        'when and which was the bilge alarm last activated based on the telemetry',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Bilge-Alarms.BILGE ALARM 1': 0,
+        'Bilge-Alarms.BILGE ALARM 2': 0,
+      },
+      totalActiveMetrics: 24,
+      matchedMetrics: 12,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'when and which was the bilge alarm last activated based on the telemetry',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      "I couldn't determine the requested answer from direct matched telemetry data.",
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+  });
+
   it('passes the latest LLM response id from the immediately preceding assistant turn', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

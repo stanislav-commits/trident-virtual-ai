@@ -997,6 +997,25 @@ export class ChatService {
         });
       }
 
+      if (telemetryOnlyQuery) {
+        return this.addRoutedAssistantMessage({
+          sessionId,
+          content:
+            "I couldn't determine the requested answer from direct matched telemetry data.",
+          route: 'current_telemetry',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['current_telemetry:telemetry_only_unavailable'],
+          ragflowContext: {
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            ...(telemetryShips.length > 0
+              ? { telemetryShips: [...new Set(telemetryShips)] }
+              : {}),
+            noDocumentation: true,
+          },
+          contextReferences: [],
+        });
+      }
+
       const previousLlmResponseId =
         this.getLatestLlmResponseIdFromRecentAssistant(messageHistory);
       const response = await this.llmService.generateResponse({
