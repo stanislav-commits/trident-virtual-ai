@@ -52,7 +52,7 @@ export class ChatQueryNormalizationService {
       isClarificationReply || shouldPromoteRetrievalQuery
         ? retrievalQuery
         : rawQuery;
-    const searchSpace = [effectiveQuery, retrievalQuery, previousUserQuery ?? '']
+    const searchSpace = [effectiveQuery, retrievalQuery]
       .filter(Boolean)
       .join('\n');
     const operation = this.detectOperation(searchSpace);
@@ -100,7 +100,12 @@ export class ChatQueryNormalizationService {
       return 'event';
     }
 
-    if (/\b(latitude|longitude|position|coordinates?|gps|location)\b/i.test(normalized)) {
+    if (
+      /\b(latitude|longitude|position|coordinates?|gps|location|lat|lon)\b/i.test(
+        normalized,
+      ) ||
+      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(normalized)
+    ) {
       return 'position';
     }
 
@@ -223,7 +228,7 @@ export class ChatQueryNormalizationService {
     };
 
     if (
-      /\b(telemetry|metric|metrics|tank|fuel|oil|coolant|temperature|pressure|voltage|load|rpm|runtime|hours?|position|latitude|longitude)\b/i.test(
+      /\b(telemetry|metric|metrics|tank|fuel|oil|coolant|temperature|pressure|voltage|load|rpm|runtime|hours?|position|latitude|longitude|location|coordinates?|gps|lat|lon)\b/i.test(
         normalized,
       )
     ) {

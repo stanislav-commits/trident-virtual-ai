@@ -190,4 +190,20 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
     expect(plan.requiresTelemetryHistory).toBe(false);
   });
+
+  it('routes current coordinate shorthand questions to telemetry status', () => {
+    const plan = service.planQuery('what lon and lat is now?');
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetryHistory).toBe(false);
+  });
+
+  it('routes current vessel location questions to telemetry status', () => {
+    const plan = service.planQuery('Where is the yacht now?');
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetryHistory).toBe(false);
+  });
 });

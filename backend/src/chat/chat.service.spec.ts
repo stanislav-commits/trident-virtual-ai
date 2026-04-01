@@ -1623,6 +1623,125 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('answers current vessel location questions from telemetry without falling back to documentation', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'Where is the yacht now?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'Where is the yacht now?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'navigation.position.lat': 43.55,
+        'navigation.position.lon': 7.02,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 2,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'Where is the yacht now?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(metricsService.getShipTelemetryContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'Where is the yacht now?',
+      undefined,
+    );
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('navigation.position.lat'),
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+  });
+
+  it('answers admin global current location questions through telemetry lookup', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'what lon and lat is now?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    prisma.ship.findMany.mockResolvedValue([
+      {
+        id: 'ship-1',
+        name: 'Sea Wolf X',
+      },
+    ]);
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'what lon and lat is now?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'navigation.position.lat': 43.55,
+        'navigation.position.lon': 7.02,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 2,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      null,
+      'session-1',
+      'what lon and lat is now?',
+      undefined,
+      'admin',
+    );
+
+    expect(prisma.ship.findMany).toHaveBeenCalled();
+    expect(metricsService.getShipTelemetryContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'what lon and lat is now?',
+      undefined,
+    );
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('[Sea Wolf X] navigation.position.lat'),
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+  });
+
   it('answers multiple direct telemetry readings deterministically without calling the LLM', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

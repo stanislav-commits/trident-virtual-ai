@@ -43,6 +43,7 @@ export class ChatDocumentationQueryService {
       /^\s*(hi|hello|hey|thanks|thank you|ok|okay|great)\s*[!.?]*\s*$/i.test(
         userQuery,
       ) || this.isTelemetryListQuery(userQuery)
+      || this.isExplicitTelemetrySourceQuery(userQuery)
     );
   }
 
@@ -212,16 +213,22 @@ export class ChatDocumentationQueryService {
       return normalizedPreviousUserQuery;
     }
 
+    const sourceScopeFollowUp = this.isSourceScopeFollowUpQuery(trimmed);
+    const completenessFollowUp =
+      this.isCompletenessVerificationFollowUpQuery(trimmed);
     const shouldCarryPreviousSubject =
       Boolean(normalizedPreviousUserQuery) &&
-      !this.isSelfContainedSubjectQuery(trimmed) &&
+      (!this.isSelfContainedSubjectQuery(trimmed) ||
+        sourceScopeFollowUp ||
+        completenessFollowUp) &&
       (this.isContextualFollowUpQuery(trimmed) ||
         this.shouldInheritPreviousSubject(
           trimmed,
           normalizedPreviousUserQuery,
         ) ||
         this.isSubjectDetailFollowUpQuery(trimmed) ||
-        this.isCompletenessVerificationFollowUpQuery(trimmed));
+        completenessFollowUp ||
+        sourceScopeFollowUp);
 
     if (!normalizedPreviousUserQuery || !shouldCarryPreviousSubject) {
       return trimmed;
@@ -259,7 +266,8 @@ export class ChatDocumentationQueryService {
       (this.isTemporalRangeFollowUpQuery(trimmed) &&
         this.isAnalyticalContinuationContext(previousUserQuery)) ||
       this.isSubjectDetailFollowUpQuery(trimmed) ||
-      this.isCompletenessVerificationFollowUpQuery(trimmed)
+      this.isCompletenessVerificationFollowUpQuery(trimmed) ||
+      this.isSourceScopeFollowUpQuery(trimmed)
     );
   }
 
@@ -1167,7 +1175,7 @@ export class ChatDocumentationQueryService {
   }
 
   private isCompletenessVerificationFollowUpQuery(query: string): boolean {
-    return /\b(are you sure|is that all|is this all|complete list|full list|did you miss|missing any|missing some|any more|anything else|any others|all of them|all certificates)\b/i.test(
+    return /\b(are you sure|is that all|is this all|complete list|full list|did you miss|missing any|missing some|any more|anything else|any others|all of them|all certificates|you missed|write all|show all|list all|all available|full inventory|complete inventory)\b/i.test(
       query,
     );
   }
@@ -1182,6 +1190,16 @@ export class ChatDocumentationQueryService {
       /^(?:yes|yeah|yep|ok|okay|please|just|only)\b[\s,.:;-]*/i,
       '',
     );
+    const sourceScopeOverride =
+      this.normalizeSourceScopeFollowUp(withoutAffirmation);
+    if (sourceScopeOverride) {
+      return sourceScopeOverride;
+    }
+    const completenessFollowUp =
+      this.normalizeCompletenessFollowUp(withoutAffirmation);
+    if (completenessFollowUp) {
+      return completenessFollowUp;
+    }
     const detailFocus = this.extractDetailFocus(withoutAffirmation);
     if (detailFocus) {
       return detailFocus;
@@ -1306,6 +1324,12 @@ export class ChatDocumentationQueryService {
 
   private hasExplicitSourceRequest(query: string): boolean {
     return /\b(?:according\s+to|from|in)\s+the\s+.+?\b(manual|operator'?s\s+manual|operators\s+manual|handbook|guide|document)\b/i.test(
+      query,
+    );
+  }
+
+  private isExplicitTelemetrySourceQuery(query: string): boolean {
+    return /\b(?:based on|from|in|using)\b[\s\S]{0,32}\b(telemetry|metrics?)\b/i.test(
       query,
     );
   }
@@ -1438,6 +1462,48 @@ export class ChatDocumentationQueryService {
     return /\b(when\s+should\s+we\s+do\s+next\s+maintenance|when\s+is\s+the\s+next\s+maintenance|what\s+maintenance\s+is\s+(?:next|due)|what\s+service\s+is\s+(?:next|due)|what\s+maintenance\s+is\s+last\s+due|what\s+service\s+is\s+last\s+due|last\s+due|next\s+due|next\s+maintenance|next\s+service|what\s+tasks?\s+are\s+included|what\s+(?:spare\s+)?parts?\s+are\s+(?:needed|required|listed)|how\s+do\s+i|how\s+to|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done)\b/i.test(
       query,
     );
+  }
+
+  private isSourceScopeFollowUpQuery(query: string): boolean {
+    return (
+      this.isExplicitTelemetrySourceQuery(query) ||
+      /\b(?:based on|from|in|using)\b[\s\S]{0,32}\b(manuals?|docs?|documentation|certificates?|regulations?|history|historical|procedures?)\b/i.test(
+        query,
+      )
+    );
+  }
+
+  private normalizeSourceScopeFollowUp(query: string): string | null {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized || !this.isSourceScopeFollowUpQuery(normalized)) {
+      return null;
+    }
+
+    if (/\b(telemetry|metrics?)\b/.test(normalized)) {
+      return 'from telemetry';
+    }
+    if (/\b(manuals?|docs?|documentation)\b/.test(normalized)) {
+      return 'from documentation';
+    }
+    if (/\b(certificates?)\b/.test(normalized)) {
+      return 'from certificates';
+    }
+    if (/\b(regulations?)\b/.test(normalized)) {
+      return 'from regulations';
+    }
+    if (/\b(history|historical|procedures?)\b/.test(normalized)) {
+      return 'from history procedures';
+    }
+
+    return null;
+  }
+
+  private normalizeCompletenessFollowUp(query: string): string | null {
+    if (!this.isCompletenessVerificationFollowUpQuery(query)) {
+      return null;
+    }
+
+    return 'show all available';
   }
 
   private isTemporalRangeFollowUpQuery(query: string): boolean {

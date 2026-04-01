@@ -362,6 +362,43 @@ describe('ChatDocumentationQueryService', () => {
     );
   });
 
+  it('inherits the previous subject for explicit telemetry-source override follow-ups', () => {
+    const retrievalQuery = service.buildRetrievalQuery(
+      'based on telemetry',
+      'when and which was the bilge alarm last activated?',
+    );
+
+    expect(retrievalQuery).toContain('bilge alarm');
+    expect(retrievalQuery).toContain('last activated');
+    expect(retrievalQuery).toContain('from telemetry');
+    expect(
+      service.shouldPromoteRetrievalQueryToAnswerQuery(
+        'based on telemetry',
+        'when and which was the bilge alarm last activated?',
+        retrievalQuery,
+      ),
+    ).toBe(true);
+  });
+
+  it('inherits the previous subject for completeness-correction follow-ups', () => {
+    const retrievalQuery = service.buildRetrievalQuery(
+      'you missed a lot of bilge alarms, write all',
+      'list all available bilge alarm metrics',
+    );
+
+    expect(retrievalQuery).toContain('bilge alarm metrics');
+    expect(retrievalQuery).toContain('show all available');
+  });
+
+  it('skips documentation retrieval for explicit telemetry-source override follow-ups', () => {
+    expect(service.shouldSkipDocumentationRetrieval('based on telemetry')).toBe(
+      true,
+    );
+    expect(
+      service.shouldSkipDocumentationRetrieval('navigation.log in telemetry'),
+    ).toBe(true);
+  });
+
   it('inherits the previous subject for vague last-due follow-up questions', () => {
     expect(
       service.buildRetrievalQuery(

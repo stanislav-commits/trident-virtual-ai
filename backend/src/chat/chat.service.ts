@@ -4467,6 +4467,10 @@ export class ChatService {
     queryPlan: ChatQueryPlan,
     userQuery: string,
   ): boolean {
+    if (this.isCurrentPositionTelemetryQuery(userQuery)) {
+      return true;
+    }
+
     if (this.isCurrentInventoryTelemetryQuery(userQuery)) {
       return true;
     }
@@ -4601,8 +4605,31 @@ export class ChatService {
   }
 
   private isCurrentTelemetryGuidedQuery(userQuery: string): boolean {
-    return /\b(current|currently|reading|value|measured|showing|reads?\s+\d+(?:\.\d+)?|is\s+\d+(?:\.\d+)?|at\s+\d+(?:\.\d+)?)\b/i.test(
-      userQuery,
+    return (
+      /\b(current|currently|reading|value|measured|showing|reads?\s+\d+(?:\.\d+)?|is\s+\d+(?:\.\d+)?|at\s+\d+(?:\.\d+)?)\b/i.test(
+        userQuery,
+      ) || this.isCurrentPositionTelemetryQuery(userQuery)
+    );
+  }
+
+  private isCurrentPositionTelemetryQuery(userQuery: string): boolean {
+    const normalized = userQuery.toLowerCase();
+    const mentionsPosition =
+      /\b(latitude|longitude|location|position|coordinates?|gps|lat|lon)\b/i.test(
+        normalized,
+      ) ||
+      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
+        normalized,
+      );
+    if (!mentionsPosition) {
+      return false;
+    }
+
+    return (
+      /\b(current|currently|now|right now|actual|live)\b/i.test(normalized) ||
+      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
+        normalized,
+      )
     );
   }
 }

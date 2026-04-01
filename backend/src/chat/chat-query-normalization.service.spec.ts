@@ -196,4 +196,82 @@ describe('ChatQueryNormalizationService', () => {
     expect(normalized.timeIntent.kind).toBe('historical_point');
     expect(normalized.timeIntent.absoluteDate).toBe('2026-03-25');
   });
+
+  it('keeps telemetry source override follow-ups attached to the previous subject', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'based on telemetry',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'when and which was the bilge alarm last activated?',
+        },
+        {
+          role: 'assistant',
+          content: 'I could not confirm that from the documentation.',
+          ragflowContext: {
+            answerRoute: 'llm_generation',
+            resolvedSubjectQuery:
+              'when and which was the bilge alarm last activated?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toContain('bilge alarm');
+    expect(normalized.retrievalQuery).toContain('last activated');
+    expect(normalized.retrievalQuery).toContain('from telemetry');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.timeIntent.kind).toBe('none');
+  });
+
+  it('keeps completeness follow-ups attached to the previous telemetry subject', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'you missed a lot of bilge alarms, write all',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'list all available bilge alarm metrics',
+        },
+        {
+          role: 'assistant',
+          content: 'Here are some bilge alarm metrics.',
+          ragflowContext: {
+            answerRoute: 'deterministic_telemetry',
+            resolvedSubjectQuery: 'list all available bilge alarm metrics',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toContain('bilge alarm metrics');
+    expect(normalized.retrievalQuery).toContain('show all available');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+  });
+
+  it('does not leak a previous historical time intent into a current coordinate question', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what lon and lat is now?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what lon and lat were 5 days ago?',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-27 10:05 UTC, the vessel position was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'what lon and lat were 5 days ago?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('standalone');
+    expect(normalized.operation).toBe('position');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+  });
 });

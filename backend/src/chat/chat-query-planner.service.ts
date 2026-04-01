@@ -603,8 +603,14 @@ export class ChatQueryPlannerService {
       return true;
     }
 
-    return /\b(current|currently|status|reading|value|temperature|temp|pressure|level|voltage|amperage|load|rpm|speed|flow|rate|running\s+hours|runtime|hour\s*meter|latitude|longitude|location|position)\b/i.test(
-      query,
+    return (
+      /\b(current|currently|status|reading|value|temperature|temp|pressure|level|voltage|amperage|load|rpm|speed|flow|rate|running\s+hours|runtime|hour\s*meter|latitude|longitude|location|position|coordinates?|gps|lat|lon)\b/i.test(
+        query,
+      ) ||
+      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(query) ||
+      /\b(?:actual|current|live)\s+(?:coordinates?|position|location)\b/i.test(
+        query,
+      )
     );
   }
 
