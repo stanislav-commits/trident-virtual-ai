@@ -989,11 +989,10 @@ export class ChatService {
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
               : {}),
-            ...(citationsForAnswer.length === 0 && !telemetryOnlyQuery
-              ? { noDocumentation: true }
-              : {}),
+            noDocumentation: true,
+            usedDocumentation: false,
           },
-          contextReferences: citationsForAnswer,
+          contextReferences: [],
         });
       }
 

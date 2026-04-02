@@ -1412,12 +1412,12 @@ describe('ChatService telemetry clarification', () => {
       ),
       expect.objectContaining({
         resolvedSubjectQuery: 'calculate how many fuel onboard according to all fuel tanks',
+        answerRoute: 'current_telemetry',
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+        noDocumentation: true,
       }),
-      expect.arrayContaining([
-        expect.objectContaining({
-          sourceTitle: 'Volvo Penta operators manual',
-        }),
-      ]),
+      [],
     );
   });
 
