@@ -689,9 +689,10 @@ export class ChatService {
       let telemetryMatchedMetrics = 0;
       let telemetryClarification: TelemetryClarification | null = null;
       const telemetryShips: string[] = [];
+      const telemetryIntentQuery = resolvedSubjectQuery ?? effectiveUserQuery;
       const shouldLookupCurrentTelemetry = this.shouldLookupCurrentTelemetry(
         queryPlan,
-        effectiveUserQuery,
+        telemetryIntentQuery,
       );
 
       try {
@@ -801,7 +802,7 @@ export class ChatService {
         /\b(based\s+on|recommended|recommendation|action|next\s+step|what\s+should\s+i\s+do|what\s+do\s+i\s+do|procedure|steps?|how\s+to|how\s+do\s+i|manual|documentation|according\s+to\s+(?:the\s+)?(?:manual|documentation|docs?|handbook|guide|procedure|spec(?:ification)?)|normal|range|limit|limits|specified|operating)\b/i;
       const telemetryOnlyQuery = this.isTelemetryOnlyQuery(
         queryPlan,
-        effectiveUserQuery,
+        telemetryIntentQuery,
         telemetryMatchMode,
         documentationIntentPattern,
       );
@@ -828,7 +829,7 @@ export class ChatService {
           : citations;
       const llmTelemetryContext = this.selectTelemetryContextForLlm(
         queryPlan,
-        effectiveUserQuery,
+        telemetryIntentQuery,
         telemetry,
         telemetryPrefiltered,
         telemetryMatchMode,
@@ -944,7 +945,7 @@ export class ChatService {
 
       const deterministicTelemetryUnavailableAnswer =
         this.buildDeterministicTelemetryUnavailableAnswer(
-          effectiveUserQuery,
+          telemetryIntentQuery,
           queryPlan.primaryIntent,
           telemetryPrefiltered,
           telemetryMatchMode,
@@ -971,7 +972,7 @@ export class ChatService {
 
       const deterministicTelemetryAnswer = this.buildDeterministicTelemetryAnswer(
         queryPlan,
-        effectiveUserQuery,
+        telemetryIntentQuery,
         telemetry,
         telemetryPrefiltered,
         telemetryMatchMode,

@@ -3640,4 +3640,82 @@ describe('ChatService telemetry clarification', () => {
     expect(content).not.toContain('Please clarify');
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
+
+  it('uses the resolved telemetry subject for a current-time follow-up after a historical aggregate answer', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'how much total fuel was 5 days ago?',
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-28 11:15 UTC, the historical total was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'how much total fuel was 5 days ago show all available',
+          },
+        },
+        {
+          role: 'user',
+          content: 'you missed 3 tanks',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: 'how much total fuel was 5 days ago show all available',
+      retrievalQuery: 'how much total fuel is in the tanks right now',
+      resolvedSubjectQuery: 'how much total fuel is in the tanks right now',
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Fuel Tank 1P': 3747,
+        'Fuel Tank 2S': 3522,
+        'Fuel Tank 3P': 416,
+        'Fuel Tank 4S': 324,
+        'Fuel Tank 5P': 799,
+        'Fuel Tank 6S': 920,
+        'Fuel Tank 7P': 1254,
+        'Fuel Tank 8S': 1236,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 8,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'what about now?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(metricsService.getShipTelemetryContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'what about now?',
+      'how much total fuel is in the tanks right now',
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        'The combined total from the current matched telemetry readings is 12,218',
+      ),
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        resolvedSubjectQuery: 'how much total fuel is in the tanks right now',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
 });
