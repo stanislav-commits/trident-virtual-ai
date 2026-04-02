@@ -15,6 +15,7 @@ import {
   UsersIcon,
   ShipIcon,
   PromptIcon,
+  TagIcon,
   ChevronLeftIcon,
   MenuIcon,
   XIcon,
@@ -22,16 +23,18 @@ import {
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
 import { SystemPromptSection } from "../components/admin/SystemPromptSection";
+import { TagsSection } from "../components/admin/TagsSection";
 import { ManualsPromptModal } from "../components/admin/ManualsPromptModal";
 import { MetricsModal } from "../components/admin/MetricsModal";
 import { Toast } from "../components/layout/Toast";
 
-type AdminSection = "users" | "ships" | "prompt";
+type AdminSection = "users" | "ships" | "prompt" | "tags";
 
 const SECTION_TITLES: Record<AdminSection, string> = {
   users: "Users",
   ships: "Ships",
   prompt: "System Prompt",
+  tags: "Tags",
 };
 
 export function AdminPanelPage() {
@@ -87,57 +90,60 @@ export function AdminPanelPage() {
   }, [loadUsers]);
 
   // Load ships
-  const loadShips = useCallback(async (options?: { silent?: boolean }) => {
-    if (!token) return;
-    if (!options?.silent) {
-      setShipsLoading(true);
-      setOrganizationsLoading(true);
-      setError("");
-    }
-    try {
-      const [shipsList, metrics, usersList, organizationsResult] =
-        await Promise.allSettled([
-          getShips(token),
-          getMetricDefinitions(token),
-          getUsers(token),
-          getOrganizations(token),
-        ]);
-
-      if (
-        shipsList.status !== "fulfilled" ||
-        metrics.status !== "fulfilled" ||
-        usersList.status !== "fulfilled"
-      ) {
-        throw new Error("Failed to load ships");
+  const loadShips = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!token) return;
+      if (!options?.silent) {
+        setShipsLoading(true);
+        setOrganizationsLoading(true);
+        setError("");
       }
+      try {
+        const [shipsList, metrics, usersList, organizationsResult] =
+          await Promise.allSettled([
+            getShips(token),
+            getMetricDefinitions(token),
+            getUsers(token),
+            getOrganizations(token),
+          ]);
 
-      setShips(shipsList.value);
-      setMetricDefinitions(metrics.value);
-      setUsers(usersList.value);
+        if (
+          shipsList.status !== "fulfilled" ||
+          metrics.status !== "fulfilled" ||
+          usersList.status !== "fulfilled"
+        ) {
+          throw new Error("Failed to load ships");
+        }
 
-      if (organizationsResult.status === "fulfilled") {
-        setOrganizations(organizationsResult.value);
-      } else {
+        setShips(shipsList.value);
+        setMetricDefinitions(metrics.value);
+        setUsers(usersList.value);
+
+        if (organizationsResult.status === "fulfilled") {
+          setOrganizations(organizationsResult.value);
+        } else {
+          if (!options?.silent) {
+            setOrganizations([]);
+            setError(
+              organizationsResult.reason instanceof Error
+                ? organizationsResult.reason.message
+                : "Failed to load organizations",
+            );
+          }
+        }
+      } catch (e) {
         if (!options?.silent) {
-          setOrganizations([]);
-          setError(
-            organizationsResult.reason instanceof Error
-              ? organizationsResult.reason.message
-              : "Failed to load organizations",
-          );
+          setError(e instanceof Error ? e.message : "Failed to load ships");
+        }
+      } finally {
+        if (!options?.silent) {
+          setShipsLoading(false);
+          setOrganizationsLoading(false);
         }
       }
-    } catch (e) {
-      if (!options?.silent) {
-        setError(e instanceof Error ? e.message : "Failed to load ships");
-      }
-    } finally {
-      if (!options?.silent) {
-        setShipsLoading(false);
-        setOrganizationsLoading(false);
-      }
-    }
-  }, [token]);
+    },
+    [token],
+  );
 
   useEffect(() => {
     if (activeSection === "ships") loadShips();
@@ -269,6 +275,16 @@ export function AdminPanelPage() {
             </span>
             <span className="admin-panel__nav-label">System Prompt</span>
           </button>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "tags" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("tags")}
+          >
+            <span className="admin-panel__nav-icon">
+              <TagIcon />
+            </span>
+            <span className="admin-panel__nav-label">Tags</span>
+          </button>
         </nav>
 
         <div className="admin-panel__sidebar-footer">
@@ -332,6 +348,14 @@ export function AdminPanelPage() {
 
             {activeSection === "prompt" && (
               <SystemPromptSection
+                token={token}
+                error={error}
+                onError={setError}
+              />
+            )}
+
+            {activeSection === "tags" && (
+              <TagsSection
                 token={token}
                 error={error}
                 onError={setError}

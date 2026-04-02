@@ -53,6 +53,22 @@ export const PromptIcon = () => (
   </svg>
 );
 
+export const TagIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3H4a1 1 0 0 0-1 1v5.59A2 2 0 0 0 3.59 11l9.58 9.59a2 2 0 0 0 2.83 0l4.59-4.59a2 2 0 0 0 0-2.83Z" />
+    <circle cx="7.5" cy="7.5" r="1.5" />
+  </svg>
+);
+
 export const MetricsIcon = () => (
   <svg
     width="16"

@@ -41,6 +41,46 @@ export type SystemPromptPlaceholder = {
   description: string;
 };
 
+export type TagListItem = {
+  id: string;
+  key: string;
+  category: string;
+  subcategory: string;
+  item: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  metricLinksCount: number;
+  manualLinksCount: number;
+};
+
+export type TagImportResult = {
+  sourceEntries: number;
+  uniqueTags: number;
+  created: number;
+  updated: number;
+  warnings: string[];
+  warningCount: number;
+};
+
+export type TagListFiltersMeta = {
+  categoryOptions: string[];
+  subcategoryOptions: string[];
+};
+
+export type TagListSummary = {
+  totalTags: number;
+  filteredTags: number;
+  categories: number;
+  metricLinks: number;
+  manualLinks: number;
+};
+
+export type TagListResult = PaginatedListResult<TagListItem> & {
+  filters: TagListFiltersMeta;
+  summary: TagListSummary;
+};
+
 export type SystemPromptConfig = {
   prompt: string;
   isDefault: boolean;
@@ -74,6 +114,128 @@ export async function updateSystemPrompt(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to update system prompt");
+  }
+  return res.json();
+}
+
+export async function getTags(
+  token: string,
+  params?: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    category?: string;
+    subcategory?: string;
+  },
+): Promise<TagListResult> {
+  const res = await fetchWithAuth(withTagsQuery("tags", params), { token });
+  if (!res.ok) throw new Error("Failed to fetch tags");
+  return res.json();
+}
+
+export async function createTag(
+  body: {
+    category: string;
+    subcategory: string;
+    item: string;
+    description?: string | null;
+  },
+  token: string,
+): Promise<TagListItem> {
+  const res = await fetchWithAuth("tags", {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to create tag");
+  }
+  return res.json();
+}
+
+export async function updateTag(
+  id: string,
+  body: {
+    category?: string;
+    subcategory?: string;
+    item?: string;
+    description?: string | null;
+  },
+  token: string,
+): Promise<TagListItem> {
+  const res = await fetchWithAuth(`tags/${id}`, {
+    token,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to update tag");
+  }
+  return res.json();
+}
+
+export async function deleteTag(id: string, token: string): Promise<void> {
+  const res = await fetchWithAuth(`tags/${id}`, {
+    token,
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to delete tag");
+  }
+}
+
+export type BulkDeleteTagsBody =
+  | {
+      mode: "tagIds";
+      tagIds: string[];
+      category?: string;
+      subcategory?: string;
+      search?: string;
+    }
+  | {
+      mode: "all";
+      excludeTagIds?: string[];
+      category?: string;
+      subcategory?: string;
+      search?: string;
+    };
+
+export async function bulkDeleteTags(
+  body: BulkDeleteTagsBody,
+  token: string,
+): Promise<{ deletedCount: number }> {
+  const res = await fetchWithAuth("tags/bulk-delete", {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to delete selected tags");
+  }
+  return res.json();
+}
+
+export async function importTags(
+  file: File,
+  token: string,
+): Promise<TagImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetchWithAuth("tags/import", {
+    token,
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to import tags");
   }
   return res.json();
 }
@@ -249,6 +411,29 @@ function withPaginationQuery(
   if (params.category) query.set("category", params.category);
   if (params.search?.trim()) query.set("search", params.search.trim());
   return `${path}?${query.toString()}`;
+}
+
+function withTagsQuery(
+  path: string,
+  params?: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    category?: string;
+    subcategory?: string;
+  },
+): string {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  if (params?.category?.trim()) query.set("category", params.category.trim());
+  if (params?.subcategory?.trim()) {
+    query.set("subcategory", params.subcategory.trim());
+  }
+
+  const queryString = query.toString();
+  return queryString ? `${path}?${queryString}` : path;
 }
 
 export type ShipListItem = {
@@ -490,9 +675,12 @@ export async function getManuals(
   token: string,
   params?: ManualPaginationParams,
 ): Promise<PaginatedListResult<ShipManualItem>> {
-  const res = await fetchWithAuth(withPaginationQuery(`ships/${shipId}/manuals`, params), {
-    token,
-  });
+  const res = await fetchWithAuth(
+    withPaginationQuery(`ships/${shipId}/manuals`, params),
+    {
+      token,
+    },
+  );
   if (!res.ok) throw new Error("Failed to fetch manuals");
   return res.json();
 }
