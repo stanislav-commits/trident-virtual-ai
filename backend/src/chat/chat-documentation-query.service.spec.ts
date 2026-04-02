@@ -214,7 +214,14 @@ describe('ChatDocumentationQueryService', () => {
         'what about now?',
         'how much total fuel was 5 days ago?',
       ),
-    ).toBe('how much total fuel was right now');
+    ).toBe('how much total fuel is right now');
+
+    expect(
+      service.buildRetrievalQuery(
+        'what about now?',
+        'how much total fuel was 5 days ago show all available',
+      ),
+    ).toBe('how much total fuel is right now');
   });
 
   it('normalizes short clarification replies that only select contact details', () => {

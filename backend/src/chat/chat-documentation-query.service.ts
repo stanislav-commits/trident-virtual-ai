@@ -206,7 +206,9 @@ export class ChatDocumentationQueryService {
       this.hasHistoricalTimeAnchor(normalizedPreviousUserQuery)
     ) {
       return this.composeTemporalContinuationQuery(
-        this.stripHistoricalContinuationTime(normalizedPreviousUserQuery),
+        this.normalizeCurrentTimeContinuationSubject(
+          normalizedPreviousUserQuery,
+        ),
         'right now',
       );
     }
@@ -1600,6 +1602,27 @@ export class ChatDocumentationQueryService {
       /^(?:what|how)\s+about\s+(?:right\s+)?now[?.!]*$/i.test(trimmed) ||
       /^(?:current|currently|right\s+now)[?.!]*$/i.test(trimmed)
     );
+  }
+
+  private normalizeCurrentTimeContinuationSubject(query: string): string {
+    return this.stripHistoricalContinuationTime(
+      this.stripFollowUpScopeScaffolding(query),
+    )
+      .replace(/\b(?:was|were)\b/gi, 'is')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private stripFollowUpScopeScaffolding(value: string): string {
+    return value
+      .replace(/\bshow all available\b/gi, ' ')
+      .replace(/\bfrom telemetry\b/gi, ' ')
+      .replace(/\bfrom documentation\b/gi, ' ')
+      .replace(/\bfrom certificates\b/gi, ' ')
+      .replace(/\bfrom regulations\b/gi, ' ')
+      .replace(/\bfrom history procedures\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private isTemporalRangeFollowUpQuery(query: string): boolean {
