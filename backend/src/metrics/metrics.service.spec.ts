@@ -1734,6 +1734,371 @@ describe('MetricsService historical telemetry', () => {
     expect(influxdb.queryHistoricalAggregate).toHaveBeenCalled();
   });
 
+  it('answers historical trend questions with start/end change semantics instead of raw sums', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            latestValue: 1150,
+            valueUpdatedAt: new Date('2026-04-02T20:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_1P',
+              description: 'Displays the volume of Fuel Tank 1P in trending data.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_1P',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            latestValue: 1400,
+            valueUpdatedAt: new Date('2026-04-02T20:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_2S',
+              description: 'Displays the volume of Fuel Tank 2S in trending data.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_2S',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalFirstLast: jest.fn().mockResolvedValue({
+        first: [
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_1P',
+            value: 1000,
+            time: '2026-03-31T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_2S',
+            value: 1200,
+            time: '2026-03-31T20:00:00.000Z',
+          },
+        ],
+        last: [
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_1P',
+            value: 1150,
+            time: '2026-04-02T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_2S',
+            value: 1400,
+            time: '2026-04-02T20:00:00.000Z',
+          },
+        ],
+      }),
+      queryHistoricalSeries: jest.fn().mockResolvedValue([
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_1P',
+          value: 1000,
+          time: '2026-03-31T20:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_2S',
+          value: 1200,
+          time: '2026-03-31T20:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_1P',
+          value: 1080,
+          time: '2026-04-01T20:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_2S',
+          value: 1300,
+          time: '2026-04-01T20:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_1P',
+          value: 1150,
+          time: '2026-04-02T20:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Fuel_Tank_2S',
+          value: 1400,
+          time: '2026-04-02T20:00:00.000Z',
+        },
+      ]),
+      queryHistoricalAggregate: jest.fn(),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'explain me total fuel trend for last 2 days',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain(
+      'the total across the matched metrics increased from 2,200 to 2,550 (+350) liters',
+    );
+    expect(result.content).toContain('sampled trend (1h resolution)');
+    expect(result.content).toContain('Net change by matched metric');
+    expect(result.content).not.toContain('sum across the matched metrics');
+    expect(influxdb.queryHistoricalAggregate).not.toHaveBeenCalled();
+    expect(influxdb.queryHistoricalSeries).toHaveBeenCalledWith(
+      [
+        'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+        'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+      ],
+      expect.any(Object),
+      'SeaWolfX',
+      expect.objectContaining({
+        windowEvery: '1h',
+      }),
+    );
+  });
+
+  it('falls back to a coarser historical trend window after a timeout', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            latestValue: 1410,
+            valueUpdatedAt: new Date('2026-04-02T20:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_1P',
+              description: 'Displays the volume of Fuel Tank 1P in trending data.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_1P',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            latestValue: 1400,
+            valueUpdatedAt: new Date('2026-04-02T20:00:00.000Z'),
+            metric: {
+              label: 'Tanks-Temperatures.Fuel_Tank_2S',
+              description: 'Displays the volume of Fuel Tank 2S in trending data.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: 'Fuel_Tank_2S',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalFirstLast: jest.fn().mockResolvedValue({
+        first: [
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_1P',
+            value: 1000,
+            time: '2026-03-26T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_2S',
+            value: 1200,
+            time: '2026-03-26T20:00:00.000Z',
+          },
+        ],
+        last: [
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_1P',
+            value: 1410,
+            time: '2026-04-02T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_2S',
+            value: 1400,
+            time: '2026-04-02T20:00:00.000Z',
+          },
+        ],
+      }),
+      queryHistoricalSeries: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('Request timed out'))
+        .mockResolvedValueOnce([
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_1P',
+            value: 1000,
+            time: '2026-03-26T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_2S',
+            value: 1200,
+            time: '2026-03-26T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_1P',
+            value: 1010,
+            time: '2026-03-30T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_2S',
+            value: 1210,
+            time: '2026-03-30T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_1P',
+            value: 1400,
+            time: '2026-04-01T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_2S',
+            value: 1400,
+            time: '2026-04-01T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_1P',
+            value: 1410,
+            time: '2026-04-02T20:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Fuel_Tank_2S',
+            value: 1400,
+            time: '2026-04-02T20:00:00.000Z',
+          },
+        ]),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'were there any sharp jumps in total fuel over the last 7 days?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('standout sampled interval change was observed');
+    expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
+      1,
+      [
+        'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+        'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+      ],
+      expect.any(Object),
+      'SeaWolfX',
+      expect.objectContaining({
+        windowEvery: '2h',
+      }),
+    );
+    expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
+      2,
+      [
+        'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+        'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+      ],
+      expect.any(Object),
+      'SeaWolfX',
+      expect.objectContaining({
+        windowEvery: '6h',
+      }),
+    );
+  });
+
   it('prefers direct generator load metrics over related speed metrics for historical averages', async () => {
     const prisma = {
       ship: {
@@ -2945,7 +3310,7 @@ describe('MetricsService historical telemetry', () => {
       'latest historical bunkering-like fuel increase',
     );
     expect(result.content).toContain('2026-03-24 08:20 UTC');
-    expect(influxdb.queryHistoricalSeries).toHaveBeenCalledTimes(2);
+    expect(influxdb.queryHistoricalSeries).toHaveBeenCalled();
     expect(influxdb.queryHistoricalSeries.mock.calls[0]?.[3]).toEqual({
       windowEvery: expect.any(String),
       windowMs: expect.any(Number),

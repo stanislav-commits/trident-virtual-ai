@@ -74,6 +74,7 @@ export type ChatNormalizedOperation =
   | 'min'
   | 'max'
   | 'sum'
+  | 'trend'
   | 'delta'
   | 'position'
   | 'event';

@@ -108,6 +108,34 @@ interface HistoricalPositiveTelemetryEvent {
   toValue: number;
 }
 
+interface HistoricalTrendDeltaEntry {
+  entry: ShipTelemetryEntry;
+  fromValue: number;
+  toValue: number;
+  delta: number;
+}
+
+interface HistoricalTrendSeriesPoint {
+  time: Date;
+  value: number;
+}
+
+interface HistoricalTrendJumpSummary {
+  fromTime: Date;
+  toTime: Date;
+  fromValue: number;
+  toValue: number;
+  delta: number;
+  standout: boolean;
+}
+
+interface HistoricalTrendSeriesSummary {
+  sampledEvery: string;
+  lowest: HistoricalTrendSeriesPoint;
+  highest: HistoricalTrendSeriesPoint;
+  largestJump: HistoricalTrendJumpSummary | null;
+}
+
 interface ParsedHistoricalTelemetryRequest {
   metricQuery: string;
   operation:
@@ -116,6 +144,7 @@ interface ParsedHistoricalTelemetryRequest {
     | 'min'
     | 'max'
     | 'sum'
+    | 'trend'
     | 'delta'
     | 'position'
     | 'event';
@@ -124,6 +153,7 @@ interface ParsedHistoricalTelemetryRequest {
   rangeLabel: string;
   clarificationQuestion?: string;
   eventType?: 'bunkering' | 'fuel_increase';
+  trendFocus?: 'general' | 'abrupt_change';
 }
 
 @Injectable()
@@ -1088,6 +1118,14 @@ export class MetricsService implements OnModuleInit {
       );
     }
 
+    if (effectiveOperation === 'trend') {
+      return this.buildHistoricalTrendAnswer(
+        matchedEntries,
+        organizationName,
+        request,
+      );
+    }
+
     if (request.pointInTime && effectiveOperation !== 'point') {
       return this.buildHistoricalPointAggregateAnswer(
         matchedEntries,
@@ -1725,6 +1763,396 @@ export class MetricsService implements OnModuleInit {
     ].join('\n');
   }
 
+  private async buildHistoricalTrendAnswer(
+    matchedEntries: ShipTelemetryEntry[],
+    organizationName: string,
+    request: ParsedHistoricalTelemetryRequest,
+  ): Promise<string | null> {
+    const boundary = await this.influxdb.queryHistoricalFirstLast(
+      matchedEntries.map((entry) => entry.key),
+      request.range,
+      organizationName,
+    );
+    const firstByKey = new Map(boundary.first.map((row) => [row.key, row]));
+    const lastByKey = new Map(boundary.last.map((row) => [row.key, row]));
+
+    const deltas = matchedEntries
+      .map((entry) => {
+        const fromValue = this.parseHistoricalNumericValue(
+          firstByKey.get(entry.key)?.value,
+        );
+        const toValue = this.parseHistoricalNumericValue(
+          lastByKey.get(entry.key)?.value,
+        );
+        if (fromValue == null || toValue == null) {
+          return null;
+        }
+
+        return {
+          entry,
+          fromValue,
+          toValue,
+          delta: toValue - fromValue,
+        };
+      })
+      .filter(
+        (
+          value,
+        ): value is HistoricalTrendDeltaEntry => Boolean(value),
+      );
+
+    if (deltas.length === 0) {
+      return null;
+    }
+
+    const unit = this.getConsistentHistoricalUnit(
+      deltas.map((item) => item.entry),
+    );
+    const unitSuffix = unit ? ` ${unit}` : '';
+    const aggregateStart =
+      deltas.length === 1
+        ? deltas[0].fromValue
+        : deltas.reduce((sum, item) => sum + item.fromValue, 0);
+    const aggregateEnd =
+      deltas.length === 1
+        ? deltas[0].toValue
+        : deltas.reduce((sum, item) => sum + item.toValue, 0);
+    const aggregateDelta = aggregateEnd - aggregateStart;
+    const aggregateLabel =
+      deltas.length === 1
+        ? this.buildTelemetrySuggestionLabel(deltas[0].entry)
+        : 'the total across the matched metrics';
+
+    const lines = deltas.map(
+      (item) =>
+        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.fromValue)}${unitSuffix} -> ${this.formatAggregateNumber(item.toValue)}${unitSuffix} (${this.formatSignedAggregateNumber(item.delta)}${unitSuffix})`,
+    );
+
+    let seriesSummary: HistoricalTrendSeriesSummary | null = null;
+    let seriesError: Error | null = null;
+    try {
+      seriesSummary = await this.buildHistoricalTrendSeriesSummary(
+        matchedEntries,
+        organizationName,
+        request,
+      );
+    } catch (error) {
+      seriesError = error instanceof Error ? error : new Error(String(error));
+      this.logger.warn(
+        `Historical trend series fallback failed. ${seriesError.message}`,
+      );
+    }
+
+    const output: string[] = [
+      `Based on historical telemetry from ${request.rangeLabel}, ${aggregateLabel} ${this.describeHistoricalTrendMovement(
+        aggregateStart,
+        aggregateEnd,
+        aggregateDelta,
+      )}${unitSuffix} [Telemetry History].`,
+    ];
+
+    if (seriesSummary) {
+      const rangeDelta = seriesSummary.highest.value - seriesSummary.lowest.value;
+      if (
+        !this.isNegligibleHistoricalChange(
+          rangeDelta,
+          seriesSummary.lowest.value,
+          seriesSummary.highest.value,
+        )
+      ) {
+        output.push(
+          '',
+          `In the sampled trend (${seriesSummary.sampledEvery} resolution), the lowest observed ${deltas.length === 1 ? 'value' : 'total'} was ${this.formatAggregateNumber(seriesSummary.lowest.value)}${unitSuffix} at ${this.formatHistoricalTimestamp(seriesSummary.lowest.time)}, and the highest was ${this.formatAggregateNumber(seriesSummary.highest.value)}${unitSuffix} at ${this.formatHistoricalTimestamp(seriesSummary.highest.time)}.`,
+        );
+      }
+
+      if (request.trendFocus === 'abrupt_change') {
+        output.push(
+          '',
+          this.buildHistoricalTrendJumpNarrative(
+            seriesSummary.largestJump,
+            unitSuffix,
+          ),
+        );
+      } else if (seriesSummary.largestJump?.standout) {
+        output.push(
+          '',
+          `The sharpest sampled interval move was ${this.formatSignedAggregateNumber(
+            seriesSummary.largestJump.delta,
+          )}${unitSuffix} between ${this.formatHistoricalTimestamp(
+            seriesSummary.largestJump.fromTime,
+          )} and ${this.formatHistoricalTimestamp(
+            seriesSummary.largestJump.toTime,
+          )}.`,
+        );
+      }
+    } else if (request.trendFocus === 'abrupt_change') {
+      output.push(
+        '',
+        seriesError
+          ? 'I could determine the net change over the requested period, but I could not safely inspect interval-by-interval jumps within the available historical sample.'
+          : 'I did not have enough sampled historical points to assess interval-by-interval jumps in that period.',
+      );
+    }
+
+    if (deltas.length > 1) {
+      output.push('', 'Net change by matched metric:', ...lines);
+    }
+
+    return output.join('\n');
+  }
+
+  private async buildHistoricalTrendSeriesSummary(
+    matchedEntries: ShipTelemetryEntry[],
+    organizationName: string,
+    request: ParsedHistoricalTelemetryRequest,
+  ): Promise<HistoricalTrendSeriesSummary | null> {
+    const { rows, selectedSeriesOptions } =
+      await this.queryHistoricalTrendSeriesWithFallback(
+        matchedEntries.map((entry) => entry.key),
+        request.range,
+        organizationName,
+      );
+    const points = this.buildHistoricalTrendSeriesPoints(rows, matchedEntries.length);
+    if (points.length < 2) {
+      return null;
+    }
+
+    const lowest = points.reduce((best, point) =>
+      point.value < best.value ? point : best,
+    );
+    const highest = points.reduce((best, point) =>
+      point.value > best.value ? point : best,
+    );
+
+    return {
+      sampledEvery: selectedSeriesOptions.windowEvery ?? 'sampled',
+      lowest,
+      highest,
+      largestJump: this.buildHistoricalTrendJumpSummary(points),
+    };
+  }
+
+  private getHistoricalTrendSeriesOptions(
+    range: InfluxHistoricalQueryRange,
+  ): Array<InfluxHistoricalSeriesOptions & { windowMs: number }> {
+    const durationMs = this.getHistoricalRangeDurationMs(range);
+    if (durationMs == null) {
+      return [{ windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 }];
+    }
+
+    if (durationMs <= 12 * 60 * 60 * 1000) {
+      return [
+        { windowEvery: '15m', windowMs: 15 * 60 * 1000 },
+        { windowEvery: '30m', windowMs: 30 * 60 * 1000 },
+      ];
+    }
+    if (durationMs <= 2 * 24 * 60 * 60 * 1000) {
+      return [
+        { windowEvery: '1h', windowMs: 60 * 60 * 1000 },
+        { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
+      ];
+    }
+    if (durationMs <= 7 * 24 * 60 * 60 * 1000) {
+      return [
+        { windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 },
+        { windowEvery: '6h', windowMs: 6 * 60 * 60 * 1000 },
+      ];
+    }
+    if (durationMs <= 30 * 24 * 60 * 60 * 1000) {
+      return [
+        { windowEvery: '12h', windowMs: 12 * 60 * 60 * 1000 },
+        { windowEvery: '1d', windowMs: 24 * 60 * 60 * 1000 },
+      ];
+    }
+    if (durationMs <= 120 * 24 * 60 * 60 * 1000) {
+      return [
+        { windowEvery: '1d', windowMs: 24 * 60 * 60 * 1000 },
+        { windowEvery: '3d', windowMs: 3 * 24 * 60 * 60 * 1000 },
+      ];
+    }
+
+    return [
+      { windowEvery: '3d', windowMs: 3 * 24 * 60 * 60 * 1000 },
+      { windowEvery: '7d', windowMs: 7 * 24 * 60 * 60 * 1000 },
+    ];
+  }
+
+  private async queryHistoricalTrendSeriesWithFallback(
+    seriesKeys: string[],
+    range: InfluxHistoricalQueryRange,
+    organizationName: string,
+  ): Promise<{
+    rows: InfluxMetricValue[];
+    selectedSeriesOptions: InfluxHistoricalSeriesOptions & { windowMs: number };
+  }> {
+    const candidates = this.getHistoricalTrendSeriesOptions(range);
+    let lastError: Error | null = null;
+
+    for (const candidate of candidates) {
+      try {
+        return {
+          rows: await this.influxdb.queryHistoricalSeries(
+            seriesKeys,
+            range,
+            organizationName,
+            candidate,
+          ),
+          selectedSeriesOptions: candidate,
+        };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.logger.warn(
+          `Historical trend series query failed for window=${candidate.windowEvery}. ${lastError.message}`,
+        );
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    throw new Error('No historical trend series options were available');
+  }
+
+  private buildHistoricalTrendSeriesPoints(
+    rows: InfluxMetricValue[],
+    matchedEntryCount: number,
+  ): HistoricalTrendSeriesPoint[] {
+    const grouped = new Map<
+      string,
+      HistoricalTrendSeriesPoint & { coverage: number }
+    >();
+
+    for (const row of rows) {
+      const numericValue = this.parseHistoricalNumericValue(row.value);
+      const pointTime = new Date(row.time);
+      if (numericValue == null || Number.isNaN(pointTime.getTime())) {
+        continue;
+      }
+
+      const key = pointTime.toISOString();
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.value += numericValue;
+        existing.coverage += 1;
+        continue;
+      }
+
+      grouped.set(key, {
+        time: pointTime,
+        value: numericValue,
+        coverage: 1,
+      });
+    }
+
+    let points = [...grouped.values()].filter(
+      (point) => matchedEntryCount <= 1 || point.coverage >= matchedEntryCount,
+    );
+    if (points.length < 2 && matchedEntryCount > 1) {
+      const partialCoverageThreshold = Math.max(
+        2,
+        Math.ceil(matchedEntryCount * 0.75),
+      );
+      points = [...grouped.values()].filter(
+        (point) => point.coverage >= partialCoverageThreshold,
+      );
+    }
+
+    return points
+      .sort((left, right) => left.time.getTime() - right.time.getTime())
+      .map((point) => ({
+        time: point.time,
+        value: point.value,
+      }));
+  }
+
+  private buildHistoricalTrendJumpSummary(
+    points: HistoricalTrendSeriesPoint[],
+  ): HistoricalTrendJumpSummary | null {
+    if (points.length < 2) {
+      return null;
+    }
+
+    const jumps = points
+      .slice(1)
+      .map((point, index) => ({
+        fromTime: points[index].time,
+        toTime: point.time,
+        fromValue: points[index].value,
+        toValue: point.value,
+        delta: point.value - points[index].value,
+      }))
+      .filter((jump) => Number.isFinite(jump.delta));
+
+    if (jumps.length === 0) {
+      return null;
+    }
+
+    const largestJump = jumps.reduce((best, jump) =>
+      Math.abs(jump.delta) > Math.abs(best.delta) ? jump : best,
+    );
+    const absoluteJumpSizes = jumps
+      .map((jump) => Math.abs(jump.delta))
+      .sort((left, right) => left - right);
+    const medianJumpSize = this.getMedianValue(absoluteJumpSizes);
+    const values = points.map((point) => point.value);
+    const observedRange = Math.max(...values) - Math.min(...values);
+    const standoutThreshold = Math.max(medianJumpSize * 3, observedRange * 0.35);
+
+    return {
+      ...largestJump,
+      standout:
+        Math.abs(largestJump.delta) > 0 &&
+        Math.abs(largestJump.delta) >= standoutThreshold,
+    };
+  }
+
+  private buildHistoricalTrendJumpNarrative(
+    jump: HistoricalTrendJumpSummary | null,
+    unitSuffix: string,
+  ): string {
+    if (!jump) {
+      return 'I did not have enough sampled historical points to identify interval-by-interval jumps in that period.';
+    }
+
+    if (jump.standout) {
+      return `A standout sampled interval change was observed between ${this.formatHistoricalTimestamp(
+        jump.fromTime,
+      )} and ${this.formatHistoricalTimestamp(jump.toTime)}, when the sampled reading moved from ${this.formatAggregateNumber(
+        jump.fromValue,
+      )}${unitSuffix} to ${this.formatAggregateNumber(
+        jump.toValue,
+      )}${unitSuffix} (${this.formatSignedAggregateNumber(jump.delta)}${unitSuffix}) [Telemetry History].`;
+    }
+
+    return `I did not find a clear standout abrupt change in the sampled trend. The largest sampled interval move was ${this.formatSignedAggregateNumber(
+      jump.delta,
+    )}${unitSuffix} between ${this.formatHistoricalTimestamp(
+      jump.fromTime,
+    )} and ${this.formatHistoricalTimestamp(jump.toTime)} [Telemetry History].`;
+  }
+
+  private describeHistoricalTrendMovement(
+    fromValue: number,
+    toValue: number,
+    delta: number,
+  ): string {
+    if (this.isNegligibleHistoricalChange(delta, fromValue, toValue)) {
+      return `remained broadly flat, moving from ${this.formatAggregateNumber(
+        fromValue,
+      )} to ${this.formatAggregateNumber(toValue)} (${this.formatSignedAggregateNumber(
+        delta,
+      )})`;
+    }
+
+    return `${delta >= 0 ? 'increased' : 'decreased'} from ${this.formatAggregateNumber(
+      fromValue,
+    )} to ${this.formatAggregateNumber(toValue)} (${this.formatSignedAggregateNumber(
+      delta,
+    )})`;
+  }
+
   private async buildHistoricalAggregateAnswer(
     matchedEntries: ShipTelemetryEntry[],
     organizationName: string,
@@ -1865,6 +2293,10 @@ export class MetricsService implements OnModuleInit {
       positionQuery,
       normalizedQuery,
     );
+    const trendFocus =
+      operation === 'trend'
+        ? this.detectHistoricalTrendFocus(searchSpace)
+        : undefined;
     const missingYearFragment = this.findHistoricalDateWithoutYear(searchSpace);
     if (missingYearFragment) {
       return {
@@ -1873,6 +2305,7 @@ export class MetricsService implements OnModuleInit {
         range: { start: new Date(), stop: new Date() },
         rangeLabel: '',
         clarificationQuestion: `Which year do you mean for ${missingYearFragment}?`,
+        ...(trendFocus ? { trendFocus } : {}),
       };
     }
 
@@ -1903,6 +2336,7 @@ export class MetricsService implements OnModuleInit {
           (/\b(bunkering|refill)\b/i.test(searchSpace)
             ? 'bunkering'
             : 'fuel_increase'),
+        ...(trendFocus ? { trendFocus } : {}),
       };
     }
 
@@ -1930,6 +2364,7 @@ export class MetricsService implements OnModuleInit {
           },
           pointInTime: relativePointInTime,
           rangeLabel: this.formatHistoricalTimestamp(relativePointInTime),
+          ...(trendFocus ? { trendFocus } : {}),
         };
       }
 
@@ -1960,6 +2395,7 @@ export class MetricsService implements OnModuleInit {
             operation === 'position'
               ? 'Please specify the exact time, or ask for a single day, for this historical position lookup.'
               : 'Please specify the exact time for this historical telemetry lookup.',
+          ...(trendFocus ? { trendFocus } : {}),
         };
       }
 
@@ -1993,6 +2429,7 @@ export class MetricsService implements OnModuleInit {
         },
         pointInTime,
         rangeLabel: this.formatHistoricalTimestamp(pointInTime),
+        ...(trendFocus ? { trendFocus } : {}),
       };
     }
 
@@ -2006,6 +2443,7 @@ export class MetricsService implements OnModuleInit {
         },
         pointInTime: relativePointInTime,
         rangeLabel: this.formatHistoricalTimestamp(relativePointInTime),
+        ...(trendFocus ? { trendFocus } : {}),
       };
     }
 
@@ -2016,6 +2454,7 @@ export class MetricsService implements OnModuleInit {
       operation,
       range,
       rangeLabel: this.formatHistoricalRange(range),
+      ...(trendFocus ? { trendFocus } : {}),
     };
   }
 
@@ -2037,6 +2476,7 @@ export class MetricsService implements OnModuleInit {
     | 'min'
     | 'max'
     | 'sum'
+    | 'trend'
     | 'delta'
     | 'position'
     | 'event' {
@@ -2046,6 +2486,10 @@ export class MetricsService implements OnModuleInit {
 
     if (normalizedQuery?.operation === 'event') {
       return 'event';
+    }
+
+    if (normalizedQuery?.operation === 'trend') {
+      return 'trend';
     }
 
     const normalized = this.normalizeTelemetryText(query);
@@ -2065,6 +2509,9 @@ export class MetricsService implements OnModuleInit {
     if (/\b(max|maximum|highest|peak|largest|greatest)\b/i.test(normalized)) {
       return 'max';
     }
+    if (this.isHistoricalTrendQuery(normalized)) {
+      return 'trend';
+    }
     if (
       /\b(used|consumed|consumption|difference|delta|increase|decrease)\b/i.test(
         normalized,
@@ -2077,6 +2524,33 @@ export class MetricsService implements OnModuleInit {
     }
 
     return 'point';
+  }
+
+  private isHistoricalTrendQuery(normalizedQuery: string): boolean {
+    return (
+      /\b(trend|trending|evolution|evolve|evolving|rise|rising|fall|falling|spike|spikes|jump|jumps|abrupt|abnormal|sudden)\b/i.test(
+        normalizedQuery,
+      ) ||
+      (/\b(change|changed|changes|changing)\b/i.test(normalizedQuery) &&
+        /\b(last|past|previous|over the last|history|historical)\b/i.test(
+          normalizedQuery,
+        ))
+    );
+  }
+
+  private detectHistoricalTrendFocus(
+    query: string,
+  ): 'general' | 'abrupt_change' {
+    const normalized = this.normalizeTelemetryText(query);
+    if (
+      /\b(spike|spikes|jump|jumps)\b/i.test(normalized) ||
+      (/\b(sharp|abrupt|abnormal|sudden)\b/i.test(normalized) &&
+        /\b(change|changes|movement|rise|drop|jump|spike)\b/i.test(normalized))
+    ) {
+      return 'abrupt_change';
+    }
+
+    return 'general';
   }
 
   private parseRelativeHistoricalRange(
@@ -2326,7 +2800,10 @@ export class MetricsService implements OnModuleInit {
         /\b(?:last|past|previous|over the last|today|yesterday|this week|last week|this month|last month|between|from|to|on|at|during|for)\b/gi,
         ' ',
       )
-      .replace(/\b(?:what|was|were|is|the|please|show|give|tell|me)\b/gi, ' ')
+      .replace(
+        /\b(?:what|was|were|is|the|please|show|give|tell|me|how|did|explain|trend|trending|history|historical|change|changed|changes|changing|sharp|abrupt|abnormal|sudden|jump|jumps|spike|spikes)\b/gi,
+        ' ',
+      )
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -2663,6 +3140,39 @@ export class MetricsService implements OnModuleInit {
           minimumFractionDigits: 0,
           maximumFractionDigits: 2,
         });
+  }
+
+  private formatSignedAggregateNumber(value: number): string {
+    const formatted = this.formatAggregateNumber(Math.abs(value));
+    if (value > 0) {
+      return `+${formatted}`;
+    }
+    if (value < 0) {
+      return `-${formatted}`;
+    }
+    return formatted;
+  }
+
+  private isNegligibleHistoricalChange(
+    delta: number,
+    fromValue: number,
+    toValue: number,
+  ): boolean {
+    const scale = Math.max(Math.abs(fromValue), Math.abs(toValue), 1);
+    return Math.abs(delta) <= scale * 0.005;
+  }
+
+  private getMedianValue(values: number[]): number {
+    if (values.length === 0) {
+      return 0;
+    }
+
+    const middle = Math.floor(values.length / 2);
+    if (values.length % 2 === 1) {
+      return values[middle];
+    }
+
+    return (values[middle - 1] + values[middle]) / 2;
   }
 
   private toTelemetryMap(

@@ -45,6 +45,22 @@ describe('ChatQueryNormalizationService', () => {
     expect(increase.timeIntent.eventType).toBe('fuel_increase');
   });
 
+  it('detects change-over-time telemetry questions as trend operations instead of sums', () => {
+    const trend = service.normalizeTurn({
+      userQuery: 'explain me total fuel trend for last 7 days',
+    });
+    const abrupt = service.normalizeTurn({
+      userQuery: 'were there any sharp jumps in bilge level over the last week?',
+    });
+
+    expect(trend.operation).toBe('trend');
+    expect(trend.timeIntent.kind).toBe('historical_range');
+    expect(trend.sourceHints).toContain('TELEMETRY');
+    expect(abrupt.operation).toBe('trend');
+    expect(abrupt.timeIntent.kind).toBe('historical_range');
+    expect(abrupt.sourceHints).toContain('TELEMETRY');
+  });
+
   it('attaches a time-only reply to the active historical clarification state', () => {
     const normalized = service.normalizeTurn({
       userQuery: '12:00 UTC',

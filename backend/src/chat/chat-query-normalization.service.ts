@@ -122,6 +122,18 @@ export class ChatQueryNormalizationService {
     }
 
     if (
+      /\b(trend|trending|evolution|evolve|evolving|rise|rising|fall|falling|spike|spikes|jump|jumps|abrupt|abnormal|sudden)\b/i.test(
+        normalized,
+      ) ||
+      (/\b(change|changed|changes|changing)\b/i.test(normalized) &&
+        /\b(last|past|previous|over the last|history|historical)\b/i.test(
+          normalized,
+        ))
+    ) {
+      return 'trend';
+    }
+
+    if (
       /\b(used|consumed|consumption|difference|delta|increase|decrease)\b/i.test(
         normalized,
       )
@@ -228,7 +240,7 @@ export class ChatQueryNormalizationService {
     };
 
     if (
-      /\b(telemetry|metric|metrics|tank|fuel|oil|coolant|temperature|pressure|voltage|load|rpm|runtime|hours?|position|latitude|longitude|location|coordinates?|gps|lat|lon)\b/i.test(
+      /\b(telemetry|metric|metrics|tank|fuel|oil|coolant|temperature|pressure|voltage|load|level|bilge|rpm|runtime|hours?|position|latitude|longitude|location|coordinates?|gps|lat|lon)\b/i.test(
         normalized,
       )
     ) {
