@@ -7,6 +7,7 @@ import { MetricsModule } from './metrics/metrics.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ShipsModule } from './ships/ships.module';
 import { SystemPromptModule } from './system-prompt/system-prompt.module';
+import { TagsModule } from './tags/tags.module';
 import { UsersModule } from './users/users.module';
 import { ChatModule } from './chat/chat.module';
 
@@ -19,6 +20,7 @@ import { ChatModule } from './chat/chat.module';
     ShipsModule,
     MetricsModule,
     SystemPromptModule,
+    TagsModule,
     ChatModule,
   ],
   controllers: [AppController],
