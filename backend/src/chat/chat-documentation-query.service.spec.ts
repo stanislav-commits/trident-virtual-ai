@@ -192,6 +192,31 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe('vessel dpa contact email');
   });
 
+  it('preserves the previous historical time anchor for completeness follow-ups', () => {
+    expect(
+      service.buildRetrievalQuery(
+        'you missed 3 tanks',
+        'how much total fuel was 5 days ago?',
+      ),
+    ).toBe('how much total fuel was 5 days ago show all available');
+
+    expect(
+      service.buildRetrievalQuery(
+        'show all available',
+        'how much total fuel was yesterday?',
+      ),
+    ).toBe('how much total fuel was yesterday show all available');
+  });
+
+  it('rewrites explicit current-time follow-ups onto the previous historical subject', () => {
+    expect(
+      service.buildRetrievalQuery(
+        'what about now?',
+        'how much total fuel was 5 days ago?',
+      ),
+    ).toBe('how much total fuel was right now');
+  });
+
   it('normalizes short clarification replies that only select contact details', () => {
     const pendingClarificationQuery = 'emergency dpa contacts';
     const userReply = 'yes, contact details';

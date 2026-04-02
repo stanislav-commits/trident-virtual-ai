@@ -250,6 +250,61 @@ describe('ChatQueryNormalizationService', () => {
     expect(normalized.sourceHints).toContain('TELEMETRY');
   });
 
+  it('preserves historical time anchors for completeness follow-ups after telemetry aggregates', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'you missed 3 tanks',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'how much total fuel was 5 days ago?',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-28 09:47 UTC, the total was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'how much total fuel was 5 days ago?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toContain('5 days ago');
+    expect(normalized.retrievalQuery).toContain('show all available');
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.timeIntent.relativeAmount).toBe(5);
+    expect(normalized.timeIntent.relativeUnit).toBe('day');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).toContain('HISTORY');
+  });
+
+  it('lets an explicit current-time follow-up override the previous historical anchor', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what about now?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'how much total fuel was 5 days ago?',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-28 09:47 UTC, the total was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'how much total fuel was 5 days ago?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toContain('fuel');
+    expect(normalized.retrievalQuery).toContain('right now');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+  });
+
   it('does not leak a previous historical time intent into a current coordinate question', () => {
     const normalized = service.normalizeTurn({
       userQuery: 'what lon and lat is now?',

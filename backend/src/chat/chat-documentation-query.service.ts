@@ -200,6 +200,17 @@ export class ChatDocumentationQueryService {
       );
     }
 
+    if (
+      normalizedPreviousUserQuery &&
+      this.isExplicitCurrentTimeFollowUpQuery(trimmed) &&
+      this.hasHistoricalTimeAnchor(normalizedPreviousUserQuery)
+    ) {
+      return this.composeTemporalContinuationQuery(
+        this.stripHistoricalContinuationTime(normalizedPreviousUserQuery),
+        'right now',
+      );
+    }
+
     const normalizedPersonnelQuery =
       this.buildPersonnelDirectoryRetrievalQuery(trimmed);
     if (normalizedPersonnelQuery) {
@@ -234,12 +245,13 @@ export class ChatDocumentationQueryService {
       return trimmed;
     }
 
-    const followUpSubject = this.extractFollowUpSubject(
-      normalizedPreviousUserQuery,
-    );
-    if (!followUpSubject) return trimmed;
-
     const normalizedFollowUp = this.normalizeInheritedFollowUpQuery(trimmed);
+    const followUpSubject = this.resolveInheritedFollowUpSubject({
+      previousUserQuery: normalizedPreviousUserQuery,
+      currentUserQuery: trimmed,
+      completenessFollowUp,
+    });
+    if (!followUpSubject) return trimmed;
     return this.mergeFollowUpSubjectAndReply(
       followUpSubject,
       normalizedFollowUp || trimmed,
@@ -1518,6 +1530,78 @@ export class ChatDocumentationQueryService {
     return 'show all available';
   }
 
+  private resolveInheritedFollowUpSubject(params: {
+    previousUserQuery: string;
+    currentUserQuery: string;
+    completenessFollowUp: boolean;
+  }): string | null {
+    const { previousUserQuery, currentUserQuery, completenessFollowUp } = params;
+
+    if (
+      this.shouldReusePreviousHistoricalQueryForCompletenessFollowUp(
+        previousUserQuery,
+        currentUserQuery,
+        completenessFollowUp,
+      )
+    ) {
+      return this.normalizeInheritedFollowUpSubjectBase(previousUserQuery);
+    }
+
+    return this.extractFollowUpSubject(previousUserQuery);
+  }
+
+  private shouldReusePreviousHistoricalQueryForCompletenessFollowUp(
+    previousUserQuery: string,
+    currentUserQuery: string,
+    completenessFollowUp: boolean,
+  ): boolean {
+    return (
+      completenessFollowUp &&
+      this.hasHistoricalTimeAnchor(previousUserQuery) &&
+      !this.hasExplicitTimeOverride(currentUserQuery)
+    );
+  }
+
+  private normalizeInheritedFollowUpSubjectBase(query: string): string {
+    return query.trim().replace(/[?!.]+$/g, '').replace(/\s+/g, ' ');
+  }
+
+  private hasHistoricalTimeAnchor(query: string): boolean {
+    return (
+      Boolean(this.extractHistoricalAbsoluteDateForContinuation(query)) ||
+      /\b\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b/i.test(
+        query,
+      ) ||
+      /\b(?:last|past|previous)\s+\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\b/i.test(
+        query,
+      ) ||
+      /\b(?:yesterday|last\s+week|last\s+month|last\s+year)\b/i.test(query)
+    );
+  }
+
+  private hasExplicitTimeOverride(query: string): boolean {
+    return (
+      this.isTemporalRangeFollowUpQuery(query) ||
+      /\b(?:now|right\s+now|current|currently|today|this\s+week|this\s+month|this\s+year)\b/i.test(
+        query,
+      )
+    );
+  }
+
+  private isExplicitCurrentTimeFollowUpQuery(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed || this.isSelfContainedSubjectQuery(trimmed)) {
+      return false;
+    }
+
+    return (
+      /^(?:what|how)\s+about\s+now[?.!]*$/i.test(trimmed) ||
+      /^(?:and\s+)?now[?.!]*$/i.test(trimmed) ||
+      /^(?:what|how)\s+about\s+(?:right\s+)?now[?.!]*$/i.test(trimmed) ||
+      /^(?:current|currently|right\s+now)[?.!]*$/i.test(trimmed)
+    );
+  }
+
   private isTemporalRangeFollowUpQuery(query: string): boolean {
     return (
       /\b(?:based on|for|using)\b[\s\S]{0,40}\b(last|past|previous|this)\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\b/i.test(
@@ -1616,6 +1700,7 @@ export class ChatDocumentationQueryService {
 
   private stripHistoricalContinuationTime(value: string): string {
     return value
+      .replace(/[?!.]+/g, ' ')
       .replace(
         /\b(?:based on|for|using)\b[\s\S]{0,40}\b(last|past|previous|this)\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\b/gi,
         ' ',
