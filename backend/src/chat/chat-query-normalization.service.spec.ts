@@ -300,6 +300,7 @@ describe('ChatQueryNormalizationService', () => {
 
     expect(normalized.followUpMode).toBe('follow_up');
     expect(normalized.retrievalQuery).toContain('fuel');
+    expect(normalized.retrievalQuery).toContain('tanks');
     expect(normalized.retrievalQuery).toContain('right now');
     expect(normalized.retrievalQuery).not.toContain('show all available');
     expect(normalized.timeIntent.kind).toBe('current');

@@ -1605,12 +1605,14 @@ export class ChatDocumentationQueryService {
   }
 
   private normalizeCurrentTimeContinuationSubject(query: string): string {
-    return this.stripHistoricalContinuationTime(
+    const normalized = this.stripHistoricalContinuationTime(
       this.stripFollowUpScopeScaffolding(query),
     )
       .replace(/\b(?:was|were)\b/gi, 'is')
       .replace(/\s+/g, ' ')
       .trim();
+
+    return this.ensureAggregateStoredFluidTankContext(normalized);
   }
 
   private stripFollowUpScopeScaffolding(value: string): string {
@@ -1623,6 +1625,30 @@ export class ChatDocumentationQueryService {
       .replace(/\bfrom history procedures\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private ensureAggregateStoredFluidTankContext(query: string): string {
+    if (!query) {
+      return query;
+    }
+
+    const asksForQuantity =
+      /\b(how much|how many|total|sum|overall|combined|together|calculate)\b/i.test(
+        query,
+      ) || /\b(onboard|remaining|left|available)\b/i.test(query);
+    if (!asksForQuantity) {
+      return query;
+    }
+
+    if (!/\b(fuel|oil|water|coolant|def|urea)\b/i.test(query)) {
+      return query;
+    }
+
+    if (/\b(tank|tanks|onboard)\b/i.test(query)) {
+      return query;
+    }
+
+    return `${query} in the tanks`.replace(/\s+/g, ' ').trim();
   }
 
   private isTemporalRangeFollowUpQuery(query: string): boolean {
