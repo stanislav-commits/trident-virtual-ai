@@ -2010,6 +2010,130 @@ describe('MetricsService historical telemetry', () => {
     );
   });
 
+  it('keeps dedicated fuel tanks in historical totals even when descriptions look temperature-like', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          ...[
+            ['1P', 3950, 'Fuel tank quantity.'],
+            ['2S', 3896, 'Fuel tank quantity.'],
+            ['3P', 452, 'Fuel tank quantity.'],
+            ['4S', 370, 'Fuel tank quantity.'],
+            ['5P', 799, 'Fuel tank quantity.'],
+            ['6S', 932, 'Temperature reading for Fuel Tank 6S.'],
+            ['7P', 1295, 'Temperature reading for Fuel Tank 7P.'],
+            ['8S', 1297, 'Temperature reading for Fuel Tank 8S.'],
+          ].map(([suffix, latestValue, description]) => ({
+            metricKey: `Trending::Tanks-Temperatures::Fuel_Tank_${suffix}`,
+            latestValue,
+            valueUpdatedAt: new Date('2026-04-02T09:00:00.000Z'),
+            metric: {
+              label: `Tanks-Temperatures.Fuel_Tank_${suffix}`,
+              description,
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'Tanks-Temperatures',
+              field: `Fuel_Tank_${suffix}`,
+              dataType: 'numeric',
+            },
+          })),
+          {
+            metricKey: 'Trending::SIEMENS-MASE-GENSET-SB::Total Fuel Used (l)',
+            latestValue: 35581,
+            valueUpdatedAt: new Date('2026-04-02T09:00:00.000Z'),
+            metric: {
+              label: 'SIEMENS-MASE-GENSET-SB.Total Fuel Used (l)',
+              description: 'Displays total fuel used by the starboard genset.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'SIEMENS-MASE-GENSET-SB',
+              field: 'Total Fuel Used (l)',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey:
+              'Trending::PORT-FUEL-OIL-TRANSFER-PUMP::RMS phase to neutral Voltage B-N',
+            latestValue: 0,
+            valueUpdatedAt: new Date('2026-04-02T09:00:00.000Z'),
+            metric: {
+              label: 'PORT-FUEL-OIL-TRANSFER-PUMP.RMS phase to neutral Voltage B-N',
+              description: 'Pump voltage reading.',
+              unit: null,
+              bucket: 'Trending',
+              measurement: 'PORT-FUEL-OIL-TRANSFER-PUMP',
+              field: 'RMS phase to neutral Voltage B-N',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalNearestValues: jest.fn().mockResolvedValue([
+        ['1P', 3950],
+        ['2S', 3896],
+        ['3P', 452],
+        ['4S', 370],
+        ['5P', 799],
+        ['6S', 932],
+        ['7P', 1295],
+        ['8S', 1297],
+      ].map(([suffix, value]) => ({
+        key: `Trending::Tanks-Temperatures::Fuel_Tank_${suffix}`,
+        bucket: 'Trending',
+        measurement: 'Tanks-Temperatures',
+        field: `Fuel_Tank_${suffix}`,
+        value,
+        time: '2026-03-28T09:47:00.000Z',
+      }))),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'How much total fuel was 5 days ago?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalledWith(
+      [
+        'Trending::Tanks-Temperatures::Fuel_Tank_1P',
+        'Trending::Tanks-Temperatures::Fuel_Tank_2S',
+        'Trending::Tanks-Temperatures::Fuel_Tank_3P',
+        'Trending::Tanks-Temperatures::Fuel_Tank_4S',
+        'Trending::Tanks-Temperatures::Fuel_Tank_5P',
+        'Trending::Tanks-Temperatures::Fuel_Tank_6S',
+        'Trending::Tanks-Temperatures::Fuel_Tank_7P',
+        'Trending::Tanks-Temperatures::Fuel_Tank_8S',
+      ],
+      expect.any(Date),
+      'SeaWolfX',
+    );
+    expect(result.content).toContain('12,991');
+    expect(result.content).toContain('Tanks-Temperatures.Fuel_Tank_6S');
+    expect(result.content).toContain('Tanks-Temperatures.Fuel_Tank_7P');
+    expect(result.content).toContain('Tanks-Temperatures.Fuel_Tank_8S');
+    expect(result.content).not.toContain('Total Fuel Used');
+    expect(result.content).not.toContain('Voltage');
+  });
+
   it('does not turn forecast-planning fuel questions into point-in-time historical clarifications', async () => {
     const prisma = {
       ship: {

@@ -1026,7 +1026,9 @@ export class MetricsService implements OnModuleInit {
     }
 
     return entries
-      .filter((entry) => this.isHistoricalTankStorageEntry(entry, 'fuel'))
+      .filter((entry) =>
+        this.isHistoricalAggregateTankStorageEntry(entry, 'fuel'),
+      )
       .sort((left, right) => {
         const tankRank =
           this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
@@ -2817,7 +2819,7 @@ export class MetricsService implements OnModuleInit {
     const selected = entries
       .filter((entry) =>
         options?.strictDedicatedTankStorage
-          ? this.isHistoricalTankStorageEntry(entry, fluid)
+          ? this.isHistoricalAggregateTankStorageEntry(entry, fluid)
           : this.isDirectTankStorageEntry(entry, fluid),
       )
       .sort((left, right) => {
@@ -4304,6 +4306,27 @@ export class MetricsService implements OnModuleInit {
     );
   }
 
+  private isHistoricalAggregateTankStorageEntry(
+    entry: ShipTelemetryEntry,
+    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+  ): boolean {
+    if (!this.isDirectTankStorageEntry(entry, fluid)) {
+      return false;
+    }
+
+    if (!this.isDedicatedTankTemperatureEntry(entry)) {
+      return true;
+    }
+
+    // Historical tank totals should trust dedicated tank identity more than
+    // noisy semantic descriptions that occasionally mislabel quantity fields
+    // as temperature-like.
+    return (
+      this.isDedicatedTankStorageField(entry, fluid) &&
+      this.isLikelyHistoricalTankQuantityEntry(entry)
+    );
+  }
+
   private isDedicatedTankTemperatureEntry(entry: ShipTelemetryEntry): boolean {
     const semanticText = this.normalizeTelemetryText(
       [
@@ -4326,6 +4349,33 @@ export class MetricsService implements OnModuleInit {
       );
 
     return indicatesTemperature && !indicatesQuantity;
+  }
+
+  private isLikelyHistoricalTankQuantityEntry(entry: ShipTelemetryEntry): boolean {
+    const displayUnit = this.getTelemetryDisplayUnit(entry);
+    if (displayUnit === 'liters' || displayUnit === '%') {
+      return true;
+    }
+
+    const numericValue =
+      typeof entry.value === 'number'
+        ? entry.value
+        : typeof entry.value === 'string'
+          ? Number.parseFloat(entry.value)
+          : null;
+    if (numericValue != null && Number.isFinite(numericValue)) {
+      // Dedicated tank temperatures rarely reach triple digits, while noisy
+      // quantity fields mislabeled as temperature often still carry tank-volume
+      // magnitudes in the hundreds or thousands.
+      if (Math.abs(numericValue) >= 100) {
+        return true;
+      }
+    }
+
+    const semanticText = this.normalizeTelemetryText(entry.description ?? '');
+    return /\b(level|quantity|volume|contents?|capacity|liter|litre|percent|percentage|onboard)\b/i.test(
+      semanticText,
+    );
   }
 
   private getTelemetryTankOrder(entry: ShipTelemetryEntry): number {
