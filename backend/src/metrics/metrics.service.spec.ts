@@ -1777,44 +1777,7 @@ describe('MetricsService historical telemetry', () => {
 
     const influxdb = {
       isConfigured: jest.fn().mockReturnValue(true),
-      queryHistoricalFirstLast: jest.fn().mockResolvedValue({
-        first: [
-          {
-            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
-            bucket: 'Trending',
-            measurement: 'Tanks-Temperatures',
-            field: 'Fuel_Tank_1P',
-            value: 1000,
-            time: '2026-03-31T20:00:00.000Z',
-          },
-          {
-            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
-            bucket: 'Trending',
-            measurement: 'Tanks-Temperatures',
-            field: 'Fuel_Tank_2S',
-            value: 1200,
-            time: '2026-03-31T20:00:00.000Z',
-          },
-        ],
-        last: [
-          {
-            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
-            bucket: 'Trending',
-            measurement: 'Tanks-Temperatures',
-            field: 'Fuel_Tank_1P',
-            value: 1150,
-            time: '2026-04-02T20:00:00.000Z',
-          },
-          {
-            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
-            bucket: 'Trending',
-            measurement: 'Tanks-Temperatures',
-            field: 'Fuel_Tank_2S',
-            value: 1400,
-            time: '2026-04-02T20:00:00.000Z',
-          },
-        ],
-      }),
+      queryHistoricalFirstLast: jest.fn(),
       queryHistoricalSeries: jest.fn().mockResolvedValue([
         {
           key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
@@ -1891,6 +1854,7 @@ describe('MetricsService historical telemetry', () => {
     expect(result.content).toContain('Net change by matched metric');
     expect(result.content).not.toContain('sum across the matched metrics');
     expect(influxdb.queryHistoricalAggregate).not.toHaveBeenCalled();
+    expect(influxdb.queryHistoricalFirstLast).not.toHaveBeenCalled();
     expect(influxdb.queryHistoricalSeries).toHaveBeenCalledWith(
       [
         'Trending::Tanks-Temperatures::Fuel_Tank_1P',
@@ -1947,44 +1911,7 @@ describe('MetricsService historical telemetry', () => {
 
     const influxdb = {
       isConfigured: jest.fn().mockReturnValue(true),
-      queryHistoricalFirstLast: jest.fn().mockResolvedValue({
-        first: [
-          {
-            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
-            bucket: 'Trending',
-            measurement: 'Tanks-Temperatures',
-            field: 'Fuel_Tank_1P',
-            value: 1000,
-            time: '2026-03-26T20:00:00.000Z',
-          },
-          {
-            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
-            bucket: 'Trending',
-            measurement: 'Tanks-Temperatures',
-            field: 'Fuel_Tank_2S',
-            value: 1200,
-            time: '2026-03-26T20:00:00.000Z',
-          },
-        ],
-        last: [
-          {
-            key: 'Trending::Tanks-Temperatures::Fuel_Tank_1P',
-            bucket: 'Trending',
-            measurement: 'Tanks-Temperatures',
-            field: 'Fuel_Tank_1P',
-            value: 1410,
-            time: '2026-04-02T20:00:00.000Z',
-          },
-          {
-            key: 'Trending::Tanks-Temperatures::Fuel_Tank_2S',
-            bucket: 'Trending',
-            measurement: 'Tanks-Temperatures',
-            field: 'Fuel_Tank_2S',
-            value: 1400,
-            time: '2026-04-02T20:00:00.000Z',
-          },
-        ],
-      }),
+      queryHistoricalFirstLast: jest.fn(),
       queryHistoricalSeries: jest
         .fn()
         .mockRejectedValueOnce(new Error('Request timed out'))
@@ -2073,6 +2000,7 @@ describe('MetricsService historical telemetry', () => {
 
     expect(result.kind).toBe('answer');
     expect(result.content).toContain('standout sampled interval change was observed');
+    expect(influxdb.queryHistoricalFirstLast).not.toHaveBeenCalled();
     expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
       1,
       [

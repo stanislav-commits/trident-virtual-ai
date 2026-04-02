@@ -49,6 +49,9 @@ describe('ChatQueryNormalizationService', () => {
     const trend = service.normalizeTurn({
       userQuery: 'explain me total fuel trend for last 7 days',
     });
+    const difference = service.normalizeTurn({
+      userQuery: 'what was the difference in total fuel over the last 7 days?',
+    });
     const abrupt = service.normalizeTurn({
       userQuery: 'were there any sharp jumps in bilge level over the last week?',
     });
@@ -56,6 +59,9 @@ describe('ChatQueryNormalizationService', () => {
     expect(trend.operation).toBe('trend');
     expect(trend.timeIntent.kind).toBe('historical_range');
     expect(trend.sourceHints).toContain('TELEMETRY');
+    expect(difference.operation).toBe('trend');
+    expect(difference.timeIntent.kind).toBe('historical_range');
+    expect(difference.sourceHints).toContain('TELEMETRY');
     expect(abrupt.operation).toBe('trend');
     expect(abrupt.timeIntent.kind).toBe('historical_range');
     expect(abrupt.sourceHints).toContain('TELEMETRY');

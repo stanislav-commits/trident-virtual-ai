@@ -122,10 +122,12 @@ export class ChatQueryNormalizationService {
     }
 
     if (
-      /\b(trend|trending|evolution|evolve|evolving|rise|rising|fall|falling|spike|spikes|jump|jumps|abrupt|abnormal|sudden)\b/i.test(
+      /\b(trend|trending|evolution|evolve|evolving|rise|rising|fall|falling|spike|spikes|jump|jumps|abrupt|abnormal|sudden|difference|different|diff|movement|moving)\b/i.test(
         normalized,
       ) ||
-      (/\b(change|changed|changes|changing)\b/i.test(normalized) &&
+      (/\b(change|changed|changes|changing|difference|different|diff|movement|moving)\b/i.test(
+        normalized,
+      ) &&
         /\b(last|past|previous|over the last|history|historical)\b/i.test(
           normalized,
         ))

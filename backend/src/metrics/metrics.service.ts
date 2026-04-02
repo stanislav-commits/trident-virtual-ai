@@ -131,8 +131,12 @@ interface HistoricalTrendJumpSummary {
 
 interface HistoricalTrendSeriesSummary {
   sampledEvery: string;
-  lowest: HistoricalTrendSeriesPoint;
-  highest: HistoricalTrendSeriesPoint;
+  aggregateStart: number;
+  aggregateEnd: number;
+  aggregateDelta: number;
+  deltas: HistoricalTrendDeltaEntry[];
+  lowest: HistoricalTrendSeriesPoint | null;
+  highest: HistoricalTrendSeriesPoint | null;
   largestJump: HistoricalTrendJumpSummary | null;
 }
 
@@ -1768,66 +1772,6 @@ export class MetricsService implements OnModuleInit {
     organizationName: string,
     request: ParsedHistoricalTelemetryRequest,
   ): Promise<string | null> {
-    const boundary = await this.influxdb.queryHistoricalFirstLast(
-      matchedEntries.map((entry) => entry.key),
-      request.range,
-      organizationName,
-    );
-    const firstByKey = new Map(boundary.first.map((row) => [row.key, row]));
-    const lastByKey = new Map(boundary.last.map((row) => [row.key, row]));
-
-    const deltas = matchedEntries
-      .map((entry) => {
-        const fromValue = this.parseHistoricalNumericValue(
-          firstByKey.get(entry.key)?.value,
-        );
-        const toValue = this.parseHistoricalNumericValue(
-          lastByKey.get(entry.key)?.value,
-        );
-        if (fromValue == null || toValue == null) {
-          return null;
-        }
-
-        return {
-          entry,
-          fromValue,
-          toValue,
-          delta: toValue - fromValue,
-        };
-      })
-      .filter(
-        (
-          value,
-        ): value is HistoricalTrendDeltaEntry => Boolean(value),
-      );
-
-    if (deltas.length === 0) {
-      return null;
-    }
-
-    const unit = this.getConsistentHistoricalUnit(
-      deltas.map((item) => item.entry),
-    );
-    const unitSuffix = unit ? ` ${unit}` : '';
-    const aggregateStart =
-      deltas.length === 1
-        ? deltas[0].fromValue
-        : deltas.reduce((sum, item) => sum + item.fromValue, 0);
-    const aggregateEnd =
-      deltas.length === 1
-        ? deltas[0].toValue
-        : deltas.reduce((sum, item) => sum + item.toValue, 0);
-    const aggregateDelta = aggregateEnd - aggregateStart;
-    const aggregateLabel =
-      deltas.length === 1
-        ? this.buildTelemetrySuggestionLabel(deltas[0].entry)
-        : 'the total across the matched metrics';
-
-    const lines = deltas.map(
-      (item) =>
-        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.fromValue)}${unitSuffix} -> ${this.formatAggregateNumber(item.toValue)}${unitSuffix} (${this.formatSignedAggregateNumber(item.delta)}${unitSuffix})`,
-    );
-
     let seriesSummary: HistoricalTrendSeriesSummary | null = null;
     let seriesError: Error | null = null;
     try {
@@ -1843,15 +1787,38 @@ export class MetricsService implements OnModuleInit {
       );
     }
 
+    if (!seriesSummary) {
+      if (seriesError) {
+        if (this.isHistoricalQueryTimeout(seriesError)) {
+          return [
+            `I found matching historical telemetry metrics for ${request.rangeLabel}, but the sampled trend query timed out before a reliable series could be assembled.`,
+            '',
+            'Try a shorter period or narrow the request to fewer metrics if you need a more detailed trend breakdown.',
+          ].join('\n');
+        }
+
+        throw seriesError;
+      }
+
+      return 'I found matching historical telemetry metrics for that period, but not enough sampled points to describe a trend over time.';
+    }
+
+    const unit = this.getConsistentHistoricalUnit(matchedEntries);
+    const unitSuffix = unit ? ` ${unit}` : '';
+    const aggregateLabel =
+      matchedEntries.length === 1
+        ? this.buildTelemetrySuggestionLabel(matchedEntries[0])
+        : 'the total across the matched metrics';
+
     const output: string[] = [
-      `Based on historical telemetry from ${request.rangeLabel}, ${aggregateLabel} ${this.describeHistoricalTrendMovement(
-        aggregateStart,
-        aggregateEnd,
-        aggregateDelta,
+      `Based on historical telemetry sampled every ${seriesSummary.sampledEvery} from ${request.rangeLabel}, ${aggregateLabel} ${this.describeHistoricalTrendMovement(
+        seriesSummary.aggregateStart,
+        seriesSummary.aggregateEnd,
+        seriesSummary.aggregateDelta,
       )}${unitSuffix} [Telemetry History].`,
     ];
 
-    if (seriesSummary) {
+    if (seriesSummary.lowest && seriesSummary.highest) {
       const rangeDelta = seriesSummary.highest.value - seriesSummary.lowest.value;
       if (
         !this.isNegligibleHistoricalChange(
@@ -1862,41 +1829,44 @@ export class MetricsService implements OnModuleInit {
       ) {
         output.push(
           '',
-          `In the sampled trend (${seriesSummary.sampledEvery} resolution), the lowest observed ${deltas.length === 1 ? 'value' : 'total'} was ${this.formatAggregateNumber(seriesSummary.lowest.value)}${unitSuffix} at ${this.formatHistoricalTimestamp(seriesSummary.lowest.time)}, and the highest was ${this.formatAggregateNumber(seriesSummary.highest.value)}${unitSuffix} at ${this.formatHistoricalTimestamp(seriesSummary.highest.time)}.`,
+          `In the sampled trend (${seriesSummary.sampledEvery} resolution), the lowest observed ${matchedEntries.length === 1 ? 'value' : 'total'} was ${this.formatAggregateNumber(seriesSummary.lowest.value)}${unitSuffix} at ${this.formatHistoricalTimestamp(seriesSummary.lowest.time)}, and the highest was ${this.formatAggregateNumber(seriesSummary.highest.value)}${unitSuffix} at ${this.formatHistoricalTimestamp(seriesSummary.highest.time)}.`,
         );
       }
+    }
 
-      if (request.trendFocus === 'abrupt_change') {
-        output.push(
-          '',
-          this.buildHistoricalTrendJumpNarrative(
-            seriesSummary.largestJump,
-            unitSuffix,
-          ),
-        );
-      } else if (seriesSummary.largestJump?.standout) {
-        output.push(
-          '',
-          `The sharpest sampled interval move was ${this.formatSignedAggregateNumber(
-            seriesSummary.largestJump.delta,
-          )}${unitSuffix} between ${this.formatHistoricalTimestamp(
-            seriesSummary.largestJump.fromTime,
-          )} and ${this.formatHistoricalTimestamp(
-            seriesSummary.largestJump.toTime,
-          )}.`,
-        );
-      }
-    } else if (request.trendFocus === 'abrupt_change') {
+    if (request.trendFocus === 'abrupt_change') {
       output.push(
         '',
-        seriesError
-          ? 'I could determine the net change over the requested period, but I could not safely inspect interval-by-interval jumps within the available historical sample.'
-          : 'I did not have enough sampled historical points to assess interval-by-interval jumps in that period.',
+        this.buildHistoricalTrendJumpNarrative(
+          seriesSummary.largestJump,
+          unitSuffix,
+        ),
+      );
+    } else if (seriesSummary.largestJump?.standout) {
+      output.push(
+        '',
+        `The sharpest sampled interval move was ${this.formatSignedAggregateNumber(
+          seriesSummary.largestJump.delta,
+        )}${unitSuffix} between ${this.formatHistoricalTimestamp(
+          seriesSummary.largestJump.fromTime,
+        )} and ${this.formatHistoricalTimestamp(
+          seriesSummary.largestJump.toTime,
+        )}.`,
       );
     }
 
-    if (deltas.length > 1) {
-      output.push('', 'Net change by matched metric:', ...lines);
+    if (seriesSummary.deltas.length > 1) {
+      const lines = seriesSummary.deltas.map(
+        (item) =>
+          `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.fromValue)}${unitSuffix} -> ${this.formatAggregateNumber(item.toValue)}${unitSuffix} (${this.formatSignedAggregateNumber(item.delta)}${unitSuffix})`,
+      );
+      output.push(
+        '',
+        seriesSummary.deltas.length === matchedEntries.length
+          ? 'Net change by matched metric:'
+          : 'Net change by matched metric (where sampled start and end values were available):',
+        ...lines,
+      );
     }
 
     return output.join('\n');
@@ -1913,23 +1883,50 @@ export class MetricsService implements OnModuleInit {
         request.range,
         organizationName,
       );
+    const deltas = this.buildHistoricalTrendSampledDeltas(rows, matchedEntries);
     const points = this.buildHistoricalTrendSeriesPoints(rows, matchedEntries.length);
-    if (points.length < 2) {
+    if (
+      points.length < 2 &&
+      (matchedEntries.length > 1 || deltas.length === 0)
+    ) {
       return null;
     }
 
-    const lowest = points.reduce((best, point) =>
-      point.value < best.value ? point : best,
-    );
-    const highest = points.reduce((best, point) =>
-      point.value > best.value ? point : best,
-    );
+    const aggregateStart =
+      points.length >= 2
+        ? points[0].value
+        : deltas.length === 1
+          ? deltas[0].fromValue
+          : deltas.reduce((sum, item) => sum + item.fromValue, 0);
+    const aggregateEnd =
+      points.length >= 2
+        ? points[points.length - 1].value
+        : deltas.length === 1
+          ? deltas[0].toValue
+          : deltas.reduce((sum, item) => sum + item.toValue, 0);
+    const lowest =
+      points.length >= 2
+        ? points.reduce((best, point) =>
+            point.value < best.value ? point : best,
+          )
+        : null;
+    const highest =
+      points.length >= 2
+        ? points.reduce((best, point) =>
+            point.value > best.value ? point : best,
+          )
+        : null;
 
     return {
       sampledEvery: selectedSeriesOptions.windowEvery ?? 'sampled',
+      aggregateStart,
+      aggregateEnd,
+      aggregateDelta: aggregateEnd - aggregateStart,
+      deltas,
       lowest,
       highest,
-      largestJump: this.buildHistoricalTrendJumpSummary(points),
+      largestJump:
+        points.length >= 2 ? this.buildHistoricalTrendJumpSummary(points) : null,
     };
   }
 
@@ -2065,6 +2062,58 @@ export class MetricsService implements OnModuleInit {
         time: point.time,
         value: point.value,
       }));
+  }
+
+  private buildHistoricalTrendSampledDeltas(
+    rows: InfluxMetricValue[],
+    matchedEntries: ShipTelemetryEntry[],
+  ): HistoricalTrendDeltaEntry[] {
+    const rowsByKey = new Map<
+      string,
+      Array<{
+        time: Date;
+        value: number;
+      }>
+    >();
+
+    for (const row of rows) {
+      const numericValue = this.parseHistoricalNumericValue(row.value);
+      const pointTime = new Date(row.time);
+      if (numericValue == null || Number.isNaN(pointTime.getTime())) {
+        continue;
+      }
+
+      const existing = rowsByKey.get(row.key);
+      if (existing) {
+        existing.push({ time: pointTime, value: numericValue });
+        continue;
+      }
+
+      rowsByKey.set(row.key, [{ time: pointTime, value: numericValue }]);
+    }
+
+    return matchedEntries
+      .map((entry) => {
+        const series = rowsByKey.get(entry.key);
+        if (!series || series.length < 2) {
+          return null;
+        }
+
+        series.sort((left, right) => left.time.getTime() - right.time.getTime());
+        const first = series[0];
+        const last = series[series.length - 1];
+        return {
+          entry,
+          fromValue: first.value,
+          toValue: last.value,
+          delta: last.value - first.value,
+        };
+      })
+      .filter(
+        (
+          value,
+        ): value is HistoricalTrendDeltaEntry => Boolean(value),
+      );
   }
 
   private buildHistoricalTrendJumpSummary(
@@ -2528,10 +2577,10 @@ export class MetricsService implements OnModuleInit {
 
   private isHistoricalTrendQuery(normalizedQuery: string): boolean {
     return (
-      /\b(trend|trending|evolution|evolve|evolving|rise|rising|fall|falling|spike|spikes|jump|jumps|abrupt|abnormal|sudden)\b/i.test(
+      /\b(trend|trending|evolution|evolve|evolving|rise|rising|fall|falling|spike|spikes|jump|jumps|abrupt|abnormal|sudden|difference|different|diff|movement|moving)\b/i.test(
         normalizedQuery,
       ) ||
-      (/\b(change|changed|changes|changing)\b/i.test(normalizedQuery) &&
+      (/\b(change|changed|changes|changing|difference|different|diff|movement|moving)\b/i.test(normalizedQuery) &&
         /\b(last|past|previous|over the last|history|historical)\b/i.test(
           normalizedQuery,
         ))
@@ -2792,6 +2841,10 @@ export class MetricsService implements OnModuleInit {
       .replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ')
       .replace(/\b\d{4}\b/g, ' ')
       .replace(
+        /\b\d+\s+(?:hour|hours|day|days|week|weeks|month|months)\b/gi,
+        ' ',
+      )
+      .replace(
         /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/gi,
         ' ',
       )
@@ -2801,9 +2854,10 @@ export class MetricsService implements OnModuleInit {
         ' ',
       )
       .replace(
-        /\b(?:what|was|were|is|the|please|show|give|tell|me|how|did|explain|trend|trending|history|historical|change|changed|changes|changing|sharp|abrupt|abnormal|sudden|jump|jumps|spike|spikes)\b/gi,
+        /\b(?:what|was|were|is|the|please|show|give|tell|me|how|did|explain|there|any|trend|trending|history|historical|change|changed|changes|changing|difference|different|diff|movement|moving|sharp|abrupt|abnormal|sudden|jump|jumps|spike|spikes)\b/gi,
         ' ',
       )
+      .replace(/[?!,.:;()]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -2865,6 +2919,14 @@ export class MetricsService implements OnModuleInit {
     }
 
     return null;
+  }
+
+  private isHistoricalQueryTimeout(error: Error): boolean {
+    const haystack = `${error.name} ${error.message}`;
+    return (
+      /RequestTimedOutError/i.test(haystack) ||
+      /\brequest timed out\b/i.test(haystack)
+    );
   }
 
   private extractHistoricalCoordinatePair(rows: InfluxMetricValue[]): {
