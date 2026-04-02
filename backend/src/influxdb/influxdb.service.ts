@@ -230,12 +230,7 @@ export class InfluxdbService {
           metrics,
           this.latestValuesBatchSize,
         )) {
-          const fieldFilter =
-            metricsBatch.length === 1
-              ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
-              : `contains(value: r._field, set: [${metricsBatch
-                  .map((metric) => this.toFluxString(metric.field))
-                  .join(', ')}])`;
+          const fieldFilter = this.buildFieldFilter(metricsBatch);
 
           const flux = [
             `from(bucket: ${this.toFluxString(bucket)})`,
@@ -305,12 +300,7 @@ export class InfluxdbService {
           metrics,
           this.latestValuesBatchSize,
         )) {
-          const fieldFilter =
-            metricsBatch.length === 1
-              ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
-              : `contains(value: r._field, set: [${metricsBatch
-                  .map((metric) => this.toFluxString(metric.field))
-                  .join(', ')}])`;
+          const fieldFilter = this.buildFieldFilter(metricsBatch);
 
           const flux = [
             `from(bucket: ${this.toFluxString(bucket)})`,
@@ -464,12 +454,7 @@ export class InfluxdbService {
           metrics,
           this.latestValuesBatchSize,
         )) {
-          const fieldFilter =
-            metricsBatch.length === 1
-              ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
-              : `contains(value: r._field, set: [${metricsBatch
-                  .map((metric) => this.toFluxString(metric.field))
-                  .join(', ')}])`;
+          const fieldFilter = this.buildFieldFilter(metricsBatch);
 
           const flux = [
             `from(bucket: ${this.toFluxString(bucket)})`,
@@ -541,12 +526,7 @@ export class InfluxdbService {
           metrics,
           this.latestValuesBatchSize,
         )) {
-          const fieldFilter =
-            metricsBatch.length === 1
-              ? `r._field == ${this.toFluxString(metricsBatch[0].field)}`
-              : `contains(value: r._field, set: [${metricsBatch
-                  .map((metric) => this.toFluxString(metric.field))
-                  .join(', ')}])`;
+          const fieldFilter = this.buildFieldFilter(metricsBatch);
 
           const flux = [
             `from(bucket: ${this.toFluxString(bucket)})`,
@@ -605,6 +585,20 @@ export class InfluxdbService {
       });
       /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
     });
+  }
+
+  private buildFieldFilter(
+    metricsBatch: Array<{
+      field: string;
+    }>,
+  ): string {
+    if (metricsBatch.length === 1) {
+      return `r._field == ${this.toFluxString(metricsBatch[0].field)}`;
+    }
+
+    return `(${metricsBatch
+      .map((metric) => `r._field == ${this.toFluxString(metric.field)}`)
+      .join(' or ')})`;
   }
 
   private async requestJson<T>(
