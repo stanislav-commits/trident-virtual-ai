@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Res,
   UploadedFile,
@@ -18,6 +19,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ReplaceTagLinksDto } from '../tags/dto/replace-tag-links.dto';
 import { CreateShipDto } from './dto/create-ship.dto';
 import { BulkRemoveManualsDto } from './dto/bulk-remove-manuals.dto';
 import { UpdateManualDto } from './dto/update-manual.dto';
@@ -121,6 +123,11 @@ export class ShipsController {
     return this.manualsService.findOne(id, manualId);
   }
 
+  @Get(':id/manuals/:manualId/tags')
+  listManualTags(@Param('id') id: string, @Param('manualId') manualId: string) {
+    return this.manualsService.listTags(id, manualId);
+  }
+
   @Patch(':id/manuals/:manualId')
   updateManual(
     @Param('id') id: string,
@@ -133,6 +140,19 @@ export class ShipsController {
   @Delete(':id/manuals/:manualId')
   removeManual(@Param('id') id: string, @Param('manualId') manualId: string) {
     return this.manualsService.remove(id, manualId);
+  }
+
+  @Put(':id/manuals/:manualId/tags')
+  replaceManualTags(
+    @Param('id') id: string,
+    @Param('manualId') manualId: string,
+    @Body() dto: ReplaceTagLinksDto,
+  ) {
+    return this.manualsService.replaceTags(
+      id,
+      manualId,
+      dto.tagId === undefined || dto.tagId === null ? dto.tagIds : [dto.tagId],
+    );
   }
 
   @Post(':id/manuals/bulk-delete')
