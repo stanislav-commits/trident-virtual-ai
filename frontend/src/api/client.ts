@@ -54,6 +54,15 @@ export type TagListItem = {
   manualLinksCount: number;
 };
 
+export type TagOption = {
+  id: string;
+  key: string;
+  category: string;
+  subcategory: string;
+  item: string;
+  description: string | null;
+};
+
 export type TagImportResult = {
   sourceEntries: number;
   uniqueTags: number;
@@ -61,6 +70,23 @@ export type TagImportResult = {
   updated: number;
   warnings: string[];
   warningCount: number;
+};
+
+export type RebuildTagLinksResult = {
+  scope: "all" | "metrics" | "manuals";
+  replaceExisting: boolean;
+  metrics: {
+    processed: number;
+    linked: number;
+    untouched: number;
+    cleared: number;
+  };
+  manuals: {
+    processed: number;
+    linked: number;
+    untouched: number;
+    cleared: number;
+  };
 };
 
 export type TagListFiltersMeta = {
@@ -130,6 +156,12 @@ export async function getTags(
 ): Promise<TagListResult> {
   const res = await fetchWithAuth(withTagsQuery("tags", params), { token });
   if (!res.ok) throw new Error("Failed to fetch tags");
+  return res.json();
+}
+
+export async function getTagOptions(token: string): Promise<TagOption[]> {
+  const res = await fetchWithAuth("tags/options", { token });
+  if (!res.ok) throw new Error("Failed to fetch tag options");
   return res.json();
 }
 
@@ -240,6 +272,27 @@ export async function importTags(
   return res.json();
 }
 
+export async function rebuildTagLinks(
+  token: string,
+  body?: {
+    scope?: "all" | "metrics" | "manuals";
+    shipId?: string;
+    replaceExisting?: boolean;
+  },
+): Promise<RebuildTagLinksResult> {
+  const res = await fetchWithAuth("tags/rebuild-links", {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to rebuild tag links");
+  }
+  return res.json();
+}
+
 export type UserListItem = {
   id: string;
   userId: string;
@@ -327,6 +380,7 @@ export type MetricDefinitionItem = {
   label: string;
   description: string | null;
   unit: string | null;
+  tag: TagOption | null;
   dataType: string;
   bucket?: string | null;
   measurement?: string | null;
@@ -528,6 +582,38 @@ export async function updateMetric(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to update metric");
+  }
+  return res.json();
+}
+
+export async function getMetricTags(
+  key: string,
+  token: string,
+): Promise<TagOption[]> {
+  const res = await fetchWithAuth(`metrics/${encodeURIComponent(key)}/tags`, {
+    token,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to fetch metric tags");
+  }
+  return res.json();
+}
+
+export async function replaceMetricTags(
+  key: string,
+  tagIds: string[],
+  token: string,
+): Promise<TagOption[]> {
+  const res = await fetchWithAuth(`metrics/${encodeURIComponent(key)}/tags`, {
+    token,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tagIds }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to update metric tags");
   }
   return res.json();
 }
@@ -760,6 +846,40 @@ export async function updateManual(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to update manual");
+  }
+  return res.json();
+}
+
+export async function getManualTags(
+  shipId: string,
+  manualId: string,
+  token: string,
+): Promise<TagOption[]> {
+  const res = await fetchWithAuth(`ships/${shipId}/manuals/${manualId}/tags`, {
+    token,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to fetch manual tags");
+  }
+  return res.json();
+}
+
+export async function replaceManualTags(
+  shipId: string,
+  manualId: string,
+  tagIds: string[],
+  token: string,
+): Promise<TagOption[]> {
+  const res = await fetchWithAuth(`ships/${shipId}/manuals/${manualId}/tags`, {
+    token,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tagIds }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to update manual tags");
   }
   return res.json();
 }
