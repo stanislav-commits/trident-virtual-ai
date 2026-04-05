@@ -6,7 +6,9 @@ import {
   deleteTag,
   getTags,
   importTags,
+  rebuildTagLinks,
   type PaginationMeta,
+  type RebuildTagLinksResult,
   type TagImportResult,
   type TagListFiltersMeta,
   type TagListItem,
@@ -201,6 +203,10 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<TagImportResult | null>(null);
+  const [rebuildResult, setRebuildResult] = useState<RebuildTagLinksResult | null>(
+    null,
+  );
+  const [rebuildingLinks, setRebuildingLinks] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [allTagsSelected, setAllTagsSelected] = useState(false);
@@ -569,6 +575,28 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
     }
   };
 
+  const handleRebuildLinks = async () => {
+    if (!token || rebuildingLinks) {
+      return;
+    }
+
+    setRebuildingLinks(true);
+    onError("");
+
+    try {
+      const result = await rebuildTagLinks(token, { scope: "all" });
+      setRebuildResult(result);
+      clearSelection();
+      await loadTagsPage(page, pageSize, currentQuery);
+    } catch (err) {
+      onError(
+        err instanceof Error ? err.message : "Failed to link untagged items",
+      );
+    } finally {
+      setRebuildingLinks(false);
+    }
+  };
+
   return (
     <>
       <section className="admin-panel__section">
@@ -587,6 +615,14 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
           </div>
 
           <div className="admin-panel__tags-actions">
+            <button
+              type="button"
+              className="admin-panel__btn admin-panel__btn--ghost"
+              onClick={() => void handleRebuildLinks()}
+              disabled={rebuildingLinks}
+            >
+              {rebuildingLinks ? "Linking..." : "Link untagged items"}
+            </button>
             <button
               type="button"
               className="admin-panel__btn admin-panel__btn--ghost"
@@ -699,6 +735,52 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
             </button>
           )}
         </div>
+
+        {rebuildResult && (
+          <div className="admin-panel__tags-result-box">
+            <div className="admin-panel__tags-list-copy">
+              <span className="admin-panel__tags-list-title">
+                Auto-link refresh completed
+              </span>
+              <span className="admin-panel__muted">
+                Missing metric and manual links were matched against the current
+                taxonomy. Existing assignments were preserved.
+              </span>
+            </div>
+
+            <div className="admin-panel__tags-result-grid">
+              <article className="admin-panel__tags-result-card">
+                <span className="admin-panel__tags-result-label">
+                  Metrics linked
+                </span>
+                <strong className="admin-panel__tags-result-value">
+                  {rebuildResult.metrics.linked.toLocaleString()} /{" "}
+                  {rebuildResult.metrics.processed.toLocaleString()}
+                </strong>
+              </article>
+              <article className="admin-panel__tags-result-card">
+                <span className="admin-panel__tags-result-label">
+                  Manuals linked
+                </span>
+                <strong className="admin-panel__tags-result-value">
+                  {rebuildResult.manuals.linked.toLocaleString()} /{" "}
+                  {rebuildResult.manuals.processed.toLocaleString()}
+                </strong>
+              </article>
+              <article className="admin-panel__tags-result-card">
+                <span className="admin-panel__tags-result-label">
+                  Left untouched
+                </span>
+                <strong className="admin-panel__tags-result-value">
+                  {(
+                    rebuildResult.metrics.untouched +
+                    rebuildResult.manuals.untouched
+                  ).toLocaleString()}
+                </strong>
+              </article>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="admin-panel__state-box">
