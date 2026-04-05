@@ -4,13 +4,19 @@ import type {
   ShipListItem,
   ShipMetricsConfigItem,
 } from "../../api/client";
-import { updateMetric, updateShipMetricActivity } from "../../api/client";
+import {
+  getMetricTags,
+  replaceMetricTags,
+  updateMetric,
+  updateShipMetricActivity,
+} from "../../api/client";
 import {
   ChevronDownIcon,
   MetricsIcon,
   SearchIcon,
   XIcon,
 } from "./AdminPanelIcons";
+import { TagLinksEditorModal } from "./TagLinksEditorModal";
 
 const ROW_BATCH_SIZE = 120;
 
@@ -132,6 +138,10 @@ export function MetricsModal({
   const [bucketSearch, setBucketSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(ROW_BATCH_SIZE);
   const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [tagEditingKey, setTagEditingKey] = useState<string | null>(null);
+  const [tagOverrides, setTagOverrides] = useState<
+    Record<string, MetricDefinitionItem["tag"] | undefined>
+  >({});
   const [editDesc, setEditDesc] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingActivity, setSavingActivity] = useState(false);
@@ -183,6 +193,10 @@ export function MetricsModal({
         .map((config) => {
           const definition = definitionMap.get(config.metricKey);
           const parsed = parseMetricKey(config.metricKey);
+          const hasTagOverride = Object.prototype.hasOwnProperty.call(
+            tagOverrides,
+            config.metricKey,
+          );
           return {
             key: config.metricKey,
             isActive: draftActivity[config.metricKey] ?? config.isActive,
@@ -190,7 +204,9 @@ export function MetricsModal({
             measurement: definition?.measurement ?? parsed.measurement,
             field: definition?.field ?? parsed.field,
             description: definition?.description ?? null,
-            unit: definition?.unit ?? null,
+            tag: hasTagOverride
+              ? tagOverrides[config.metricKey] ?? null
+              : definition?.tag ?? null,
           };
         })
         .sort(
@@ -199,7 +215,7 @@ export function MetricsModal({
             left.measurement.localeCompare(right.measurement) ||
             left.field.localeCompare(right.field),
         ),
-    [definitionMap, draftActivity, metricsConfig],
+    [definitionMap, draftActivity, metricsConfig, tagOverrides],
   );
 
   const searchRows = useMemo(() => {
@@ -212,6 +228,11 @@ export function MetricsModal({
         row.bucket.toLowerCase().includes(deferredSearch) ||
         row.measurement.toLowerCase().includes(deferredSearch) ||
         row.field.toLowerCase().includes(deferredSearch) ||
+        (row.tag?.key.toLowerCase().includes(deferredSearch) ?? false) ||
+        (row.tag?.category.toLowerCase().includes(deferredSearch) ?? false) ||
+        (row.tag?.subcategory.toLowerCase().includes(deferredSearch) ??
+          false) ||
+        (row.tag?.item.toLowerCase().includes(deferredSearch) ?? false) ||
         (row.description?.toLowerCase().includes(deferredSearch) ?? false)
       );
     });
@@ -833,7 +854,7 @@ export function MetricsModal({
                           </th>
                           <th className="admin-panel__th">Measurement</th>
                           <th className="admin-panel__th">Field</th>
-                          <th className="admin-panel__th">Unit</th>
+                          <th className="admin-panel__th">Tag</th>
                           <th className="admin-panel__th">Description</th>
                           <th className="admin-panel__th">Action</th>
                         </tr>
@@ -863,24 +884,44 @@ export function MetricsModal({
                             </td>
                             <td className="admin-panel__td">{row.field}</td>
                             <td className="admin-panel__td admin-panel__td--muted">
-                              {row.unit ?? "-"}
+                              {row.tag ? (
+                                <span
+                                  className="admin-panel__tag-link-pill"
+                                  title={row.tag.key}
+                                >
+                                  <span className="admin-panel__tag-key">
+                                    {row.tag.key}
+                                  </span>
+                                </span>
+                              ) : (
+                                "No tag"
+                              )}
                             </td>
                             <td className="admin-panel__td admin-panel__td--muted">
                               <div className="admin-panel__metric-description-text">
                                 {row.description ?? "Pending"}
                               </div>
                             </td>
-                            <td className="admin-panel__td">
-                              <button
-                                type="button"
-                                className="admin-panel__btn admin-panel__btn--ghost"
-                                onClick={() => {
-                                  setEditingKey(row.key);
-                                  setEditDesc(row.description ?? "");
-                                }}
-                              >
-                                Edit
-                              </button>
+                            <td className="admin-panel__td admin-panel__td--metric-actions">
+                              <div className="admin-panel__actions admin-panel__actions--metric-row">
+                                <button
+                                  type="button"
+                                  className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                                  onClick={() => {
+                                    setEditingKey(row.key);
+                                    setEditDesc(row.description ?? "");
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                                  onClick={() => setTagEditingKey(row.key)}
+                                >
+                                  Tags
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1004,6 +1045,30 @@ export function MetricsModal({
             </div>
           </div>
         </div>
+      )}
+
+      {tagEditingKey && (
+        <TagLinksEditorModal
+          token={token}
+          title="Edit metric tag"
+          entityLabel={tagEditingKey}
+          onClose={() => setTagEditingKey(null)}
+          onError={onError}
+          loadSelectedTags={() => getMetricTags(tagEditingKey, token ?? "")}
+          saveSelectedTags={async (tagIds) => {
+            const selected = await replaceMetricTags(
+              tagEditingKey,
+              tagIds,
+              token ?? "",
+            );
+            setTagOverrides((current) => ({
+              ...current,
+              [tagEditingKey]: selected[0] ?? null,
+            }));
+            onDefinitionsChanged?.();
+            return selected;
+          }}
+        />
       )}
     </div>
   );
