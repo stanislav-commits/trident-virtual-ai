@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -15,10 +16,20 @@ import {
   InfluxdbService,
 } from '../influxdb/influxdb.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TagLinksService } from '../tags/tag-links.service';
 import { CreateMetricDefinitionDto } from './dto/create-metric-definition.dto';
 import { MetricDescriptionService } from './metric-description.service';
 import { UpdateMetricDefinitionDto } from './dto/update-metric-definition.dto';
 import type { ChatNormalizedQuery } from '../chat/chat.types';
+
+const TAG_SUMMARY_SELECT = {
+  id: true,
+  key: true,
+  category: true,
+  subcategory: true,
+  item: true,
+  description: true,
+} as const;
 
 const METRIC_SELECT = {
   key: true,
@@ -33,7 +44,18 @@ const METRIC_SELECT = {
   status: true,
   dataType: true,
   createdAt: true,
-};
+  tags: {
+    take: 1,
+    orderBy: {
+      tag: { key: 'asc' },
+    },
+    select: {
+      tag: {
+        select: TAG_SUMMARY_SELECT,
+      },
+    },
+  },
+} as const;
 
 interface SyncShipMetricsOptions {
   metrics?: InfluxMetric[];
@@ -176,6 +198,7 @@ export class MetricsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly influxdb: InfluxdbService,
     private readonly metricDescriptions: MetricDescriptionService,
+    @Optional() private readonly tagLinks?: TagLinksService,
   ) {}
 
   onModuleInit() {
@@ -461,10 +484,12 @@ export class MetricsService implements OnModuleInit {
   }
 
   async findAll() {
-    return this.prisma.metricDefinition.findMany({
+    const metrics = await this.prisma.metricDefinition.findMany({
       orderBy: { key: 'asc' },
       select: METRIC_SELECT,
     });
+
+    return metrics.map((metric) => this.serializeMetricDefinition(metric));
   }
 
   async getLatestValues(keys: string[]): Promise<InfluxMetricValue[]> {
@@ -485,7 +510,13 @@ export class MetricsService implements OnModuleInit {
     resolvedSubjectQuery?: string,
   ): Promise<ShipTelemetryContext> {
     const entries = await this.loadShipTelemetryEntries(shipId);
-    if (!entries.length) {
+    const scopedEntries = await this.applyTagPrefilterToEntries(
+      shipId,
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (!scopedEntries.length) {
       return {
         telemetry: {},
         totalActiveMetrics: 0,
@@ -502,14 +533,14 @@ export class MetricsService implements OnModuleInit {
     );
     if (telemetryListRequest?.mode === 'sample') {
       const sampleSelection = this.pickTelemetrySampleEntries(
-        entries,
+        scopedEntries,
         query,
         resolvedSubjectQuery,
         telemetryListRequest.limit ?? 10,
       );
       return {
         telemetry: this.toTelemetryMap(sampleSelection.entries),
-        totalActiveMetrics: entries.length,
+        totalActiveMetrics: scopedEntries.length,
         matchedMetrics: sampleSelection.totalMatches,
         prefiltered: true,
         matchMode: 'sample',
@@ -518,14 +549,14 @@ export class MetricsService implements OnModuleInit {
     }
 
     const broadTankClarificationEntries = this.findBroadTankClarificationEntries(
-      entries,
+      scopedEntries,
       query,
       resolvedSubjectQuery,
     );
     if (broadTankClarificationEntries) {
       return {
         telemetry: this.toTelemetryMap(broadTankClarificationEntries),
-        totalActiveMetrics: entries.length,
+        totalActiveMetrics: scopedEntries.length,
         matchedMetrics: broadTankClarificationEntries.length,
         prefiltered: true,
         matchMode: 'related',
@@ -540,7 +571,7 @@ export class MetricsService implements OnModuleInit {
     }
 
     const matchedEntries = this.findRelevantTelemetryEntries(
-      entries,
+      scopedEntries,
       query,
       resolvedSubjectQuery,
       { limitResults: telemetryListRequest?.mode !== 'full' },
@@ -562,7 +593,7 @@ export class MetricsService implements OnModuleInit {
       const matchMode = forcedClarificationReason ? 'related' : baseMatchMode;
       return {
         telemetry: this.toTelemetryMap(matchedEntries),
-        totalActiveMetrics: entries.length,
+        totalActiveMetrics: scopedEntries.length,
         matchedMetrics: matchedEntries.length,
         prefiltered: true,
         matchMode,
@@ -581,7 +612,7 @@ export class MetricsService implements OnModuleInit {
     );
     if (this.hasStrictTelemetryContext(normalizedSearchSpace)) {
       const fallbackEntries = this.findTelemetryFallbackEntries(
-        entries,
+        scopedEntries,
         query,
         resolvedSubjectQuery,
       );
@@ -589,7 +620,7 @@ export class MetricsService implements OnModuleInit {
 
       return {
         telemetry: this.toTelemetryMap(fallbackEntries),
-        totalActiveMetrics: entries.length,
+        totalActiveMetrics: scopedEntries.length,
         matchedMetrics: fallbackEntries.length,
         prefiltered: fallbackEntries.length > 0,
         matchMode: fallbackMatchMode,
@@ -607,10 +638,10 @@ export class MetricsService implements OnModuleInit {
 
     // Preserve current behaviour for small ships while avoiding massive prompt
     // dumps when thousands of metrics are active.
-    if (entries.length <= 25) {
+    if (scopedEntries.length <= 25) {
       return {
-        telemetry: this.toTelemetryMap(entries),
-        totalActiveMetrics: entries.length,
+        telemetry: this.toTelemetryMap(scopedEntries),
+        totalActiveMetrics: scopedEntries.length,
         matchedMetrics: 0,
         prefiltered: false,
         matchMode: 'none',
@@ -619,7 +650,7 @@ export class MetricsService implements OnModuleInit {
     }
 
     const fallbackEntries = this.findTelemetryFallbackEntries(
-      entries,
+      scopedEntries,
       query,
       resolvedSubjectQuery,
     );
@@ -627,7 +658,7 @@ export class MetricsService implements OnModuleInit {
     const fallbackMatchMode = fallbackEntries.length > 0 ? 'related' : 'none';
     return {
       telemetry: this.toTelemetryMap(fallbackEntries),
-      totalActiveMetrics: entries.length,
+      totalActiveMetrics: scopedEntries.length,
       matchedMetrics: fallbackEntries.length,
       prefiltered: fallbackEntries.length > 0,
       matchMode: fallbackMatchMode,
@@ -709,12 +740,26 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
-    const matchedEntries = this.findHistoricalTelemetryEntries(
+    const scopedEntries = await this.applyTagPrefilterToEntries(
+      shipId,
       entries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (scopedEntries.length === 0) {
+      return {
+        kind: 'answer',
+        content:
+          'No active telemetry metrics matched the requested historical subject on this ship.',
+      };
+    }
+
+    const matchedEntries = this.findHistoricalTelemetryEntries(
+      scopedEntries,
       parsedRequest,
     );
     this.logger.debug(
-      `Historical telemetry matching ship=${shipId} activeEntries=${entries.length} matchedEntries=${matchedEntries.length}`,
+      `Historical telemetry matching ship=${shipId} activeEntries=${scopedEntries.length} matchedEntries=${matchedEntries.length}`,
     );
 
     if (matchedEntries.length === 0) {
@@ -784,7 +829,11 @@ export class MetricsService implements OnModuleInit {
       select: METRIC_SELECT,
     });
     if (!metric) throw new NotFoundException('Metric definition not found');
-    return metric;
+    return this.serializeMetricDefinition(metric);
+  }
+
+  async listTags(key: string) {
+    return this.tagLinks?.listMetricTags(key) ?? [];
   }
 
   async create(dto: CreateMetricDefinitionDto) {
@@ -803,7 +852,7 @@ export class MetricsService implements OnModuleInit {
     if (existing) {
       throw new ConflictException(`Metric with key "${key}" already exists`);
     }
-    return this.prisma.metricDefinition.create({
+    const created = await this.prisma.metricDefinition.create({
       data: {
         key,
         label,
@@ -818,6 +867,8 @@ export class MetricsService implements OnModuleInit {
       },
       select: METRIC_SELECT,
     });
+    await this.tagLinks?.autoLinkMetrics([created.key]);
+    return this.findOne(created.key);
   }
 
   async update(key: string, dto: UpdateMetricDefinitionDto) {
@@ -844,11 +895,17 @@ export class MetricsService implements OnModuleInit {
 
     if (Object.keys(data).length === 0) return this.findOne(key);
 
-    return this.prisma.metricDefinition.update({
+    const updated = await this.prisma.metricDefinition.update({
       where: { key },
       data,
       select: METRIC_SELECT,
     });
+    await this.tagLinks?.autoLinkMetrics([updated.key]);
+    return this.findOne(updated.key);
+  }
+
+  async replaceTags(key: string, tagIds: string[] | undefined) {
+    return this.tagLinks?.replaceMetricTags(key, tagIds) ?? [];
   }
 
   async remove(key: string) {
@@ -863,6 +920,37 @@ export class MetricsService implements OnModuleInit {
       );
     }
     await this.prisma.metricDefinition.delete({ where: { key } });
+  }
+
+  private serializeMetricDefinition(metric: {
+    key: string;
+    label: string;
+    description: string | null;
+    unit: string | null;
+    bucket: string | null;
+    measurement: string | null;
+    field: string | null;
+    firstSeenAt: Date | null;
+    lastSeenAt: Date | null;
+    status: string | null;
+    dataType: string | null;
+    createdAt: Date;
+    tags: Array<{
+      tag: {
+        id: string;
+        key: string;
+        category: string;
+        subcategory: string;
+        item: string;
+        description: string | null;
+      };
+    }>;
+  }) {
+    const { tags, ...rest } = metric;
+    return {
+      ...rest,
+      tag: tags[0]?.tag ?? null,
+    };
   }
 
   private async syncShipMetricCatalog(
@@ -880,6 +968,7 @@ export class MetricsService implements OnModuleInit {
     }
 
     const metricKeys = metrics.map((metric) => metric.key);
+    await this.tagLinks?.autoLinkMetrics(metricKeys);
     await this.reconcileShipMetrics(shipId, metricKeys);
 
     if (options.activeMetricKeys !== undefined) {
@@ -940,6 +1029,51 @@ export class MetricsService implements OnModuleInit {
     }));
   }
 
+  private async applyTagPrefilterToEntries(
+    shipId: string,
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): Promise<ShipTelemetryEntry[]> {
+    if (!this.tagLinks || entries.length <= 1) {
+      return entries;
+    }
+
+    const intentQuery = [query, resolvedSubjectQuery]
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (!intentQuery) {
+      return entries;
+    }
+
+    const scopedMetricKeys = await this.tagLinks.findTaggedMetricKeysForShipQuery(
+      shipId,
+      intentQuery,
+    );
+    if (
+      scopedMetricKeys.length === 0 ||
+      scopedMetricKeys.length >= entries.length
+    ) {
+      return entries;
+    }
+
+    const scopedMetricKeySet = new Set(scopedMetricKeys);
+    const filtered = entries.filter((entry) => scopedMetricKeySet.has(entry.key));
+
+    if (filtered.length > 0 && filtered.length < entries.length) {
+      this.logger.debug(
+        `Telemetry tag prefilter ship=${shipId} query="${query.replace(/\s+/g, ' ').trim()}" scopedEntries=${filtered.length}/${entries.length} sample=${filtered
+          .map((entry) => entry.key)
+          .slice(0, 5)
+          .join(', ')}`,
+      );
+      return filtered;
+    }
+
+    return entries;
+  }
+
   private findHistoricalTelemetryEntries(
     entries: ShipTelemetryEntry[],
     request: ParsedHistoricalTelemetryRequest,
@@ -972,7 +1106,7 @@ export class MetricsService implements OnModuleInit {
     }
 
     const searchSpace = this.normalizeTelemetryText(request.metricQuery);
-    const queryKinds = this.extractTelemetryMeasurementKinds(searchSpace);
+    const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
     const aggregateTankEntries =
       this.findHistoricalAggregateTankTelemetryEntries(
         entries,
@@ -3367,7 +3501,7 @@ export class MetricsService implements OnModuleInit {
       return false;
     }
 
-    const queryKinds = this.extractTelemetryMeasurementKinds(searchSpace);
+      const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
     queryKinds.delete('location');
     return queryKinds.size === 0;
   }
@@ -3509,7 +3643,7 @@ export class MetricsService implements OnModuleInit {
       resolvedSubjectQuery,
     );
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
-    const queryKinds = this.extractTelemetryMeasurementKinds(searchSpace);
+    const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
     const wantsHours =
       /\b(hours?|runtime|running|hour\s*meter|operating)\b/i.test(searchSpace);
     const wantsCurrentValue = queryKinds.size > 0;
@@ -3608,9 +3742,10 @@ export class MetricsService implements OnModuleInit {
     tokens: string[];
     phrases: string[];
   } {
-    const normalizedQuery = this.normalizeTelemetryText(
-      `${query}\n${resolvedSubjectQuery ?? ''}`,
-    );
+    const rawSearchSpace = `${query}\n${resolvedSubjectQuery ?? ''}`;
+    const normalizedQuery = this.normalizeTelemetryText(rawSearchSpace);
+    const explicitDirectionalTokens =
+      this.extractExplicitTelemetryDirectionalTokens(rawSearchSpace);
     const stopWords = new Set([
       'all',
       'am',
@@ -3760,7 +3895,12 @@ export class MetricsService implements OnModuleInit {
           .filter(Boolean)
           .filter((token) => token.length >= 2)
           .filter((token) => !/^\d+$/.test(token))
-          .filter((token) => !stopWords.has(token)),
+          .filter((token) => !stopWords.has(token))
+          .filter(
+            (token) =>
+              !this.isTelemetryDirectionalToken(token) ||
+              explicitDirectionalTokens.has(token),
+          ),
       ),
     ];
 
@@ -3808,7 +3948,7 @@ export class MetricsService implements OnModuleInit {
     const normalizedDescription = this.normalizeTelemetryText(
       entry.description ?? '',
     );
-    const queryKinds = this.extractTelemetryMeasurementKinds(query);
+    const queryKinds = this.extractTelemetryQueryMeasurementKinds(query);
     const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
     const matchedSubjectTokens = subjectTokens.filter((token) =>
@@ -3980,7 +4120,7 @@ export class MetricsService implements OnModuleInit {
       return [];
     }
 
-    const queryKinds = this.extractTelemetryMeasurementKinds(
+    const queryKinds = this.extractTelemetryQueryMeasurementKinds(
       querySignals.normalizedQuery,
     );
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
@@ -4137,7 +4277,8 @@ export class MetricsService implements OnModuleInit {
       return 'exact';
     }
 
-    const queryKinds = this.extractTelemetryMeasurementKinds(normalizedQuery);
+    const queryKinds =
+      this.extractTelemetryQueryMeasurementKinds(normalizedQuery);
     const subjectTokens = this.getTelemetrySubjectTokens(
       this.buildTelemetryQuerySignals(query, resolvedSubjectQuery).tokens,
     );
@@ -4386,16 +4527,18 @@ export class MetricsService implements OnModuleInit {
   private extractTelemetryMeasurementKinds(value: string): Set<string> {
     const kinds = new Set<string>();
     const checks: Array<[RegExp, string]> = [
-      [/\b(level)\b/i, 'level'],
-      [/\b(temp|temperature)\b/i, 'temperature'],
-      [/\b(pressure)\b/i, 'pressure'],
-      [/\b(voltage)\b/i, 'voltage'],
-      [/\b(amperage|amps?)\b/i, 'current'],
-      [/\b(load)\b/i, 'load'],
-      [/\b(rpm|speed)\b/i, 'speed'],
-      [/\b(flow|rate)\b/i, 'flow'],
-      [/\b(runtime|running|hours?|hour\s*meter)\b/i, 'hours'],
-      [/\b(status(?:es)?|state(?:s)?)\b/i, 'status'],
+      [/\b(levels?)\b/i, 'level'],
+      [/\b(temp(?:eratures?)?|temps?)\b/i, 'temperature'],
+      [/\b(pressures?)\b/i, 'pressure'],
+      [/\b(voltages?|volts?)\b/i, 'voltage'],
+      [/\b(currents?|amperage|amps?)\b/i, 'current'],
+      [/\b(loads?)\b/i, 'load'],
+      [/\b(power|powers?|watts?|kilowatts?|megawatts?|kw|mw)\b/i, 'power'],
+      [/\b(energies?|watt\s*hours?|kilowatt\s*hours?|megawatt\s*hours?|wh|kwh|mwh)\b/i, 'energy'],
+      [/\b(rpms?|speeds?)\b/i, 'speed'],
+      [/\b(flows?|rates?)\b/i, 'flow'],
+      [/\b(runtime|runtimes|running|hours?|hour\s*meter)\b/i, 'hours'],
+      [/\b(status(?:es)?|state(?:s)?|alarms?|warnings?|faults?|trips?)\b/i, 'status'],
       [
         /\b(latitude|longitude|coordinates?|position|gps|location|lat|lon)\b/i,
         'location',
@@ -4443,6 +4586,36 @@ export class MetricsService implements OnModuleInit {
       ) && !/\b(used|consumed|consumption|rate|flow)\b/i.test(normalized);
     if (hasQuantityUnit) {
       kinds.add('level');
+    }
+
+    return kinds;
+  }
+
+  private extractTelemetryQueryMeasurementKinds(value: string): Set<string> {
+    const kinds = this.extractTelemetryMeasurementKinds(value);
+    const normalized = this.normalizeTelemetryText(value);
+    const treatsCurrentAsLiveQualifier =
+      kinds.has('current') &&
+      /\bcurrent\b\s+(value|values|reading|readings|status|state|metric|metrics|telemetry|signal|signals)\b/i.test(
+        normalized,
+      ) &&
+      !/\b(currents|amps?|amperage|battery current|rms current|phase current|ac current|dc current|line current|current on phase|current phase)\b/i.test(
+        normalized,
+      );
+
+    if (treatsCurrentAsLiveQualifier) {
+      kinds.delete('current');
+    }
+
+    if (
+      /\b(active|inactive|enabled|disabled|running|stopped|open|closed|online|offline)\b/i.test(
+        normalized,
+      ) &&
+      !/\b(power|energy|load|current|voltage|temperature|pressure|flow|rate|speed|rpm|hours?|runtime)\b/i.test(
+        normalized,
+      )
+    ) {
+      kinds.add('status');
     }
 
     return kinds;
@@ -4504,12 +4677,41 @@ export class MetricsService implements OnModuleInit {
       .replace(/\bstbd\b/g, ' starboard ')
       .replace(/\bsb\b/g, ' starboard ')
       .replace(/\bps\b/g, ' port ')
-      .replace(/\bright\b/g, ' starboard ')
-      .replace(/\bleft\b/g, ' port ')
       .replace(/\bgenerator\s+set\b/g, ' genset ')
       .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase();
+  }
+
+  private isTelemetryDirectionalToken(token: string): boolean {
+    return token === 'port' || token === 'starboard';
+  }
+
+  private extractExplicitTelemetryDirectionalTokens(query: string): Set<string> {
+    const normalized = query.toLowerCase();
+    const tokens = new Set<string>();
+    const directionalNouns =
+      '(side|engine|generator|genset|pump|tank|battery|charger|motor|gearbox|thruster|rudder|cabin|room|propeller)';
+
+    if (/\b(port|ps)\b/i.test(normalized)) {
+      tokens.add('port');
+    }
+
+    if (/\b(starboard|stbd|sb)\b/i.test(normalized)) {
+      tokens.add('starboard');
+    }
+
+    if (new RegExp(`\\bleft\\b\\s+${directionalNouns}\\b`, 'i').test(normalized)) {
+      tokens.add('port');
+    }
+
+    if (
+      new RegExp(`\\bright\\b\\s+${directionalNouns}\\b`, 'i').test(normalized)
+    ) {
+      tokens.add('starboard');
+    }
+
+    return tokens;
   }
 
   private getTelemetrySubjectTokens(tokens: string[]): string[] {
@@ -4523,25 +4725,31 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isTelemetryKindToken(token: string): boolean {
-    return new Set([
-      'amp',
-      'amps',
-      'amperage',
-      'current',
-      'flow',
-      'hour',
-      'hours',
+      return new Set([
+        'amp',
+        'amps',
+        'amperage',
+        'alarm',
+        'warning',
+        'fault',
+        'trip',
+        'current',
+        'energy',
+        'flow',
+        'hour',
+        'hours',
       'lat',
       'latitude',
       'level',
       'location',
       'load',
       'lon',
-      'longitude',
-      'pressure',
-      'position',
-      'rate',
-      'reading',
+        'longitude',
+        'pressure',
+        'power',
+        'position',
+        'rate',
+        'reading',
       'rpm',
       'runtime',
       'speed',
@@ -4589,21 +4797,33 @@ export class MetricsService implements OnModuleInit {
     const normalized = token.toLowerCase();
     const aliases: Record<string, string> = {
       batteries: 'battery',
-      generators: 'generator',
-      gensets: 'genset',
-      right: 'starboard',
-      left: 'port',
-      stbd: 'starboard',
-      sb: 'starboard',
-      ps: 'port',
-      status: 'status',
-      statuses: 'status',
-      states: 'state',
-      volts: 'voltage',
-      volt: 'voltage',
-      temps: 'temperature',
-      temp: 'temperature',
-      readings: 'reading',
+        generators: 'generator',
+        gensets: 'genset',
+        right: 'starboard',
+        left: 'port',
+        stbd: 'starboard',
+        sb: 'starboard',
+        ps: 'port',
+        alarms: 'alarm',
+        warnings: 'warning',
+        faults: 'fault',
+        trips: 'trip',
+        status: 'status',
+        statuses: 'status',
+        states: 'state',
+        volts: 'voltage',
+        volt: 'voltage',
+        voltages: 'voltage',
+        pressures: 'pressure',
+        currents: 'current',
+        powers: 'power',
+        energies: 'energy',
+        loads: 'load',
+        flows: 'flow',
+        rates: 'rate',
+        temps: 'temperature',
+        temp: 'temperature',
+        readings: 'reading',
       metrics: 'metric',
       values: 'value',
       ships: 'ship',
@@ -4685,12 +4905,26 @@ export class MetricsService implements OnModuleInit {
     normalizedQuery: string,
   ): boolean {
     const haystack = this.buildTelemetryHaystack(entry);
+    const mentionsPort = /\bport\b/i.test(normalizedQuery);
+    const mentionsStarboard = /\bstarboard\b/i.test(normalizedQuery);
     const mentionsEngineRoom = /\bengine room\b/i.test(normalizedQuery);
     const mentionsGenerator = /\b(generator|genset)\b/i.test(normalizedQuery);
     const mentionsMainEngine =
       /\bengine\b/i.test(normalizedQuery) &&
       !mentionsEngineRoom &&
       !mentionsGenerator;
+
+    if (mentionsPort && !mentionsStarboard) {
+      if (!/\bport\b/i.test(haystack) || /\bstarboard\b/i.test(haystack)) {
+        return false;
+      }
+    }
+
+    if (mentionsStarboard && !mentionsPort) {
+      if (!/\bstarboard\b/i.test(haystack) || /\bport\b/i.test(haystack)) {
+        return false;
+      }
+    }
 
     if (mentionsEngineRoom && !/\bengine room\b/i.test(haystack)) {
       return false;
@@ -5012,7 +5246,8 @@ export class MetricsService implements OnModuleInit {
       return false;
     }
 
-    const queryKinds = this.extractTelemetryMeasurementKinds(normalizedQuery);
+    const queryKinds =
+      this.extractTelemetryQueryMeasurementKinds(normalizedQuery);
     const asksForTankReading =
       queryKinds.has('level') ||
       /\b(status|reading|value|available|remaining|left)\b/i.test(
