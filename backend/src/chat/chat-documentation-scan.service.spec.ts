@@ -67,6 +67,70 @@ describe('ChatDocumentationScanService', () => {
     expect(prisma.ship.findMany).not.toHaveBeenCalled();
   });
 
+  it('filters scan contexts to tag-scoped manual ids when a conservative tag match exists', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-fuel',
+              ragflowDocumentId: 'doc-fuel',
+              filename: 'Fuel Tank Sounding Table.pdf',
+              category: 'MANUALS',
+            },
+            {
+              id: 'manual-water',
+              ragflowDocumentId: 'doc-water',
+              filename: 'Fresh Water System.pdf',
+              category: 'MANUALS',
+            },
+          ],
+        }),
+        findMany: jest.fn(),
+      },
+    };
+    const service = new ChatDocumentationScanService(
+      prisma as never,
+      { isConfigured: jest.fn().mockReturnValue(true) } as never,
+      queryService,
+      {} as never,
+    );
+
+    const contexts = await (
+      service as unknown as {
+        loadDocumentScanContexts: (
+          shipId: string | null,
+          citations: unknown[],
+          allowedDocumentCategories?: string[],
+          allowedManualIds?: string[],
+        ) => Promise<
+          Array<{
+            ragflowDatasetId: string;
+            manuals: Array<{ id: string; filename: string; category: string }>;
+            score: number;
+          }>
+        >;
+      }
+    ).loadDocumentScanContexts('ship-1', [], ['MANUALS'], ['manual-fuel']);
+
+    expect(contexts).toEqual([
+      {
+        ragflowDatasetId: 'dataset-1',
+        manuals: [
+          {
+            id: 'manual-fuel',
+            ragflowDocumentId: 'doc-fuel',
+            filename: 'Fuel Tank Sounding Table.pdf',
+            category: 'MANUALS',
+          },
+        ],
+        score: Number.MAX_SAFE_INTEGER,
+      },
+    ]);
+    expect(prisma.ship.findMany).not.toHaveBeenCalled();
+  });
+
   it('limits personnel-directory scans to dedicated contact documents when they are available', async () => {
     const ragflowService = {
       isConfigured: jest.fn().mockReturnValue(true),
