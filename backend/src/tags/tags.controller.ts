@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BulkRemoveTagsDto } from './dto/bulk-remove-tags.dto';
 import { CreateTagDto } from './dto/create-tag.dto';
+import { RebuildTagLinksDto } from './dto/rebuild-tag-links.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { TagsService } from './tags.service';
 
@@ -56,6 +57,11 @@ export class TagsController {
     });
   }
 
+  @Get('options')
+  listOptions() {
+    return this.tagsService.listOptions();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.tagsService.findOne(id);
@@ -92,6 +98,11 @@ export class TagsController {
       originalname: file.originalname,
       mimetype: file.mimetype,
     });
+  }
+
+  @Post('rebuild-links')
+  rebuildLinks(@Body() dto: RebuildTagLinksDto) {
+    return this.tagsService.rebuildLinks(dto);
   }
 
   @Patch(':id')
