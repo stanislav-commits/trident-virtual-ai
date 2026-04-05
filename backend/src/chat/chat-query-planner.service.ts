@@ -156,6 +156,10 @@ export class ChatQueryPlannerService {
       return 'maintenance_procedure';
     }
 
+    if (this.isLiveTelemetryStatusQuery(normalized)) {
+      return 'telemetry_status';
+    }
+
     if (this.isTroubleshootingQuery(lowered)) {
       return 'troubleshooting';
     }
@@ -595,6 +599,10 @@ export class ChatQueryPlannerService {
   }
 
   private isTroubleshootingQuery(query: string): boolean {
+    if (this.isLiveTelemetryStatusQuery(query)) {
+      return false;
+    }
+
     return /\b(fault|alarm|error|troubleshoot|issue|problem|not\s+working|failure|high\s+.*temperature|low\s+.*pressure|stopped|why\s+has)\b/i.test(
       query,
     );
@@ -616,13 +624,31 @@ export class ChatQueryPlannerService {
     }
 
     return (
-      /\b(current|currently|status|reading|value|temperature|temp|pressure|level|voltage|amperage|load|rpm|speed|flow|rate|running\s+hours|runtime|hour\s*meter|latitude|longitude|location|position|coordinates?|gps|lat|lon)\b/i.test(
+      /\b(current|currently|status|state|reading|readings|value|values|temperature|temperatures|temp|pressure|pressures|level|levels|voltage|voltages|current|currents|amperage|amperages|load|loads|rpm|speed|speeds|flow|flows|rate|rates|running\s+hours|runtime|hour\s*meter|latitude|longitude|location|position|coordinates?|gps|lat|lon)\b/i.test(
         query,
       ) ||
+      (/\b(active|inactive|enabled|disabled|online|offline)\b/i.test(query) &&
+        /\b(alarm|alarms|bilge|generator|genset|engine|tank|fuel|oil|coolant|battery|batteries|charger|chargers|pump|pumps|thruster|valve|door|hatch)\b/i.test(
+          query,
+        )) ||
       /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(query) ||
       /\b(?:actual|current|live)\s+(?:coordinates?|position|location)\b/i.test(
         query,
       )
+    );
+  }
+
+  private isLiveTelemetryStatusQuery(query: string): boolean {
+    if (!this.isTelemetryValueQuery(query)) {
+      return false;
+    }
+
+    if (/^\s*(why|how)\b/i.test(query)) {
+      return false;
+    }
+
+    return /\b(current|currently|now|right now|live|actual|status|state|active|inactive|enabled|disabled|online|offline|reading|readings|value|values)\b/i.test(
+      query,
     );
   }
 
