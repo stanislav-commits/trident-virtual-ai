@@ -516,6 +516,11 @@ describe('ChatDocumentationQueryService', () => {
     );
   });
 
+  it('does not treat temporal or remaining-time phrases as directional sides', () => {
+    expect(service.detectDirectionalSide('Are any bilge alarms active right now?')).toBeNull();
+    expect(service.detectDirectionalSide('How many hours left until service?')).toBeNull();
+  });
+
   it('skips documentation retrieval for telemetry list requests so manuals do not override live metric samples', () => {
     const query = 'Show 10 random active metrics for this ship.';
 
