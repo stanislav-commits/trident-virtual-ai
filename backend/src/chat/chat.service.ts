@@ -4727,7 +4727,7 @@ export class ChatService {
 
   private isCurrentTelemetryGuidedQuery(userQuery: string): boolean {
     return (
-      /\b(current|currently|reading|value|measured|showing|reads?\s+\d+(?:\.\d+)?|is\s+\d+(?:\.\d+)?|at\s+\d+(?:\.\d+)?)\b/i.test(
+      /\b(current|currently|now|right now|live|actual|status|state|active|inactive|reading|readings|value|values|measured|showing|reads?\s+\d+(?:\.\d+)?|is\s+\d+(?:\.\d+)?|at\s+\d+(?:\.\d+)?)\b/i.test(
         userQuery,
       ) || this.isCurrentPositionTelemetryQuery(userQuery)
     );
