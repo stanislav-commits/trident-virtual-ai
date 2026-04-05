@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChatContextService } from './chat-context.service';
+import { TagLinksService } from '../tags/tag-links.service';
 import {
   ChatCitation,
   ChatDocumentationContext,
@@ -21,6 +22,7 @@ type ChatScanExpansion = (
   userQuery: string,
   citations: ChatCitation[],
   allowedDocumentCategories?: ChatDocumentSourceCategory[],
+  allowedManualIds?: string[],
 ) => Promise<ChatCitation[]>;
 
 @Injectable()
@@ -35,6 +37,7 @@ export class ChatDocumentationService {
     private readonly scanService: ChatDocumentationScanService,
     private readonly referenceExtractionService: ChatReferenceExtractionService,
     @Optional() queryPlanner?: ChatQueryPlannerService,
+    @Optional() private readonly tagLinks?: TagLinksService,
   ) {
     this.queryPlanner = queryPlanner ?? new ChatQueryPlannerService();
   }
@@ -121,9 +124,31 @@ export class ChatDocumentationService {
       };
     }
 
+    const shouldSkipDocumentationForTelemetryFirstQuery =
+      this.shouldSkipDocumentationForTelemetryFirstQuery(
+        effectiveUserQuery,
+        retrievalQuery,
+        normalizedQuery,
+      );
+
+    if (shouldSkipDocumentationForTelemetryFirstQuery) {
+      this.logger.debug(
+        `Skipping documentation retrieval for telemetry-first query="${effectiveUserQuery}"`,
+      );
+      return {
+        previousUserQuery: previousUserQuery ?? undefined,
+        retrievalQuery,
+        normalizedQuery,
+        answerQuery:
+          isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
+            ? retrievalQuery
+            : undefined,
+        citations,
+        analysisCitations: citations,
+      };
+    }
+
     try {
-      const shouldSkipRetrieval =
-        this.queryService.shouldSkipDocumentationRetrieval(effectiveUserQuery);
       const searchCitationsForQuery = async (
         query: string,
       ): Promise<ChatCitation[]> => {
@@ -169,9 +194,7 @@ export class ChatDocumentationService {
         return result.citations;
       };
 
-      if (!shouldSkipRetrieval) {
-        citations = await searchCitationsForQuery(retrievalQuery);
-      }
+      citations = await searchCitationsForQuery(retrievalQuery);
 
       if (citations.length === 0) {
         const fallbackQuery =
@@ -208,6 +231,16 @@ export class ChatDocumentationService {
           retrievalQuery,
           effectiveUserQuery,
         );
+      const hardDocumentCategories = this.getHardDocumentCategories(
+        effectiveUserQuery,
+        retrievalQuery,
+      );
+      const tagScopedManualIds = await this.resolveTagScopedManualIds(
+        shipId,
+        role,
+        effectiveUserQuery,
+        hardDocumentCategories,
+      );
       if (
         assetFallbackQueries.length > 0 &&
         (this.queryService.shouldAugmentGeneratorAssetLookup(
@@ -311,6 +344,8 @@ export class ChatDocumentationService {
         retrievalQuery,
         effectiveUserQuery,
         citations,
+        hardDocumentCategories,
+        tagScopedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -326,6 +361,8 @@ export class ChatDocumentationService {
           retrievalQuery,
           effectiveUserQuery,
           citations,
+          hardDocumentCategories,
+          tagScopedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -341,6 +378,8 @@ export class ChatDocumentationService {
           retrievalQuery,
           effectiveUserQuery,
           citations,
+          hardDocumentCategories,
+          tagScopedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -355,6 +394,8 @@ export class ChatDocumentationService {
           retrievalQuery,
           effectiveUserQuery,
           citations,
+          hardDocumentCategories,
+          tagScopedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -368,6 +409,8 @@ export class ChatDocumentationService {
         retrievalQuery,
         effectiveUserQuery,
         citations,
+        hardDocumentCategories,
+        tagScopedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -381,6 +424,8 @@ export class ChatDocumentationService {
         retrievalQuery,
         effectiveUserQuery,
         citations,
+        hardDocumentCategories,
+        tagScopedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -762,19 +807,17 @@ export class ChatDocumentationService {
     retrievalQuery: string,
     userQuery: string,
     citations: ChatCitation[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<ChatCitation[]> {
-    const hardDocumentCategories = this.getHardDocumentCategories(
-      userQuery,
-      retrievalQuery,
-    );
-
-    return hardDocumentCategories?.length
+    return allowedDocumentCategories?.length || allowedManualIds?.length
       ? expand(
           shipId,
           retrievalQuery,
           userQuery,
           citations,
-          hardDocumentCategories,
+          allowedDocumentCategories,
+          allowedManualIds,
         )
       : expand(shipId, retrievalQuery, userQuery, citations);
   }
@@ -785,5 +828,69 @@ export class ChatDocumentationService {
   ): ChatDocumentSourceCategory[] | undefined {
     return this.queryPlanner.planQuery(userQuery, retrievalQuery)
       .hardDocumentCategories;
+  }
+
+  private shouldSkipDocumentationForTelemetryFirstQuery(
+    effectiveUserQuery: string,
+    retrievalQuery: string,
+    normalizedQuery?: ChatNormalizedQuery,
+  ): boolean {
+    if (this.queryService.shouldSkipDocumentationRetrieval(effectiveUserQuery)) {
+      return true;
+    }
+
+    const queryPlan = this.queryPlanner.planQuery(
+      normalizedQuery ?? effectiveUserQuery,
+      retrievalQuery,
+    );
+
+    if (
+      queryPlan.primaryIntent !== 'telemetry_status' &&
+      queryPlan.primaryIntent !== 'telemetry_list'
+    ) {
+      return false;
+    }
+
+    if (queryPlan.supportsMultiSourceAggregation) {
+      return false;
+    }
+
+    if (normalizedQuery?.sourceHints.includes('DOCUMENTATION')) {
+      return false;
+    }
+
+    return !/\b(according\s+to|manual|documentation|docs?|handbook|guide|procedure|steps?|spec(?:ification)?|recommended|normal\s+range|operating\s+range|limit|limits|specified)\b/i.test(
+      effectiveUserQuery,
+    );
+  }
+
+  private async resolveTagScopedManualIds(
+    shipId: string | null,
+    role: string,
+    query: string,
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
+  ): Promise<string[] | undefined> {
+    if (!this.tagLinks) {
+      return undefined;
+    }
+
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      return undefined;
+    }
+
+    const manualIds =
+      role === 'admin' || !shipId
+        ? await this.tagLinks.findTaggedManualIdsForAdminQuery(
+            normalizedQuery,
+            allowedDocumentCategories,
+          )
+        : await this.tagLinks.findTaggedManualIdsForShipQuery(
+            shipId,
+            normalizedQuery,
+            allowedDocumentCategories,
+          );
+
+    return manualIds.length > 0 ? manualIds : undefined;
   }
 }
