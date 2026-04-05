@@ -353,4 +353,24 @@ describe('ChatQueryNormalizationService', () => {
     expect(normalized.timeIntent.kind).toBe('current');
     expect(normalized.sourceHints).toContain('TELEMETRY');
   });
+
+  it('keeps live alarm-state queries in telemetry space without inferring starboard from "right now"', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'Are any bilge alarms active right now?',
+    });
+
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.asset).toBeUndefined();
+  });
+
+  it('detects telemetry hints for plural current-reading queries', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'What are the port generator battery charger voltages right now?',
+    });
+
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.asset).toBe('port generator');
+  });
 });
