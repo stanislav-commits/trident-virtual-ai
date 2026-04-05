@@ -388,6 +388,125 @@ describe('MetricsService telemetry matching', () => {
     expect(result.clarification).toBeNull();
   });
 
+  it('keeps plural voltage queries scoped to voltage readings within the matched telemetry subject', async () => {
+    const service = buildService([
+      {
+        metricKey:
+          'Trending::PORT-GENERATOR-BATTERY-CHARGER::RMS phase to neutral Voltage A-N',
+        latestValue: 228.2,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label:
+            'PORT-GENERATOR-BATTERY-CHARGER.RMS phase to neutral Voltage A-N',
+          description:
+            'Displays the RMS phase to neutral voltage on phase A for the port generator battery charger.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'PORT-GENERATOR-BATTERY-CHARGER',
+          field: 'RMS phase to neutral Voltage A-N',
+        },
+      },
+      {
+        metricKey:
+          'Trending::PORT-GENERATOR-BATTERY-CHARGER::RMS phase to neutral Voltage B-N',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label:
+            'PORT-GENERATOR-BATTERY-CHARGER.RMS phase to neutral Voltage B-N',
+          description:
+            'Displays the RMS phase to neutral voltage on phase B for the port generator battery charger.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'PORT-GENERATOR-BATTERY-CHARGER',
+          field: 'RMS phase to neutral Voltage B-N',
+        },
+      },
+      {
+        metricKey:
+          'Trending::PORT-GENERATOR-BATTERY-CHARGER::Active power on phase A',
+        latestValue: 52,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'PORT-GENERATOR-BATTERY-CHARGER.Active power on phase A',
+          description:
+            'Displays the active power on phase A for the port generator battery charger.',
+          unit: 'W',
+          bucket: 'Trending',
+          measurement: 'PORT-GENERATOR-BATTERY-CHARGER',
+          field: 'Active power on phase A',
+        },
+      },
+      {
+        metricKey:
+          'Trending::PORT-GENERATOR-BATTERY-CHARGER::RMS current - phase A',
+        latestValue: 0.43,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'PORT-GENERATOR-BATTERY-CHARGER.RMS current - phase A',
+          description:
+            'Displays the RMS current on phase A for the port generator battery charger.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'PORT-GENERATOR-BATTERY-CHARGER',
+          field: 'RMS current - phase A',
+        },
+      },
+      {
+        metricKey:
+          'Trending::PORT-GENERATOR-BATTERY-CHARGER::Partial active energy delivered + received',
+        latestValue: 1000649,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label:
+            'PORT-GENERATOR-BATTERY-CHARGER.Partial active energy delivered + received',
+          description:
+            'Displays the partial active energy delivered and received for the port generator battery charger.',
+          unit: 'Wh',
+          bucket: 'Trending',
+          measurement: 'PORT-GENERATOR-BATTERY-CHARGER',
+          field: 'Partial active energy delivered + received',
+        },
+      },
+      {
+        metricKey:
+          'Trending::STBD-GENERATOR-BATTERY-CHARGER::RMS phase to neutral Voltage A-N',
+        latestValue: 229.1,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label:
+            'STBD-GENERATOR-BATTERY-CHARGER.RMS phase to neutral Voltage A-N',
+          description:
+            'Displays the RMS phase to neutral voltage on phase A for the starboard generator battery charger.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'STBD-GENERATOR-BATTERY-CHARGER',
+          field: 'RMS phase to neutral Voltage A-N',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'What are the port generator battery charger voltages right now?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /voltage/i.test(key)),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).every(
+        (key) => !/power|current|energy/i.test(key),
+      ),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).every((key) => /PORT-GENERATOR/i.test(key)),
+    ).toBe(true);
+  });
+
   it('keeps generator telemetry list samples scoped to generator and genset metrics', async () => {
     const service = buildService([
       {
@@ -458,6 +577,197 @@ describe('MetricsService telemetry matching', () => {
         /GENSET|generator/i.test(key),
       ),
     ).toBe(true);
+  });
+
+  it('prefers alarm status readings over related pump spy signals for active alarm queries', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Bilge-Alarms::BILGE ALARM 1',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Bilge-Alarms.BILGE ALARM 1',
+          description: 'Status indicator for bilge alarm 1.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms',
+          field: 'BILGE ALARM 1',
+        },
+      },
+      {
+        metricKey: 'Trending::Bilge-Alarms::BILGE ALARM 2',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Bilge-Alarms.BILGE ALARM 2',
+          description: 'Status indicator for bilge alarm 2.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms',
+          field: 'BILGE ALARM 2',
+        },
+      },
+      {
+        metricKey: 'Trending::Bilge-Alarms2::STBD MAIN BILGE PUMP SPY',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Bilge-Alarms2.STBD MAIN BILGE PUMP SPY',
+          description: 'Spy feedback for the starboard main bilge pump.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms2',
+          field: 'STBD MAIN BILGE PUMP SPY',
+        },
+      },
+      {
+        metricKey: 'Trending::Bilge-Alarms2::PORT MAIN BILGE PUMP SPY',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Bilge-Alarms2.PORT MAIN BILGE PUMP SPY',
+          description: 'Spy feedback for the port main bilge pump.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms2',
+          field: 'PORT MAIN BILGE PUMP SPY',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'Are any bilge alarms active right now?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /BILGE ALARM/i.test(key)),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).every((key) => !/PUMP SPY/i.test(key)),
+    ).toBe(true);
+  });
+
+  it('still surfaces pump spy metrics as related candidates for direct bilge pump status questions', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Bilge-Alarms2::STBD MAIN BILGE PUMP SPY',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Bilge-Alarms2.STBD MAIN BILGE PUMP SPY',
+          description: 'Spy feedback for the starboard main bilge pump.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms2',
+          field: 'STBD MAIN BILGE PUMP SPY',
+        },
+      },
+      {
+        metricKey: 'Trending::Bilge-Alarms2::PORT MAIN BILGE PUMP SPY',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Bilge-Alarms2.PORT MAIN BILGE PUMP SPY',
+          description: 'Spy feedback for the port main bilge pump.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms2',
+          field: 'PORT MAIN BILGE PUMP SPY',
+        },
+      },
+      {
+        metricKey: 'Trending::Electrical::Battery voltage (V)',
+        latestValue: 26.3,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Electrical.Battery voltage (V)',
+          description: 'Current battery voltage.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'Electrical',
+          field: 'Battery voltage (V)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'What is the bilge pump status?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('related');
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /PUMP SPY/i.test(key)),
+    ).toBe(true);
+    expect(result.clarification).not.toBeNull();
+  });
+
+  it('resolves exact clarification follow-up labels without mistaking current value phrasing for electrical current', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Bilge-Alarms2::PORT FORE BILGE PUMP SPY',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Bilge-Alarms2.PORT FORE BILGE PUMP SPY',
+          description: 'Spy feedback for the port fore bilge pump.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms2',
+          field: 'PORT FORE BILGE PUMP SPY',
+        },
+      },
+      {
+        metricKey:
+          'Trending::PORT-BILGE-TANK-DISCHARGE-PUMP::RMS current - phase A',
+        latestValue: 3.51,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'PORT-BILGE-TANK-DISCHARGE-PUMP.RMS current - phase A',
+          description:
+            'Displays the RMS current on phase A for the port bilge tank discharge pump.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'PORT-BILGE-TANK-DISCHARGE-PUMP',
+          field: 'RMS current - phase A',
+        },
+      },
+      {
+        metricKey:
+          'Trending::PORT-BILGE-TANK-DISCHARGE-PUMP::RMS current - phase B',
+        latestValue: 3.5,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'PORT-BILGE-TANK-DISCHARGE-PUMP.RMS current - phase B',
+          description:
+            'Displays the RMS current on phase B for the port bilge tank discharge pump.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'PORT-BILGE-TANK-DISCHARGE-PUMP',
+          field: 'RMS current - phase B',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'For Test new, What is the current value of Bilge-Alarms2.PORT FORE BILGE PUMP SPY?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('exact');
+    expect(Object.keys(result.telemetry)).toHaveLength(1);
+    expect(Object.keys(result.telemetry)[0]).toContain(
+      'PORT FORE BILGE PUMP SPY',
+    );
+    expect(Object.values(result.telemetry)[0]).toBe(0);
+    expect(result.clarification).toBeNull();
   });
 
   it('marks supporting telemetry as related when no direct measurement kind matches the query', async () => {
