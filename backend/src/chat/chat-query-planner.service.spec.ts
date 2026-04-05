@@ -214,4 +214,22 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
     expect(plan.requiresTelemetry).toBe(true);
   });
+
+  it('routes live alarm-state lookups to telemetry status instead of troubleshooting', () => {
+    const plan = service.planQuery('Are any bilge alarms active right now?');
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetry).toBe(true);
+  });
+
+  it('routes plural current reading queries to telemetry status', () => {
+    const plan = service.planQuery(
+      'What are the port generator battery charger voltages right now?',
+    );
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetry).toBe(true);
+  });
 });
