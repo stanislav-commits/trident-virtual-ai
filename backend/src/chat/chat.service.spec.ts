@@ -1798,6 +1798,120 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('answers live alarm-state queries from current telemetry instead of drifting into documentation', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'Are any bilge alarms active right now?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'Are any bilge alarms active right now?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Bilge-Alarms.BILGE ALARM 1': 0,
+        'Bilge-Alarms.BILGE ALARM 2': 0,
+      },
+      totalActiveMetrics: 24,
+      matchedMetrics: 2,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'Are any bilge alarms active right now?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(metricsService.getShipTelemetryContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'Are any bilge alarms active right now?',
+      undefined,
+    );
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('The current matched telemetry readings are [Telemetry]:'),
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+  });
+
+  it('answers plural current-reading queries from telemetry when live metrics exist', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What are the port generator battery charger voltages right now?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery:
+        'What are the port generator battery charger voltages right now?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'PORT-GENERATOR-BATTERY-CHARGER.RMS phase to neutral Voltage A-N': 228.1,
+        'PORT-GENERATOR-BATTERY-CHARGER.RMS phase to neutral Voltage B-N': 0,
+        'PORT-GENERATOR-BATTERY-CHARGER.RMS phase to neutral Voltage C-N': 0,
+      },
+      totalActiveMetrics: 47,
+      matchedMetrics: 3,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What are the port generator battery charger voltages right now?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(metricsService.getShipTelemetryContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'What are the port generator battery charger voltages right now?',
+      undefined,
+    );
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('The current matched telemetry readings are [Telemetry]:'),
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+  });
+
   it('answers generic telemetry inventory queries with the full list by default', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
