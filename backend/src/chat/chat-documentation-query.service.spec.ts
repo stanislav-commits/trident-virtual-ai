@@ -563,4 +563,25 @@ describe('ChatDocumentationQueryService', () => {
       ),
     ).toBe('how many total fuel in tanks on 2026-03-25');
   });
+
+  it('inherits the previous telemetry subject for vague aggregate follow-up questions', () => {
+    expect(
+      service.buildRetrievalQuery('what the sum', 'what the fuel level'),
+    ).toBe('what the fuel level in the tanks');
+    expect(
+      service.buildRetrievalQuery(
+        'what the total',
+        'what was the fuel level 5 days ago',
+      ),
+    ).toBe('what was the fuel level in the tanks 5 days ago');
+  });
+
+  it('does not hijack unrelated sum phrases as telemetry aggregate follow-ups', () => {
+    expect(
+      service.buildRetrievalQuery(
+        'what the sum insured',
+        'what the fuel level',
+      ),
+    ).toBe('what the sum insured');
+  });
 });

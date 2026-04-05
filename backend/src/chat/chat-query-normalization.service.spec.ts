@@ -373,4 +373,61 @@ describe('ChatQueryNormalizationService', () => {
     expect(normalized.timeIntent.kind).toBe('current');
     expect(normalized.asset).toBe('port generator');
   });
+
+  it('keeps vague aggregate follow-ups attached to the prior live telemetry subject', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what the sum',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what the fuel level',
+        },
+        {
+          role: 'assistant',
+          content: 'Here are the current fuel tank readings.',
+          ragflowContext: {
+            answerRoute: 'current_telemetry',
+            resolvedSubjectQuery: 'what the fuel level',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe('what the fuel level in the tanks');
+    expect(normalized.operation).toBe('sum');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.timeIntent.kind).toBe('none');
+  });
+
+  it('preserves historical telemetry anchors for vague aggregate follow-ups', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what the total',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what was the fuel level 5 days ago',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-26 10:00 UTC, the fuel level was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'what was the fuel level 5 days ago',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe(
+      'what was the fuel level in the tanks 5 days ago',
+    );
+    expect(normalized.operation).toBe('sum');
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.timeIntent.relativeAmount).toBe(5);
+    expect(normalized.timeIntent.relativeUnit).toBe('day');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).toContain('HISTORY');
+  });
 });

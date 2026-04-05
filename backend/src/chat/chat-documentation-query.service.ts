@@ -226,6 +226,16 @@ export class ChatDocumentationQueryService {
       return normalizedPreviousUserQuery;
     }
 
+    if (
+      normalizedPreviousUserQuery &&
+      this.isAggregateContinuationFollowUpQuery(trimmed) &&
+      this.isAggregateContinuationContext(normalizedPreviousUserQuery)
+    ) {
+      return this.buildAggregateContinuationQuery(
+        normalizedPreviousUserQuery,
+      );
+    }
+
     const sourceScopeFollowUp = this.isSourceScopeFollowUpQuery(trimmed);
     const completenessFollowUp =
       this.isCompletenessVerificationFollowUpQuery(trimmed);
@@ -552,6 +562,80 @@ export class ChatDocumentationQueryService {
     return (
       this.isContextualFollowUpQuery(trimmed) ||
       /\b(?:previous|prior|above)\b/i.test(trimmed)
+    );
+  }
+
+  private isAggregateContinuationFollowUpQuery(query: string): boolean {
+    const normalized = query
+      .trim()
+      .toLowerCase()
+      .replace(/['’]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalized) {
+      return false;
+    }
+
+    const tokens = normalized.split(' ').filter(Boolean);
+    if (tokens.length === 0 || tokens.length > 8) {
+      return false;
+    }
+
+    const aggregateTokens = new Set([
+      'sum',
+      'total',
+      'combined',
+      'overall',
+      'altogether',
+    ]);
+    const allowedTokens = new Set([
+      'what',
+      'whats',
+      'is',
+      'the',
+      'sum',
+      'total',
+      'combined',
+      'overall',
+      'altogether',
+      'of',
+      'it',
+      'them',
+      'those',
+      'these',
+      'that',
+      'this',
+      'current',
+      'currently',
+      'now',
+      'how',
+      'much',
+      'many',
+      'in',
+      'all',
+    ]);
+
+    return (
+      tokens.some((token) => aggregateTokens.has(token)) &&
+      tokens.every((token) => allowedTokens.has(token))
+    );
+  }
+
+  private isAggregateContinuationContext(query: string): boolean {
+    if (
+      this.hasExplicitSourceRequest(query) ||
+      /\b(manual|documentation|docs?|guide|handbook|procedure|steps?|certificate|policy|spec(?:ification)?|insured)\b/i.test(
+        query,
+      )
+    ) {
+      return false;
+    }
+
+    return (
+      /\b(telemetry|metric|metrics|reading|readings|value|values|tank|tanks|fuel|oil|water|coolant|def|urea|bilge|alarm|alarms|temperature|temperatures|pressure|pressures|voltage|voltages|current|currents|power|energy|runtime|hours?|generator|genset|engine|battery|batteries|charger|chargers|coordinates?|position|latitude|longitude|gps)\b/i.test(
+        query,
+      ) || this.hasHistoricalTimeAnchor(query)
     );
   }
 
@@ -1629,6 +1713,28 @@ export class ChatDocumentationQueryService {
     return this.ensureAggregateStoredFluidTankContext(normalized);
   }
 
+  private buildAggregateContinuationQuery(previousUserQuery: string): string {
+    const normalizedBase = this.normalizeInheritedFollowUpSubjectBase(
+      this.stripFollowUpScopeScaffolding(previousUserQuery),
+    );
+    if (!normalizedBase) {
+      return normalizedBase;
+    }
+
+    const canonicalTime =
+      this.extractCanonicalHistoricalContinuationTime(normalizedBase);
+    const subject =
+      canonicalTime !== null
+        ? this.stripHistoricalContinuationTime(normalizedBase)
+        : normalizedBase;
+    const normalizedSubject =
+      this.ensureAggregateStoredFluidLevelTankContext(subject);
+
+    return canonicalTime
+      ? this.composeTemporalContinuationQuery(normalizedSubject, canonicalTime)
+      : normalizedSubject;
+  }
+
   private stripFollowUpScopeScaffolding(value: string): string {
     return value
       .replace(/\bshow all available\b/gi, ' ')
@@ -1639,6 +1745,30 @@ export class ChatDocumentationQueryService {
       .replace(/\bfrom history procedures\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private ensureAggregateStoredFluidLevelTankContext(query: string): string {
+    if (!query) {
+      return query;
+    }
+
+    if (!/\b(fuel|oil|water|coolant|def|urea)\b/i.test(query)) {
+      return query;
+    }
+
+    if (
+      !/\b(level|levels|reading|readings|value|values|quantity|quantities|amount|amounts)\b/i.test(
+        query,
+      )
+    ) {
+      return query;
+    }
+
+    if (/\b(tank|tanks|onboard)\b/i.test(query)) {
+      return query;
+    }
+
+    return `${query} in the tanks`.replace(/\s+/g, ' ').trim();
   }
 
   private ensureAggregateStoredFluidTankContext(query: string): string {
