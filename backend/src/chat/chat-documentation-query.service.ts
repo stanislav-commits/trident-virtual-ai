@@ -1015,11 +1015,25 @@ export class ChatDocumentationQueryService {
   }
 
   detectDirectionalSide(query: string): 'port' | 'starboard' | null {
-    if (/\b(port(?:\s+side)?|portside|ps|left(?:\s+side)?)\b/i.test(query)) {
+    const normalized = query
+      .replace(/\bright\s+now\b/gi, ' ')
+      .replace(/\b(?:time|hours?)\s+left\b/gi, ' ');
+
+    if (
+      /\b(port(?:\s+side)?|portside|ps)\b/i.test(normalized) ||
+      /\bleft(?:\s+side|\s+(?:engine|generator|genset|pump|motor|tank|battery|charger|thruster|shaft|coupling|gearbox|bilge))\b/i.test(
+        normalized,
+      )
+    ) {
       return 'port';
     }
 
-    if (/\b(starboard(?:\s+side)?|starboardside|sb|stbd|right(?:\s+side)?)\b/i.test(query)) {
+    if (
+      /\b(starboard(?:\s+side)?|starboardside|sb|stbd)\b/i.test(normalized) ||
+      /\bright(?:\s+side|\s+(?:engine|generator|genset|pump|motor|tank|battery|charger|thruster|shaft|coupling|gearbox|bilge))\b/i.test(
+        normalized,
+      )
+    ) {
       return 'starboard';
     }
 
