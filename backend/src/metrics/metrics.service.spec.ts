@@ -439,6 +439,22 @@ describe('MetricsService telemetry matching', () => {
       },
       {
         metricKey:
+          'Trending::PORT-GENERATOR-BATTERY-CHARGER::Total apparent power (arithmetic)',
+        latestValue: 97,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label:
+            'PORT-GENERATOR-BATTERY-CHARGER.Total apparent power (arithmetic)',
+          description:
+            "Measures the total apparent power supplied by the port generator's battery charger. What it measures: The combined voltage and current (without considering phase angle) delivered by the charger. Unit: Volt-amperes (VA)",
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'PORT-GENERATOR-BATTERY-CHARGER',
+          field: 'Total apparent power (arithmetic)',
+        },
+      },
+      {
+        metricKey:
           'Trending::PORT-GENERATOR-BATTERY-CHARGER::RMS current - phase A',
         latestValue: 0.43,
         valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),

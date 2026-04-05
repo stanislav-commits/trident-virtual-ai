@@ -3699,7 +3699,7 @@ export class MetricsService implements OnModuleInit {
         );
       }
       if (wantsCurrentValue) {
-        const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
+        const entryKinds = this.extractTelemetryEntryMeasurementKinds(entry);
         return [...queryKinds].some((kind) => entryKinds.has(kind));
       }
       return false;
@@ -3982,7 +3982,7 @@ export class MetricsService implements OnModuleInit {
       entry.description ?? '',
     );
     const queryKinds = this.extractTelemetryQueryMeasurementKinds(query);
-    const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
+    const entryKinds = this.extractTelemetryEntryMeasurementKinds(entry);
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
     const matchedSubjectTokens = subjectTokens.filter((token) =>
       this.matchesTelemetrySubjectToken(haystack, token),
@@ -4320,9 +4320,7 @@ export class MetricsService implements OnModuleInit {
     }
 
     const hasDirectMeasurementKind = entries.some((entry) => {
-      const entryKinds = this.extractTelemetryMeasurementKinds(
-        this.buildTelemetryHaystack(entry),
-      );
+      const entryKinds = this.extractTelemetryEntryMeasurementKinds(entry);
       return [...queryKinds].some((kind) => entryKinds.has(kind));
     });
 
@@ -4336,7 +4334,7 @@ export class MetricsService implements OnModuleInit {
 
     const hasDirectSubjectAndKind = entries.some((entry) => {
       const haystack = this.buildTelemetryHaystack(entry);
-      const entryKinds = this.extractTelemetryMeasurementKinds(haystack);
+      const entryKinds = this.extractTelemetryEntryMeasurementKinds(entry);
       const matchesSubject = subjectTokens.some((token) =>
         this.matchesTelemetrySubjectToken(haystack, token),
       );
@@ -4707,6 +4705,40 @@ export class MetricsService implements OnModuleInit {
     );
   }
 
+  private buildTelemetryIdentityHaystack(entry: ShipTelemetryEntry): string {
+    return this.normalizeTelemetryText(
+      [
+        entry.key,
+        entry.label,
+        entry.bucket,
+        entry.measurement,
+        entry.field,
+        entry.unit,
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+  }
+
+  private extractTelemetryEntryMeasurementKinds(
+    entry: ShipTelemetryEntry,
+  ): Set<string> {
+    const kinds = this.extractTelemetryMeasurementKinds(
+      this.buildTelemetryIdentityHaystack(entry),
+    );
+
+    if (
+      !kinds.has('level') &&
+      (['fuel', 'oil', 'water', 'coolant', 'def'] as const).some((fluid) =>
+        this.isDedicatedTankStorageField(entry, fluid),
+      )
+    ) {
+      kinds.add('level');
+    }
+
+    return kinds;
+  }
+
   private matchesTelemetrySubject(
     entry: ShipTelemetryEntry,
     subjectTokens: string[],
@@ -4731,9 +4763,7 @@ export class MetricsService implements OnModuleInit {
       return true;
     }
 
-    const entryKinds = this.extractTelemetryMeasurementKinds(
-      this.buildTelemetryHaystack(entry),
-    );
+    const entryKinds = this.extractTelemetryEntryMeasurementKinds(entry);
     return [...queryKinds].some((kind) => entryKinds.has(kind));
   }
 
