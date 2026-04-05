@@ -1,7 +1,11 @@
 import { ManualsParseScheduler } from './manuals-parse.scheduler';
 
 describe('ManualsParseScheduler retryable failures', () => {
-  const buildScheduler = (run: string, progressMsg: string) => {
+  const buildScheduler = (
+    run: string,
+    progressMsg: string,
+    chunkCount: number = 0,
+  ) => {
     const prisma = {
       ship: {
         findMany: jest.fn().mockResolvedValue([
@@ -13,7 +17,7 @@ describe('ManualsParseScheduler retryable failures', () => {
       },
       shipManual: {
         findMany: jest.fn().mockResolvedValue([
-          { ragflowDocumentId: 'doc-1' },
+          { id: 'manual-1', ragflowDocumentId: 'doc-1' },
         ]),
       },
     };
@@ -27,16 +31,30 @@ describe('ManualsParseScheduler retryable failures', () => {
           run,
           progress: 0,
           progress_msg: progressMsg,
-          chunk_count: 0,
+          chunk_count: chunkCount,
           token_count: 0,
         },
       ]),
       parseDocuments: jest.fn().mockResolvedValue(undefined),
     };
 
+    const tagLinks = {
+      autoLinkManuals: jest.fn().mockResolvedValue({
+        processed: 1,
+        linked: 1,
+        untouched: 0,
+        cleared: 0,
+      }),
+    };
+
     return {
-      scheduler: new ManualsParseScheduler(prisma as never, ragflow as never),
+      scheduler: new ManualsParseScheduler(
+        prisma as never,
+        ragflow as never,
+        tagLinks as never,
+      ),
       ragflow,
+      tagLinks,
     };
   };
 
@@ -61,6 +79,19 @@ describe('ManualsParseScheduler retryable failures', () => {
 
     await scheduler.drainPendingDocuments();
 
+    expect(ragflow.parseDocuments).not.toHaveBeenCalled();
+  });
+
+  it('refreshes content-assisted tags for completed parsed manuals', async () => {
+    const { scheduler, ragflow, tagLinks } = buildScheduler(
+      'DONE',
+      'completed',
+      18,
+    );
+
+    await scheduler.drainPendingDocuments();
+
+    expect(tagLinks.autoLinkManuals).toHaveBeenCalledWith(['manual-1']);
     expect(ragflow.parseDocuments).not.toHaveBeenCalled();
   });
 });
