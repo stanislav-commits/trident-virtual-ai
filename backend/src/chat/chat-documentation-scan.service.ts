@@ -58,6 +58,7 @@ export class ChatDocumentationScanService {
     userQuery: string,
     citations: ChatCitation[],
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -78,6 +79,7 @@ export class ChatDocumentationScanService {
       shipId,
       citations,
       allowedDocumentCategories,
+      allowedManualIds,
     );
     if (scanContexts.length === 0) {
       this.logger.debug(
@@ -283,6 +285,7 @@ export class ChatDocumentationScanService {
     userQuery: string,
     citations: ChatCitation[],
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -310,6 +313,7 @@ export class ChatDocumentationScanService {
       shipId,
       citations,
       allowedDocumentCategories,
+      allowedManualIds,
     );
     if (scanContexts.length === 0) {
       this.logger.debug(
@@ -391,6 +395,7 @@ export class ChatDocumentationScanService {
     userQuery: string,
     citations: ChatCitation[],
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -406,6 +411,7 @@ export class ChatDocumentationScanService {
       shipId,
       citations,
       allowedDocumentCategories,
+      allowedManualIds,
     );
     if (scanContexts.length === 0) {
       this.logger.debug(
@@ -519,6 +525,7 @@ export class ChatDocumentationScanService {
     userQuery: string,
     citations: ChatCitation[],
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -534,6 +541,7 @@ export class ChatDocumentationScanService {
       shipId,
       citations,
       allowedDocumentCategories,
+      allowedManualIds,
     );
     if (scanContexts.length === 0) {
       this.logger.debug(
@@ -603,6 +611,7 @@ export class ChatDocumentationScanService {
     userQuery: string,
     citations: ChatCitation[],
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -618,6 +627,7 @@ export class ChatDocumentationScanService {
       shipId,
       citations,
       allowedDocumentCategories,
+      allowedManualIds,
     );
     if (scanContexts.length === 0) {
       this.logger.debug(
@@ -695,6 +705,7 @@ export class ChatDocumentationScanService {
     userQuery: string,
     citations: ChatCitation[],
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<ChatCitation[]> {
     if (!this.ragflowService.isConfigured()) return [];
 
@@ -710,6 +721,7 @@ export class ChatDocumentationScanService {
       shipId,
       citations,
       allowedDocumentCategories,
+      allowedManualIds,
     );
     if (scanContexts.length === 0) {
       this.logger.debug(
@@ -785,8 +797,13 @@ export class ChatDocumentationScanService {
     shipId: string | null,
     citations: ChatCitation[],
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<DocumentScanContext[]> {
     const contexts: DocumentScanContext[] = [];
+    const allowedManualIdSet =
+      allowedManualIds && allowedManualIds.length > 0
+        ? new Set(allowedManualIds)
+        : null;
 
     if (shipId) {
       const ship = await this.prisma.ship.findUnique({
@@ -808,6 +825,7 @@ export class ChatDocumentationScanService {
         ? this.filterScanManualsByAllowedCategories(
             ship.manuals,
             allowedDocumentCategories,
+            allowedManualIdSet,
           )
         : [];
 
@@ -861,6 +879,7 @@ export class ChatDocumentationScanService {
       const manuals = this.filterScanManualsByAllowedCategories(
         ship.manuals,
         allowedDocumentCategories,
+        allowedManualIdSet,
       );
       if (manuals.length === 0) continue;
 
@@ -897,6 +916,7 @@ export class ChatDocumentationScanService {
       category?: string | null;
     }>,
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: Set<string> | null,
   ): DocumentScanManual[] {
     const allowedCategories =
       allowedDocumentCategories && allowedDocumentCategories.length > 0
@@ -906,6 +926,9 @@ export class ChatDocumentationScanService {
     return manuals
       .map((manual) => {
         if (!manual.ragflowDocumentId) {
+          return null;
+        }
+        if (allowedManualIds && !allowedManualIds.has(manual.id)) {
           return null;
         }
 
