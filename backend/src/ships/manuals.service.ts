@@ -3,10 +3,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService, RagflowUploadFile } from '../ragflow/ragflow.service';
+import { TagLinksService } from '../tags/tag-links.service';
 import { ManualsParseScheduler } from './manuals-parse.scheduler';
 import { BulkRemoveManualsDto } from './dto/bulk-remove-manuals.dto';
 import { UpdateManualDto } from './dto/update-manual.dto';
@@ -62,6 +64,7 @@ export class ManualsService {
     private readonly prisma: PrismaService,
     private readonly ragflow: RagflowService,
     private readonly manualsParseScheduler: ManualsParseScheduler,
+    @Optional() private readonly tagLinks?: TagLinksService,
   ) {}
 
   private normalizeManualIds(ids?: string[]): string[] {
@@ -248,6 +251,7 @@ export class ManualsService {
         uploadedAt: manual.uploadedAt,
       });
     }
+    await this.tagLinks?.autoLinkManuals(created.map((manual) => manual.id));
 
     for (const doc of uploaded) {
       const filenameForConfig = file.originalname ?? doc.name;
@@ -460,6 +464,10 @@ export class ManualsService {
     };
   }
 
+  async listTags(shipId: string, manualId: string) {
+    return this.tagLinks?.listManualTags(shipId, manualId) ?? [];
+  }
+
   async download(shipId: string, manualId: string) {
     const manual = await this.prisma.shipManual.findFirst({
       where: { id: manualId, shipId },
@@ -493,21 +501,29 @@ export class ManualsService {
     if (dto.filename === undefined && category === undefined) {
       return this.findOne(shipId, manualId);
     }
-    return this.prisma.shipManual
-      .update({
+    const updated = await this.prisma.shipManual.update({
         where: { id: manualId },
         data: {
           ...(dto.filename !== undefined ? { filename: dto.filename } : {}),
           ...(category !== undefined ? { category } : {}),
         },
-      })
-      .then((m) => ({
-        id: m.id,
-        ragflowDocumentId: m.ragflowDocumentId,
-        filename: m.filename,
-        category: m.category as ShipManualCategory,
-        uploadedAt: m.uploadedAt,
-      }));
+      });
+    await this.tagLinks?.autoLinkManuals([updated.id]);
+    return {
+      id: updated.id,
+      ragflowDocumentId: updated.ragflowDocumentId,
+      filename: updated.filename,
+      category: updated.category as ShipManualCategory,
+      uploadedAt: updated.uploadedAt,
+    };
+  }
+
+  async replaceTags(
+    shipId: string,
+    manualId: string,
+    tagIds: string[] | undefined,
+  ) {
+    return this.tagLinks?.replaceManualTags(shipId, manualId, tagIds) ?? [];
   }
 
   async bulkRemove(shipId: string, dto: BulkRemoveManualsDto) {
