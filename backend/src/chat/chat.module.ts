@@ -13,9 +13,16 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { RagflowModule } from '../ragflow/ragflow.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { SystemPromptModule } from '../system-prompt/system-prompt.module';
+import { TagsModule } from '../tags/tags.module';
 
 @Module({
-  imports: [PrismaModule, RagflowModule, MetricsModule, SystemPromptModule],
+  imports: [
+    PrismaModule,
+    RagflowModule,
+    MetricsModule,
+    SystemPromptModule,
+    TagsModule,
+  ],
   controllers: [ChatController],
   providers: [
     ChatService,
