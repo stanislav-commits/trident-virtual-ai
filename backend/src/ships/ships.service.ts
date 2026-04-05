@@ -11,6 +11,15 @@ import { MetricsService } from '../metrics/metrics.service';
 import { CreateShipDto } from './dto/create-ship.dto';
 import { UpdateShipDto } from './dto/update-ship.dto';
 
+const TAG_SUMMARY_SELECT = {
+  id: true,
+  key: true,
+  category: true,
+  subcategory: true,
+  item: true,
+  description: true,
+} as const;
+
 @Injectable()
 export class ShipsService {
   private readonly logger = new Logger(ShipsService.name);
@@ -22,7 +31,7 @@ export class ShipsService {
   ) {}
 
   async getMetricDefinitions() {
-    return this.prisma.metricDefinition.findMany({
+    const metrics = await this.prisma.metricDefinition.findMany({
       orderBy: { key: 'asc' },
       select: {
         key: true,
@@ -34,8 +43,24 @@ export class ShipsService {
         field: true,
         status: true,
         dataType: true,
+        tags: {
+          take: 1,
+          orderBy: {
+            tag: { key: 'asc' },
+          },
+          select: {
+            tag: {
+              select: TAG_SUMMARY_SELECT,
+            },
+          },
+        },
       },
     });
+
+    return metrics.map(({ tags, ...metric }) => ({
+      ...metric,
+      tag: tags[0]?.tag ?? null,
+    }));
   }
 
   async listOrganizations() {
