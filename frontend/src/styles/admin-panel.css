@@ -2972,6 +2972,7 @@
 .toast--error {
   border-color: var(--color-error-border);
   background: rgba(10, 10, 10, 0.95);
+  color: rgba(248, 250, 252, 0.96);
 }
 
 .toast--error .toast__icon {
@@ -2981,6 +2982,7 @@
 .toast--success {
   border-color: var(--color-success-border);
   background: rgba(10, 10, 10, 0.95);
+  color: rgba(248, 250, 252, 0.96);
 }
 
 .toast--success .toast__icon {
@@ -2990,10 +2992,17 @@
 .toast--info {
   border-color: var(--color-info-border);
   background: rgba(10, 10, 10, 0.95);
+  color: rgba(248, 250, 252, 0.96);
 }
 
 .toast--info .toast__icon {
   color: var(--color-info);
+}
+
+.toast--error .toast__close,
+.toast--success .toast__close,
+.toast--info .toast__close {
+  color: rgba(226, 232, 240, 0.92);
 }
 
 .toast__content {
@@ -3010,6 +3019,7 @@
 }
 
 .toast__message {
+  color: inherit;
   word-break: break-word;
 }
 
@@ -3036,6 +3046,12 @@
 .toast__close:hover {
   opacity: 1;
   background: rgba(255, 255, 255, 0.06);
+}
+
+.toast--error .toast__close:hover,
+.toast--success .toast__close:hover,
+.toast--info .toast__close:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 @media (max-width: 640px) {
@@ -3429,6 +3445,194 @@
   line-height: 1.5;
 }
 
+.admin-panel__tags-result-box {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--chat-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.014), transparent),
+    var(--chat-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-panel__tags-result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  flex: 1 1 420px;
+}
+
+.admin-panel__tags-result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+}
+
+.admin-panel__tags-result-label {
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--chat-text-subtle);
+}
+
+.admin-panel__tags-result-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--chat-text);
+  letter-spacing: -0.02em;
+}
+
+.admin-panel__tag-links-modal {
+  max-width: 980px;
+  width: min(980px, calc(100vw - 48px));
+}
+
+.admin-panel__tag-links-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-panel__tag-links-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-panel__tag-links-toolbar .admin-panel__metrics-search {
+  flex: 1 1 340px;
+  min-width: 260px;
+}
+
+.admin-panel__tag-links-toolbar-selects {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-panel__tag-links-selected {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+}
+
+.admin-panel__tag-links-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-panel__tag-chip--selected {
+  gap: 8px;
+  padding-right: 8px;
+  cursor: pointer;
+}
+
+.admin-panel__tag-chip--selected svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.72;
+}
+
+.admin-panel__tag-links-list {
+  display: grid;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.admin-panel__tag-links-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.admin-panel__tag-links-row:hover {
+  border-color: var(--chat-border-strong);
+  background: var(--chat-surface-2);
+  transform: translateY(-1px);
+}
+
+.admin-panel__tag-links-row--selected {
+  border-color: rgba(59, 130, 246, 0.34);
+  background:
+    linear-gradient(180deg, rgba(59, 130, 246, 0.1), transparent),
+    var(--chat-surface);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.16);
+}
+
+.admin-panel__tag-links-row .admin-panel__selection-check {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.admin-panel__tag-links-row-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-panel__tag-links-row-key {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--chat-text);
+  overflow-wrap: anywhere;
+}
+
+.admin-panel__tag-links-row-meta {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--chat-text-subtle);
+  line-height: 1.45;
+}
+
+.admin-panel__tag-links-row-desc {
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--chat-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.admin-panel__td--metric-actions {
+  white-space: nowrap;
+}
+
+.admin-panel__actions--metric-row {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
 [data-theme="light"] .admin-panel__tags-stat-card,
 [data-theme="light"] .admin-panel__tags-toolbar,
 [data-theme="light"] .admin-panel__tags-preview,
@@ -3461,6 +3665,24 @@
   background: rgba(248, 250, 252, 0.9);
 }
 
+[data-theme="light"] .admin-panel__tags-result-box,
+[data-theme="light"] .admin-panel__tag-links-row {
+  box-shadow: 0 12px 28px rgba(148, 163, 184, 0.08);
+}
+
+[data-theme="light"] .admin-panel__tags-result-card,
+[data-theme="light"] .admin-panel__tag-links-selected {
+  background: rgba(248, 250, 252, 0.96);
+  border-color: rgba(203, 213, 225, 0.92);
+}
+
+[data-theme="light"] .admin-panel__tag-links-row--selected {
+  background:
+    linear-gradient(180deg, rgba(59, 130, 246, 0.09), transparent),
+    rgba(255, 255, 255, 0.98);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
 @media (max-width: 980px) {
   .admin-panel__tags-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3480,6 +3702,10 @@
 
   .admin-panel__tags-col--updated {
     width: 148px;
+  }
+
+  .admin-panel__tags-result-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -3508,5 +3734,22 @@
   .admin-panel__tags-bulk-actions {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .admin-panel__tag-links-modal {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+  }
+
+  .admin-panel__tag-links-toolbar {
+    align-items: stretch;
+  }
+
+  .admin-panel__tag-links-toolbar-selects {
+    width: 100%;
+  }
+
+  .admin-panel__tag-links-toolbar-selects .admin-panel__select {
+    flex: 1 1 180px;
   }
 }
