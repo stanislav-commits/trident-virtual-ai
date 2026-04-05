@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
+import { TagLinksService } from '../tags/tag-links.service';
 
 @Injectable()
 export class ManualsParseScheduler {
@@ -41,15 +42,23 @@ export class ManualsParseScheduler {
     0,
     5,
   );
+  private readonly contentTaggingCooldownMs = this.readIntEnv(
+    'RAGFLOW_CONTENT_TAGGING_COOLDOWN_MS',
+    600000,
+    1000,
+    86400000,
+  );
 
   private isDraining = false;
   private drainRequested = false;
   private readonly recentlySubmitted = new Map<string, number>();
   private readonly retryAttempts = new Map<string, number>();
+  private readonly recentlyContentTagged = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ragflow: RagflowService,
+    @Optional() private readonly tagLinks?: TagLinksService,
   ) {}
 
   notifyPendingDocuments(): void {
@@ -103,6 +112,11 @@ export class ManualsParseScheduler {
         this.recentlySubmitted.delete(documentId);
       }
     }
+    for (const [documentId, until] of this.recentlyContentTagged.entries()) {
+      if (until <= now) {
+        this.recentlyContentTagged.delete(documentId);
+      }
+    }
   }
 
   private async drainDatasetsOnce(): Promise<void> {
@@ -135,6 +149,7 @@ export class ManualsParseScheduler {
       where: { shipId },
       orderBy: { uploadedAt: 'asc' },
       select: {
+        id: true,
         ragflowDocumentId: true,
       },
     });
@@ -146,6 +161,7 @@ export class ManualsParseScheduler {
       manuals.map((manual) => manual.ragflowDocumentId),
     );
     this.cleanupRetryAttempts(docs);
+    const now = Date.now();
 
     const runByDocumentId = new Map(docs.map((doc) => [doc.id, doc.run]));
     const retryableFailureIds = new Set(
@@ -153,12 +169,41 @@ export class ManualsParseScheduler {
         .filter((doc) => this.isRetryableFailure(doc))
         .map((doc) => doc.id),
     );
+    const contentTaggableDocumentIds = new Set(
+      docs
+        .filter(
+          (doc) =>
+            doc.run === 'DONE' &&
+            doc.chunk_count > 0 &&
+            (this.recentlyContentTagged.get(doc.id) ?? 0) <= now,
+        )
+        .map((doc) => doc.id),
+    );
+
+    if (this.tagLinks && contentTaggableDocumentIds.size > 0) {
+      const manualIdsForContentTagging = manuals
+        .filter((manual) => contentTaggableDocumentIds.has(manual.ragflowDocumentId))
+        .map((manual) => manual.id);
+
+      if (manualIdsForContentTagging.length > 0) {
+        const refreshResult = await this.tagLinks.autoLinkManuals(
+          manualIdsForContentTagging,
+        );
+        for (const documentId of contentTaggableDocumentIds) {
+          this.recentlyContentTagged.set(
+            documentId,
+            now + this.contentTaggingCooldownMs,
+          );
+        }
+        this.logger.debug(
+          `Manual content tag refresh ship=${shipId} processed=${refreshResult.processed} linked=${refreshResult.linked} untouched=${refreshResult.untouched} cleared=${refreshResult.cleared}`,
+        );
+      }
+    }
 
     const runningCount = docs.filter((doc) => doc.run === 'RUNNING').length;
     const capacity = Math.max(0, this.maxRunningDocuments - runningCount);
     if (capacity === 0) return;
-
-    const now = Date.now();
     const pendingDocumentIds = manuals
       .map((manual) => manual.ragflowDocumentId)
       .filter((documentId) => {
