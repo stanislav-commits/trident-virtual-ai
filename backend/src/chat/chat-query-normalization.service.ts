@@ -242,7 +242,7 @@ export class ChatQueryNormalizationService {
     };
 
     if (
-      /\b(telemetry|metric|metrics|tank|fuel|oil|coolant|temperature|pressure|voltage|load|level|bilge|rpm|runtime|hours?|position|latitude|longitude|location|coordinates?|gps|lat|lon)\b/i.test(
+      /\b(telemetry|metric|metrics|tank|tanks|fuel|oil|coolant|temperature|temperatures|pressure|pressures|voltage|voltages|current|currents|amperage|amperages|load|loads|level|levels|bilge|alarm|alarms|rpm|runtime|hours?|position|latitude|longitude|location|coordinates?|gps|lat|lon|generator|generators|genset|gensets|engine|engines|battery|batteries|charger|chargers)\b/i.test(
         normalized,
       )
     ) {
