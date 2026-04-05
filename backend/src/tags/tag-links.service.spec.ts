@@ -12,7 +12,107 @@ describe('TagLinksService', () => {
 
     await expect(
       service.replaceMetricTags('metric-1', ['tag-1', 'tag-2']),
-    ).rejects.toThrow('Only one tag can be linked to a metric or document');
+    ).rejects.toThrow('Only one tag can be linked to a metric');
+  });
+
+  it('allows assigning multiple tags to a manual', async () => {
+    const shipManualTag = {
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      createMany: jest.fn().mockResolvedValue({ count: 2 }),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          tag: {
+            id: 'tag-1',
+            key: 'equipment:fuel:storage_tank',
+            category: 'equipment',
+            subcategory: 'fuel',
+            item: 'storage_tank',
+            description: 'Fuel tank.',
+          },
+        },
+        {
+          tag: {
+            id: 'tag-2',
+            key: 'equipment:propulsion:coupling_ps',
+            category: 'equipment',
+            subcategory: 'propulsion',
+            item: 'coupling_ps',
+            description: 'Port coupling.',
+          },
+        },
+      ]),
+    };
+    const prisma = {
+      shipManual: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'manual-1' }),
+      },
+      tag: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'tag-1' }, { id: 'tag-2' }]),
+      },
+      shipManualTag,
+      $transaction: jest.fn().mockImplementation(async (callback) =>
+        callback({ shipManualTag }),
+      ),
+    };
+    const service = new TagLinksService(prisma as never, {} as never);
+
+    const result = await service.replaceManualTags('ship-1', 'manual-1', [
+      'tag-1',
+      'tag-2',
+    ]);
+
+    expect(shipManualTag.createMany).toHaveBeenCalledWith({
+      data: [
+        { shipManualId: 'manual-1', tagId: 'tag-1' },
+        { shipManualId: 'manual-1', tagId: 'tag-2' },
+      ],
+      skipDuplicates: true,
+    });
+    expect(result.map((tag) => tag.id)).toEqual(['tag-1', 'tag-2']);
+  });
+
+  it('infers storage tank scope for generic stored-fluid inventory queries', async () => {
+    const prisma = {
+      tag: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'fuel-storage',
+            key: 'equipment:fuel:storage_tank',
+            category: 'equipment',
+            subcategory: 'fuel',
+            item: 'storage_tank',
+            description: 'Fuel storage tank.',
+          },
+        ]),
+      },
+      metricDefinitionTag: {
+        findMany: jest.fn().mockResolvedValue([
+          { metricKey: 'metric-1' },
+          { metricKey: 'metric-2' },
+        ]),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          { metricKey: 'metric-1' },
+          { metricKey: 'metric-2' },
+        ]),
+      },
+    };
+    const service = new TagLinksService(
+      prisma as never,
+      new TagMatcherService(),
+    );
+
+    const result = await service.findTaggedMetricKeysForShipQuery(
+      'ship-1',
+      'what the fuel level',
+    );
+
+    expect(prisma.metricDefinitionTag.findMany).toHaveBeenCalledWith({
+      where: { tagId: { in: ['fuel-storage'] } },
+      select: { metricKey: true },
+    });
+    expect(result).toEqual(['metric-1', 'metric-2']);
   });
 
   it('rebuilds links conservatively by default without replacing curated links', async () => {

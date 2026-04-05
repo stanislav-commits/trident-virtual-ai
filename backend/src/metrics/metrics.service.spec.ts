@@ -1885,6 +1885,190 @@ describe('MetricsService telemetry matching', () => {
         ),
     ).toBe(true);
   });
+  it('treats generic fuel level questions as tank inventory lookups instead of broad semantic matches', async () => {
+    const tankConfigs = [
+      ['1P', 3781, 'Fuel tank quantity.'],
+      ['2S', 3543, 'Fuel tank quantity.'],
+      ['3P', 452, 'Fuel tank quantity.'],
+      ['4S', 352, 'Fuel tank quantity.'],
+      ['5P', 799, 'Fuel tank quantity.'],
+      ['6S', 902, 'Temperature reading for Fuel Tank 6S.'],
+      ['7P', 757, 'Temperature reading for Fuel Tank 7P.'],
+      ['8S', 846, 'Temperature reading for Fuel Tank 8S.'],
+    ] as const;
+    const service = buildService([
+      ...tankConfigs.map(([suffix, value, description]) => ({
+        metricKey: `Trending::Tanks::Fuel_Tank_${suffix}`,
+        latestValue: value,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: `Tanks.Fuel_Tank_${suffix}`,
+          description,
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: `Fuel_Tank_${suffix}`,
+        },
+      })),
+      {
+        metricKey:
+          'Trending::PORT-FUEL-OIL-TRANSFER-PUMP::RMS phase to neutral Voltage B-N',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label:
+            'PORT-FUEL-OIL-TRANSFER-PUMP.RMS phase to neutral Voltage B-N',
+          description:
+            'Displays the electrical voltage level on phase B for the port fuel oil transfer pump.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'PORT-FUEL-OIL-TRANSFER-PUMP',
+          field: 'RMS phase to neutral Voltage B-N',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-SB::Total Fuel Used (l)',
+        latestValue: 36070,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-SB.Total Fuel Used (l)',
+          description:
+            'Displays the total volume of fuel used by the starboard generator.',
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-SB',
+          field: 'Total Fuel Used (l)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what the fuel level',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(Object.keys(result.telemetry)).toHaveLength(8);
+    expect(
+      Object.keys(result.telemetry).every((key) => /Fuel Tank/i.test(key)),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).some((key) => key.includes('Fuel Tank 6S')),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).some((key) => key.includes('Fuel Tank 8S')),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).every(
+        (key) => !/Voltage|Fuel Used/i.test(key),
+      ),
+    ).toBe(true);
+  });
+
+  it('treats current as a live qualifier for stored-fluid tank inventory questions', async () => {
+    const service = buildService([
+      ...['1P', '2S', '3P'].map((suffix, index) => ({
+        metricKey: `Trending::Tanks::Fuel_Tank_${suffix}`,
+        latestValue: 1000 + index,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: `Tanks.Fuel_Tank_${suffix}`,
+          description: `Fuel tank quantity for tank ${suffix}.`,
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: `Fuel_Tank_${suffix}`,
+        },
+      })),
+      {
+        metricKey: 'Trending::Electrical::RMS current - phase A',
+        latestValue: 3.4,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Electrical.RMS current - phase A',
+          description: 'Electrical RMS current on phase A.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'Electrical',
+          field: 'RMS current - phase A',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what the current fuel tanks',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(Object.keys(result.telemetry)).toHaveLength(3);
+    expect(
+      Object.keys(result.telemetry).every((key) => /Fuel Tank/i.test(key)),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).every(
+        (key) => !/current - phase/i.test(key),
+      ),
+    ).toBe(true);
+  });
+
+  it('uses the same tank inventory shortcut for other stored fluids such as water', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Tanks::Fresh_Water_Tank_1P',
+        latestValue: 620,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks.Fresh_Water_Tank_1P',
+          description: 'Fresh water tank quantity.',
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fresh_Water_Tank_1P',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks::Fresh_Water_Tank_2S',
+        latestValue: 605,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks.Fresh_Water_Tank_2S',
+          description: 'Fresh water tank quantity.',
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fresh_Water_Tank_2S',
+        },
+      },
+      {
+        metricKey: 'Trending::Pumps::Fresh water pressure',
+        latestValue: 2.8,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Pumps.Fresh water pressure',
+          description: 'Fresh water pressure at the service pump.',
+          unit: 'bar',
+          bucket: 'Trending',
+          measurement: 'Pumps',
+          field: 'Fresh water pressure',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'show water tank levels',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /Water Tank/i.test(key)),
+    ).toBe(true);
+  });
 });
 
 describe('MetricsService value sync', () => {

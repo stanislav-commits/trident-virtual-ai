@@ -96,7 +96,7 @@ export class TagLinksService {
     tagIds: string[] | undefined,
   ): Promise<TagLinkSummary[]> {
     await this.assertMetricExists(metricKey);
-    const normalizedTagIds = this.normalizeTagIds(tagIds);
+    const normalizedTagIds = this.normalizeSingleTagIds(tagIds, 'metric');
     await this.assertTagIdsExist(normalizedTagIds);
 
     await this.prisma.$transaction(async (tx) => {
@@ -128,7 +128,6 @@ export class TagLinksService {
 
     const links = await this.prisma.shipManualTag.findMany({
       where: { shipManualId: manualId },
-      take: 1,
       orderBy: {
         tag: { key: 'asc' },
       },
@@ -456,16 +455,28 @@ export class TagLinksService {
     }
     const tagIds = tagMatches.map((match) => match.tagId);
 
+    const taggedMetricRows = await this.prisma.metricDefinitionTag.findMany({
+      where: {
+        tagId: { in: tagIds },
+      },
+      select: { metricKey: true },
+    });
+    const taggedMetricKeys = [
+      ...new Set(taggedMetricRows.map((row) => row.metricKey)),
+    ];
+    if (taggedMetricKeys.length === 0) {
+      this.logger.debug(
+        `Telemetry tag scope ship=${shipId} query="${this.truncateForLog(query)}" matchedTags=${tagMatches.map((match) => match.key).join(',')} scopedMetrics=0`,
+      );
+      return [];
+    }
+
     const rows = await this.prisma.shipMetricsConfig.findMany({
       where: {
         shipId,
         isActive: true,
-        metric: {
-          tags: {
-            some: {
-              tagId: { in: tagIds },
-            },
-          },
+        metricKey: {
+          in: taggedMetricKeys,
         },
       },
       select: { metricKey: true },
@@ -561,7 +572,7 @@ export class TagLinksService {
       profiles.map((entry) => [entry.tag.id, entry.tag] as const),
     );
 
-    return this.matcher
+    const directMatches = this.matcher
       .matchTags(
         profiles.map((entry) => entry.profile),
         query,
@@ -570,6 +581,38 @@ export class TagLinksService {
       .map((match) => ({
         ...match,
         key: profileByTagId.get(match.tagId)?.key ?? match.tagId,
+      }));
+    if (directMatches.length > 0) {
+      return directMatches;
+    }
+
+    return this.inferStoredFluidInventoryTagMatches(query, profiles);
+  }
+
+  private inferStoredFluidInventoryTagMatches(
+    query: string,
+    profiles: Array<{
+      tag: MatchableTag;
+      profile: ReturnType<TagMatcherService['buildProfiles']>[number];
+    }>,
+  ): QueryTagMatch[] {
+    const normalizedQuery = this.normalizeQueryText(query);
+    const fluid = this.detectStoredFluidQuerySubject(normalizedQuery);
+    if (!fluid || !this.isStoredFluidInventoryQuery(normalizedQuery, fluid)) {
+      return [];
+    }
+
+    return profiles
+      .filter(
+        (profile) =>
+          profile.tag.item === 'storage_tank' &&
+          this.tagMatchesStoredFluid(profile.tag, fluid),
+      )
+      .slice(0, 4)
+      .map((profile) => ({
+        tagId: profile.tag.id,
+        key: profile.tag.key,
+        score: 10,
       }));
   }
 
@@ -867,11 +910,18 @@ export class TagLinksService {
   }
 
   private normalizeTagIds(tagIds: string[] | undefined): string[] {
-    const normalized = [...new Set((tagIds ?? []).map((id) => id?.trim()).filter(Boolean))];
+    return [...new Set((tagIds ?? []).map((id) => id?.trim()).filter(Boolean))];
+  }
+
+  private normalizeSingleTagIds(
+    tagIds: string[] | undefined,
+    entityLabel: 'metric' | 'document',
+  ): string[] {
+    const normalized = this.normalizeTagIds(tagIds);
 
     if (normalized.length > 1) {
       throw new BadRequestException(
-        'Only one tag can be linked to a metric or document',
+        `Only one tag can be linked to a ${entityLabel}`,
       );
     }
 
@@ -890,6 +940,94 @@ export class TagLinksService {
     }
 
     return `${normalized.slice(0, maxLength - 1)}…`;
+  }
+
+  private normalizeQueryText(value: string): string {
+    return value
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .toLowerCase()
+      .replace(/\bport[\s-]*side\b/g, ' port ')
+      .replace(/\b(?:ps)\b/g, ' port ')
+      .replace(/\bstarboard[\s-]*side\b/g, ' starboard ')
+      .replace(/\b(?:stbd|stb|sb)\b/g, ' starboard ')
+      .replace(/\bgensets?\b/g, ' generator ')
+      .replace(/[_.:/\\-]+/g, ' ')
+      .replace(/[^a-z0-9\s]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private detectStoredFluidQuerySubject(
+    normalizedQuery: string,
+  ): 'fuel' | 'oil' | 'water' | 'coolant' | 'def' | null {
+    if (/\bfuel\b/i.test(normalizedQuery)) return 'fuel';
+    if (/\boil\b/i.test(normalizedQuery)) return 'oil';
+    if (/\bcoolant\b/i.test(normalizedQuery)) return 'coolant';
+    if (/\b(def|urea)\b/i.test(normalizedQuery)) return 'def';
+    if (/\b(water|fresh water|seawater)\b/i.test(normalizedQuery)) {
+      return 'water';
+    }
+    return null;
+  }
+
+  private isStoredFluidInventoryQuery(
+    normalizedQuery: string,
+    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+  ): boolean {
+    const fluidPattern =
+      fluid === 'water'
+        ? /\b(water|fresh water|seawater)\b/i
+        : fluid === 'def'
+          ? /\b(def|urea)\b/i
+          : new RegExp(`\\b${fluid}\\b`, 'i');
+
+    if (!fluidPattern.test(normalizedQuery)) {
+      return false;
+    }
+
+    if (
+      /\b(used|consumed|consumption|usage|burn(?:ed|t|ing)?|spent|rate|flow|pressure|temp(?:erature)?|voltage|power|energy|frequency|pump|transfer)\b/i.test(
+        normalizedQuery,
+      )
+    ) {
+      return false;
+    }
+
+    const hasTankContext = /\b(tank|tanks|storage)\b/i.test(normalizedQuery);
+    const hasInventoryIntent =
+      /\b(level|levels|quantity|volume|contents?|inventory|remaining|left|available|onboard|amount)\b/i.test(
+        normalizedQuery,
+      );
+    const isLookupStyleQuestion =
+      /\b(what|show|list|display|give|tell|provide)\b/i.test(normalizedQuery);
+
+    return hasInventoryIntent || (hasTankContext && isLookupStyleQuestion);
+  }
+
+  private tagMatchesStoredFluid(
+    tag: MatchableTag,
+    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+  ): boolean {
+    const normalizedKey = this.normalizeQueryText(tag.key.replace(/:/g, ' '));
+    const normalizedSubcategory = this.normalizeQueryText(tag.subcategory);
+
+    switch (fluid) {
+      case 'water':
+        return (
+          /\bwater\b/i.test(normalizedKey) ||
+          /\bwater\b/i.test(normalizedSubcategory)
+        );
+      case 'def':
+        return (
+          /\b(def|urea|adblue)\b/i.test(normalizedKey) ||
+          /\b(def|urea)\b/i.test(normalizedSubcategory)
+        );
+      default:
+        return (
+          new RegExp(`\\b${fluid}\\b`, 'i').test(normalizedKey) ||
+          new RegExp(`\\b${fluid}\\b`, 'i').test(normalizedSubcategory)
+        );
+    }
   }
 
   private async assertTagIdsExist(tagIds: string[]): Promise<void> {

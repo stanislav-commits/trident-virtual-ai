@@ -7,6 +7,7 @@ interface TagLinksEditorModalProps {
   token: string | null;
   title: string;
   entityLabel: string;
+  selectionMode?: "single" | "multiple";
   onClose: () => void;
   onError: (message: string) => void;
   loadSelectedTags: () => Promise<TagOption[]>;
@@ -17,6 +18,7 @@ export function TagLinksEditorModal({
   token,
   title,
   entityLabel,
+  selectionMode = "single",
   onClose,
   onError,
   loadSelectedTags,
@@ -28,7 +30,7 @@ export function TagLinksEditorModal({
   const [categoryFilter, setCategoryFilter] = useState("");
   const [subcategoryFilter, setSubcategoryFilter] = useState("");
   const [tagOptions, setTagOptions] = useState<TagOption[]>([]);
-  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export function TagLinksEditorModal({
       .then(([options, selected]) => {
         if (cancelled) return;
         setTagOptions(options);
-        setSelectedTagId(selected[0]?.id ?? null);
+        setSelectedTagIds(selected.map((tag) => tag.id));
       })
       .catch((error) => {
         if (cancelled) return;
@@ -104,13 +106,25 @@ export function TagLinksEditorModal({
     });
   }, [categoryFilter, deferredSearch, subcategoryFilter, tagOptions]);
 
-  const selectedTag = useMemo(
-    () => tagOptions.find((tag) => tag.id === selectedTagId) ?? null,
-    [selectedTagId, tagOptions],
+  const selectedTags = useMemo(
+    () =>
+      selectedTagIds
+        .map((tagId) => tagOptions.find((tag) => tag.id === tagId) ?? null)
+        .filter((tag): tag is TagOption => tag !== null),
+    [selectedTagIds, tagOptions],
   );
 
   const handleSelect = (tagId: string) => {
-    setSelectedTagId((current) => (current === tagId ? null : tagId));
+    setSelectedTagIds((current) => {
+      const alreadySelected = current.includes(tagId);
+      if (selectionMode === "single") {
+        return alreadySelected ? [] : [tagId];
+      }
+
+      return alreadySelected
+        ? current.filter((currentTagId) => currentTagId !== tagId)
+        : [...current, tagId];
+    });
   };
 
   const handleSave = async () => {
@@ -119,10 +133,8 @@ export function TagLinksEditorModal({
     onError("");
 
     try {
-      const selected = await saveSelectedTags(
-        selectedTagId ? [selectedTagId] : [],
-      );
-      setSelectedTagId(selected[0]?.id ?? null);
+      const selected = await saveSelectedTags(selectedTagIds);
+      setSelectedTagIds(selected.map((tag) => tag.id));
       onClose();
     } catch (error) {
       onError(
@@ -165,8 +177,11 @@ export function TagLinksEditorModal({
           </h3>
           <p className="admin-panel__modal-desc">
             Review and update taxonomy links for <strong>{entityLabel}</strong>.
-            Only one tag can be linked here at a time. Automatic matching stays
-            conservative, so you can replace or clear the selected tag when
+            {selectionMode === "single"
+              ? " Only one tag can be linked here at a time."
+              : " You can link multiple tags when the document spans more than one topic."}{" "}
+            Automatic matching stays conservative, so you can replace or clear
+            the selected {selectionMode === "single" ? "tag" : "tags"} when
             needed.
           </p>
         </div>
@@ -221,22 +236,32 @@ export function TagLinksEditorModal({
 
             <div className="admin-panel__tag-links-selected">
               <span className="admin-panel__field-label">
-                Selected tag
+                {selectionMode === "single" ? "Selected tag" : "Selected tags"}
               </span>
-              {!selectedTag ? (
+              {selectedTags.length === 0 ? (
                 <span className="admin-panel__muted">
-                  No tag selected yet.
+                  No {selectionMode === "single" ? "tag" : "tags"} selected
+                  yet.
                 </span>
               ) : (
                 <div className="admin-panel__tag-links-chip-list">
-                  <button
-                    type="button"
-                    className="admin-panel__tag-chip admin-panel__tag-chip--selected"
-                    onClick={() => setSelectedTagId(null)}
-                  >
-                    <span>{selectedTag.key}</span>
-                    <XIcon />
-                  </button>
+                  {selectedTags.map((selectedTag) => (
+                    <button
+                      key={selectedTag.id}
+                      type="button"
+                      className="admin-panel__tag-chip admin-panel__tag-chip--selected"
+                      onClick={() =>
+                        setSelectedTagIds((current) =>
+                          current.filter(
+                            (currentTagId) => currentTagId !== selectedTag.id,
+                          ),
+                        )
+                      }
+                    >
+                      <span>{selectedTag.key}</span>
+                      <XIcon />
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -250,7 +275,7 @@ export function TagLinksEditorModal({
                 </div>
               ) : (
                 filteredOptions.map((tag) => {
-                  const checked = selectedTagId === tag.id;
+                  const checked = selectedTagIds.includes(tag.id);
                   return (
                     <label
                       key={tag.id}

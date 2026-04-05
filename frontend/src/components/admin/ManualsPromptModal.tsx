@@ -1030,8 +1030,9 @@ export function ManualsPromptModal({
       {tagEditingManual && (
         <TagLinksEditorModal
           token={token}
-          title="Edit document tag"
+          title="Edit document tags"
           entityLabel={tagEditingManual.filename}
+          selectionMode="multiple"
           onClose={() => setTagEditingManual(null)}
           onError={onError}
           loadSelectedTags={() =>

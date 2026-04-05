@@ -3448,6 +3448,15 @@ export class MetricsService implements OnModuleInit {
       return aggregateTankEntries;
     }
 
+    const tankInventoryEntries = this.findDirectTankInventoryTelemetryEntries(
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (tankInventoryEntries.length > 0) {
+      return tankInventoryEntries;
+    }
+
     if (this.shouldUseLocationTelemetryShortcut(query, resolvedSubjectQuery)) {
       const locationEntries = this.findLocationTelemetryEntries(
         entries,
@@ -3528,6 +3537,30 @@ export class MetricsService implements OnModuleInit {
           ? this.isHistoricalAggregateTankStorageEntry(entry, fluid)
           : this.isDirectTankStorageEntry(entry, fluid),
       )
+      .sort((left, right) => {
+        const tankRank =
+          this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
+        return tankRank || left.key.localeCompare(right.key);
+      });
+
+    return selected.slice(0, 16);
+  }
+
+  private findDirectTankInventoryTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryEntry[] {
+    const searchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    const fluid = this.detectStoredFluidSubject(searchSpace);
+    if (!fluid || !this.isDirectStoredFluidInventoryQuery(searchSpace, fluid)) {
+      return [];
+    }
+
+    const selected = entries
+      .filter((entry) => this.isDirectTankStorageEntry(entry, fluid))
       .sort((left, right) => {
         const tankRank =
           this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
@@ -4526,8 +4559,30 @@ export class MetricsService implements OnModuleInit {
 
   private extractTelemetryMeasurementKinds(value: string): Set<string> {
     const kinds = new Set<string>();
+    const normalized = this.normalizeTelemetryText(value);
+    const inventoryContextBlocked =
+      /\b(used|consumed|consumption|usage|rate|flow|pressure|temp(?:erature)?|voltage|power|energy|frequency|status|state|alarm|warning|fault|trip)\b/i.test(
+        normalized,
+      );
+    const hasTankOrFluidContext =
+      /\btank\b/i.test(normalized) ||
+      /\b(fuel|oil|coolant|water|def|urea|adblue)\b/i.test(normalized);
+    const hasInventoryContext =
+      hasTankOrFluidContext ||
+      /\b(volume|quantity|contents?|remaining|available|onboard|capacity)\b/i.test(
+        normalized,
+      ) ||
+      /\b(l|lt|ltr|liters?|litres?|percent|percentage|%|gal|gallons?|m3|m 3)\b/i.test(
+        normalized,
+      );
+    const mentionsNonInventoryLevel =
+      /\b(voltage|current|power|signal|frequency|sound|audio|noise)\s+levels?\b/i.test(
+        normalized,
+      ) ||
+      /\blevels?\s+of\s+(voltage|current|power|signal|frequency|sound|audio|noise)\b/i.test(
+        normalized,
+      );
     const checks: Array<[RegExp, string]> = [
-      [/\b(levels?)\b/i, 'level'],
       [/\b(temp(?:eratures?)?|temps?)\b/i, 'temperature'],
       [/\b(pressures?)\b/i, 'pressure'],
       [/\b(voltages?|volts?)\b/i, 'voltage'],
@@ -4551,7 +4606,14 @@ export class MetricsService implements OnModuleInit {
       }
     }
 
-    const normalized = this.normalizeTelemetryText(value);
+    if (
+      /\b(levels?)\b/i.test(normalized) &&
+      (!mentionsNonInventoryLevel || hasInventoryContext) &&
+      !inventoryContextBlocked
+    ) {
+      kinds.add('level');
+    }
+
     const asksForStoredQuantity =
       /\b(how much|how many|onboard|remaining|left|available)\b/i.test(
         normalized,
@@ -4562,7 +4624,10 @@ export class MetricsService implements OnModuleInit {
       kinds.add('level');
     }
 
-    if (/\b(volume|quantity|contents?)\b/i.test(normalized)) {
+    if (
+      /\b(volume|quantity|contents?)\b/i.test(normalized) &&
+      !inventoryContextBlocked
+    ) {
       kinds.add('level');
     }
 
@@ -4583,7 +4648,8 @@ export class MetricsService implements OnModuleInit {
     const hasQuantityUnit =
       /\b(l|lt|ltr|liters?|litres?|percent|percentage|%|gal|gallons?|m3|m 3)\b/i.test(
         normalized,
-      ) && !/\b(used|consumed|consumption|rate|flow)\b/i.test(normalized);
+      ) &&
+      !inventoryContextBlocked;
     if (hasQuantityUnit) {
       kinds.add('level');
     }
@@ -4594,13 +4660,17 @@ export class MetricsService implements OnModuleInit {
   private extractTelemetryQueryMeasurementKinds(value: string): Set<string> {
     const kinds = this.extractTelemetryMeasurementKinds(value);
     const normalized = this.normalizeTelemetryText(value);
+    const fluid = this.detectStoredFluidSubject(normalized);
     const treatsCurrentAsLiveQualifier =
       kinds.has('current') &&
-      /\bcurrent\b\s+(value|values|reading|readings|status|state|metric|metrics|telemetry|signal|signals)\b/i.test(
-        normalized,
-      ) &&
-      !/\b(currents|amps?|amperage|battery current|rms current|phase current|ac current|dc current|line current|current on phase|current phase)\b/i.test(
-        normalized,
+      !this.isElectricalCurrentQuery(normalized) &&
+      (
+        [...kinds].some((kind) => kind !== 'current') ||
+        /\bcurrent\b\s+(value|values|reading|readings|status|state|metric|metrics|telemetry|signal|signals|level|levels|temperature|temperatures|pressure|pressures|voltage|voltages|power|powers|flow|flows|rate|rates|hours?|runtime)\b/i.test(
+          normalized,
+        ) ||
+        /\b(now|right now|latest)\b/i.test(normalized) ||
+        Boolean(fluid && /\btanks?\b/i.test(normalized))
       );
 
     if (treatsCurrentAsLiveQualifier) {
@@ -4991,6 +5061,50 @@ export class MetricsService implements OnModuleInit {
     return mentionsTankContext;
   }
 
+  private isDirectStoredFluidInventoryQuery(
+    normalizedQuery: string,
+    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+  ): boolean {
+    const fluidPattern =
+      fluid === 'water'
+        ? /\b(water|fresh water|seawater)\b/i
+        : fluid === 'def'
+          ? /\b(def|urea)\b/i
+          : new RegExp(`\\b${fluid}\\b`, 'i');
+
+    if (!fluidPattern.test(normalizedQuery)) {
+      return false;
+    }
+
+    if (
+      /\b(used|consumed|consumption|usage|burn(?:ed|t|ing)?|spent|rate|flow|pressure|temp(?:erature)?|voltage|power|energy|frequency|status|state|alarm|warning|fault|trip)\b/i.test(
+        normalizedQuery,
+      )
+    ) {
+      return false;
+    }
+
+    const queryKinds =
+      this.extractTelemetryQueryMeasurementKinds(normalizedQuery);
+    const hasTankContext = /\b(tanks?|storage)\b/i.test(normalizedQuery);
+    const hasInventoryIntent =
+      /\b(level|levels|quantity|volume|contents?|inventory|remaining|left|available|onboard|amount)\b/i.test(
+        normalizedQuery,
+      );
+    const hasLookupStyle =
+      /\b(what|show|list|display|give|tell|provide)\b/i.test(normalizedQuery);
+    const hasOnlyLiveQualifier =
+      queryKinds.size === 0 &&
+      /\b(current|now|right now|latest)\b/i.test(normalizedQuery);
+    const hasSpecificTankReference = this.hasSpecificTankReference(normalizedQuery);
+
+    return (
+      !hasSpecificTankReference &&
+      (hasInventoryIntent ||
+        (hasTankContext && (hasLookupStyle || hasOnlyLiveQualifier)))
+    );
+  }
+
   private isImplicitHistoricalFuelInventoryQuery(
     normalizedQuery: string,
   ): boolean {
@@ -5030,6 +5144,24 @@ export class MetricsService implements OnModuleInit {
       /\btank\b/i.test(haystack) &&
       fluidPattern.test(haystack) &&
       !/\b(used|consumed|consumption|rate|flow|pressure)\b/i.test(haystack)
+    );
+  }
+
+  private hasSpecificTankReference(normalizedQuery: string): boolean {
+    return (
+      /\btank\s+\d{1,3}[a-z]{0,2}\b/i.test(normalizedQuery) ||
+      /\btank\s+\d{1,3}\s+[a-z]{1,2}\b/i.test(normalizedQuery)
+    );
+  }
+
+  private isElectricalCurrentQuery(normalizedQuery: string): boolean {
+    return (
+      /\b(currents|amps?|amperage|rms current|phase current|current on phase|current phase|line current|ac current|dc current|current draw|charge current|charging current|discharge current|neutral current|starter current|alternator current)\b/i.test(
+        normalizedQuery,
+      ) ||
+      /\b(battery|motor|generator|pump|inverter|charger|load)\s+current\b/i.test(
+        normalizedQuery,
+      )
     );
   }
 
