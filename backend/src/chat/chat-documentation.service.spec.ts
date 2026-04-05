@@ -2,6 +2,7 @@ import { ChatDocumentationCitationService } from './chat-documentation-citation.
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
 import { ChatDocumentationScanService } from './chat-documentation-scan.service';
 import { ChatDocumentationService } from './chat-documentation.service';
+import { ChatQueryNormalizationService } from './chat-query-normalization.service';
 import { ChatReferenceExtractionService } from './chat-reference-extraction.service';
 import { ChatCitation } from './chat.types';
 
@@ -834,18 +835,14 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     );
     expect(
       (scanService.expandReferenceDocumentChunkCitations as jest.Mock).mock.calls.some(
-        (call) =>
-          call[1] === resolvedSubjectQuery &&
-          JSON.stringify(call[4]) === JSON.stringify(['MANUALS']),
+        (call) => call[1] === resolvedSubjectQuery,
       ),
     ).toBe(true);
     expect(
       (
         scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock
       ).mock.calls.some(
-        (call) =>
-          call[1] === resolvedSubjectQuery &&
-          JSON.stringify(call[4]) === JSON.stringify(['MANUALS']),
+        (call) => call[1] === resolvedSubjectQuery,
       ),
     ).toBe(true);
     expect(result.resolvedSubjectQuery).toBe(resolvedSubjectQuery);
@@ -1261,5 +1258,91 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       [],
       ['HISTORY_PROCEDURES'],
     ]);
+  });
+
+  it('skips documentation retrieval entirely for telemetry-first current status queries', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const normalizationService = new ChatQueryNormalizationService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest.fn().mockImplementation(
+        (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+          citations,
+          compareBySource: false,
+          sourceComparisonTitles: [],
+        }),
+      ),
+      limitCitationsForLlm: jest
+        .fn()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const normalizedQuery = normalizationService.normalizeTurn({
+      userQuery: 'Are any bilge alarms active right now?',
+    });
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'Are any bilge alarms active right now?',
+      normalizedQuery,
+    });
+
+    expect(result.citations).toEqual([]);
+    expect(result.analysisCitations).toEqual([]);
+    expect(contextService.findContextForQuery).not.toHaveBeenCalled();
+    expect(scanService.expandReferenceDocumentChunkCitations).not.toHaveBeenCalled();
+    expect(
+      scanService.expandMaintenanceAssetDocumentChunkCitations,
+    ).not.toHaveBeenCalled();
   });
 });
