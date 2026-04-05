@@ -1,4 +1,5 @@
 import {
+  Optional,
   BadRequestException,
   ConflictException,
   Injectable,
@@ -8,7 +9,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BulkRemoveTagsDto } from './dto/bulk-remove-tags.dto';
 import { CreateTagDto } from './dto/create-tag.dto';
+import { RebuildTagLinksDto } from './dto/rebuild-tag-links.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
+import { TagLinksService } from './tag-links.service';
 
 const TAG_SELECT = {
   id: true,
@@ -113,7 +116,10 @@ export class TagsService {
   private readonly defaultPageSize = 25;
   private readonly maxPageSize = 100;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly tagLinks?: TagLinksService,
+  ) {}
 
   async findAll(filters: FindAllTagsFilters = {}): Promise<PaginatedTagsResult> {
     const pagination = this.normalizePagination(filters.page, filters.pageSize);
@@ -184,6 +190,23 @@ export class TagsService {
     return this.toTagResponse(tag);
   }
 
+  async listOptions() {
+    return (
+      this.tagLinks?.listTagOptions() ??
+      this.prisma.tag.findMany({
+        orderBy: [{ category: 'asc' }, { subcategory: 'asc' }, { item: 'asc' }],
+        select: {
+          id: true,
+          key: true,
+          category: true,
+          subcategory: true,
+          item: true,
+          description: true,
+        },
+      })
+    );
+  }
+
   async create(dto: CreateTagDto) {
     const normalized = this.normalizeTagInput(dto);
     const existing = await this.prisma.tag.findUnique({
@@ -201,6 +224,7 @@ export class TagsService {
       data: normalized,
       select: TAG_SELECT,
     });
+    this.tagLinks?.invalidateTagCache();
 
     return this.toTagResponse(created);
   }
@@ -253,6 +277,7 @@ export class TagsService {
       data: normalized,
       select: TAG_SELECT,
     });
+    this.tagLinks?.invalidateTagCache();
 
     return this.toTagResponse(updated);
   }
@@ -268,6 +293,7 @@ export class TagsService {
     }
 
     await this.prisma.tag.delete({ where: { id } });
+    this.tagLinks?.invalidateTagCache();
   }
 
   async bulkRemove(dto: BulkRemoveTagsDto) {
@@ -303,6 +329,9 @@ export class TagsService {
         id: { in: matchingTags.map((tag) => tag.id) },
       },
     });
+    if (deleted.count > 0) {
+      this.tagLinks?.invalidateTagCache();
+    }
 
     return { deletedCount: deleted.count };
   }
@@ -398,6 +427,7 @@ export class TagsService {
       (entry) => !existingKeys.has(entry.key),
     ).length;
     const updated = importedEntries.length - created;
+    this.tagLinks?.invalidateTagCache();
 
     return {
       sourceEntries: sourceTags.length,
@@ -407,6 +437,21 @@ export class TagsService {
       warnings,
       warningCount: warnings.length,
     };
+  }
+
+  async rebuildLinks(dto: RebuildTagLinksDto) {
+    if (!this.tagLinks) {
+      return {
+        scope: dto.scope ?? 'all',
+        metrics: { processed: 0, linked: 0, untouched: 0, cleared: 0 },
+        manuals: { processed: 0, linked: 0, untouched: 0, cleared: 0 },
+      };
+    }
+
+    return this.tagLinks.rebuildLinks({
+      scope: dto.scope,
+      shipId: dto.shipId,
+    });
   }
 
   private buildWhereClause(filters: FindAllTagsFilters): Prisma.TagWhereInput {
