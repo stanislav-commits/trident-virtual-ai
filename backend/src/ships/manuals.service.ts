@@ -6,6 +6,7 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService, RagflowUploadFile } from '../ragflow/ragflow.service';
 import { TagLinksService } from '../tags/tag-links.service';
@@ -502,12 +503,17 @@ export class ManualsService {
       return this.findOne(shipId, manualId);
     }
     const updated = await this.prisma.shipManual.update({
-        where: { id: manualId },
-        data: {
-          ...(dto.filename !== undefined ? { filename: dto.filename } : {}),
-          ...(category !== undefined ? { category } : {}),
-        },
-      });
+      where: { id: manualId },
+      data: {
+        ...(dto.filename !== undefined ? { filename: dto.filename } : {}),
+        ...(category !== undefined ? { category } : {}),
+        semanticProfile: Prisma.DbNull,
+        semanticProfileStatus: 'pending',
+        semanticProfileVersion: null,
+        semanticProfileUpdatedAt: null,
+        semanticProfileError: null,
+      },
+    });
     await this.tagLinks?.autoLinkManuals([updated.id]);
     return {
       id: updated.id,

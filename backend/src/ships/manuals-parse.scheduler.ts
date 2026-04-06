@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
+import { ManualSemanticEnrichmentService } from '../semantic/manual-semantic-enrichment.service';
 import { TagLinksService } from '../tags/tag-links.service';
 
 @Injectable()
@@ -59,6 +60,8 @@ export class ManualsParseScheduler {
     private readonly prisma: PrismaService,
     private readonly ragflow: RagflowService,
     @Optional() private readonly tagLinks?: TagLinksService,
+    @Optional()
+    private readonly manualSemanticEnrichment?: ManualSemanticEnrichmentService,
   ) {}
 
   notifyPendingDocuments(): void {
@@ -151,6 +154,12 @@ export class ManualsParseScheduler {
       select: {
         id: true,
         ragflowDocumentId: true,
+        filename: true,
+        category: true,
+        semanticProfile: true,
+        semanticProfileStatus: true,
+        semanticProfileVersion: true,
+        semanticProfileUpdatedAt: true,
       },
     });
 
@@ -165,9 +174,7 @@ export class ManualsParseScheduler {
 
     const runByDocumentId = new Map(docs.map((doc) => [doc.id, doc.run]));
     const retryableFailureIds = new Set(
-      docs
-        .filter((doc) => this.isRetryableFailure(doc))
-        .map((doc) => doc.id),
+      docs.filter((doc) => this.isRetryableFailure(doc)).map((doc) => doc.id),
     );
     const contentTaggableDocumentIds = new Set(
       docs
@@ -179,10 +186,28 @@ export class ManualsParseScheduler {
         )
         .map((doc) => doc.id),
     );
+    const manualByDocumentId = new Map(
+      manuals.map((manual) => [manual.ragflowDocumentId, manual]),
+    );
+    const semanticEnrichableDocumentIds = new Set(
+      docs
+        .filter((doc) => {
+          if (doc.run !== 'DONE' || doc.chunk_count <= 0) {
+            return false;
+          }
+          const manual = manualByDocumentId.get(doc.id);
+          return manual && this.manualSemanticEnrichment
+            ? this.manualSemanticEnrichment.shouldRefreshProfile(manual)
+            : false;
+        })
+        .map((doc) => doc.id),
+    );
 
     if (this.tagLinks && contentTaggableDocumentIds.size > 0) {
       const manualIdsForContentTagging = manuals
-        .filter((manual) => contentTaggableDocumentIds.has(manual.ragflowDocumentId))
+        .filter((manual) =>
+          contentTaggableDocumentIds.has(manual.ragflowDocumentId),
+        )
         .map((manual) => manual.id);
 
       if (manualIdsForContentTagging.length > 0) {
@@ -198,6 +223,23 @@ export class ManualsParseScheduler {
         this.logger.debug(
           `Manual content tag refresh ship=${shipId} processed=${refreshResult.processed} linked=${refreshResult.linked} untouched=${refreshResult.untouched} cleared=${refreshResult.cleared}`,
         );
+      }
+    }
+
+    if (
+      this.manualSemanticEnrichment &&
+      semanticEnrichableDocumentIds.size > 0
+    ) {
+      for (const documentId of semanticEnrichableDocumentIds) {
+        const manual = manualByDocumentId.get(documentId);
+        if (!manual) {
+          continue;
+        }
+        await this.manualSemanticEnrichment.refreshManualProfile({
+          shipId,
+          datasetId,
+          manual,
+        });
       }
     }
 
@@ -232,7 +274,8 @@ export class ManualsParseScheduler {
             })
         : [];
 
-    if (!pendingDocumentIds.length && !retryableFailedDocumentIds.length) return;
+    if (!pendingDocumentIds.length && !retryableFailedDocumentIds.length)
+      return;
 
     const batch = [...pendingDocumentIds, ...retryableFailedDocumentIds].slice(
       0,

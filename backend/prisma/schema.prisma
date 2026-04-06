@@ -113,12 +113,17 @@ model Ship {
 }
 
 model ShipManual {
-  id                String   @id @default(cuid())
-  shipId            String   @map("ship_id") @db.Uuid
-  ragflowDocumentId String   @map("ragflow_document_id") @db.VarChar(255)
-  filename          String   @db.VarChar(500)
-  category          String   @default("MANUALS") @db.VarChar(32)
-  uploadedAt        DateTime @default(now()) @map("uploaded_at")
+  id                       String    @id @default(cuid())
+  shipId                   String    @map("ship_id") @db.Uuid
+  ragflowDocumentId        String    @map("ragflow_document_id") @db.VarChar(255)
+  filename                 String    @db.VarChar(500)
+  category                 String    @default("MANUALS") @db.VarChar(32)
+  semanticProfile          Json?     @map("semantic_profile") @db.JsonB
+  semanticProfileStatus    String    @default("pending") @map("semantic_profile_status") @db.VarChar(20)
+  semanticProfileVersion   String?   @map("semantic_profile_version") @db.VarChar(64)
+  semanticProfileUpdatedAt DateTime? @map("semantic_profile_updated_at")
+  semanticProfileError     String?   @map("semantic_profile_error") @db.Text
+  uploadedAt               DateTime  @default(now()) @map("uploaded_at")
 
   ship              Ship                   @relation(fields: [shipId], references: [id], onDelete: Cascade)
   contextReferences ChatContextReference[]
@@ -126,6 +131,7 @@ model ShipManual {
 
   @@unique([shipId, ragflowDocumentId])
   @@index([shipId, category])
+  @@index([semanticProfileStatus])
   @@map("ship_manuals")
 }
 
