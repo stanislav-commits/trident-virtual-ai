@@ -517,6 +517,12 @@ export class ChatService {
         effectiveNormalizedQuery,
         resolvedSubjectQuery,
       );
+      const telemetryIntentQuery = this.buildTelemetryIntentQuery({
+        userQuery: effectiveUserQuery,
+        retrievalQuery,
+        resolvedSubjectQuery,
+        normalizedQuery: effectiveNormalizedQuery,
+      });
 
       if (
         documentationContext.needsClarification &&
@@ -632,6 +638,7 @@ export class ChatService {
                 ? { telemetryShips: [historicalTelemetryMatch.shipName] }
                 : {}),
               resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+              telemetryFollowUpQuery: telemetryIntentQuery,
             },
             contextReferences: [],
           });
@@ -689,7 +696,6 @@ export class ChatService {
       let telemetryMatchedMetrics = 0;
       let telemetryClarification: TelemetryClarification | null = null;
       const telemetryShips: string[] = [];
-      const telemetryIntentQuery = resolvedSubjectQuery ?? effectiveUserQuery;
       const shouldLookupCurrentTelemetry = this.shouldLookupCurrentTelemetry(
         queryPlan,
         telemetryIntentQuery,
@@ -992,6 +998,7 @@ export class ChatService {
               : {}),
             noDocumentation: true,
             usedDocumentation: false,
+            telemetryFollowUpQuery: telemetryIntentQuery,
           },
           contextReferences: [],
         });
@@ -4693,12 +4700,118 @@ export class ChatService {
     }
 
     return (
-      /\b(onboard|on\s+board|in\s+tanks|tank\s+levels?|all\s+fuel\s+tanks|remaining|available)\b/i.test(
+      /\b(onboard|on\s+board|in\s+(?:the\s+)?tanks?|tank\s+levels?|all\s+fuel\s+tanks|remaining|available)\b/i.test(
         normalized,
       ) ||
+      (/\b(fuel|oil|water|coolant|def|urea)\b/i.test(normalized) &&
+        /\b(level|levels|quantity|amount|volume|contents?)\b/i.test(
+          normalized,
+        ) &&
+        /\b(tank|tanks)\b/i.test(normalized)) ||
       (/\b(how\s+many|how\s+much|total|combined|sum)\b/i.test(normalized) &&
         /\b(fuel|oil|water|coolant)\b/i.test(normalized))
     );
+  }
+
+  private buildTelemetryIntentQuery(params: {
+    userQuery: string;
+    retrievalQuery?: string;
+    resolvedSubjectQuery?: string;
+    normalizedQuery: ChatNormalizedQuery;
+  }): string {
+    const { userQuery, retrievalQuery, resolvedSubjectQuery, normalizedQuery } =
+      params;
+    let query =
+      resolvedSubjectQuery?.trim() ||
+      retrievalQuery?.trim() ||
+      userQuery.trim();
+
+    if (!query) {
+      return userQuery;
+    }
+
+    query = this.applyTelemetryOperationIntent(query, normalizedQuery.operation);
+
+    if (
+      normalizedQuery.timeIntent.kind === 'current' &&
+      !/\b(current|currently|now|right now|latest|live)\b/i.test(query)
+    ) {
+      query = this.applyCurrentTelemetryTimeIntent(query);
+    }
+
+    return query.replace(/\s+/g, ' ').trim();
+  }
+
+  private applyTelemetryOperationIntent(
+    query: string,
+    operation: ChatNormalizedQuery['operation'],
+  ): string {
+    if (
+      operation !== 'sum' &&
+      operation !== 'average' &&
+      operation !== 'min' &&
+      operation !== 'max'
+    ) {
+      return query;
+    }
+
+    const normalized = query.trim();
+    if (!normalized) {
+      return normalized;
+    }
+
+    const existingPattern =
+      operation === 'sum'
+        ? /\b(how much|how many|total|sum|overall|combined|together)\b/i
+        : operation === 'average'
+          ? /\b(average|avg|mean)\b/i
+          : operation === 'min'
+            ? /\b(min|minimum|lowest|smallest|least)\b/i
+            : /\b(max|maximum|highest|peak|largest|greatest)\b/i;
+    if (existingPattern.test(normalized)) {
+      return normalized;
+    }
+
+    const stripped = normalized
+      .replace(
+        /^(?:what\s+(?:is|was|are|were)|show(?:\s+me)?|list|display|give(?:\s+me)?|tell(?:\s+me)?|provide)\s+/i,
+        '',
+      )
+      .replace(/^the\s+/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const base = stripped || normalized;
+    const prefix =
+      operation === 'sum'
+        ? 'how much total'
+        : operation === 'average'
+          ? 'average'
+          : operation === 'min'
+            ? 'minimum'
+            : 'maximum';
+
+    return `${prefix} ${base}`.replace(/\s+/g, ' ').trim();
+  }
+
+  private applyCurrentTelemetryTimeIntent(query: string): string {
+    const stripped = query
+      .replace(
+        /\b\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b/gi,
+        ' ',
+      )
+      .replace(/\b(?:yesterday|today)\b/gi, ' ')
+      .replace(
+        /\b(?:last|past|previous)\s+\d+\s+(?:hour|hours|day|days|week|weeks|month|months|year|years)\b/gi,
+        ' ',
+      )
+      .replace(/\b(?:was|were)\b/gi, 'is')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!stripped) {
+      return 'right now';
+    }
+
+    return `${stripped} right now`.replace(/\s+/g, ' ').trim();
   }
 
   private shouldBlockCurrentTelemetryBecauseHistoricalIntent(

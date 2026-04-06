@@ -430,4 +430,39 @@ describe('ChatQueryNormalizationService', () => {
     expect(normalized.sourceHints).toContain('TELEMETRY');
     expect(normalized.sourceHints).toContain('HISTORY');
   });
+
+  it('restores aggregate intent for explicit current-time follow-ups using prior assistant telemetry metadata', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what about now?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what was the fuel level 5 days ago',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-31 19:03 UTC, the historical total was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'what was the fuel level 5 days ago',
+            normalizedQuery: {
+              operation: 'sum',
+              timeIntent: {
+                kind: 'historical_point',
+                relativeAmount: 5,
+                relativeUnit: 'day',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe(
+      'how much total fuel level in the tanks right now',
+    );
+    expect(normalized.operation).toBe('sum');
+    expect(normalized.timeIntent.kind).toBe('current');
+  });
 });

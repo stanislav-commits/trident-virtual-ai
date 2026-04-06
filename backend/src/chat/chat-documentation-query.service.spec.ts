@@ -584,4 +584,31 @@ describe('ChatDocumentationQueryService', () => {
       ),
     ).toBe('what the sum insured');
   });
+
+  it('reconstructs aggregate telemetry follow-up context from prior assistant metadata', () => {
+    expect(
+      service.getPreviousResolvedUserQuery([
+        {
+          role: 'user',
+          content: 'what was the fuel level 5 days ago',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-31 19:03 UTC, the historical total was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'what was the fuel level 5 days ago',
+            normalizedQuery: {
+              operation: 'sum',
+              timeIntent: {
+                kind: 'historical_point',
+                relativeAmount: 5,
+                relativeUnit: 'day',
+              },
+            },
+          },
+        },
+      ]),
+    ).toBe('how much total fuel level in the tanks 5 days ago');
+  });
 });

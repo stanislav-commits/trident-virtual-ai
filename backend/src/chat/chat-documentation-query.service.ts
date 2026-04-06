@@ -70,16 +70,137 @@ export class ChatDocumentationQueryService {
         message.ragflowContext && typeof message.ragflowContext === 'object'
           ? (message.ragflowContext as Record<string, unknown>)
           : null;
-      const resolvedSubjectQuery = ragflowContext?.resolvedSubjectQuery;
-      if (
-        typeof resolvedSubjectQuery === 'string' &&
-        resolvedSubjectQuery.trim()
-      ) {
-        return resolvedSubjectQuery.trim();
+      const followUpQuery = this.extractAssistantFollowUpQuery(ragflowContext);
+      if (followUpQuery) {
+        return followUpQuery;
       }
     }
 
     return null;
+  }
+
+  private extractAssistantFollowUpQuery(
+    ragflowContext: Record<string, unknown> | null,
+  ): string | null {
+    if (!ragflowContext) {
+      return null;
+    }
+
+    const telemetryFollowUpQuery =
+      typeof ragflowContext.telemetryFollowUpQuery === 'string' &&
+      ragflowContext.telemetryFollowUpQuery.trim()
+        ? ragflowContext.telemetryFollowUpQuery.trim()
+        : null;
+    const resolvedSubjectQuery =
+      typeof ragflowContext.resolvedSubjectQuery === 'string' &&
+      ragflowContext.resolvedSubjectQuery.trim()
+        ? ragflowContext.resolvedSubjectQuery.trim()
+        : null;
+    const candidate = telemetryFollowUpQuery ?? resolvedSubjectQuery;
+    if (!candidate) {
+      return null;
+    }
+
+    const normalizedQuery =
+      ragflowContext.normalizedQuery &&
+      typeof ragflowContext.normalizedQuery === 'object'
+        ? (ragflowContext.normalizedQuery as ChatNormalizedQuery)
+        : undefined;
+
+    return this.hydrateAssistantFollowUpQuery(candidate, normalizedQuery);
+  }
+
+  private hydrateAssistantFollowUpQuery(
+    query: string,
+    normalizedQuery?: ChatNormalizedQuery,
+  ): string {
+    let hydrated = query.trim();
+    if (!hydrated) {
+      return hydrated;
+    }
+
+    hydrated = this.ensureAggregateStoredFluidLevelTankContext(hydrated);
+
+    if (normalizedQuery?.operation) {
+      hydrated = this.applyAggregateOperationHint(
+        hydrated,
+        normalizedQuery.operation,
+      );
+      if (
+        normalizedQuery.operation === 'sum' ||
+        normalizedQuery.operation === 'average' ||
+        normalizedQuery.operation === 'min' ||
+        normalizedQuery.operation === 'max'
+      ) {
+        hydrated = this.buildAggregateContinuationQuery(hydrated);
+      }
+    }
+
+    if (
+      normalizedQuery?.timeIntent?.kind === 'current' &&
+      !/\b(current|currently|now|right now|latest|live)\b/i.test(hydrated)
+    ) {
+      hydrated = this.composeTemporalContinuationQuery(
+        this.stripHistoricalContinuationTime(hydrated)
+          .replace(/\b(?:was|were)\b/gi, 'is')
+          .replace(/\s+/g, ' ')
+          .trim(),
+        'right now',
+      );
+    }
+
+    return hydrated;
+  }
+
+  private applyAggregateOperationHint(
+    query: string,
+    operation: ChatNormalizedQuery['operation'],
+  ): string {
+    if (
+      operation !== 'sum' &&
+      operation !== 'average' &&
+      operation !== 'min' &&
+      operation !== 'max'
+    ) {
+      return query;
+    }
+
+    const normalized = query.trim();
+    if (!normalized) {
+      return normalized;
+    }
+
+    const existingPattern =
+      operation === 'sum'
+        ? /\b(how much|how many|total|sum|overall|combined|together)\b/i
+        : operation === 'average'
+          ? /\b(average|avg|mean)\b/i
+          : operation === 'min'
+            ? /\b(min|minimum|lowest|smallest|least)\b/i
+            : /\b(max|maximum|highest|peak|largest|greatest)\b/i;
+    if (existingPattern.test(normalized)) {
+      return normalized;
+    }
+
+    const stripped = normalized
+      .replace(
+        /^(?:what\s+(?:is|was|are|were)|show(?:\s+me)?|list|display|give(?:\s+me)?|tell(?:\s+me)?|provide)\s+/i,
+        '',
+      )
+      .replace(/^the\s+/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const base = stripped || normalized;
+    const prefix =
+      operation === 'sum'
+        ? 'how much total'
+        : operation === 'average'
+          ? 'average'
+          : operation === 'min'
+            ? 'minimum'
+            : 'maximum';
+
+    return `${prefix} ${base}`.replace(/\s+/g, ' ').trim();
   }
 
   getPendingClarificationQuery(messages?: ChatHistoryMessage[]): string | null {

@@ -3832,4 +3832,150 @@ describe('ChatService telemetry clarification', () => {
     );
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
+
+  it('answers vague aggregate follow-ups deterministically even when the carried subject omits sum wording', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'Show fuel tank levels for Sea Wolf X',
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content: 'The current matched telemetry readings are [Telemetry]: ...',
+          ragflowContext: {
+            answerRoute: 'current_telemetry',
+            resolvedSubjectQuery: 'Show fuel tank levels for Sea Wolf X',
+          },
+        },
+        {
+          role: 'user',
+          content: 'what the sum',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: 'Show fuel tank levels for Sea Wolf X',
+      retrievalQuery: 'Show fuel tank levels for Sea Wolf X',
+      resolvedSubjectQuery: 'Show fuel tank levels for Sea Wolf X',
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Fuel Tank 1P': 3767,
+        'Fuel Tank 2S': 3543,
+        'Fuel Tank 3P': 462,
+        'Fuel Tank 4S': 352,
+        'Fuel Tank 5P': 799,
+        'Fuel Tank 6S': 902,
+        'Fuel Tank 7P': 752,
+        'Fuel Tank 8S': 846,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 8,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'what the sum',
+      'Sea Wolf X',
+      'admin',
+    );
+
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        'The combined total from the current matched telemetry readings is 11,423',
+      ),
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        telemetryFollowUpQuery: expect.stringContaining('how much total'),
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
+
+  it('keeps current inventory telemetry deterministic for follow-ups phrased as fuel level in the tanks', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'what was the fuel level 5 days ago',
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-31 19:03 UTC, the historical total was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'what is the fuel level in the tanks right now',
+          },
+        },
+        {
+          role: 'user',
+          content: 'what about now?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: 'what is the fuel level in the tanks right now',
+      retrievalQuery: 'what is the fuel level in the tanks right now',
+      resolvedSubjectQuery: 'what is the fuel level in the tanks right now',
+      answerQuery: undefined,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'Fuel Tank 1P': 3767,
+        'Fuel Tank 2S': 3543,
+        'Fuel Tank 3P': 462,
+        'Fuel Tank 4S': 352,
+        'Fuel Tank 5P': 799,
+        'Fuel Tank 6S': 902,
+        'Fuel Tank 7P': 752,
+        'Fuel Tank 8S': 846,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 8,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'what about now?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        'The current matched telemetry readings are [Telemetry]:',
+      ),
+      expect.objectContaining({
+        answerRoute: 'current_telemetry',
+        telemetryFollowUpQuery: 'what is the fuel level in the tanks right now',
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: true,
+      }),
+      [],
+    );
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+  });
 });
