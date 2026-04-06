@@ -444,8 +444,8 @@ export class ChatService {
         include: {
           messages: {
             where: { deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            take: 10,
+            orderBy: { createdAt: 'desc' },
+            take: 20,
             include: {
               contextReferences: {
                 include: {
@@ -457,23 +457,25 @@ export class ChatService {
         },
       });
 
-      const messageHistory = session?.messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-        ragflowContext: message.ragflowContext ?? undefined,
-        contextReferences: (message.contextReferences || []).map(
-          (reference) => ({
-            shipManualId: reference.shipManualId ?? undefined,
-            chunkId: reference.chunkId ?? undefined,
-            score: reference.score ?? undefined,
-            pageNumber: reference.pageNumber ?? undefined,
-            snippet: reference.snippet ?? undefined,
-            sourceTitle: reference.sourceTitle ?? undefined,
-            sourceCategory: reference.shipManual?.category ?? undefined,
-            sourceUrl: reference.sourceUrl ?? undefined,
-          }),
-        ),
-      }));
+      const messageHistory = [...(session?.messages ?? [])]
+        .reverse()
+        .map((message) => ({
+          role: message.role,
+          content: message.content,
+          ragflowContext: message.ragflowContext ?? undefined,
+          contextReferences: (message.contextReferences || []).map(
+            (reference) => ({
+              shipManualId: reference.shipManualId ?? undefined,
+              chunkId: reference.chunkId ?? undefined,
+              score: reference.score ?? undefined,
+              pageNumber: reference.pageNumber ?? undefined,
+              snippet: reference.snippet ?? undefined,
+              sourceTitle: reference.sourceTitle ?? undefined,
+              sourceCategory: reference.shipManual?.category ?? undefined,
+              sourceUrl: reference.sourceUrl ?? undefined,
+            }),
+          ),
+        }));
       const normalizedQuery = this.queryNormalizationService.normalizeTurn({
         userQuery,
         messageHistory,

@@ -1105,6 +1105,10 @@ export class ChatDocumentationService {
     semanticQuery?: DocumentationSemanticQuery,
     hardDocumentCategories?: ChatDocumentSourceCategory[],
   ): ChatDocumentSourceCategory[] | undefined {
+    if (semanticQuery?.explicitSource) {
+      return undefined;
+    }
+
     const categories = hardDocumentCategories?.length
       ? hardDocumentCategories
       : this.toChatDocumentCategories(semanticQuery?.sourcePreferences ?? []);
@@ -1165,6 +1169,11 @@ export class ChatDocumentationService {
     } = params;
     if (!sourceLockDecision.active) {
       return retrievalQuery;
+    }
+
+    if (semanticQuery?.explicitSource) {
+      const currentTurnQuery = userQuery.trim() || effectiveUserQuery.trim();
+      return currentTurnQuery || retrievalQuery;
     }
 
     const hasPageOrSectionHint =
@@ -1464,6 +1473,13 @@ export class ChatDocumentationService {
       return true;
     }
 
+    if (
+      this.isDocumentationClarificationTurn(normalizedQuery) ||
+      this.hasExplicitDocumentSourceReference(effectiveUserQuery)
+    ) {
+      return false;
+    }
+
     const queryPlan = this.queryPlanner.planQuery(
       normalizedQuery ?? effectiveUserQuery,
       retrievalQuery,
@@ -1486,6 +1502,15 @@ export class ChatDocumentationService {
 
     return !/\b(according\s+to|manual|documentation|docs?|handbook|guide|procedure|steps?|spec(?:ification)?|recommended|normal\s+range|operating\s+range|limit|limits|specified)\b/i.test(
       effectiveUserQuery,
+    );
+  }
+
+  private isDocumentationClarificationTurn(
+    normalizedQuery?: ChatNormalizedQuery,
+  ): boolean {
+    return (
+      normalizedQuery?.clarificationState?.clarificationDomain ===
+      'documentation'
     );
   }
 
@@ -1524,6 +1549,12 @@ export class ChatDocumentationService {
       /\b(this|that|same|current|previous)\s+(manual|guide|document|procedure|file|pdf|one)\b/i.test(
         query,
       ) || /\b(in|from)\s+(this|that|same|current|previous)\b/i.test(query)
+    );
+  }
+
+  private hasExplicitDocumentSourceReference(query: string): boolean {
+    return /\bfrom\s+[\s\S]{1,180}\b(?:document|manual|guide|procedure|file|pdf)\b/i.test(
+      query,
     );
   }
 

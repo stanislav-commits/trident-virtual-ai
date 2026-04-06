@@ -1766,4 +1766,80 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       scanService.expandMaintenanceAssetDocumentChunkCitations,
     ).not.toHaveBeenCalled();
   });
+
+  it('keeps documentation clarification selections out of telemetry-first skip logic', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const normalizedQuery = {
+      sourceHints: ['TELEMETRY'],
+      clarificationState: {
+        clarificationDomain: 'documentation',
+        pendingQuery: 'How should lithium batteries be handled safely onboard?',
+      },
+    };
+
+    expect(
+      (service as any).shouldSkipDocumentationForTelemetryFirstQuery(
+        'From Safety Circular.pdf document: How should lithium batteries be handled safely onboard?',
+        'From Safety Circular.pdf document: How should lithium batteries be handled safely onboard?',
+        normalizedQuery,
+      ),
+    ).toBe(false);
+  });
+
+  it('does not category-filter explicit source selections by guessed source preferences', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(
+      (service as any).resolveDocumentCategories(
+        {
+          explicitSource: 'Fleet Circular Cable reels rev. 1.pdf',
+          sourcePreferences: ['MANUALS'],
+          intent: 'general_information',
+        },
+        ['MANUALS'],
+      ),
+    ).toBeUndefined();
+  });
+
+  it('uses the current user turn for explicit source-locked retrieval', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(
+      (service as any).resolveSourceLockedRetrievalQuery({
+        userQuery:
+          'From Selected Procedure.pdf document: Summarize that as a checklist.',
+        effectiveUserQuery:
+          'From Selected Procedure.pdf document: Summarize that as a checklist.',
+        retrievalQuery: 'stale previous topic',
+        semanticQuery: { explicitSource: 'Selected Procedure.pdf' },
+        sourceLockDecision: {
+          active: true,
+          lockedManualId: 'manual-1',
+          lockedManualTitle: 'Selected Procedure.pdf',
+          lockedDocumentId: 'doc-1',
+          reason: 'explicit_source',
+        },
+      }),
+    ).toBe(
+      'From Selected Procedure.pdf document: Summarize that as a checklist.',
+    );
+  });
 });

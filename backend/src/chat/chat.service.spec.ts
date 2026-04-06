@@ -4059,4 +4059,47 @@ describe('ChatService telemetry clarification', () => {
     );
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
+
+  it('builds documentation history from the latest turns in chronological order', async () => {
+    const returnedMessages = Array.from({ length: 20 }, (_, index) => ({
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: `message-${index + 3}`,
+      ragflowContext: null,
+      contextReferences: [],
+    })).reverse();
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: returnedMessages,
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: 'message-21',
+      retrievalQuery: 'Summarize that as a checklist.',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    llmService.generateResponse.mockResolvedValue('Summary from latest topic.');
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'Summarize that as a checklist.',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(prisma.chatSession.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          messages: expect.objectContaining({
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+          }),
+        }),
+      }),
+    );
+    expect(
+      documentationService.prepareDocumentationContext.mock.calls[0][0]
+        .messageHistory.map((message: { content: string }) => message.content),
+    ).toEqual(Array.from({ length: 20 }, (_, index) => `message-${index + 3}`));
+  });
 });
