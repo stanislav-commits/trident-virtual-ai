@@ -41,12 +41,7 @@ interface TelemetryClarification {
   actions: TelemetryClarificationAction[];
 }
 
-type TelemetryMatchMode =
-  | 'none'
-  | 'sample'
-  | 'exact'
-  | 'direct'
-  | 'related';
+type TelemetryMatchMode = 'none' | 'sample' | 'exact' | 'direct' | 'related';
 
 interface DeterministicContactEntry {
   name: string;
@@ -133,7 +128,9 @@ export class ChatService {
           where: { deletedAt: null },
           include: {
             contextReferences: {
-              include: { shipManual: { select: { shipId: true, category: true } } },
+              include: {
+                shipManual: { select: { shipId: true, category: true } },
+              },
             },
           },
           orderBy: { createdAt: 'asc' },
@@ -450,7 +447,9 @@ export class ChatService {
             take: 10,
             include: {
               contextReferences: {
-                include: { shipManual: { select: { shipId: true, category: true } } },
+                include: {
+                  shipManual: { select: { shipId: true, category: true } },
+                },
               },
             },
           },
@@ -461,16 +460,18 @@ export class ChatService {
         role: message.role,
         content: message.content,
         ragflowContext: message.ragflowContext ?? undefined,
-        contextReferences: (message.contextReferences || []).map((reference) => ({
-          shipManualId: reference.shipManualId ?? undefined,
-          chunkId: reference.chunkId ?? undefined,
-          score: reference.score ?? undefined,
-          pageNumber: reference.pageNumber ?? undefined,
-          snippet: reference.snippet ?? undefined,
-          sourceTitle: reference.sourceTitle ?? undefined,
-          sourceCategory: reference.shipManual?.category ?? undefined,
-          sourceUrl: reference.sourceUrl ?? undefined,
-        })),
+        contextReferences: (message.contextReferences || []).map(
+          (reference) => ({
+            shipManualId: reference.shipManualId ?? undefined,
+            chunkId: reference.chunkId ?? undefined,
+            score: reference.score ?? undefined,
+            pageNumber: reference.pageNumber ?? undefined,
+            snippet: reference.snippet ?? undefined,
+            sourceTitle: reference.sourceTitle ?? undefined,
+            sourceCategory: reference.shipManual?.category ?? undefined,
+            sourceUrl: reference.sourceUrl ?? undefined,
+          }),
+        ),
       }));
       const normalizedQuery = this.queryNormalizationService.normalizeTurn({
         userQuery,
@@ -493,8 +494,11 @@ export class ChatService {
         retrievalQuery,
         resolvedSubjectQuery: exactResolvedSubjectQuery,
         answerQuery,
-      } =
-        documentationContext;
+        semanticQuery,
+        documentationFollowUpState,
+        retrievalTrace,
+        sourceLockActive,
+      } = documentationContext;
       const resolvedSubjectQuery =
         exactResolvedSubjectQuery ??
         (retrievalQuery !== userQuery ? retrievalQuery : undefined);
@@ -503,6 +507,16 @@ export class ChatService {
         ...normalizedQuery,
         retrievalQuery,
         effectiveQuery: effectiveUserQuery,
+      };
+      const documentationTurnContext = {
+        ...(semanticQuery ? { documentationSemanticQuery: semanticQuery } : {}),
+        ...(documentationFollowUpState ? { documentationFollowUpState } : {}),
+        ...(retrievalTrace
+          ? { documentationRetrievalTrace: retrievalTrace }
+          : {}),
+        ...(sourceLockActive !== undefined
+          ? { documentationSourceLockActive: sourceLockActive }
+          : {}),
       };
       this.logger.debug(
         `Chat query context session=${sessionId} ship=${shipId ?? 'none'} userQuery="${this.truncateForLog(
@@ -533,9 +547,11 @@ export class ChatService {
           this.documentationQueryService.buildClarificationState({
             clarificationDomain: 'documentation',
             pendingQuery:
-              documentationContext.pendingClarificationQuery ?? userQuery.trim(),
+              documentationContext.pendingClarificationQuery ??
+              userQuery.trim(),
             clarificationReason:
-              documentationContext.clarificationReason ?? 'underspecified_query',
+              documentationContext.clarificationReason ??
+              'underspecified_query',
             normalizedQuery: effectiveNormalizedQuery,
           });
         return this.addRoutedAssistantMessage({
@@ -545,11 +561,13 @@ export class ChatService {
           normalizedQuery: effectiveNormalizedQuery,
           routeTrace: ['documentation:clarification'],
           ragflowContext: {
+            ...documentationTurnContext,
             awaitingClarification: true,
             clarificationDomain: clarificationState.clarificationDomain,
             pendingClarificationQuery: clarificationState.pendingQuery,
             clarificationReason:
-              documentationContext.clarificationReason ?? 'underspecified_query',
+              documentationContext.clarificationReason ??
+              'underspecified_query',
             clarificationState,
             ...(documentationContext.clarificationActions &&
             documentationContext.clarificationActions.length > 0
@@ -832,7 +850,7 @@ export class ChatService {
           ? carriedForwardDocumentationCitations
           : carriedForwardSummaryDocumentationCitations.length > 0
             ? carriedForwardSummaryDocumentationCitations
-          : citations;
+            : citations;
       const llmTelemetryContext = this.selectTelemetryContextForLlm(
         queryPlan,
         telemetryIntentQuery,
@@ -876,7 +894,7 @@ export class ChatService {
           effectiveUserQuery,
           queryPlan.primaryIntent,
           this.isBroadCertificateSoonQuery(effectiveUserQuery)
-            ? analysisCitations ?? citationsForAnswer
+            ? (analysisCitations ?? citationsForAnswer)
             : citationsForAnswer,
         );
       if (deterministicCertificateAnswer) {
@@ -887,6 +905,7 @@ export class ChatService {
           normalizedQuery: effectiveNormalizedQuery,
           routeTrace: ['certificate:deterministic'],
           ragflowContext: {
+            ...documentationTurnContext,
             resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
@@ -916,6 +935,7 @@ export class ChatService {
           normalizedQuery: effectiveNormalizedQuery,
           routeTrace: ['contact:deterministic'],
           ragflowContext: {
+            ...documentationTurnContext,
             resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
@@ -939,6 +959,7 @@ export class ChatService {
           normalizedQuery: effectiveNormalizedQuery,
           routeTrace: ['documentation:deterministic'],
           ragflowContext: {
+            ...documentationTurnContext,
             resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
             ...(telemetryShips.length > 0
               ? { telemetryShips: [...new Set(telemetryShips)] }
@@ -976,14 +997,15 @@ export class ChatService {
         });
       }
 
-      const deterministicTelemetryAnswer = this.buildDeterministicTelemetryAnswer(
-        queryPlan,
-        telemetryIntentQuery,
-        telemetry,
-        telemetryPrefiltered,
-        telemetryMatchMode,
-        telemetryMatchedMetrics,
-      );
+      const deterministicTelemetryAnswer =
+        this.buildDeterministicTelemetryAnswer(
+          queryPlan,
+          telemetryIntentQuery,
+          telemetry,
+          telemetryPrefiltered,
+          telemetryMatchMode,
+          telemetryMatchedMetrics,
+        );
       if (deterministicTelemetryAnswer) {
         return this.addRoutedAssistantMessage({
           sessionId,
@@ -1027,12 +1049,11 @@ export class ChatService {
         this.getLatestLlmResponseIdFromRecentAssistant(messageHistory);
       const response = await this.llmService.generateResponse({
         userQuery: effectiveUserQuery,
-        previousUserQuery:
-          answerQuery
-            ? undefined
-              : retrievalQuery !== userQuery
-              ? previousUserQuery
-              : undefined,
+        previousUserQuery: answerQuery
+          ? undefined
+          : retrievalQuery !== userQuery
+            ? previousUserQuery
+            : undefined,
         previousResponseId: previousLlmResponseId,
         resolvedSubjectQuery,
         structuredConversationState:
@@ -1064,6 +1085,7 @@ export class ChatService {
         normalizedQuery: effectiveNormalizedQuery,
         routeTrace: ['llm:generation'],
         ragflowContext: {
+          ...documentationTurnContext,
           resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
           ...(telemetryShips.length > 0
             ? { telemetryShips: [...new Set(telemetryShips)] }
@@ -1085,9 +1107,10 @@ export class ChatService {
       });
     } catch (error) {
       const fallback = `I encountered an issue processing your query: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`;
-      const fallbackNormalizedQuery = this.queryNormalizationService.normalizeTurn({
-        userQuery,
-      });
+      const fallbackNormalizedQuery =
+        this.queryNormalizationService.normalizeTurn({
+          userQuery,
+        });
       return this.addRoutedAssistantMessage({
         sessionId,
         content: fallback,
@@ -1198,9 +1221,7 @@ export class ChatService {
     };
   }
 
-  private buildSourceDiagnostics(
-    contextReferences?: ChatCitation[],
-  ):
+  private buildSourceDiagnostics(contextReferences?: ChatCitation[]):
     | {
         totalReferences: number;
         distinctSourceCount: number;
@@ -1271,7 +1292,10 @@ export class ChatService {
       if (!existing.ragflowMetadataCategory && ragflowMetadataCategory) {
         existing.ragflowMetadataCategory = ragflowMetadataCategory;
       }
-      if (!existing.ragflowMetadataCategoryLabel && ragflowMetadataCategoryLabel) {
+      if (
+        !existing.ragflowMetadataCategoryLabel &&
+        ragflowMetadataCategoryLabel
+      ) {
         existing.ragflowMetadataCategoryLabel = ragflowMetadataCategoryLabel;
       }
       if (
@@ -1330,7 +1354,12 @@ export class ChatService {
   private getSourceCategoryAlignment(source: {
     effectiveSourceCategory?: string;
     ragflowMetadataCategory?: string;
-  }): 'matched' | 'mismatch' | 'metadata_missing' | 'source_missing' | 'unknown' {
+  }):
+    | 'matched'
+    | 'mismatch'
+    | 'metadata_missing'
+    | 'source_missing'
+    | 'unknown' {
     if (source.effectiveSourceCategory && source.ragflowMetadataCategory) {
       return source.effectiveSourceCategory === source.ragflowMetadataCategory
         ? 'matched'
@@ -1569,7 +1598,9 @@ export class ChatService {
       .filter((line): line is string => Boolean(line))
       .slice(-3);
     const activeClarification =
-      this.documentationQueryService.getPendingClarificationState(messageHistory);
+      this.documentationQueryService.getPendingClarificationState(
+        messageHistory,
+      );
     const lines: string[] = [];
 
     if (assistantStateLines.length > 0) {
@@ -1618,7 +1649,10 @@ export class ChatService {
         continue;
       }
 
-      if (!message.ragflowContext || typeof message.ragflowContext !== 'object') {
+      if (
+        !message.ragflowContext ||
+        typeof message.ragflowContext !== 'object'
+      ) {
         return undefined;
       }
 
@@ -1667,6 +1701,28 @@ export class ChatService {
     }
     if (sourceFlags.length > 0) {
       parts.push(`sources=${sourceFlags.join('+')}`);
+    }
+
+    const documentationSemanticQuery =
+      context.documentationSemanticQuery &&
+      typeof context.documentationSemanticQuery === 'object'
+        ? (context.documentationSemanticQuery as Record<string, unknown>)
+        : null;
+    if (typeof documentationSemanticQuery?.intent === 'string') {
+      parts.push(`semanticIntent=${documentationSemanticQuery.intent}`);
+    }
+
+    const documentationFollowUpState =
+      context.documentationFollowUpState &&
+      typeof context.documentationFollowUpState === 'object'
+        ? (context.documentationFollowUpState as Record<string, unknown>)
+        : null;
+    const lockedManualTitle =
+      typeof documentationFollowUpState?.lockedManualTitle === 'string'
+        ? documentationFollowUpState.lockedManualTitle.trim()
+        : '';
+    if (lockedManualTitle) {
+      parts.push(`sourceLock="${this.truncateForLog(lockedManualTitle, 72)}"`);
     }
 
     const resolvedSubjectQuery =
@@ -1851,13 +1907,13 @@ export class ChatService {
           resolvedSubjectQuery ?? '',
         )}"`,
       );
-        const candidateResolution =
-          await this.metricsService.resolveHistoricalTelemetryQuery(
-            shipId,
-            attempt.query,
-            resolvedSubjectQuery,
-            normalizedQuery,
-          );
+      const candidateResolution =
+        await this.metricsService.resolveHistoricalTelemetryQuery(
+          shipId,
+          attempt.query,
+          resolvedSubjectQuery,
+          normalizedQuery,
+        );
       this.logger.debug(
         `Historical telemetry result session=${sessionId} ship=${shipId} source=${attempt.source} kind=${candidateResolution.kind} clarification="${this.truncateForLog(
           candidateResolution.clarificationQuestion ?? '',
@@ -1957,10 +2013,7 @@ export class ChatService {
 
     const mergedActions: TelemetryClarificationAction[] = [];
     const seen = new Set<string>();
-    const candidates = [
-      ...existing.actions,
-      ...prefixedActions,
-    ];
+    const candidates = [...existing.actions, ...prefixedActions];
 
     for (const action of candidates) {
       const normalizedLabel = action.label.trim().toLowerCase();
@@ -2059,10 +2112,8 @@ export class ChatService {
         return tankCapacityAnswer;
       }
 
-      const manualSpecificationAnswer = this.buildDeterministicManualSpecificationAnswer(
-        userQuery,
-        citations,
-      );
+      const manualSpecificationAnswer =
+        this.buildDeterministicManualSpecificationAnswer(userQuery, citations);
       return manualSpecificationAnswer
         ? { content: manualSpecificationAnswer }
         : null;
@@ -2150,12 +2201,9 @@ export class ChatService {
 
     if (selectedEntries.length === 1) {
       const [entry] = selectedEntries;
-      const details = [
-        entry.name,
-        entry.role,
-        entry.email,
-        entry.phone,
-      ].filter(Boolean);
+      const details = [entry.name, entry.role, entry.email, entry.phone].filter(
+        Boolean,
+      );
       const lines = [
         'The contact details I found are:',
         '',
@@ -2242,21 +2290,26 @@ export class ChatService {
           anchorTerms,
         ),
       }))
-      .sort((left, right) => right.profile.totalScore - left.profile.totalScore);
+      .sort(
+        (left, right) => right.profile.totalScore - left.profile.totalScore,
+      );
     const [bestGroup, secondGroup] = rankedGroups;
     if (!bestGroup) {
       return entries;
     }
 
-    const secondScore = secondGroup?.profile.totalScore ?? Number.NEGATIVE_INFINITY;
+    const secondScore =
+      secondGroup?.profile.totalScore ?? Number.NEGATIVE_INFINITY;
     const strongLead =
       bestGroup.profile.totalScore >= secondScore + 15 ||
-      bestGroup.profile.directoryScore > (secondGroup?.profile.directoryScore ?? 0);
+      bestGroup.profile.directoryScore >
+        (secondGroup?.profile.directoryScore ?? 0);
     const shouldPreferSingleSource =
       wantsExhaustiveList ||
       explicitDirectoryRequest ||
       bestGroup.profile.directoryScore > 0 ||
-      bestGroup.profile.anchorCoverage > (secondGroup?.profile.anchorCoverage ?? 0);
+      bestGroup.profile.anchorCoverage >
+        (secondGroup?.profile.anchorCoverage ?? 0);
 
     return strongLead && shouldPreferSingleSource ? bestGroup.entries : entries;
   }
@@ -2375,8 +2428,8 @@ export class ChatService {
     }
 
     const rawCertificateEntries = citations
-      .filter(
-        (citation) => this.isDeterministicCertificateExpiryEvidence(citation),
+      .filter((citation) =>
+        this.isDeterministicCertificateExpiryEvidence(citation),
       )
       .flatMap((citation) =>
         this.extractExplicitCertificateExpiries(citation.snippet).map(
@@ -2570,7 +2623,9 @@ export class ChatService {
     normalized: string,
     citation: ChatCitation,
   ): DeterministicContactEntry[] {
-    const emailMatches = [...normalized.matchAll(this.getContactEmailPattern())];
+    const emailMatches = [
+      ...normalized.matchAll(this.getContactEmailPattern()),
+    ];
     if (emailMatches.length === 0) {
       return [];
     }
@@ -2587,7 +2642,8 @@ export class ChatService {
         const anchors = this.extractDeterministicContactAnchors(segment);
         const anchor =
           anchors.length > 0 ? anchors[anchors.length - 1] : undefined;
-        const name = anchor?.name ?? this.extractDeterministicContactName(segment);
+        const name =
+          anchor?.name ?? this.extractDeterministicContactName(segment);
 
         return this.buildDeterministicContactEntry(segment, name, citation);
       })
@@ -2605,7 +2661,8 @@ export class ChatService {
 
     const email = this.extractDeterministicContactEmail(segment);
     const phone = this.extractDeterministicContactPhone(segment) ?? undefined;
-    const role = this.extractDeterministicContactRole(segment, name) ?? undefined;
+    const role =
+      this.extractDeterministicContactRole(segment, name) ?? undefined;
 
     if (!email && !phone && !role) {
       return null;
@@ -2714,7 +2771,8 @@ export class ChatService {
   ): DeterministicContactEntry {
     const existingCompleteness =
       this.getDeterministicContactEntryCompleteness(existing);
-    const nextCompleteness = this.getDeterministicContactEntryCompleteness(next);
+    const nextCompleteness =
+      this.getDeterministicContactEntryCompleteness(next);
     if (nextCompleteness !== existingCompleteness) {
       return nextCompleteness > existingCompleteness ? next : existing;
     }
@@ -2796,9 +2854,12 @@ export class ChatService {
   private getDeterministicContactEntryTextLength(
     entry: DeterministicContactEntry,
   ): number {
-    return [entry.name, entry.role ?? '', entry.email ?? '', entry.phone ?? '']
-      .join(' ')
-      .length;
+    return [
+      entry.name,
+      entry.role ?? '',
+      entry.email ?? '',
+      entry.phone ?? '',
+    ].join(' ').length;
   }
 
   private filterDeterministicContactEntriesForQuery(
@@ -2808,8 +2869,9 @@ export class ChatService {
     const anchorTerms =
       this.documentationQueryService.extractContactAnchorTerms(userQuery);
     const wantsEmail = /\bemails?\b/.test(userQuery.toLowerCase());
-    const wantsPhone =
-      /\b(phone|telephone|mobile|number|numbers)\b/i.test(userQuery);
+    const wantsPhone = /\b(phone|telephone|mobile|number|numbers)\b/i.test(
+      userQuery,
+    );
 
     const matched = entries.filter((entry) => {
       const haystack = [
@@ -2900,7 +2962,10 @@ export class ChatService {
       segment
         .replace(this.getContactEmailPattern(), ' ')
         .replace(/\+\s*\d[\d\s()./-]{5,}\d\b/g, ' ')
-        .replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), ' ')
+        .replace(
+          new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+          ' ',
+        )
         .replace(/\(\s*(?:m|o|work m|personal m)\s*\)/gi, ' '),
     );
     const keywordMatch = cleaned.match(
@@ -2946,7 +3011,9 @@ export class ChatService {
       sanitized = sanitized.slice(0, match.index).trim();
     }
 
-    sanitized = sanitized.replace(/\s+/g, ' ').replace(/^[-,\s]+|[-,\s]+$/g, '');
+    sanitized = sanitized
+      .replace(/\s+/g, ' ')
+      .replace(/^[-,\s]+|[-,\s]+$/g, '');
 
     return sanitized || null;
   }
@@ -2998,7 +3065,9 @@ export class ChatService {
     return /\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/gi;
   }
 
-  private isDeterministicCertificateExpiryEvidence(citation: ChatCitation): boolean {
+  private isDeterministicCertificateExpiryEvidence(
+    citation: ChatCitation,
+  ): boolean {
     const title = citation.sourceTitle ?? '';
     const haystack = `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`;
     const manualLikeTitle =
@@ -3083,7 +3152,10 @@ export class ChatService {
         title,
       );
 
-    return this.isDeterministicCertificateExpiryEvidence(citation) && !manualLikeTitle;
+    return (
+      this.isDeterministicCertificateExpiryEvidence(citation) &&
+      !manualLikeTitle
+    );
   }
 
   private isEmbeddedManualApprovalCertificateCitation(
@@ -3116,8 +3188,11 @@ export class ChatService {
     return `${entry.sourceLabel.trim().toLowerCase()}::${entry.timestamp}`;
   }
 
-  private isOfficialRegistryCertificateCitation(citation: ChatCitation): boolean {
-    const haystack = `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+  private isOfficialRegistryCertificateCitation(
+    citation: ChatCitation,
+  ): boolean {
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
     return /\b(certificate\s+of\s+registry|official\s+and\s+imo|name\s+of\s+ship|issued\s+in\s+terms|renew(?:ing|al)\s+certificate|registrar\s+of\s+maltese\s+ships)\b/i.test(
       haystack,
     );
@@ -3141,7 +3216,8 @@ export class ChatService {
       return null;
     }
 
-    const historyBasisQuery = this.buildFuelForecastHistoricalBasisQuery(userQuery);
+    const historyBasisQuery =
+      this.buildFuelForecastHistoricalBasisQuery(userQuery);
     const historicalBasisNormalizedQuery =
       this.queryNormalizationService.normalizeTurn({
         userQuery: historyBasisQuery,
@@ -3172,7 +3248,10 @@ export class ChatService {
     }
 
     const onboardFuel = this.sumCurrentFuelTankTelemetry(telemetry);
-    const basisLabel = this.describeFuelForecastBasis(userQuery, historyBasisQuery);
+    const basisLabel = this.describeFuelForecastBasis(
+      userQuery,
+      historyBasisQuery,
+    );
     const lines = [
       `Based on historical telemetry from ${basisLabel}, projected fuel consumption for the next month is approximately ${this.formatAggregateNumber(projectedFuel)} liters [Telemetry History].`,
     ];
@@ -3276,7 +3355,9 @@ export class ChatService {
       ['december', 11],
     ]);
 
-    const numericMatch = normalized.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+    const numericMatch = normalized.match(
+      /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/,
+    );
     if (numericMatch) {
       const day = Number.parseInt(numericMatch[1], 10);
       const month = Number.parseInt(numericMatch[2], 10) - 1;
@@ -3455,7 +3536,9 @@ export class ChatService {
       for (const citation of citations.filter((item) =>
         this.matchesManualRangeCitationSubject(userQuery, item),
       )) {
-        const range = this.extractPreferredDocumentedRangeText(citation.snippet);
+        const range = this.extractPreferredDocumentedRangeText(
+          citation.snippet,
+        );
         if (!range) {
           continue;
         }
@@ -3503,7 +3586,9 @@ export class ChatService {
       content: [
         'The tank capacities I found in the provided documentation are:',
         '',
-        ...selectedEntries.map((entry) => `- ${entry.label}: ${entry.capacity}`),
+        ...selectedEntries.map(
+          (entry) => `- ${entry.label}: ${entry.capacity}`,
+        ),
         ...(omittedEntriesCount > 0
           ? [
               '',
@@ -3572,7 +3657,9 @@ export class ChatService {
     userQuery: string,
     citations: ChatCitation[],
   ): string | null {
-    if (!this.documentationQueryService.isAuditChecklistLookupQuery(userQuery)) {
+    if (
+      !this.documentationQueryService.isAuditChecklistLookupQuery(userQuery)
+    ) {
       return null;
     }
 
@@ -3586,8 +3673,12 @@ export class ChatService {
     }
 
     const selectedEntries = entries.slice(0, 15);
-    const omittedEntriesCount = Math.max(0, entries.length - selectedEntries.length);
-    const sourceLabel = citations[0]?.sourceTitle ?? 'the cited audit documentation';
+    const omittedEntriesCount = Math.max(
+      0,
+      entries.length - selectedEntries.length,
+    );
+    const sourceLabel =
+      citations[0]?.sourceTitle ?? 'the cited audit documentation';
 
     return [
       'The audit or checklist points I extracted are:',
@@ -3610,11 +3701,14 @@ export class ChatService {
     const raw = (citation.snippet ?? '').replace(/\s+/g, ' ').trim();
     if (!raw) return [];
 
-    const lines = raw.split(/(?:(?<=[a-z0-9])\s*\|\s*(?=[a-z0-9])|(?<=[.?!])\s+(?=[A-Z]))/i);
+    const lines = raw.split(
+      /(?:(?<=[a-z0-9])\s*\|\s*(?=[a-z0-9])|(?<=[.?!])\s+(?=[A-Z]))/i,
+    );
     const results: Array<{ status: string; point: string }> = [];
 
-    const passFailRegex = /\b(pass|fail|ok|yes|no|finding|defect)\s*[:-]?\s*(.+)/i;
-    
+    const passFailRegex =
+      /\b(pass|fail|ok|yes|no|finding|defect)\s*[:-]?\s*(.+)/i;
+
     for (const line of lines) {
       const match = line.match(passFailRegex);
       if (match) {
@@ -3647,11 +3741,14 @@ export class ChatService {
     userQuery: string,
     citation: ChatCitation,
   ): boolean {
-    const searchSpace = `${citation.sourceTitle ?? ''} ${citation.snippet ?? ''}`.toLowerCase();
+    const searchSpace =
+      `${citation.sourceTitle ?? ''} ${citation.snippet ?? ''}`.toLowerCase();
     const query = userQuery.toLowerCase();
 
     if (/\bcoolant\b/.test(query) && /\btemperature\b/.test(query)) {
-      return /\bcoolant\b/.test(searchSpace) && /\btemperature\b/.test(searchSpace);
+      return (
+        /\bcoolant\b/.test(searchSpace) && /\btemperature\b/.test(searchSpace)
+      );
     }
 
     if (/\boil\b/.test(query) && /\bpressure\b/.test(query)) {
@@ -3803,7 +3900,8 @@ export class ChatService {
       return tableEntries;
     }
 
-    const haystack = `${citation.sourceTitle ?? ''}\n${normalized}`.toLowerCase();
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${normalized}`.toLowerCase();
     if (!/\btank\b/i.test(haystack)) {
       return tableEntries;
     }
@@ -3845,8 +3943,8 @@ export class ChatService {
             citation,
           };
         })
-        .filter(
-          (entry): entry is DeterministicTankCapacityEntry => Boolean(entry),
+        .filter((entry): entry is DeterministicTankCapacityEntry =>
+          Boolean(entry),
         ),
     ];
   }
@@ -3862,9 +3960,9 @@ export class ChatService {
 
     const requiresFuel = /\bfuel\b/i.test(userQuery);
     const requiresWater = /\bwater\b/i.test(userQuery);
-    const tableBlocks = [...rawSnippet.matchAll(/<table[\s\S]*?<\/table>/gi)].map(
-      (match) => match[0],
-    );
+    const tableBlocks = [
+      ...rawSnippet.matchAll(/<table[\s\S]*?<\/table>/gi),
+    ].map((match) => match[0]);
     const blocks = tableBlocks.length > 0 ? tableBlocks : [rawSnippet];
     const rowPattern =
       /<tr>\s*<t[dh][^>]*>\s*([^<]+?)\s*<\/t[dh]>\s*<t[dh][^>]*>\s*([^<]*tank[^<]*?)\s*<\/t[dh]>\s*<t[dh][^>]*>[^<]*<\/t[dh]>\s*<t[dh][^>]*>\s*([^<]+?)\s*<\/t[dh]>/gi;
@@ -3899,9 +3997,7 @@ export class ChatService {
             return null;
           }
 
-          const label = identifier
-            ? `${identifier} - ${labelText}`
-            : labelText;
+          const label = identifier ? `${identifier} - ${labelText}` : labelText;
           return {
             label,
             capacity: this.formatDeterministicTankCapacityValue(
@@ -3911,8 +4007,8 @@ export class ChatService {
             citation,
           };
         })
-        .filter(
-          (entry): entry is DeterministicTankCapacityEntry => Boolean(entry),
+        .filter((entry): entry is DeterministicTankCapacityEntry =>
+          Boolean(entry),
         );
     });
   }
@@ -4020,7 +4116,9 @@ export class ChatService {
       return tankRank || left.label.localeCompare(right.label);
     });
     const valuesList = orderedEntries
-      .map((entry) => `${entry.label}: ${this.formatAggregateNumber(entry.value)}`)
+      .map(
+        (entry) => `${entry.label}: ${this.formatAggregateNumber(entry.value)}`,
+      )
       .join('\n');
     const unitSuffix = unit ? ` ${unit}` : '';
 
@@ -4084,10 +4182,13 @@ export class ChatService {
       return false;
     }
 
-    return !/\b(based on|depending on|according to|recommended|recommendation|action|next step|next steps|what should i do|what do i do|why|alarm|fault|error|issue|problem|stopp?ed|not working|maintenance|service|procedure|steps?|how to|how do i|manual|documentation|replace|change|install|remove|inspect|troubleshoot(?:ing)?)\b/.test(
-      normalized,
-    ) && !/\b(normal|range|limit|limits|spec(?:ification)?|specified|operating)\b/.test(
-      normalized,
+    return (
+      !/\b(based on|depending on|according to|recommended|recommendation|action|next step|next steps|what should i do|what do i do|why|alarm|fault|error|issue|problem|stopp?ed|not working|maintenance|service|procedure|steps?|how to|how do i|manual|documentation|replace|change|install|remove|inspect|troubleshoot(?:ing)?)\b/.test(
+        normalized,
+      ) &&
+      !/\b(normal|range|limit|limits|spec(?:ification)?|specified|operating)\b/.test(
+        normalized,
+      )
     );
   }
 
@@ -4196,7 +4297,8 @@ export class ChatService {
     valueText: string;
     available: boolean;
   } | null {
-    const normalizedLabelText = this.normalizeDeterministicTelemetryLabel(label);
+    const normalizedLabelText =
+      this.normalizeDeterministicTelemetryLabel(label);
     const primaryLabel =
       normalizedLabelText.split(' — ')[0]?.trim() ?? normalizedLabelText.trim();
     if (!primaryLabel) {
@@ -4409,7 +4511,8 @@ export class ChatService {
       return null;
     }
 
-    const normalizedLabelText = this.normalizeDeterministicTelemetryLabel(label);
+    const normalizedLabelText =
+      this.normalizeDeterministicTelemetryLabel(label);
     const primaryLabel =
       normalizedLabelText.split(' — ')[0]?.trim() ?? normalizedLabelText.trim();
     const normalizedLabel = this.normalizeAggregateTelemetryText(primaryLabel);
@@ -4460,7 +4563,9 @@ export class ChatService {
   private getConsistentAggregateUnit(
     entries: Array<{ unit: string | null }>,
   ): string | null {
-    const units = [...new Set(entries.map((entry) => entry.unit).filter(Boolean))];
+    const units = [
+      ...new Set(entries.map((entry) => entry.unit).filter(Boolean)),
+    ];
     if (units.length === 0) {
       return null;
     }
@@ -4519,7 +4624,10 @@ export class ChatService {
   private buildTelemetryUnavailableSubject(userQuery: string): string {
     const cleaned = userQuery.replace(/\?+$/g, '').trim();
     const candidate = cleaned
-      .replace(/^(what\s+is|what's|whats|show\s+me|give\s+me|tell\s+me)\s+/i, '')
+      .replace(
+        /^(what\s+is|what's|whats|show\s+me|give\s+me|tell\s+me)\s+/i,
+        '',
+      )
       .trim();
 
     if (
@@ -4730,7 +4838,10 @@ export class ChatService {
       return userQuery;
     }
 
-    query = this.applyTelemetryOperationIntent(query, normalizedQuery.operation);
+    query = this.applyTelemetryOperationIntent(
+      query,
+      normalizedQuery.operation,
+    );
 
     if (
       normalizedQuery.timeIntent.kind === 'current' &&
@@ -4867,9 +4978,7 @@ export class ChatService {
 
     return (
       /\b(current|currently|now|right now|actual|live)\b/i.test(normalized) ||
-      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
-        normalized,
-      )
+      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(normalized)
     );
   }
 }

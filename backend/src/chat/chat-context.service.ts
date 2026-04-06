@@ -77,6 +77,7 @@ export class ChatContextService {
     topK: number = DEFAULT_RAGFLOW_CONTEXT_TOP_K,
     candidateK: number = DEFAULT_RAGFLOW_CONTEXT_CANDIDATE_K,
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<{
     citations: ContextCitation[];
     ragflowRequestId?: string;
@@ -111,13 +112,23 @@ export class ChatContextService {
         ship.manuals,
         allowedDocumentCategories,
       );
+      const manuallyScopedManuals = this.filterManualsByIds(
+        categoryScopedManuals,
+        allowedManualIds,
+      );
       const scopedManuals = await this.filterShipManualsByTags(
         ship.id,
         query,
-        categoryScopedManuals,
+        manuallyScopedManuals,
         allowedDocumentCategories,
       );
-      if (allowedDocumentCategories?.length && categoryScopedManuals.length === 0) {
+      if (
+        allowedDocumentCategories?.length &&
+        categoryScopedManuals.length === 0
+      ) {
+        return { citations: [] };
+      }
+      if (allowedManualIds?.length && manuallyScopedManuals.length === 0) {
         return { citations: [] };
       }
       if (scopedManuals.length === 0) {
@@ -126,29 +137,28 @@ export class ChatContextService {
 
       const snippetCharLimit = this.getSnippetCharLimit(query);
       const categoryDocumentIds = this.buildManualDocumentIdSet(
-        categoryScopedManuals,
-        Boolean(allowedDocumentCategories?.length),
+        manuallyScopedManuals,
+        Boolean(allowedDocumentCategories?.length || allowedManualIds?.length),
       );
       const preferredDocumentIds = this.buildPreferredManualDocumentIdSet(
-        categoryScopedManuals,
+        manuallyScopedManuals,
         scopedManuals,
       );
       if (preferredDocumentIds?.size) {
         this.logger.debug(
-          `Document tag-first scope ship=${ship.id} query="${query.replace(/\s+/g, ' ').trim()}" preferredManuals=${preferredDocumentIds.size}/${categoryScopedManuals.length}`,
+          `Document scoped search ship=${ship.id} query="${query.replace(/\s+/g, ' ').trim()}" preferredManuals=${preferredDocumentIds.size}/${manuallyScopedManuals.length}`,
         );
       }
-      let citations =
-        preferredDocumentIds?.size
-          ? await this.searchDatasetForManuals({
-              datasetId: ship.ragflowDatasetId,
-              query,
-              retrievalK,
-              snippetCharLimit,
-              manuals: ship.manuals,
-              allowedDocumentIds: preferredDocumentIds,
-            })
-          : [];
+      let citations = preferredDocumentIds?.size
+        ? await this.searchDatasetForManuals({
+            datasetId: ship.ragflowDatasetId,
+            query,
+            retrievalK,
+            snippetCharLimit,
+            manuals: ship.manuals,
+            allowedDocumentIds: preferredDocumentIds,
+          })
+        : [];
 
       if (!this.hasSufficientScopedCitations(citations)) {
         if (preferredDocumentIds?.size) {
@@ -182,6 +192,7 @@ export class ChatContextService {
     topK: number = DEFAULT_RAGFLOW_CONTEXT_TOP_K,
     candidateK: number = DEFAULT_RAGFLOW_CONTEXT_CANDIDATE_K,
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
   ): Promise<ContextCitation[]> {
     // Admin search across all ship datasets
     const ships = await this.prisma.ship.findMany({
@@ -216,12 +227,22 @@ export class ChatContextService {
           ship.manuals,
           allowedDocumentCategories,
         );
-        if (allowedDocumentCategories?.length && categoryScopedManuals.length === 0) {
+        if (
+          allowedDocumentCategories?.length &&
+          categoryScopedManuals.length === 0
+        ) {
+          continue;
+        }
+        const manuallyScopedManuals = this.filterManualsByIds(
+          categoryScopedManuals,
+          allowedManualIds,
+        );
+        if (allowedManualIds?.length && manuallyScopedManuals.length === 0) {
           continue;
         }
         const scopedManuals = await this.filterAdminManualsByTags(
           query,
-          categoryScopedManuals,
+          manuallyScopedManuals,
           allowedDocumentCategories,
         );
         if (scopedManuals.length === 0) {
@@ -229,30 +250,31 @@ export class ChatContextService {
         }
 
         const categoryDocumentIds = this.buildManualDocumentIdSet(
-          categoryScopedManuals,
-          Boolean(allowedDocumentCategories?.length),
+          manuallyScopedManuals,
+          Boolean(
+            allowedDocumentCategories?.length || allowedManualIds?.length,
+          ),
         );
         const preferredDocumentIds = this.buildPreferredManualDocumentIdSet(
-          categoryScopedManuals,
+          manuallyScopedManuals,
           scopedManuals,
         );
         if (preferredDocumentIds?.size) {
           this.logger.debug(
-            `Document tag-first scope admin ship=${ship.id} query="${query.replace(/\s+/g, ' ').trim()}" preferredManuals=${preferredDocumentIds.size}/${categoryScopedManuals.length}`,
+            `Document scoped search admin ship=${ship.id} query="${query.replace(/\s+/g, ' ').trim()}" preferredManuals=${preferredDocumentIds.size}/${manuallyScopedManuals.length}`,
           );
         }
-        let shipCitations =
-          preferredDocumentIds?.size
-            ? await this.searchDatasetForManuals({
-                datasetId: ship.ragflowDatasetId!,
-                query,
-                retrievalK,
-                snippetCharLimit,
-                manuals: ship.manuals,
-                allowedDocumentIds: preferredDocumentIds,
-                sourceTitleSuffix: ship.name,
-              })
-            : [];
+        let shipCitations = preferredDocumentIds?.size
+          ? await this.searchDatasetForManuals({
+              datasetId: ship.ragflowDatasetId!,
+              query,
+              retrievalK,
+              snippetCharLimit,
+              manuals: ship.manuals,
+              allowedDocumentIds: preferredDocumentIds,
+              sourceTitleSuffix: ship.name,
+            })
+          : [];
 
         if (!this.hasSufficientScopedCitations(shipCitations)) {
           if (preferredDocumentIds?.size) {
@@ -333,14 +355,36 @@ export class ChatContextService {
       const category = manual.category?.trim().toUpperCase();
       return Boolean(
         manual.ragflowDocumentId &&
-          category &&
-          allowedCategories.has(category as ChatDocumentSourceCategory),
+        category &&
+        allowedCategories.has(category as ChatDocumentSourceCategory),
       );
     });
   }
 
+  private filterManualsByIds<T extends { id: string }>(
+    manuals: T[],
+    allowedManualIds?: string[],
+  ): T[] {
+    if (!allowedManualIds?.length) {
+      return manuals;
+    }
+
+    const allowedManualIdSet = new Set(
+      allowedManualIds.map((manualId) => manualId.trim()).filter(Boolean),
+    );
+    if (allowedManualIdSet.size === 0) {
+      return manuals;
+    }
+
+    return manuals.filter((manual) => allowedManualIdSet.has(manual.id));
+  }
+
   private async filterShipManualsByTags<
-    T extends { id: string; category?: string | null; ragflowDocumentId?: string | null },
+    T extends {
+      id: string;
+      category?: string | null;
+      ragflowDocumentId?: string | null;
+    },
   >(
     shipId: string,
     query: string,
@@ -366,7 +410,11 @@ export class ChatContextService {
   }
 
   private async filterAdminManualsByTags<
-    T extends { id: string; category?: string | null; ragflowDocumentId?: string | null },
+    T extends {
+      id: string;
+      category?: string | null;
+      ragflowDocumentId?: string | null;
+    },
   >(
     query: string,
     manuals: T[],
