@@ -14,6 +14,7 @@ import { RagflowModule } from '../ragflow/ragflow.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { SystemPromptModule } from '../system-prompt/system-prompt.module';
 import { TagsModule } from '../tags/tags.module';
+import { SemanticModule } from '../semantic/semantic.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { TagsModule } from '../tags/tags.module';
     MetricsModule,
     SystemPromptModule,
     TagsModule,
+    SemanticModule,
   ],
   controllers: [ChatController],
   providers: [

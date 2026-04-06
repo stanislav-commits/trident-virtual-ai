@@ -243,9 +243,7 @@ describe('ChatDocumentationQueryService', () => {
   });
 
   it('extracts role anchors for contact lookups without keeping generic contact scaffolding', () => {
-    expect(
-      service.isContactLookupQuery('provide his contacts'),
-    ).toBe(true);
+    expect(service.isContactLookupQuery('provide his contacts')).toBe(true);
     expect(
       service.extractContactAnchorTerms('who vessel dpa contact details'),
     ).toEqual(['dpa']);
@@ -283,12 +281,12 @@ describe('ChatDocumentationQueryService', () => {
     expect(service.isRoleInventoryQuery('who else has the dpa role?')).toBe(
       false,
     );
-    expect(service.isPersonnelDirectoryQuery('who else has the dpa role?')).toBe(
-      true,
-    );
     expect(
-      service.isPersonnelDirectoryQuery('what is the role of dpa?'),
-    ).toBe(false);
+      service.isPersonnelDirectoryQuery('who else has the dpa role?'),
+    ).toBe(true);
+    expect(service.isPersonnelDirectoryQuery('what is the role of dpa?')).toBe(
+      false,
+    );
   });
 
   it('treats explicit role-description questions as self-contained even after a personnel lookup', () => {
@@ -341,6 +339,19 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe('vessel dpa contact email what about the other one?');
   });
 
+  it('preserves substantive section hints when scoping a follow-up to the same manual', () => {
+    const previous =
+      'volvo penta d13 operator manual handle alarms from documentation';
+    const retrievalQuery = service.buildRetrievalQuery(
+      'What does the emergency section say in this manual?',
+      previous,
+    );
+
+    expect(retrievalQuery).toContain('volvo penta d13 operator manual');
+    expect(retrievalQuery).toContain('emergency section');
+    expect(retrievalQuery).not.toBe(previous);
+  });
+
   it('reuses the previous subject for contextual summary follow-ups', () => {
     expect(
       service.buildRetrievalQuery(
@@ -380,7 +391,7 @@ describe('ChatDocumentationQueryService', () => {
         'when should we do next maintenance?',
         'what is running hours meter for port generator',
       ),
-      ).toContain('port generator');
+    ).toContain('port generator');
   });
 
   it('inherits the full previous analytical question for temporal forecast follow-ups', () => {
@@ -469,7 +480,10 @@ describe('ChatDocumentationQueryService', () => {
       'M Y Seawolf X Maintenance Tasks Reference ID 1P50 PS ENGINE E MAIN GENERATOR 3000 HOURS SERVICE';
 
     expect(
-      service.buildRetrievalQuery('tasks and spare parts', previousResolvedQuery),
+      service.buildRetrievalQuery(
+        'tasks and spare parts',
+        previousResolvedQuery,
+      ),
     ).toContain('1p50');
   });
 
@@ -496,29 +510,39 @@ describe('ChatDocumentationQueryService', () => {
       ),
     ).toBe(true);
     expect(
-      service.buildGeneratorAssetFallbackQueries(
-        'How do I change oil in the port generator',
-        'I need the oil change procedure for the port generator.',
-      ).some((query) => /PS ENGINE MAIN GENERATOR/i.test(query)),
+      service
+        .buildGeneratorAssetFallbackQueries(
+          'How do I change oil in the port generator',
+          'I need the oil change procedure for the port generator.',
+        )
+        .some((query) => /PS ENGINE MAIN GENERATOR/i.test(query)),
     ).toBe(true);
     expect(
-      service.buildGeneratorAssetFallbackQueries(
-        'How do I change oil in the port generator',
-        'I need the oil change procedure for the port generator.',
-      ).some((query) => /replace oil and filters|oil/i.test(query)),
-      ).toBe(true);
+      service
+        .buildGeneratorAssetFallbackQueries(
+          'How do I change oil in the port generator',
+          'I need the oil change procedure for the port generator.',
+        )
+        .some((query) => /replace oil and filters|oil/i.test(query)),
+    ).toBe(true);
   });
 
   it('maps left and right directional aliases to port and starboard', () => {
-    expect(service.detectDirectionalSide('left engine oil filter')).toBe('port');
+    expect(service.detectDirectionalSide('left engine oil filter')).toBe(
+      'port',
+    );
     expect(service.detectDirectionalSide('right engine oil filter')).toBe(
       'starboard',
     );
   });
 
   it('does not treat temporal or remaining-time phrases as directional sides', () => {
-    expect(service.detectDirectionalSide('Are any bilge alarms active right now?')).toBeNull();
-    expect(service.detectDirectionalSide('How many hours left until service?')).toBeNull();
+    expect(
+      service.detectDirectionalSide('Are any bilge alarms active right now?'),
+    ).toBeNull();
+    expect(
+      service.detectDirectionalSide('How many hours left until service?'),
+    ).toBeNull();
   });
 
   it('skips documentation retrieval for telemetry list requests so manuals do not override live metric samples', () => {

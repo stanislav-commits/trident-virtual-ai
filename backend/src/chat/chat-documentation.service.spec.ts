@@ -7,6 +7,280 @@ import { ChatReferenceExtractionService } from './chat-reference-extraction.serv
 import { ChatCitation } from './chat.types';
 
 describe('ChatDocumentationService', () => {
+  it('asks which semantic source to use when top document candidates are tied', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const semanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'manual_lookup' as const,
+      conceptFamily: 'maintenance_topic' as const,
+      selectedConceptIds: ['troubleshooting_guide'],
+      candidateConceptIds: ['troubleshooting_guide'],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS' as const],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'direct_answer' as const,
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.82,
+    };
+    const semanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue(semanticQuery),
+    };
+    const semanticMatcher = {
+      shortlistManuals: jest.fn().mockResolvedValue([
+        {
+          manualId: 'manual-volvo',
+          documentId: 'doc-volvo',
+          filename: 'Volvo Penta_operators manual_47710211.pdf',
+          category: 'MANUALS',
+          score: 122,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-mase',
+          documentId: 'doc-mase',
+          filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+          category: 'MANUALS',
+          score: 118,
+          reasons: ['profile_text'],
+        },
+      ]),
+    };
+    const sourceLockService = {
+      getFollowUpStateFromHistory: jest.fn().mockReturnValue(null),
+      resolveSourceLock: jest.fn().mockReturnValue({
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      }),
+    };
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      semanticNormalizer as never,
+      semanticMatcher as never,
+      sourceLockService as never,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery:
+        'How should I acknowledge an engine alarm and find the corrective action?',
+    });
+
+    expect(result.needsClarification).toBe(true);
+    expect(result.clarificationReason).toBe('semantic_source_ambiguous');
+    expect(result.clarificationActions).toEqual([
+      {
+        label: 'Volvo Penta_operators manual_47710211',
+        message:
+          'From Volvo Penta_operators manual_47710211.pdf document: How should I acknowledge an engine alarm and find the corrective action?',
+        kind: 'suggestion',
+      },
+      {
+        label: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1)',
+        message:
+          'From MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf document: How should I acknowledge an engine alarm and find the corrective action?',
+        kind: 'suggestion',
+      },
+    ]);
+    expect(contextService.findContextForQuery).not.toHaveBeenCalled();
+  });
+
+  it('prioritizes locked page-aware citations and searches with the current follow-up text', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({
+        citations: [
+          {
+            shipManualId: 'manual-volvo',
+            chunkId: 'ragflow:p17',
+            pageNumber: 17,
+            sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+            sourceCategory: 'MANUALS',
+            snippet:
+              'Introduction. Check that you have received the correct operator manual.',
+            score: 0.9,
+          },
+        ],
+      }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = new ChatDocumentationCitationService(queryService);
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+    const semanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'manual_lookup' as const,
+      conceptFamily: 'asset_system' as const,
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS' as const],
+      explicitSource: null,
+      pageHint: 121,
+      sectionHint: 'emergency steering',
+      answerFormat: 'direct_answer' as const,
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.95,
+    };
+    const semanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue(semanticQuery),
+    };
+    const semanticMatcher = {
+      shortlistManuals: jest.fn().mockResolvedValue([
+        {
+          manualId: 'manual-volvo',
+          documentId: 'doc-volvo',
+          filename: 'Volvo Penta_operators manual_47710211.pdf',
+          category: 'MANUALS',
+          score: 140,
+          reasons: ['profile_text'],
+        },
+      ]),
+    };
+    const sourceLockService = {
+      getFollowUpStateFromHistory: jest.fn().mockReturnValue({
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'manual_lookup',
+        conceptIds: [],
+        sourcePreferences: ['MANUALS'],
+        sourceLock: true,
+        lockedManualId: 'manual-volvo',
+        lockedManualTitle: 'Volvo Penta_operators manual_47710211.pdf',
+        lockedDocumentId: 'doc-volvo',
+        pageHint: null,
+        sectionHint: 'emergency steering',
+        vendor: null,
+        model: null,
+        systems: [],
+        equipment: [],
+      }),
+      resolveSourceLock: jest.fn().mockReturnValue({
+        active: true,
+        lockedManualId: 'manual-volvo',
+        lockedManualTitle: 'Volvo Penta_operators manual_47710211.pdf',
+        lockedDocumentId: 'doc-volvo',
+        reason: 'page_or_section_follow_up',
+      }),
+      buildNextFollowUpState: jest.fn().mockReturnValue(null),
+    };
+    const pageAwareRetriever = {
+      retrieveLockedManualPage: jest.fn().mockResolvedValue([
+        {
+          shipManualId: 'manual-volvo',
+          chunkId: 'page-aware:manual-volvo:chunk-121',
+          pageNumber: 121,
+          sourceTitle: 'Volvo Penta_operators manual_47710211.pdf',
+          sourceCategory: 'MANUALS',
+          snippet:
+            'Emergency Steering. Align the Electrical Rudder Actuator and use the control levers to reach the nearest harbor.',
+          score: 20,
+        },
+      ]),
+    };
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+      undefined,
+      undefined,
+      semanticNormalizer as never,
+      semanticMatcher as never,
+      sourceLockService as never,
+      pageAwareRetriever as never,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'What does page 121 say in this manual?',
+      normalizedQuery: {
+        rawQuery: 'What does page 121 say in this manual?',
+        normalizedQuery:
+          'volvo penta operators manual emergency steering what does page 121 say in this manual?',
+        retrievalQuery:
+          'volvo penta operators manual emergency steering What does page 121 say in this manual?',
+        effectiveQuery:
+          'volvo penta operators manual emergency steering What does page 121 say in this manual?',
+        previousUserQuery:
+          'From Volvo Penta_operators manual_47710211.pdf document: What should I do if emergency steering is needed?',
+        followUpMode: 'follow_up',
+        subject: 'volvo penta emergency steering',
+        operation: 'lookup',
+        timeIntent: { kind: 'none' },
+        sourceHints: ['DOCUMENTATION'],
+        isClarificationReply: false,
+        ambiguityFlags: [],
+      },
+    });
+
+    expect(pageAwareRetriever.retrieveLockedManualPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        retrievalQuery: 'What does page 121 say in this manual?',
+        pageHint: 121,
+      }),
+    );
+    expect(contextService.findContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'What does page 121 say in this manual?',
+      expect.any(Number),
+      expect.any(Number),
+      ['MANUALS'],
+      ['manual-volvo'],
+    );
+    expect(result.retrievalQuery).toBe(
+      'What does page 121 say in this manual?',
+    );
+    expect(result.citations).toEqual([
+      expect.objectContaining({
+        chunkId: 'page-aware:manual-volvo:chunk-121',
+        pageNumber: 121,
+      }),
+    ]);
+  });
+
   it('attaches clarification suggestion actions for underspecified queries', async () => {
     const citations: ChatCitation[] = [
       {
@@ -68,7 +342,9 @@ Reference ID: 1P47`,
             compareBySource: boolean,
           ) => ChatCitation[]
         >()
-        .mockImplementation((_userQuery, retrievedCitations) => retrievedCitations),
+        .mockImplementation(
+          (_userQuery, retrievedCitations) => retrievedCitations,
+        ),
     } as unknown as ChatDocumentationCitationService;
     const scanService = {
       expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
@@ -102,7 +378,9 @@ Reference ID: 1P47`,
     ];
     const referenceExtractionService = {
       buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
-      buildClarificationActions: jest.fn().mockReturnValue(clarificationActions),
+      buildClarificationActions: jest
+        .fn()
+        .mockReturnValue(clarificationActions),
     } as unknown as ChatReferenceExtractionService;
 
     const service = new ChatDocumentationService(
@@ -133,9 +411,8 @@ Reference ID: 1P47`,
       ['MANUALS'],
     );
     expect(
-      (
-        referenceExtractionService.buildClarificationActions as jest.Mock
-      ).mock.calls[0],
+      (referenceExtractionService.buildClarificationActions as jest.Mock).mock
+        .calls[0],
     ).toEqual(['How do I change oil?', citations]);
   });
 
@@ -308,7 +585,9 @@ Reference ID: 1P47`,
       messageHistory,
     });
 
-    expect(result.retrievalQuery).toBe('How do I change oil in the port generator');
+    expect(result.retrievalQuery).toBe(
+      'How do I change oil in the port generator',
+    );
     expect(augmentSpy).toHaveBeenCalledWith(
       'How do I change oil in the port generator',
       'How do I change oil in the port generator',
@@ -318,9 +597,8 @@ Reference ID: 1P47`,
     );
     expect(fallbackSpy).not.toHaveBeenCalled();
     expect(
-      (
-        scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock
-      ).mock.calls[0],
+      (scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock)
+        .mock.calls[0],
     ).toEqual([
       'ship-1',
       'How do I change oil in the port generator',
@@ -329,9 +607,7 @@ Reference ID: 1P47`,
       ['MANUALS'],
     ]);
     expect(
-      (
-        citationService.prepareCitationsForAnswer as jest.Mock
-      ).mock.calls[0][1],
+      (citationService.prepareCitationsForAnswer as jest.Mock).mock.calls[0][1],
     ).toBe('How do I change oil in the port generator');
     expect(
       (citationService.limitCitationsForLlm as jest.Mock).mock.calls[0][0],
@@ -451,7 +727,9 @@ Reference ID: 1P47`,
       messageHistory,
     });
 
-    expect(result.retrievalQuery).toBe('emergency dpa contacts contact details');
+    expect(result.retrievalQuery).toBe(
+      'emergency dpa contacts contact details',
+    );
     expect(result.answerQuery).toBe(result.retrievalQuery);
     expect(contextService.findContextForQuery).toHaveBeenCalledWith(
       'ship-1',
@@ -575,6 +853,7 @@ Reference ID: 1P47`,
       expect.any(Number),
       expect.any(Number),
       ['HISTORY_PROCEDURES'],
+      undefined,
     );
   });
 
@@ -617,7 +896,9 @@ Reference ID: 1P47`,
             citations: ChatCitation[],
           ) => ChatCitation[]
         >()
-        .mockImplementation((_query, _userQuery, retrievedCitations) => retrievedCitations),
+        .mockImplementation(
+          (_query, _userQuery, retrievedCitations) => retrievedCitations,
+        ),
       focusCitationsForQuery: jest
         .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
         .mockImplementation((_query, retrievedCitations) => retrievedCitations),
@@ -646,7 +927,9 @@ Reference ID: 1P47`,
             compareBySource: boolean,
           ) => ChatCitation[]
         >()
-        .mockImplementation((_userQuery, retrievedCitations) => retrievedCitations),
+        .mockImplementation(
+          (_userQuery, retrievedCitations) => retrievedCitations,
+        ),
     } as unknown as ChatDocumentationCitationService;
     const scanService = {
       expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
@@ -691,9 +974,9 @@ Reference ID: 1P47`,
     expect(result.citations).toHaveLength(1);
     expect(result.citations[0].snippet).toContain('Reference ID: 1P280');
     expect(
-      (citationService.pruneCitationsForResolvedSubject as jest.Mock).mock.calls.some(
-        (call) => /reference id 1p280/i.test(call[0]),
-      ),
+      (
+        citationService.pruneCitationsForResolvedSubject as jest.Mock
+      ).mock.calls.some((call) => /reference id 1p280/i.test(call[0])),
     ).toBe(true);
     expect(
       (citationService.prepareCitationsForAnswer as jest.Mock).mock.calls[0][0],
@@ -734,9 +1017,7 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     jest
       .spyOn(queryService, 'buildGeneratorAssetFallbackQueries')
       .mockReturnValue([]);
-    jest
-      .spyOn(queryService, 'buildPartsFallbackQueries')
-      .mockReturnValue([]);
+    jest.spyOn(queryService, 'buildPartsFallbackQueries').mockReturnValue([]);
     jest
       .spyOn(queryService, 'buildReferenceContinuationFallbackQueries')
       .mockReturnValue([]);
@@ -788,9 +1069,7 @@ Location: BOX 25 VOLVO PENTA SPARES`,
         .mockImplementation((_userQuery, citations) => citations),
     } as unknown as ChatDocumentationCitationService;
     const scanService = {
-      expandReferenceDocumentChunkCitations: jest
-        .fn()
-        .mockResolvedValue([]),
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
       expandMaintenanceAssetDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),
@@ -832,18 +1111,17 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       expect.any(Number),
       expect.any(Number),
       ['MANUALS'],
+      undefined,
     );
     expect(
-      (scanService.expandReferenceDocumentChunkCitations as jest.Mock).mock.calls.some(
-        (call) => call[1] === resolvedSubjectQuery,
-      ),
+      (
+        scanService.expandReferenceDocumentChunkCitations as jest.Mock
+      ).mock.calls.some((call) => call[1] === resolvedSubjectQuery),
     ).toBe(true);
     expect(
       (
         scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock
-      ).mock.calls.some(
-        (call) => call[1] === resolvedSubjectQuery,
-      ),
+      ).mock.calls.some((call) => call[1] === resolvedSubjectQuery),
     ).toBe(true);
     expect(result.resolvedSubjectQuery).toBe(resolvedSubjectQuery);
   });
@@ -873,7 +1151,9 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       },
     ];
     const contextService = {
-      findContextForQuery: jest.fn().mockResolvedValue({ citations: initialCitations }),
+      findContextForQuery: jest
+        .fn()
+        .mockResolvedValue({ citations: initialCitations }),
       findContextForAdminQuery: jest.fn().mockResolvedValue(initialCitations),
     };
     const queryService = new ChatDocumentationQueryService();
@@ -997,13 +1277,15 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       focusCitationsForQuery: jest
         .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
         .mockImplementation((_query, citations) => citations),
-      prepareCitationsForAnswer: jest.fn().mockImplementation(
-        (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
-          citations,
-          compareBySource: false,
-          sourceComparisonTitles: [],
-        }),
-      ),
+      prepareCitationsForAnswer: jest
+        .fn()
+        .mockImplementation(
+          (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+            citations,
+            compareBySource: false,
+            sourceComparisonTitles: [],
+          }),
+        ),
       limitCitationsForLlm: jest
         .fn()
         .mockImplementation((_userQuery, citations) => citations),
@@ -1050,9 +1332,8 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     });
 
     expect(
-      (
-        scanService.expandPersonnelDirectoryDocumentChunkCitations as jest.Mock
-      ).mock.calls[0],
+      (scanService.expandPersonnelDirectoryDocumentChunkCitations as jest.Mock)
+        .mock.calls[0],
     ).toEqual([
       'ship-1',
       'manager contact details',
@@ -1093,13 +1374,15 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       focusCitationsForQuery: jest
         .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
         .mockImplementation((_query, citations) => citations),
-      prepareCitationsForAnswer: jest.fn().mockImplementation(
-        (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
-          citations,
-          compareBySource: false,
-          sourceComparisonTitles: [],
-        }),
-      ),
+      prepareCitationsForAnswer: jest
+        .fn()
+        .mockImplementation(
+          (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+            citations,
+            compareBySource: false,
+            sourceComparisonTitles: [],
+          }),
+        ),
       limitCitationsForLlm: jest
         .fn()
         .mockImplementation((_userQuery, citations) => citations),
@@ -1191,13 +1474,15 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       focusCitationsForQuery: jest
         .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
         .mockImplementation((_query, citations) => citations),
-      prepareCitationsForAnswer: jest.fn().mockImplementation(
-        (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
-          citations,
-          compareBySource: false,
-          sourceComparisonTitles: [],
-        }),
-      ),
+      prepareCitationsForAnswer: jest
+        .fn()
+        .mockImplementation(
+          (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+            citations,
+            compareBySource: false,
+            sourceComparisonTitles: [],
+          }),
+        ),
       limitCitationsForLlm: jest
         .fn()
         .mockImplementation((_userQuery, citations) => citations),
@@ -1248,9 +1533,8 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       ['HISTORY_PROCEDURES'],
     ]);
     expect(
-      (
-        scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock
-      ).mock.calls[0],
+      (scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock)
+        .mock.calls[0],
     ).toEqual([
       'ship-1',
       'when was the last separator overhaul?',
@@ -1286,13 +1570,15 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       focusCitationsForQuery: jest
         .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
         .mockImplementation((_query, citations) => citations),
-      prepareCitationsForAnswer: jest.fn().mockImplementation(
-        (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
-          citations,
-          compareBySource: false,
-          sourceComparisonTitles: [],
-        }),
-      ),
+      prepareCitationsForAnswer: jest
+        .fn()
+        .mockImplementation(
+          (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+            citations,
+            compareBySource: false,
+            sourceComparisonTitles: [],
+          }),
+        ),
       limitCitationsForLlm: jest
         .fn()
         .mockImplementation((_userQuery, citations) => citations),
@@ -1340,7 +1626,9 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     expect(result.citations).toEqual([]);
     expect(result.analysisCitations).toEqual([]);
     expect(contextService.findContextForQuery).not.toHaveBeenCalled();
-    expect(scanService.expandReferenceDocumentChunkCitations).not.toHaveBeenCalled();
+    expect(
+      scanService.expandReferenceDocumentChunkCitations,
+    ).not.toHaveBeenCalled();
     expect(
       scanService.expandMaintenanceAssetDocumentChunkCitations,
     ).not.toHaveBeenCalled();

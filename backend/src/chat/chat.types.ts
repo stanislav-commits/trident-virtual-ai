@@ -1,3 +1,9 @@
+import type {
+  DocumentationFollowUpState,
+  DocumentationRetrievalTrace,
+  DocumentationSemanticQuery,
+} from '../semantic/semantic.types';
+
 export interface ChatCitation {
   shipManualId?: string;
   chunkId?: string;
@@ -61,6 +67,10 @@ export interface ChatDocumentationContext {
   clarificationActions?: ChatSuggestionAction[];
   compareBySource?: boolean;
   sourceComparisonTitles?: string[];
+  semanticQuery?: DocumentationSemanticQuery;
+  documentationFollowUpState?: DocumentationFollowUpState;
+  retrievalTrace?: DocumentationRetrievalTrace;
+  sourceLockActive?: boolean;
 }
 
 export type ChatFollowUpMode =

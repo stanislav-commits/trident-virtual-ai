@@ -42,8 +42,9 @@ export class ChatDocumentationQueryService {
     return (
       /^\s*(hi|hello|hey|thanks|thank you|ok|okay|great)\s*[!.?]*\s*$/i.test(
         userQuery,
-      ) || this.isTelemetryListQuery(userQuery)
-      || this.isExplicitTelemetrySourceQuery(userQuery)
+      ) ||
+      this.isTelemetryListQuery(userQuery) ||
+      this.isExplicitTelemetrySourceQuery(userQuery)
     );
   }
 
@@ -340,10 +341,7 @@ export class ChatDocumentationQueryService {
       return normalizedPersonnelQuery;
     }
 
-    if (
-      normalizedPreviousUserQuery &&
-      this.isSummaryFollowUpQuery(trimmed)
-    ) {
+    if (normalizedPreviousUserQuery && this.isSummaryFollowUpQuery(trimmed)) {
       return normalizedPreviousUserQuery;
     }
 
@@ -352,9 +350,7 @@ export class ChatDocumentationQueryService {
       this.isAggregateContinuationFollowUpQuery(trimmed) &&
       this.isAggregateContinuationContext(normalizedPreviousUserQuery)
     ) {
-      return this.buildAggregateContinuationQuery(
-        normalizedPreviousUserQuery,
-      );
+      return this.buildAggregateContinuationQuery(normalizedPreviousUserQuery);
     }
 
     const sourceScopeFollowUp = this.isSourceScopeFollowUpQuery(trimmed);
@@ -417,11 +413,7 @@ export class ChatDocumentationQueryService {
   }
 
   buildClarificationResolvedQuery(
-    pendingClarification:
-      | ChatClarificationState
-      | string
-      | null
-      | undefined,
+    pendingClarification: ChatClarificationState | string | null | undefined,
     clarificationReply: string,
   ): string {
     const clarificationState =
@@ -438,10 +430,9 @@ export class ChatDocumentationQueryService {
       }
     }
 
-    const base =
-      (typeof baseQuery === 'string' ? baseQuery : '')
-        .trim()
-        .replace(/[?!.]+$/g, '');
+    const base = (typeof baseQuery === 'string' ? baseQuery : '')
+      .trim()
+      .replace(/[?!.]+$/g, '');
     const normalizedReply =
       this.normalizeInheritedFollowUpQuery(clarificationReply) ||
       clarificationReply;
@@ -453,11 +444,7 @@ export class ChatDocumentationQueryService {
 
   shouldTreatAsClarificationReply(
     userQuery: string,
-    pendingClarification:
-      | ChatClarificationState
-      | string
-      | null
-      | undefined,
+    pendingClarification: ChatClarificationState | string | null | undefined,
   ): boolean {
     const clarificationState =
       this.normalizeClarificationStateInput(pendingClarification);
@@ -504,7 +491,9 @@ export class ChatDocumentationQueryService {
     if (!trimmed) return false;
     if (this.shouldSkipDocumentationRetrieval(trimmed)) return false;
 
-    if (this.shouldTreatAsClarificationReply(trimmed, pendingClarificationQuery)) {
+    if (
+      this.shouldTreatAsClarificationReply(trimmed, pendingClarificationQuery)
+    ) {
       return false;
     }
 
@@ -570,7 +559,11 @@ export class ChatDocumentationQueryService {
       return 'Which exact component or system is this fluid-related request for? If you can, include the asset name or side, the component, task title, or reference ID.';
     }
 
-    if (/\b(parts?|spares?|filters?|part\s*numbers?|consumables?)\b/i.test(lowered)) {
+    if (
+      /\b(parts?|spares?|filters?|part\s*numbers?|consumables?)\b/i.test(
+        lowered,
+      )
+    ) {
       return 'Which exact component, system, or maintenance task is this parts request for? If you have it, include the asset name or side, task title, or reference ID.';
     }
 
@@ -582,7 +575,11 @@ export class ChatDocumentationQueryService {
       return 'Which exact component or system has this issue? If you can, include the asset name or side, the component, and any reference ID or alarm label.';
     }
 
-    if (/\b(status|telemetry|running\s+hours|runtime|hour\s*meter)\b/i.test(lowered)) {
+    if (
+      /\b(status|telemetry|running\s+hours|runtime|hour\s*meter)\b/i.test(
+        lowered,
+      )
+    ) {
       return 'Which exact asset or component do you want this status for? If you can, include the asset name or side, the component, or a reference ID.';
     }
 
@@ -674,8 +671,7 @@ export class ChatDocumentationQueryService {
     const hasSummaryIntent =
       /\b(?:summari[sz]e|sum\s+up|condense|brief(?:ly)?|in\s+short|one[-\s]?line|one[-\s]?sentence|in\s+one\s+line|in\s+one\s+sentence)\b/i.test(
         trimmed,
-      ) ||
-      /\b(?:make|keep)\b[\s\S]{0,12}\b(?:brief|short)\b/i.test(trimmed);
+      ) || /\b(?:make|keep)\b[\s\S]{0,12}\b(?:brief|short)\b/i.test(trimmed);
     if (!hasSummaryIntent) {
       return false;
     }
@@ -1017,7 +1013,9 @@ export class ChatDocumentationQueryService {
   buildReferenceIdFallbackQueries(query: string): string[] {
     const referenceIds = [
       ...new Set(
-        (query.match(/\b1p\d{2,}\b/gi) ?? []).map((value) => value.toUpperCase()),
+        (query.match(/\b1p\d{2,}\b/gi) ?? []).map((value) =>
+          value.toUpperCase(),
+        ),
       ),
     ];
     if (referenceIds.length === 0) return [];
@@ -1209,7 +1207,9 @@ export class ChatDocumentationQueryService {
         `${retrievalQuery} ${userQuery}`,
       );
       for (const focusTerm of focusTerms) {
-        queries.add(`${engineSide} MAIN GENERATOR ${focusTerm} maintenance schedule`);
+        queries.add(
+          `${engineSide} MAIN GENERATOR ${focusTerm} maintenance schedule`,
+        );
         queries.add(
           `${assetFocus}. Focus on ${focusTerm} work items, task lines, and spare-parts rows for this generator asset.`,
         );
@@ -1245,10 +1245,7 @@ export class ChatDocumentationQueryService {
     return null;
   }
 
-  matchesDirectionalSide(
-    text: string,
-    side: 'port' | 'starboard',
-  ): boolean {
+  matchesDirectionalSide(text: string, side: 'port' | 'starboard'): boolean {
     if (side === 'port') {
       return /\b(port(?:\s+side)?|portside|ps)\b/i.test(text);
     }
@@ -1318,10 +1315,13 @@ export class ChatDocumentationQueryService {
   }
 
   isNextDueLookupQuery(query: string): boolean {
-    return /\b(next\s+due|what\s+is\s+next\s+due|next\s+due\s+value|when\s+is\s+.*(?:maintenance|service).*\sdue|what\s+is\s+the\s+next\s+(maintenance|service)|what\s+(maintenance|service)\s+is\s+next|how\s+many\s+hours?\s+(?:remain|remaining|left)?\s*until|remaining\s+hours?)\b/i.test(
-      query,
-    ) || /\bwhen\s+(?:is|will)\s+.+\b(?:maintenance|service|oil\s+change|filter(?:\s+change)?|inspection|overhaul|greasing|grease|calibration|cleaning)\b.+\bdue\b/i.test(
-      query,
+    return (
+      /\b(next\s+due|what\s+is\s+next\s+due|next\s+due\s+value|when\s+is\s+.*(?:maintenance|service).*\sdue|what\s+is\s+the\s+next\s+(maintenance|service)|what\s+(maintenance|service)\s+is\s+next|how\s+many\s+hours?\s+(?:remain|remaining|left)?\s*until|remaining\s+hours?)\b/i.test(
+        query,
+      ) ||
+      /\bwhen\s+(?:is|will)\s+.+\b(?:maintenance|service|oil\s+change|filter(?:\s+change)?|inspection|overhaul|greasing|grease|calibration|cleaning)\b.+\bdue\b/i.test(
+        query,
+      )
     );
   }
 
@@ -1354,12 +1354,12 @@ export class ChatDocumentationQueryService {
   }
 
   private isContextualFollowUpQuery(query: string): boolean {
-    return /\b(it|its|that|this|they|them|their|those|these|same|next one|this one|his|her|him)\b/i.test(
-      query,
-    ) || /\b(?:other|another|same)\s+one\b/i.test(
-      query,
-    ) || /\bwhat\s+about\s+(?:the\s+)?(?:other|another|same)\b/i.test(
-      query,
+    return (
+      /\b(it|its|that|this|they|them|their|those|these|same|next one|this one|his|her|him)\b/i.test(
+        query,
+      ) ||
+      /\b(?:other|another|same)\s+one\b/i.test(query) ||
+      /\bwhat\s+about\s+(?:the\s+)?(?:other|another|same)\b/i.test(query)
     );
   }
 
@@ -1472,14 +1472,19 @@ export class ChatDocumentationQueryService {
     const maxOverlap = Math.min(subjectTokens.length, followUpTokens.length);
     for (let size = maxOverlap; size > 0; size -= 1) {
       const subjectTail = subjectTokens.slice(-size).join(' ').toLowerCase();
-      const followUpHead = followUpTokens.slice(0, size).join(' ').toLowerCase();
+      const followUpHead = followUpTokens
+        .slice(0, size)
+        .join(' ')
+        .toLowerCase();
       if (subjectTail === followUpHead) {
         overlap = size;
         break;
       }
     }
 
-    return [...subjectTokens, ...followUpTokens.slice(overlap)].join(' ').trim();
+    return [...subjectTokens, ...followUpTokens.slice(overlap)]
+      .join(' ')
+      .trim();
   }
 
   private extractDetailFocus(query: string): string | null {
@@ -1723,6 +1728,9 @@ export class ChatDocumentationQueryService {
     if (!normalized || !this.isSourceScopeFollowUpQuery(normalized)) {
       return null;
     }
+    if (!this.isPureSourceScopeOverride(normalized)) {
+      return null;
+    }
 
     if (/\b(telemetry|metrics?)\b/.test(normalized)) {
       return 'from telemetry';
@@ -1743,6 +1751,20 @@ export class ChatDocumentationQueryService {
     return null;
   }
 
+  private isPureSourceScopeOverride(query: string): boolean {
+    const normalized = query
+      .replace(/[?.!]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalized) {
+      return false;
+    }
+
+    return /^(?:(?:based\s+on|from|in|inside|using)\s+(?:the\s+)?)?(?:manuals?|docs?|documentation|certificates?|regulations?|history|historical|procedures?|telemetry|metrics?)(?:\s+(?:only|instead))?$/.test(
+      normalized,
+    );
+  }
+
   private normalizeCompletenessFollowUp(query: string): string | null {
     if (!this.isCompletenessVerificationFollowUpQuery(query)) {
       return null;
@@ -1756,7 +1778,8 @@ export class ChatDocumentationQueryService {
     currentUserQuery: string;
     completenessFollowUp: boolean;
   }): string | null {
-    const { previousUserQuery, currentUserQuery, completenessFollowUp } = params;
+    const { previousUserQuery, currentUserQuery, completenessFollowUp } =
+      params;
 
     if (
       this.shouldReusePreviousHistoricalQueryForCompletenessFollowUp(
@@ -1784,7 +1807,10 @@ export class ChatDocumentationQueryService {
   }
 
   private normalizeInheritedFollowUpSubjectBase(query: string): string {
-    return query.trim().replace(/[?!.]+$/g, '').replace(/\s+/g, ' ');
+    return query
+      .trim()
+      .replace(/[?!.]+$/g, '')
+      .replace(/\s+/g, ' ');
   }
 
   private hasHistoricalTimeAnchor(query: string): boolean {
@@ -2001,9 +2027,7 @@ export class ChatDocumentationQueryService {
       return canonicalTime;
     }
 
-    return `${normalizedSubject} ${canonicalTime}`
-      .replace(/\s+/g, ' ')
-      .trim();
+    return `${normalizedSubject} ${canonicalTime}`.replace(/\s+/g, ' ').trim();
   }
 
   private hasStandaloneTemporalContinuationSubject(query: string): boolean {
@@ -2038,16 +2062,16 @@ export class ChatDocumentationQueryService {
         /\bon\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?\b/gi,
         ' ',
       )
-      .replace(
-        /\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?(?:\s*utc)?\b/gi,
-        ' ',
-      )
+      .replace(/\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?(?:\s*utc)?\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   }
 
-  private extractCanonicalHistoricalContinuationTime(value: string): string | null {
-    const absoluteDate = this.extractHistoricalAbsoluteDateForContinuation(value);
+  private extractCanonicalHistoricalContinuationTime(
+    value: string,
+  ): string | null {
+    const absoluteDate =
+      this.extractHistoricalAbsoluteDateForContinuation(value);
     if (absoluteDate) {
       return `on ${absoluteDate}`;
     }
@@ -2067,19 +2091,25 @@ export class ChatDocumentationQueryService {
     }
 
     if (/\b(?:today|yesterday)\b/i.test(value)) {
-      return value.match(/\b(?:today|yesterday)\b/i)?.[0]?.toLowerCase() ?? null;
+      return (
+        value.match(/\b(?:today|yesterday)\b/i)?.[0]?.toLowerCase() ?? null
+      );
     }
 
     if (/\b(?:this|last)\s+(?:week|month|year)\b/i.test(value)) {
       return (
-        value.match(/\b(?:this|last)\s+(?:week|month|year)\b/i)?.[0] ?? null
-      )?.toLowerCase() ?? null;
+        (
+          value.match(/\b(?:this|last)\s+(?:week|month|year)\b/i)?.[0] ?? null
+        )?.toLowerCase() ?? null
+      );
     }
 
     return null;
   }
 
-  private extractHistoricalAbsoluteDateForContinuation(value: string): string | null {
+  private extractHistoricalAbsoluteDateForContinuation(
+    value: string,
+  ): string | null {
     const isoMatch = value.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
     if (isoMatch) {
       return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
@@ -2090,7 +2120,10 @@ export class ChatDocumentationQueryService {
     );
     if (dayMonthMatch) {
       return this.formatHistoricalContinuationIsoDate(
-        Number.parseInt(dayMonthMatch[3] ?? String(new Date().getUTCFullYear()), 10),
+        Number.parseInt(
+          dayMonthMatch[3] ?? String(new Date().getUTCFullYear()),
+          10,
+        ),
         this.getHistoricalContinuationMonthIndex(dayMonthMatch[2]) + 1,
         Number.parseInt(dayMonthMatch[1], 10),
       );
@@ -2101,7 +2134,10 @@ export class ChatDocumentationQueryService {
     );
     if (monthDayMatch) {
       return this.formatHistoricalContinuationIsoDate(
-        Number.parseInt(monthDayMatch[3] ?? String(new Date().getUTCFullYear()), 10),
+        Number.parseInt(
+          monthDayMatch[3] ?? String(new Date().getUTCFullYear()),
+          10,
+        ),
         this.getHistoricalContinuationMonthIndex(monthDayMatch[1]) + 1,
         Number.parseInt(monthDayMatch[2], 10),
       );
@@ -2306,7 +2342,8 @@ export class ChatDocumentationQueryService {
   private isSelfContainedSubjectQuery(query: string): boolean {
     if (/\b1p\d{2,}\b/i.test(query)) return true;
     if (
-      (this.isPersonnelDirectoryQuery(query) || this.isRoleDescriptionQuery(query)) &&
+      (this.isPersonnelDirectoryQuery(query) ||
+        this.isRoleDescriptionQuery(query)) &&
       this.extractContactAnchorTerms(query).length > 0
     ) {
       return true;
@@ -2411,7 +2448,8 @@ export class ChatDocumentationQueryService {
 
     const combinedText = citations
       .map(
-        (citation) => `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`,
+        (citation) =>
+          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`,
       )
       .join('\n');
     const referenceId = combinedText.match(/\b1p\d{2,}\b/i)?.[0]?.toUpperCase();
@@ -2488,11 +2526,7 @@ export class ChatDocumentationQueryService {
   }
 
   private normalizeClarificationStateInput(
-    pendingClarification:
-      | ChatClarificationState
-      | string
-      | null
-      | undefined,
+    pendingClarification: ChatClarificationState | string | null | undefined,
   ): ChatClarificationState | null {
     if (!pendingClarification) {
       return null;
@@ -2550,10 +2584,9 @@ export class ChatDocumentationQueryService {
     const normalizedTimeReply =
       this.normalizeHistoricalTimeReply(clarificationReply);
     if (normalizedTimeReply) {
-      return `${base.replace(
-        /\bat\s+\d{1,2}(?::\d{2})?\s*(am|pm)?(?:\s*utc)?\b/i,
-        '',
-      ).trim()} at ${normalizedTimeReply}`
+      return `${base
+        .replace(/\bat\s+\d{1,2}(?::\d{2})?\s*(am|pm)?(?:\s*utc)?\b/i, '')
+        .trim()} at ${normalizedTimeReply}`
         .replace(/\s+/g, ' ')
         .trim();
     }

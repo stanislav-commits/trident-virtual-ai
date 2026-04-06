@@ -1,11 +1,26 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChatContextService } from './chat-context.service';
 import { TagLinksService } from '../tags/tag-links.service';
+import { DocumentationQuerySemanticNormalizerService } from '../semantic/documentation-query-semantic-normalizer.service';
+import {
+  DocumentationSourceLockService,
+  type DocumentationSourceLockDecision,
+} from '../semantic/documentation-source-lock.service';
+import { ManualSemanticMatcherService } from '../semantic/manual-semantic-matcher.service';
+import { PageAwareManualRetrieverService } from '../semantic/page-aware-manual-retriever.service';
+import type {
+  DocumentationFollowUpState,
+  DocumentationRetrievalTrace,
+  DocumentationSemanticCandidate,
+  DocumentationSemanticQuery,
+  SemanticSourceCategory,
+} from '../semantic/semantic.types';
 import {
   ChatCitation,
   ChatDocumentationContext,
   ChatHistoryMessage,
   ChatNormalizedQuery,
+  ChatSuggestionAction,
 } from './chat.types';
 import { ChatDocumentationCitationService } from './chat-documentation-citation.service';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
@@ -38,6 +53,14 @@ export class ChatDocumentationService {
     private readonly referenceExtractionService: ChatReferenceExtractionService,
     @Optional() queryPlanner?: ChatQueryPlannerService,
     @Optional() private readonly tagLinks?: TagLinksService,
+    @Optional()
+    private readonly semanticNormalizer?: DocumentationQuerySemanticNormalizerService,
+    @Optional()
+    private readonly semanticMatcher?: ManualSemanticMatcherService,
+    @Optional()
+    private readonly sourceLockService?: DocumentationSourceLockService,
+    @Optional()
+    private readonly pageAwareRetriever?: PageAwareManualRetrieverService,
   ) {
     this.queryPlanner = queryPlanner ?? new ChatQueryPlannerService();
   }
@@ -149,24 +172,166 @@ export class ChatDocumentationService {
     }
 
     try {
+      const storedDocumentationFollowUpState =
+        this.sourceLockService?.getFollowUpStateFromHistory(messageHistory) ??
+        null;
+      const previousDocumentationFollowUpState =
+        normalizedQuery?.followUpMode === 'standalone'
+          ? null
+          : storedDocumentationFollowUpState;
+      const semanticQuery = this.semanticNormalizer
+        ? await this.semanticNormalizer.normalize({
+            userQuery: effectiveUserQuery,
+            retrievalQuery,
+            normalizedQuery,
+            followUpState: previousDocumentationFollowUpState,
+          })
+        : undefined;
+      const hardDocumentCategories = this.getHardDocumentCategories(
+        effectiveUserQuery,
+        retrievalQuery,
+      );
+      const effectiveDocumentCategories = hardDocumentCategories?.length
+        ? hardDocumentCategories
+        : this.toChatDocumentCategories(semanticQuery?.sourcePreferences ?? []);
+      const semanticCandidates =
+        semanticQuery && this.semanticMatcher
+          ? await this.semanticMatcher.shortlistManuals({
+              shipId,
+              role,
+              queryText: `${effectiveUserQuery}\n${retrievalQuery}`,
+              semanticQuery,
+              allowedDocumentCategories: effectiveDocumentCategories,
+            })
+          : [];
+      const sourceLockDecision =
+        semanticQuery && this.sourceLockService
+          ? this.sourceLockService.resolveSourceLock({
+              userQuery: effectiveUserQuery,
+              normalizedQuery,
+              semanticQuery,
+              followUpState: previousDocumentationFollowUpState,
+              candidates: semanticCandidates,
+            })
+          : this.emptySourceLockDecision();
+      const tagScopedManualIds = await this.resolveTagScopedManualIds(
+        shipId,
+        role,
+        effectiveUserQuery,
+        effectiveDocumentCategories,
+      );
+      const semanticManualIds = this.selectSemanticManualIds(
+        semanticCandidates,
+        semanticQuery,
+      );
+      const baseAllowedManualIds = this.resolveRetrievalManualScope({
+        sourceLockDecision,
+        semanticManualIds,
+        tagScopedManualIds,
+      });
+      const documentationRetrievalQuery =
+        this.resolveSourceLockedRetrievalQuery({
+          userQuery,
+          effectiveUserQuery,
+          retrievalQuery,
+          semanticQuery,
+          sourceLockDecision,
+        });
+      const semanticScopeActive = semanticManualIds.length > 0;
+      const retrievalTrace = this.buildRetrievalTrace({
+        userQuery: effectiveUserQuery,
+        retrievalQuery: documentationRetrievalQuery,
+        semanticQuery,
+        semanticCandidates,
+        sourceLockDecision,
+      });
+      const sourceClarification = this.buildSemanticSourceClarification({
+        userQuery: effectiveUserQuery,
+        retrievalQuery,
+        semanticQuery,
+        semanticCandidates,
+        sourceLockDecision,
+        followUpState: previousDocumentationFollowUpState,
+      });
+
+      if (sourceClarification) {
+        return {
+          previousUserQuery: previousUserQuery ?? undefined,
+          retrievalQuery,
+          normalizedQuery,
+          semanticQuery,
+          retrievalTrace,
+          sourceLockActive: false,
+          citations,
+          needsClarification: true,
+          clarificationQuestion: sourceClarification.question,
+          clarificationReason: sourceClarification.reason,
+          pendingClarificationQuery: userQuery.trim(),
+          clarificationState: this.queryService.buildClarificationState({
+            clarificationDomain: 'documentation',
+            pendingQuery: userQuery.trim(),
+            clarificationReason: sourceClarification.reason,
+            normalizedQuery,
+          }),
+          clarificationActions: sourceClarification.actions,
+        };
+      }
+
+      if (
+        semanticQuery?.needsClarification &&
+        semanticQuery.confidence < 0.5 &&
+        !sourceLockDecision.active &&
+        semanticCandidates.length === 0 &&
+        !tagScopedManualIds?.length
+      ) {
+        const clarificationActions = await this.buildClarificationActions({
+          shipId,
+          role,
+          userQuery,
+          retrievalQuery,
+        });
+
+        return {
+          previousUserQuery: previousUserQuery ?? undefined,
+          retrievalQuery,
+          normalizedQuery,
+          semanticQuery,
+          retrievalTrace,
+          sourceLockActive: false,
+          citations,
+          needsClarification: true,
+          clarificationQuestion:
+            this.queryService.buildClarificationQuestion(userQuery),
+          clarificationReason:
+            semanticQuery.clarificationReason ?? 'semantic_low_confidence',
+          pendingClarificationQuery: userQuery.trim(),
+          clarificationState: this.queryService.buildClarificationState({
+            clarificationDomain: 'documentation',
+            pendingQuery: userQuery.trim(),
+            clarificationReason:
+              semanticQuery.clarificationReason ?? 'semantic_low_confidence',
+            normalizedQuery,
+          }),
+          clarificationActions,
+        };
+      }
+
       const searchCitationsForQuery = async (
         query: string,
+        allowedManualIds: string[] | undefined = baseAllowedManualIds,
       ): Promise<ChatCitation[]> => {
         const retrievalWindow = this.queryService.getRetrievalWindow(
           query,
           effectiveUserQuery,
         );
-        const hardDocumentCategories = this.getHardDocumentCategories(
-          effectiveUserQuery,
-          query,
-        );
         if (role === 'admin' || !shipId) {
-          if (hardDocumentCategories?.length) {
+          if (effectiveDocumentCategories?.length || allowedManualIds?.length) {
             return this.contextService.findContextForAdminQuery(
               query,
               retrievalWindow.topK,
               retrievalWindow.candidateK,
-              hardDocumentCategories,
+              effectiveDocumentCategories,
+              allowedManualIds,
             );
           }
 
@@ -177,31 +342,77 @@ export class ChatDocumentationService {
           );
         }
 
-        const result = hardDocumentCategories?.length
-          ? await this.contextService.findContextForQuery(
-              shipId,
-              query,
-              retrievalWindow.topK,
-              retrievalWindow.candidateK,
-              hardDocumentCategories,
-            )
-          : await this.contextService.findContextForQuery(
-              shipId,
-              query,
-              retrievalWindow.topK,
-              retrievalWindow.candidateK,
-            );
+        const result =
+          effectiveDocumentCategories?.length || allowedManualIds?.length
+            ? await this.contextService.findContextForQuery(
+                shipId,
+                query,
+                retrievalWindow.topK,
+                retrievalWindow.candidateK,
+                effectiveDocumentCategories,
+                allowedManualIds,
+              )
+            : await this.contextService.findContextForQuery(
+                shipId,
+                query,
+                retrievalWindow.topK,
+                retrievalWindow.candidateK,
+              );
         return result.citations;
       };
 
-      citations = await searchCitationsForQuery(retrievalQuery);
+      let pageAwareCitations: ChatCitation[] = [];
+
+      if (
+        sourceLockDecision.active &&
+        sourceLockDecision.lockedManualId &&
+        Boolean(
+          semanticQuery &&
+          (semanticQuery.pageHint !== null ||
+            semanticQuery.sectionHint !== null),
+        ) &&
+        this.pageAwareRetriever
+      ) {
+        pageAwareCitations =
+          await this.pageAwareRetriever.retrieveLockedManualPage({
+            manualId: sourceLockDecision.lockedManualId,
+            retrievalQuery: documentationRetrievalQuery,
+            pageHint: semanticQuery?.pageHint,
+            sectionHint: semanticQuery?.sectionHint,
+          });
+        citations = this.citationService.mergeCitations(
+          citations,
+          pageAwareCitations,
+        );
+      }
+
+      citations = this.citationService.mergeCitations(
+        citations,
+        await searchCitationsForQuery(documentationRetrievalQuery),
+      );
 
       if (citations.length === 0) {
-        const fallbackQuery =
-          this.queryService.buildRagFallbackQuery(retrievalQuery);
-        if (fallbackQuery !== retrievalQuery) {
+        const fallbackQuery = this.queryService.buildRagFallbackQuery(
+          documentationRetrievalQuery,
+        );
+        if (fallbackQuery !== documentationRetrievalQuery) {
           citations = await searchCitationsForQuery(fallbackQuery);
         }
+      }
+
+      if (
+        citations.length === 0 &&
+        semanticScopeActive &&
+        !sourceLockDecision.active
+      ) {
+        retrievalTrace.fallbackWideningUsed = true;
+        const widenedAllowedManualIds = tagScopedManualIds?.length
+          ? tagScopedManualIds
+          : undefined;
+        citations = await searchCitationsForQuery(
+          documentationRetrievalQuery,
+          widenedAllowedManualIds,
+        );
       }
 
       if (
@@ -211,14 +422,15 @@ export class ChatDocumentationService {
         )
       ) {
         for (const fallbackQuery of this.buildCertificateExpiryFallbackQueries(
-          retrievalQuery,
+          documentationRetrievalQuery,
           effectiveUserQuery,
         )) {
-          if (!fallbackQuery || fallbackQuery === retrievalQuery) {
+          if (!fallbackQuery || fallbackQuery === documentationRetrievalQuery) {
             continue;
           }
 
-          const fallbackCitations = await searchCitationsForQuery(fallbackQuery);
+          const fallbackCitations =
+            await searchCitationsForQuery(fallbackQuery);
           citations = this.citationService.mergeCitations(
             citations,
             fallbackCitations,
@@ -228,32 +440,25 @@ export class ChatDocumentationService {
 
       const assetFallbackQueries =
         this.queryService.buildGeneratorAssetFallbackQueries(
-          retrievalQuery,
+          documentationRetrievalQuery,
           effectiveUserQuery,
         );
-      const hardDocumentCategories = this.getHardDocumentCategories(
-        effectiveUserQuery,
-        retrievalQuery,
-      );
-      const tagScopedManualIds = await this.resolveTagScopedManualIds(
-        shipId,
-        role,
-        effectiveUserQuery,
-        hardDocumentCategories,
-      );
       if (
         assetFallbackQueries.length > 0 &&
         (this.queryService.shouldAugmentGeneratorAssetLookup(
-          retrievalQuery,
+          documentationRetrievalQuery,
           effectiveUserQuery,
         ) ||
           this.queryService.needsGeneratorAssetFallback(
-            retrievalQuery,
+            documentationRetrievalQuery,
             citations,
           ))
       ) {
         for (const assetFallbackQuery of assetFallbackQueries) {
-          if (!assetFallbackQuery || assetFallbackQuery === retrievalQuery) {
+          if (
+            !assetFallbackQuery ||
+            assetFallbackQuery === documentationRetrievalQuery
+          ) {
             continue;
           }
 
@@ -262,7 +467,10 @@ export class ChatDocumentationService {
 
           citations =
             fallbackCitations.length > 0
-              ? this.citationService.mergeCitations(citations, fallbackCitations)
+              ? this.citationService.mergeCitations(
+                  citations,
+                  fallbackCitations,
+                )
               : citations;
         }
       }
@@ -271,18 +479,20 @@ export class ChatDocumentationService {
         this.queryService.isPartsQuery(effectiveUserQuery) &&
         !this.queryService.hasDetailedPartsEvidence(citations)
       ) {
-        const partsFallbackQueries = this.queryService.buildPartsFallbackQueries(
-          retrievalQuery,
-          effectiveUserQuery,
-          citations,
-        );
+        const partsFallbackQueries =
+          this.queryService.buildPartsFallbackQueries(
+            documentationRetrievalQuery,
+            effectiveUserQuery,
+            citations,
+          );
 
         for (const fallbackQuery of partsFallbackQueries) {
-          if (!fallbackQuery || fallbackQuery === retrievalQuery) {
+          if (!fallbackQuery || fallbackQuery === documentationRetrievalQuery) {
             continue;
           }
 
-          const fallbackCitations = await searchCitationsForQuery(fallbackQuery);
+          const fallbackCitations =
+            await searchCitationsForQuery(fallbackQuery);
           citations = this.citationService.mergeCitations(
             citations,
             fallbackCitations,
@@ -293,13 +503,20 @@ export class ChatDocumentationService {
         }
       }
 
-      if (this.queryService.needsReferenceIdFallback(retrievalQuery, citations)) {
+      if (
+        this.queryService.needsReferenceIdFallback(
+          documentationRetrievalQuery,
+          citations,
+        )
+      ) {
         const referenceFallbackQueries =
-          this.queryService.buildReferenceIdFallbackQueries(retrievalQuery);
+          this.queryService.buildReferenceIdFallbackQueries(
+            documentationRetrievalQuery,
+          );
         for (const referenceFallbackQuery of referenceFallbackQueries) {
           if (
             !referenceFallbackQuery ||
-            referenceFallbackQuery === retrievalQuery
+            referenceFallbackQuery === documentationRetrievalQuery
           ) {
             continue;
           }
@@ -313,7 +530,7 @@ export class ChatDocumentationService {
           );
           if (
             !this.queryService.needsReferenceIdFallback(
-              retrievalQuery,
+              documentationRetrievalQuery,
               citations,
             )
           ) {
@@ -324,12 +541,13 @@ export class ChatDocumentationService {
 
       const referenceContinuationFallbackQueries =
         this.queryService.buildReferenceContinuationFallbackQueries(
-          retrievalQuery,
+          documentationRetrievalQuery,
           effectiveUserQuery,
           citations,
         );
       for (const continuationQuery of referenceContinuationFallbackQueries) {
-        const fallbackCitations = await searchCitationsForQuery(continuationQuery);
+        const fallbackCitations =
+          await searchCitationsForQuery(continuationQuery);
         citations = this.citationService.mergeCitations(
           citations,
           fallbackCitations,
@@ -341,10 +559,10 @@ export class ChatDocumentationService {
           this.scanService,
         ),
         shipId,
-        retrievalQuery,
+        documentationRetrievalQuery,
         effectiveUserQuery,
         citations,
-        hardDocumentCategories,
+        effectiveDocumentCategories,
         tagScopedManualIds,
       );
       citations = this.citationService.mergeCitations(
@@ -358,10 +576,10 @@ export class ChatDocumentationService {
             this.scanService,
           ),
           shipId,
-          retrievalQuery,
+          documentationRetrievalQuery,
           effectiveUserQuery,
           citations,
-          hardDocumentCategories,
+          effectiveDocumentCategories,
           tagScopedManualIds,
         );
       citations = this.citationService.mergeCitations(
@@ -375,10 +593,10 @@ export class ChatDocumentationService {
             this.scanService,
           ),
           shipId,
-          retrievalQuery,
+          documentationRetrievalQuery,
           effectiveUserQuery,
           citations,
-          hardDocumentCategories,
+          effectiveDocumentCategories,
           tagScopedManualIds,
         );
       citations = this.citationService.mergeCitations(
@@ -391,10 +609,10 @@ export class ChatDocumentationService {
             this.scanService,
           ),
           shipId,
-          retrievalQuery,
+          documentationRetrievalQuery,
           effectiveUserQuery,
           citations,
-          hardDocumentCategories,
+          effectiveDocumentCategories,
           tagScopedManualIds,
         );
       citations = this.citationService.mergeCitations(
@@ -406,10 +624,10 @@ export class ChatDocumentationService {
           this.scanService,
         ),
         shipId,
-        retrievalQuery,
+        documentationRetrievalQuery,
         effectiveUserQuery,
         citations,
-        hardDocumentCategories,
+        effectiveDocumentCategories,
         tagScopedManualIds,
       );
       citations = this.citationService.mergeCitations(
@@ -421,10 +639,10 @@ export class ChatDocumentationService {
           this.scanService,
         ),
         shipId,
-        retrievalQuery,
+        documentationRetrievalQuery,
         effectiveUserQuery,
         citations,
-        hardDocumentCategories,
+        effectiveDocumentCategories,
         tagScopedManualIds,
       );
       citations = this.citationService.mergeCitations(
@@ -436,28 +654,28 @@ export class ChatDocumentationService {
       }
 
       citations = this.citationService.pruneCitationsForResolvedSubject(
-        retrievalQuery,
+        documentationRetrievalQuery,
         citations,
       );
       citations = this.citationService.refineCitationsForIntent(
-        retrievalQuery,
+        documentationRetrievalQuery,
         effectiveUserQuery,
         citations,
       );
       citations = this.citationService.focusCitationsForQuery(
-        retrievalQuery,
+        documentationRetrievalQuery,
         citations,
       );
       let resolvedSubjectQuery =
         this.referenceExtractionService.buildResolvedMaintenanceSubjectQuery(
-          retrievalQuery,
+          documentationRetrievalQuery,
           effectiveUserQuery,
           citations,
         ) ?? undefined;
       if (
         resolvedSubjectQuery &&
         resolvedSubjectQuery.trim().toLowerCase() !==
-          retrievalQuery.trim().toLowerCase()
+          documentationRetrievalQuery.trim().toLowerCase()
       ) {
         const resolvedSubjectFallbackCitations =
           await searchCitationsForQuery(resolvedSubjectQuery);
@@ -490,6 +708,8 @@ export class ChatDocumentationService {
             resolvedSubjectQuery,
             effectiveUserQuery,
             citations,
+            effectiveDocumentCategories,
+            baseAllowedManualIds,
           );
         citations = this.citationService.mergeCitations(
           citations,
@@ -505,6 +725,8 @@ export class ChatDocumentationService {
             resolvedSubjectQuery,
             effectiveUserQuery,
             citations,
+            effectiveDocumentCategories,
+            baseAllowedManualIds,
           );
         citations = this.citationService.mergeCitations(
           citations,
@@ -530,31 +752,60 @@ export class ChatDocumentationService {
               resolvedSubjectQuery,
               effectiveUserQuery,
               citations,
-            ) ??
-            resolvedSubjectQuery;
+            ) ?? resolvedSubjectQuery;
         }
       }
       const finalAnalysisCitations = analysisCitations ?? citations;
+      citations = this.prioritizeSourceLockedEvidence({
+        citations,
+        pageAwareCitations,
+        semanticQuery,
+        sourceLockDecision,
+      });
       const preparedAnswerCitations =
         this.citationService.prepareCitationsForAnswer(
-          resolvedSubjectQuery ?? retrievalQuery,
+          resolvedSubjectQuery ?? documentationRetrievalQuery,
           effectiveUserQuery,
           citations,
         );
-      citations = preparedAnswerCitations.citations;
+      citations = this.prioritizeSourceLockedEvidence({
+        citations: preparedAnswerCitations.citations,
+        pageAwareCitations,
+        semanticQuery,
+        sourceLockDecision,
+      });
       citations = this.citationService.limitCitationsForLlm(
         effectiveUserQuery,
         citations,
         preparedAnswerCitations.compareBySource,
       );
+      citations = this.prioritizeSourceLockedEvidence({
+        citations,
+        pageAwareCitations,
+        semanticQuery,
+        sourceLockDecision,
+      });
+      const documentationFollowUpState =
+        semanticQuery && this.sourceLockService
+          ? this.sourceLockService.buildNextFollowUpState({
+              semanticQuery,
+              citations,
+              candidates: semanticCandidates,
+              sourceLockDecision,
+            })
+          : undefined;
 
       return {
         previousUserQuery: previousUserQuery ?? undefined,
-        retrievalQuery,
+        retrievalQuery: documentationRetrievalQuery,
         normalizedQuery,
+        semanticQuery,
+        documentationFollowUpState: documentationFollowUpState ?? undefined,
+        retrievalTrace,
+        sourceLockActive: sourceLockDecision.active,
         answerQuery:
           isClarificationReply || shouldPromoteRetrievalQueryToAnswerQuery
-            ? retrievalQuery
+            ? documentationRetrievalQuery
             : undefined,
         resolvedSubjectQuery,
         citations,
@@ -590,9 +841,9 @@ export class ChatDocumentationService {
     }
 
     const futureExplicitExpiryCount = citations.filter((citation) =>
-      this.extractExplicitCertificateExpiryTimestamps(citation.snippet ?? '').some(
-        (expiry) => expiry >= Date.now(),
-      ),
+      this.extractExplicitCertificateExpiryTimestamps(
+        citation.snippet ?? '',
+      ).some((expiry) => expiry >= Date.now()),
     ).length;
 
     return futureExplicitExpiryCount === 0;
@@ -628,7 +879,9 @@ export class ChatDocumentationService {
     );
   }
 
-  private extractExplicitCertificateExpiryTimestamp(text: string): number | null {
+  private extractExplicitCertificateExpiryTimestamp(
+    text: string,
+  ): number | null {
     return this.extractExplicitCertificateExpiryTimestamps(text)[0] ?? null;
   }
 
@@ -830,12 +1083,345 @@ export class ChatDocumentationService {
       .hardDocumentCategories;
   }
 
+  private toChatDocumentCategories(
+    categories: SemanticSourceCategory[],
+  ): ChatDocumentSourceCategory[] | undefined {
+    const allowed = new Set<ChatDocumentSourceCategory>([
+      'MANUALS',
+      'HISTORY_PROCEDURES',
+      'REGULATION',
+      'CERTIFICATES',
+    ]);
+    const normalized = categories.filter(
+      (category): category is ChatDocumentSourceCategory =>
+        allowed.has(category as ChatDocumentSourceCategory),
+    );
+
+    return normalized.length > 0 ? [...new Set(normalized)] : undefined;
+  }
+
+  private emptySourceLockDecision(): DocumentationSourceLockDecision {
+    return {
+      active: false,
+      lockedManualId: null,
+      lockedManualTitle: null,
+      lockedDocumentId: null,
+      reason: null,
+    };
+  }
+
+  private resolveSourceLockedRetrievalQuery(params: {
+    userQuery: string;
+    effectiveUserQuery: string;
+    retrievalQuery: string;
+    semanticQuery?: DocumentationSemanticQuery;
+    sourceLockDecision: DocumentationSourceLockDecision;
+  }): string {
+    const {
+      userQuery,
+      effectiveUserQuery,
+      retrievalQuery,
+      semanticQuery,
+      sourceLockDecision,
+    } = params;
+    if (!sourceLockDecision.active) {
+      return retrievalQuery;
+    }
+
+    const hasPageOrSectionHint =
+      Boolean(semanticQuery) &&
+      (semanticQuery?.pageHint !== null || semanticQuery?.sectionHint !== null);
+    const hasContextualSourceReference =
+      this.hasContextualSourceReference(userQuery);
+    if (!hasPageOrSectionHint && !hasContextualSourceReference) {
+      return retrievalQuery;
+    }
+
+    const currentTurnQuery = userQuery.trim() || effectiveUserQuery.trim();
+    return currentTurnQuery || retrievalQuery;
+  }
+
+  private prioritizeSourceLockedEvidence(params: {
+    citations: ChatCitation[];
+    pageAwareCitations: ChatCitation[];
+    semanticQuery?: DocumentationSemanticQuery;
+    sourceLockDecision: DocumentationSourceLockDecision;
+  }): ChatCitation[] {
+    const { citations, pageAwareCitations, semanticQuery, sourceLockDecision } =
+      params;
+    if (
+      citations.length === 0 ||
+      !sourceLockDecision.active ||
+      !sourceLockDecision.lockedManualId
+    ) {
+      return citations;
+    }
+
+    const lockedCitations = citations.filter((citation) =>
+      this.matchesLockedSource(citation, sourceLockDecision),
+    );
+    const scopedCitations =
+      lockedCitations.length > 0 ? lockedCitations : citations;
+    const pageHint = semanticQuery?.pageHint ?? null;
+    if (pageHint !== null) {
+      const exactPageCitations = scopedCitations.filter(
+        (citation) => citation.pageNumber === pageHint,
+      );
+      const exactPageAwareCitations = pageAwareCitations.filter(
+        (citation) =>
+          citation.pageNumber === pageHint &&
+          this.matchesLockedSource(citation, sourceLockDecision),
+      );
+
+      if (exactPageCitations.length > 0 || exactPageAwareCitations.length > 0) {
+        return this.citationService.mergeCitations(
+          exactPageAwareCitations,
+          exactPageCitations,
+        );
+      }
+    }
+
+    const lockedPageAwareCitations = pageAwareCitations.filter((citation) =>
+      this.matchesLockedSource(citation, sourceLockDecision),
+    );
+    if (lockedPageAwareCitations.length > 0) {
+      return this.citationService.mergeCitations(
+        lockedPageAwareCitations,
+        scopedCitations,
+      );
+    }
+
+    return scopedCitations;
+  }
+
+  private matchesLockedSource(
+    citation: ChatCitation,
+    sourceLockDecision: DocumentationSourceLockDecision,
+  ): boolean {
+    if (
+      sourceLockDecision.lockedManualId &&
+      citation.shipManualId === sourceLockDecision.lockedManualId
+    ) {
+      return true;
+    }
+
+    if (!sourceLockDecision.lockedManualTitle || !citation.sourceTitle) {
+      return false;
+    }
+
+    const citationTitle = this.queryService.normalizeSourceTitleHint(
+      citation.sourceTitle,
+    );
+    const lockedTitle = this.queryService.normalizeSourceTitleHint(
+      sourceLockDecision.lockedManualTitle,
+    );
+
+    return Boolean(
+      citationTitle && lockedTitle && citationTitle === lockedTitle,
+    );
+  }
+
+  private selectSemanticManualIds(
+    candidates: DocumentationSemanticCandidate[],
+    semanticQuery?: DocumentationSemanticQuery,
+  ): string[] {
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    if (semanticQuery?.answerFormat === 'comparison') {
+      return this.uniqueCandidateSources(candidates)
+        .slice(0, 4)
+        .map((candidate) => candidate.manualId);
+    }
+
+    const topScore = candidates[0].score;
+    const ratio = topScore >= 100 ? 0.72 : topScore >= 70 ? 0.78 : 0.85;
+    const floor = Math.max(24, topScore * ratio);
+    const selected = this.uniqueCandidateSources(
+      candidates.filter((candidate) => candidate.score >= floor),
+    ).slice(0, 3);
+
+    return (selected.length > 0 ? selected : [candidates[0]]).map(
+      (candidate) => candidate.manualId,
+    );
+  }
+
+  private buildSemanticSourceClarification(params: {
+    userQuery: string;
+    retrievalQuery: string;
+    semanticQuery?: DocumentationSemanticQuery;
+    semanticCandidates: DocumentationSemanticCandidate[];
+    sourceLockDecision: DocumentationSourceLockDecision;
+    followUpState?: DocumentationFollowUpState | null;
+  }): {
+    question: string;
+    reason: string;
+    actions: ChatSuggestionAction[];
+  } | null {
+    if (
+      !params.semanticQuery ||
+      params.sourceLockDecision.active ||
+      params.semanticQuery.answerFormat === 'comparison'
+    ) {
+      return null;
+    }
+
+    const candidates = this.uniqueCandidateSources(params.semanticCandidates);
+    if (candidates.length < 2) {
+      return null;
+    }
+
+    const contextualSourceReference = this.hasContextualSourceReference(
+      params.userQuery,
+    );
+    if (contextualSourceReference && !params.followUpState?.lockedManualId) {
+      return {
+        question:
+          'I found several possible documents for "this manual". Which one should I use?',
+        reason: 'semantic_context_source_ambiguous',
+        actions: this.buildSourceCandidateActions(
+          candidates.slice(0, 4),
+          params.retrievalQuery,
+        ),
+      };
+    }
+
+    if (params.semanticQuery.explicitSource) {
+      return null;
+    }
+
+    const topScore = candidates[0].score;
+    if (topScore < 40) {
+      return null;
+    }
+
+    const closeCandidates = candidates
+      .filter(
+        (candidate) =>
+          candidate.score >= Math.max(40, topScore * 0.82) ||
+          topScore - candidate.score <= 8,
+      )
+      .slice(0, 4);
+    if (closeCandidates.length < 2) {
+      return null;
+    }
+
+    return {
+      question:
+        'I found relevant information in multiple documents. Which source should I use?',
+      reason: 'semantic_source_ambiguous',
+      actions: this.buildSourceCandidateActions(
+        closeCandidates,
+        params.retrievalQuery,
+      ),
+    };
+  }
+
+  private buildSourceCandidateActions(
+    candidates: DocumentationSemanticCandidate[],
+    userQuery: string,
+  ): ChatSuggestionAction[] {
+    return candidates.map((candidate) => ({
+      label: this.truncate(candidate.filename.replace(/\.pdf$/i, ''), 80),
+      message: `From ${candidate.filename} document: ${userQuery}`,
+      kind: 'suggestion',
+    }));
+  }
+
+  private uniqueCandidateSources(
+    candidates: DocumentationSemanticCandidate[],
+  ): DocumentationSemanticCandidate[] {
+    const seen = new Set<string>();
+    const unique: DocumentationSemanticCandidate[] = [];
+
+    for (const candidate of candidates) {
+      if (seen.has(candidate.manualId)) {
+        continue;
+      }
+      seen.add(candidate.manualId);
+      unique.push(candidate);
+    }
+
+    return unique;
+  }
+
+  private resolveRetrievalManualScope(params: {
+    sourceLockDecision: DocumentationSourceLockDecision;
+    semanticManualIds: string[];
+    tagScopedManualIds?: string[];
+  }): string[] | undefined {
+    if (
+      params.sourceLockDecision.active &&
+      params.sourceLockDecision.lockedManualId
+    ) {
+      return [params.sourceLockDecision.lockedManualId];
+    }
+
+    const semanticManualIds = [...new Set(params.semanticManualIds)];
+    const tagScopedManualIds = [...new Set(params.tagScopedManualIds ?? [])];
+    if (semanticManualIds.length > 0 && tagScopedManualIds.length > 0) {
+      const tagScopedSet = new Set(tagScopedManualIds);
+      const intersection = semanticManualIds.filter((manualId) =>
+        tagScopedSet.has(manualId),
+      );
+      return intersection.length > 0 ? intersection : semanticManualIds;
+    }
+
+    if (semanticManualIds.length > 0) {
+      return semanticManualIds;
+    }
+
+    return tagScopedManualIds.length > 0 ? tagScopedManualIds : undefined;
+  }
+
+  private buildRetrievalTrace(params: {
+    userQuery: string;
+    retrievalQuery: string;
+    semanticQuery?: DocumentationSemanticQuery;
+    semanticCandidates: DocumentationSemanticCandidate[];
+    sourceLockDecision: DocumentationSourceLockDecision;
+  }): DocumentationRetrievalTrace {
+    const {
+      userQuery,
+      retrievalQuery,
+      semanticQuery,
+      semanticCandidates,
+      sourceLockDecision,
+    } = params;
+
+    return {
+      rawQuery: userQuery,
+      retrievalQuery,
+      semanticIntent: semanticQuery?.intent,
+      semanticConceptIds: semanticQuery?.selectedConceptIds,
+      semanticConfidence: semanticQuery?.confidence,
+      candidateConceptIds: semanticQuery?.candidateConceptIds,
+      sourcePreferences: semanticQuery?.sourcePreferences,
+      explicitSource: semanticQuery?.explicitSource,
+      lockedManualId: sourceLockDecision.lockedManualId,
+      lockedManualTitle: sourceLockDecision.lockedManualTitle,
+      sourceLockActive: sourceLockDecision.active,
+      pageHint: semanticQuery?.pageHint,
+      sectionHint: semanticQuery?.sectionHint,
+      shortlistedManualIds: semanticCandidates.map(
+        (candidate) => candidate.manualId,
+      ),
+      shortlistedManualTitles: semanticCandidates.map(
+        (candidate) => candidate.filename,
+      ),
+      fallbackWideningUsed: false,
+    };
+  }
+
   private shouldSkipDocumentationForTelemetryFirstQuery(
     effectiveUserQuery: string,
     retrievalQuery: string,
     normalizedQuery?: ChatNormalizedQuery,
   ): boolean {
-    if (this.queryService.shouldSkipDocumentationRetrieval(effectiveUserQuery)) {
+    if (
+      this.queryService.shouldSkipDocumentationRetrieval(effectiveUserQuery)
+    ) {
       return true;
     }
 
@@ -892,5 +1478,20 @@ export class ChatDocumentationService {
           );
 
     return manualIds.length > 0 ? manualIds : undefined;
+  }
+
+  private hasContextualSourceReference(query: string): boolean {
+    return (
+      /\b(this|that|same|current|previous)\s+(manual|guide|document|procedure|file|pdf|one)\b/i.test(
+        query,
+      ) || /\b(in|from)\s+(this|that|same|current|previous)\b/i.test(query)
+    );
+  }
+
+  private truncate(value: string, maxLength: number): string {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    return normalized.length <= maxLength
+      ? normalized
+      : `${normalized.slice(0, maxLength - 3)}...`;
   }
 }
