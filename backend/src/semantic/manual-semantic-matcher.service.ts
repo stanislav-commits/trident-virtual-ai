@@ -208,6 +208,9 @@ export class ManualSemanticMatcherService {
     if (profile.documentType === query.intent) {
       score += 18;
       reasons.push('intent');
+    } else if (this.areCompatibleIntents(profile.documentType, query.intent)) {
+      score += 8;
+      reasons.push('compatible_intent');
     }
 
     if (
@@ -293,7 +296,7 @@ export class ManualSemanticMatcherService {
     score += this.scoreProfileField(profile.model, queryTokens, 18);
     score += this.scoreProfileFields(profile.aliases, queryTokens, 5, 24);
     score += this.scoreProfileFields(profile.equipment, queryTokens, 4, 22);
-    score += this.scoreProfileFields(profile.systems, queryTokens, 3, 18);
+    score += this.scoreProfileFields(profile.systems, queryTokens, 5, 28);
     score += this.scoreProfileFields(
       profile.sections.map((section) => section.title),
       queryTokens,
@@ -307,8 +310,27 @@ export class ManualSemanticMatcherService {
       18,
     );
     score += this.scoreProfileField(profile.summary, queryTokens, 3, 18);
+    score += this.scoreProfileFields(
+      profile.pageTopics.map((topic) => topic.summary),
+      queryTokens,
+      3,
+      18,
+    );
 
     return Math.min(score, 72);
+  }
+
+  private areCompatibleIntents(
+    documentType: ManualSemanticProfile['documentType'],
+    queryIntent: DocumentationSemanticQuery['intent'],
+  ): boolean {
+    const procedureIntents = new Set([
+      'maintenance_procedure',
+      'operational_procedure',
+      'troubleshooting',
+      'regulation_compliance',
+    ]);
+    return procedureIntents.has(documentType) && procedureIntents.has(queryIntent);
   }
 
   private scoreProfileFields(
@@ -443,9 +465,20 @@ export class ManualSemanticMatcherService {
   private tokenize(value: string): string[] {
     return this.normalizeText(value)
       .split(' ')
+      .map((token) => this.normalizeToken(token))
       .filter(
         (token) => token.length > 1 && !PROFILE_MATCH_STOP_WORDS.has(token),
       );
+  }
+
+  private normalizeToken(token: string): string {
+    if (token.length > 4 && token.endsWith('ies')) {
+      return `${token.slice(0, -3)}y`;
+    }
+    if (token.length > 3 && token.endsWith('s') && !token.endsWith('ss')) {
+      return token.slice(0, -1);
+    }
+    return token;
   }
 
   private truncate(value: string, maxLength = 140): string {

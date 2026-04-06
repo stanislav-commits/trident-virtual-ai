@@ -21,6 +21,7 @@ import {
   ChatHistoryMessage,
   ChatNormalizedQuery,
 } from './chat.types';
+import type { DocumentationSemanticQuery } from '../semantic/semantic.types';
 import { sortChatSessions } from './chat-session-order';
 import {
   ChatQueryPlan,
@@ -714,10 +715,16 @@ export class ChatService {
       let telemetryMatchedMetrics = 0;
       let telemetryClarification: TelemetryClarification | null = null;
       const telemetryShips: string[] = [];
-      const shouldLookupCurrentTelemetry = this.shouldLookupCurrentTelemetry(
-        queryPlan,
-        telemetryIntentQuery,
-      );
+      const shouldLookupCurrentTelemetry =
+        !this.shouldPreferDocumentationOverCurrentTelemetry(
+          queryPlan,
+          telemetryIntentQuery,
+          semanticQuery,
+        ) &&
+        this.shouldLookupCurrentTelemetry(
+          queryPlan,
+          telemetryIntentQuery,
+        );
 
       try {
         if (shouldLookupCurrentTelemetry && shipId) {
@@ -4733,6 +4740,71 @@ export class ChatService {
       default:
         return false;
     }
+  }
+
+  private shouldPreferDocumentationOverCurrentTelemetry(
+    queryPlan: ChatQueryPlan,
+    userQuery: string,
+    semanticQuery?: DocumentationSemanticQuery,
+  ): boolean {
+    if (!semanticQuery || this.isExplicitTelemetrySourceQuery(userQuery)) {
+      return false;
+    }
+
+    const documentationIntent = this.isDocumentationSemanticIntent(
+      semanticQuery,
+    );
+    if (!documentationIntent) {
+      return false;
+    }
+
+    const reliableSemanticRoute =
+      semanticQuery.confidence >= 0.7 ||
+      semanticQuery.selectedConceptIds.length > 0 ||
+      semanticQuery.sourcePreferences.some(
+        (source) => source !== 'MANUALS',
+      );
+    if (!reliableSemanticRoute) {
+      return false;
+    }
+
+    if (this.isProcedureOrDocumentationQuestion(userQuery)) {
+      return true;
+    }
+
+    switch (queryPlan.primaryIntent) {
+      case 'maintenance_procedure':
+      case 'troubleshooting':
+      case 'manual_specification':
+      case 'certificate_status':
+      case 'regulation_compliance':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private isDocumentationSemanticIntent(
+    semanticQuery: DocumentationSemanticQuery,
+  ): boolean {
+    switch (semanticQuery.intent) {
+      case 'manual_lookup':
+      case 'maintenance_procedure':
+      case 'operational_procedure':
+      case 'troubleshooting':
+      case 'parts_lookup':
+      case 'regulation_compliance':
+      case 'certificate_lookup':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private isProcedureOrDocumentationQuestion(userQuery: string): boolean {
+    return /\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|how\s+should|how\s+do\s+i|procedure|steps?|check\s*list|checklist|instructions?|before|after|prepare|preparation|safely|safe\s+procedure|manual|documentation|according\s+to)\b/i.test(
+      userQuery,
+    );
   }
 
   private shouldReturnTelemetryClarification(

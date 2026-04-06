@@ -191,9 +191,10 @@ export class ChatDocumentationService {
         effectiveUserQuery,
         retrievalQuery,
       );
-      const effectiveDocumentCategories = hardDocumentCategories?.length
-        ? hardDocumentCategories
-        : this.toChatDocumentCategories(semanticQuery?.sourcePreferences ?? []);
+      const effectiveDocumentCategories = this.resolveDocumentCategories(
+        semanticQuery,
+        hardDocumentCategories,
+      );
       const semanticCandidates =
         semanticQuery && this.semanticMatcher
           ? await this.semanticMatcher.shortlistManuals({
@@ -1098,6 +1099,44 @@ export class ChatDocumentationService {
     );
 
     return normalized.length > 0 ? [...new Set(normalized)] : undefined;
+  }
+
+  private resolveDocumentCategories(
+    semanticQuery?: DocumentationSemanticQuery,
+    hardDocumentCategories?: ChatDocumentSourceCategory[],
+  ): ChatDocumentSourceCategory[] | undefined {
+    const categories = hardDocumentCategories?.length
+      ? hardDocumentCategories
+      : this.toChatDocumentCategories(semanticQuery?.sourcePreferences ?? []);
+    return this.expandProcedureDocumentCategories(categories, semanticQuery);
+  }
+
+  private expandProcedureDocumentCategories(
+    categories?: ChatDocumentSourceCategory[],
+    semanticQuery?: DocumentationSemanticQuery,
+  ): ChatDocumentSourceCategory[] | undefined {
+    if (!semanticQuery || !this.isProcedureSemanticQuery(semanticQuery)) {
+      return categories;
+    }
+
+    const expanded = new Set<ChatDocumentSourceCategory>(categories ?? []);
+    expanded.add('MANUALS');
+    expanded.add('HISTORY_PROCEDURES');
+    expanded.add('REGULATION');
+    return [...expanded];
+  }
+
+  private isProcedureSemanticQuery(
+    semanticQuery: DocumentationSemanticQuery,
+  ): boolean {
+    switch (semanticQuery.intent) {
+      case 'operational_procedure':
+      case 'maintenance_procedure':
+      case 'troubleshooting':
+        return true;
+      default:
+        return false;
+    }
   }
 
   private emptySourceLockDecision(): DocumentationSourceLockDecision {

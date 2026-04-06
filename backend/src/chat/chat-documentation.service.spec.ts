@@ -281,6 +281,139 @@ describe('ChatDocumentationService', () => {
     ]);
   });
 
+  it('keeps regulation-category procedure documents in scope for operational semantic queries', async () => {
+    const citations: ChatCitation[] = [
+      {
+        shipManualId: 'manual-enclosed',
+        chunkId: 'chunk-entry',
+        pageNumber: 3,
+        sourceTitle: 'Safety procedure.pdf',
+        sourceCategory: 'REGULATION',
+        snippet:
+          'Before entering an enclosed space, complete the permit, test the atmosphere, ventilate, and assign a standby watch.',
+        score: 0.92,
+      },
+    ];
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = new ChatDocumentationCitationService(queryService);
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+    const semanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'operational_procedure' as const,
+      conceptFamily: 'operational_topic' as const,
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: [],
+      systems: ['enclosed space safety'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['HISTORY_PROCEDURES' as const, 'MANUALS' as const],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'checklist' as const,
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.86,
+    };
+    const semanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue(semanticQuery),
+    };
+    const semanticMatcher = {
+      shortlistManuals: jest.fn().mockResolvedValue([
+        {
+          manualId: 'manual-enclosed',
+          documentId: 'doc-enclosed',
+          filename: 'Safety procedure.pdf',
+          category: 'REGULATION',
+          score: 76,
+          reasons: ['profile_text'],
+        },
+      ]),
+    };
+    const sourceLockService = {
+      getFollowUpStateFromHistory: jest.fn().mockReturnValue(null),
+      resolveSourceLock: jest.fn().mockReturnValue({
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      }),
+      buildNextFollowUpState: jest.fn().mockReturnValue(null),
+    };
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+      undefined,
+      undefined,
+      semanticNormalizer as never,
+      semanticMatcher as never,
+      sourceLockService as never,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery:
+        'What is the safe procedure for entering an enclosed space?',
+    });
+
+    expect(semanticMatcher.shortlistManuals).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedDocumentCategories: expect.arrayContaining([
+          'HISTORY_PROCEDURES',
+          'MANUALS',
+          'REGULATION',
+        ]),
+      }),
+    );
+    expect(contextService.findContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'What is the safe procedure for entering an enclosed space?',
+      expect.any(Number),
+      expect.any(Number),
+      expect.arrayContaining([
+        'HISTORY_PROCEDURES',
+        'MANUALS',
+        'REGULATION',
+      ]),
+      ['manual-enclosed'],
+    );
+    expect(result.citations).toEqual([
+      expect.objectContaining({
+        sourceTitle: 'Safety procedure.pdf',
+        sourceCategory: 'REGULATION',
+      }),
+    ]);
+  });
+
   it('attaches clarification suggestion actions for underspecified queries', async () => {
     const citations: ChatCitation[] = [
       {

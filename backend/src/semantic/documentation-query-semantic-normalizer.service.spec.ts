@@ -83,4 +83,35 @@ describe('DocumentationQuerySemanticNormalizerService', () => {
     expect(result.explicitSource).toBeNull();
     expect(result.sectionHint).toBe('emergency');
   });
+
+  it('keeps procedure-oriented regulation sources available even when the model narrows to manuals', async () => {
+    const service = buildService({
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'operational_procedure',
+      conceptFamily: 'operational_topic',
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: [],
+      systems: ['fuel_system'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'checklist',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.9,
+    });
+
+    const result = await service.normalize({
+      userQuery: 'What should I do before taking fuel onboard?',
+      retrievalQuery: 'What should I do before taking fuel onboard?',
+    });
+
+    expect(result.sourcePreferences).toEqual(
+      expect.arrayContaining(['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION']),
+    );
+  });
 });

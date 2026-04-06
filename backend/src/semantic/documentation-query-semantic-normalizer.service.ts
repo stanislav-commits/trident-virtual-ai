@@ -221,6 +221,7 @@ export class DocumentationQuerySemanticNormalizerService {
     );
     const sourcePreferences = this.mergeSourcePreferences(
       this.mapNormalizedSourceHints(params.normalizedQuery),
+      this.mapIntentToSourcePreferences(intent),
       ...candidates.map((candidate) =>
         this.mapFamilyToSourcePreferences(candidate.family),
       ),
@@ -318,6 +319,7 @@ export class DocumentationQuerySemanticNormalizerService {
       candidateConceptIds: candidateIds,
       sourcePreferences: this.mergeSourcePreferences(
         parsed.sourcePreferences,
+        this.mapIntentToSourcePreferences(parsed.intent),
         fallback.sourcePreferences,
       ),
       explicitSource,
@@ -422,6 +424,28 @@ export class DocumentationQuerySemanticNormalizerService {
         return ['REGULATION'];
       case 'certificate_topic':
         return ['CERTIFICATES', 'REGULATION'];
+      default:
+        return ['MANUALS'];
+    }
+  }
+
+  private mapIntentToSourcePreferences(
+    intent: SemanticIntent,
+  ): SemanticSourceCategory[] {
+    switch (intent) {
+      case 'operational_procedure':
+        return ['HISTORY_PROCEDURES', 'REGULATION', 'MANUALS'];
+      case 'maintenance_procedure':
+      case 'troubleshooting':
+        return ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'];
+      case 'regulation_compliance':
+        return ['REGULATION'];
+      case 'certificate_lookup':
+        return ['CERTIFICATES', 'REGULATION'];
+      case 'parts_lookup':
+        return ['MANUALS'];
+      case 'manual_lookup':
+        return ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'];
       default:
         return ['MANUALS'];
     }

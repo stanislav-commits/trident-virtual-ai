@@ -373,6 +373,87 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('keeps high-confidence procedural documentation queries out of current inventory telemetry', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What should I do before taking fuel onboard?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Fuel transfer procedure.pdf',
+          sourceCategory: 'REGULATION',
+          snippet:
+            'Before receiving fuel onboard, prepare the transfer checklist and monitor the operation.',
+          pageNumber: 2,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What should I do before taking fuel onboard?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'operational_procedure',
+        conceptFamily: 'operational_topic',
+        selectedConceptIds: ['bunkering_operation'],
+        candidateConceptIds: ['bunkering_operation'],
+        equipment: [],
+        systems: ['fuel_system'],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['HISTORY_PROCEDURES', 'REGULATION'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'checklist',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.92,
+      },
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'Use the documented fuel transfer checklist before receiving fuel onboard.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What should I do before taking fuel onboard?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        telemetry: {},
+        telemetryPrefiltered: false,
+        telemetryMatchMode: 'none',
+        noDocumentation: false,
+      }),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Use the documented fuel transfer checklist before receiving fuel onboard.',
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        usedDocumentation: true,
+        usedCurrentTelemetry: false,
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Fuel transfer procedure.pdf',
+        }),
+      ]),
+    );
+  });
+
   it('keeps forecast questions on the LLM path instead of returning telemetry clarification or current aggregates', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
