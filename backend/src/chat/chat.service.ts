@@ -584,6 +584,41 @@ export class ChatService {
         });
       }
 
+      const carriedForwardDocumentationCitations =
+        this.getCarriedForwardDocumentationCitations({
+          userQuery,
+          normalizedQuery: effectiveNormalizedQuery,
+          previousUserQuery,
+          messageHistory,
+        });
+      const carriedForwardSummaryDocumentationCitations =
+        this.getCarriedForwardSummaryDocumentationCitations({
+          userQuery,
+          normalizedQuery: effectiveNormalizedQuery,
+          messageHistory,
+        });
+      const hasDocumentationEvidenceForLockedSource =
+        citations.length > 0 ||
+        carriedForwardDocumentationCitations.length > 0 ||
+        carriedForwardSummaryDocumentationCitations.length > 0;
+      if (sourceLockActive && !hasDocumentationEvidenceForLockedSource) {
+        return this.addRoutedAssistantMessage({
+          sessionId,
+          content:
+            "I couldn't find supporting documentation in the selected source for that question. I won't answer from unrelated telemetry or other documents unless you choose a different source or ask me to search more broadly.",
+          route: 'deterministic_document',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['documentation:source_lock_no_evidence'],
+          ragflowContext: {
+            ...documentationTurnContext,
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            noDocumentation: true,
+            sourceLockNoEvidence: true,
+          },
+          contextReferences: [],
+        });
+      }
+
       const historicalTelemetryMatch =
         await this.resolveHistoricalTelemetryForContext({
           shipId,
@@ -840,19 +875,6 @@ export class ChatService {
         documentationIntentPattern,
       );
 
-      const carriedForwardDocumentationCitations =
-        this.getCarriedForwardDocumentationCitations({
-          userQuery,
-          normalizedQuery: effectiveNormalizedQuery,
-          previousUserQuery,
-          messageHistory,
-        });
-      const carriedForwardSummaryDocumentationCitations =
-        this.getCarriedForwardSummaryDocumentationCitations({
-          userQuery,
-          normalizedQuery: effectiveNormalizedQuery,
-          messageHistory,
-        });
       const citationsForAnswer = telemetryOnlyQuery
         ? []
         : carriedForwardDocumentationCitations.length > 0

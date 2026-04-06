@@ -4060,6 +4060,58 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
+  it('does not fall back to telemetry when a locked documentation source has no evidence', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content:
+            'From Selected Procedure.pdf document: What should I do before starting it?',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery:
+        'From Selected Procedure.pdf document: What should I do before starting it?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+      sourceLockActive: true,
+      documentationFollowUpState: {
+        manualId: 'manual-1',
+        documentId: 'document-1',
+        filename: 'Selected Procedure.pdf',
+        sourceLock: true,
+      },
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'From Selected Procedure.pdf document: What should I do before starting it?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(metricsService.resolveHistoricalTelemetryQuery).not.toHaveBeenCalled();
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('selected source'),
+      expect.objectContaining({
+        answerRoute: 'deterministic_document',
+        noDocumentation: true,
+        sourceLockNoEvidence: true,
+        usedCurrentTelemetry: false,
+      }),
+      [],
+    );
+  });
+
   it('builds documentation history from the latest turns in chronological order', async () => {
     const returnedMessages = Array.from({ length: 20 }, (_, index) => ({
       role: index % 2 === 0 ? 'user' : 'assistant',
