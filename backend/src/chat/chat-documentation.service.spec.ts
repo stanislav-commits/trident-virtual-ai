@@ -1792,6 +1792,28 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     ).toBe(false);
   });
 
+  it('does not skip documentation retrieval for natural-language parts questions', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const normalizedQuery = new ChatQueryNormalizationService().normalizeTurn({
+      userQuery:
+        'Which kit contains the O-rings and lip seals for the waterjet?',
+    });
+
+    expect(
+      (service as any).shouldSkipDocumentationForTelemetryFirstQuery(
+        'Which kit contains the O-rings and lip seals for the waterjet?',
+        'Which kit contains the O-rings and lip seals for the waterjet?',
+        normalizedQuery,
+      ),
+    ).toBe(false);
+  });
+
   it('does not category-filter explicit source selections by guessed source preferences', () => {
     const service = new ChatDocumentationService(
       {} as never,

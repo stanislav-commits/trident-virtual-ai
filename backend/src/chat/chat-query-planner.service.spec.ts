@@ -124,6 +124,17 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
   });
 
+  it('routes natural-language kit and seal contents questions to manuals', () => {
+    const plan = service.planQuery(
+      'Which kit contains the O-rings and lip seals for the waterjet?',
+    );
+
+    expect(plan.primaryIntent).toBe('parts_fluids_consumables');
+    expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
+    expect(plan.requiresTelemetry).toBe(false);
+  });
+
   it('routes tank capacity table questions to manuals instead of telemetry', () => {
     const plan = service.planQuery('show tank capacities for fuel tanks');
 

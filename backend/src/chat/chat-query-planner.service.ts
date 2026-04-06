@@ -156,6 +156,10 @@ export class ChatQueryPlannerService {
       return 'maintenance_procedure';
     }
 
+    if (this.isPartsQuery(lowered)) {
+      return 'parts_fluids_consumables';
+    }
+
     if (this.isLiveTelemetryStatusQuery(normalized)) {
       return 'telemetry_status';
     }
@@ -170,10 +174,6 @@ export class ChatQueryPlannerService {
 
     if (this.isTelemetryValueQuery(normalized)) {
       return 'telemetry_status';
-    }
-
-    if (this.isPartsQuery(lowered)) {
-      return 'parts_fluids_consumables';
     }
 
     if (this.isFragmentReferenceQuery(normalized)) {
@@ -619,6 +619,10 @@ export class ChatQueryPlannerService {
       return false;
     }
 
+    if (this.isPartsQuery(query)) {
+      return false;
+    }
+
     if (/[a-z0-9]+(?:[_-][a-z0-9]+)+/i.test(query)) {
       return true;
     }
@@ -654,7 +658,7 @@ export class ChatQueryPlannerService {
 
   private isPartsQuery(query: string): boolean {
     if (
-      /\b(parts?|spare\s*parts?|spares?|consumables?|filters?|part\s*numbers?|locations?|manufacturer\s*part|supplier\s*part)\b/i.test(
+      /\b(parts?|spare\s*parts?|spares?|consumables?|filters?|part\s*numbers?|manufacturer\s*part|supplier\s*part|kits?|assembl(?:y|ies)|o-?rings?|seals?|gaskets?)\b/i.test(
         query,
       )
     ) {

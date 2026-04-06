@@ -250,7 +250,7 @@ export class ChatQueryNormalizationService {
     }
 
     if (
-      /\b(manual|documentation|docs?|procedure|spec(?:ification)?|guide|handbook|parts?|spares?)\b/i.test(
+      /\b(manual|documentation|docs?|procedure|spec(?:ification)?|guide|handbook|parts?|spares?|kits?|assembl(?:y|ies)|o-?rings?|seals?|gaskets?)\b/i.test(
         normalized,
       )
     ) {

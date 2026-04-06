@@ -67,6 +67,16 @@ describe('ChatQueryNormalizationService', () => {
     expect(abrupt.sourceHints).toContain('TELEMETRY');
   });
 
+  it('recognizes natural-language kit contents as documentation intent', () => {
+    const normalized = service.normalizeTurn({
+      userQuery:
+        'Which kit contains the O-rings and lip seals for the waterjet?',
+    });
+
+    expect(normalized.sourceHints).toContain('DOCUMENTATION');
+    expect(normalized.sourceHints).not.toContain('TELEMETRY');
+  });
+
   it('attaches a time-only reply to the active historical clarification state', () => {
     const normalized = service.normalizeTurn({
       userQuery: '12:00 UTC',
