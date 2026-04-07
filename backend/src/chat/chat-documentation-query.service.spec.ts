@@ -487,6 +487,47 @@ describe('ChatDocumentationQueryService', () => {
     ).toContain('1p50');
   });
 
+  it('allows short generic documentation detail questions to reuse a source lock', () => {
+    expect(
+      service.shouldUseDocumentationFollowUpState('What are the quantities?', {
+        rawQuery: 'What are the quantities?',
+        normalizedQuery: 'what are the quantities?',
+        retrievalQuery: 'What are the quantities?',
+        effectiveQuery: 'What are the quantities?',
+        previousUserQuery:
+          'From MN_ACB531.pdf document: Which kit contains the O-rings and lip seals for the waterjet?',
+        followUpMode: 'standalone',
+        subject: 'quantities',
+        operation: 'lookup',
+        timeIntent: { kind: 'none' },
+        sourceHints: [],
+        isClarificationReply: false,
+        ambiguityFlags: [],
+      }),
+    ).toBe(true);
+
+    expect(
+      service.shouldUseDocumentationFollowUpState(
+        'What are the UPS operating modes?',
+        {
+          rawQuery: 'What are the UPS operating modes?',
+          normalizedQuery: 'what are the ups operating modes?',
+          retrievalQuery: 'What are the UPS operating modes?',
+          effectiveQuery: 'What are the UPS operating modes?',
+          previousUserQuery:
+            'From MN_ACB531.pdf document: Which kit contains the O-rings and lip seals for the waterjet?',
+          followUpMode: 'standalone',
+          subject: 'ups operating modes',
+          operation: 'lookup',
+          timeIntent: { kind: 'none' },
+          sourceHints: [],
+          isClarificationReply: false,
+          ambiguityFlags: [],
+        },
+      ),
+    ).toBe(false);
+  });
+
   it('does not classify a maintenance procedure request as a parts-only query', () => {
     const query = 'I need the oil change procedure for the port generator.';
 

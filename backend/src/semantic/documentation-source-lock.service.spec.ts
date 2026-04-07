@@ -206,4 +206,69 @@ describe('DocumentationSourceLockService', () => {
       reason: 'page_or_section_follow_up',
     });
   });
+
+  it('reuses the previous documentation lock for short generic detail follow-ups', () => {
+    const decision = service.resolveSourceLock({
+      userQuery: 'What are the quantities?',
+      normalizedQuery: {
+        rawQuery: 'What are the quantities?',
+        normalizedQuery: 'what are the quantities?',
+        retrievalQuery: 'What are the quantities?',
+        effectiveQuery: 'What are the quantities?',
+        previousUserQuery:
+          'From MN_ACB531.pdf document: Which kit contains the O-rings and lip seals for the waterjet?',
+        followUpMode: 'standalone',
+        subject: 'quantities',
+        operation: 'lookup',
+        timeIntent: { kind: 'none' },
+        sourceHints: [],
+        isClarificationReply: false,
+        ambiguityFlags: [],
+      },
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'general_information',
+        conceptFamily: 'asset_system',
+        selectedConceptIds: [],
+        candidateConceptIds: [],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'direct_answer',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.42,
+      },
+      followUpState: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'parts_lookup',
+        conceptIds: [],
+        sourcePreferences: ['MANUALS'],
+        sourceLock: true,
+        lockedManualId: 'manual-acb531',
+        lockedManualTitle: 'MN_ACB531.pdf',
+        lockedDocumentId: 'doc-acb531',
+        pageHint: null,
+        sectionHint: null,
+        vendor: null,
+        model: null,
+        systems: [],
+        equipment: [],
+      },
+      candidates: [],
+    });
+
+    expect(decision).toMatchObject({
+      active: true,
+      lockedManualId: 'manual-acb531',
+      lockedManualTitle: 'MN_ACB531.pdf',
+      lockedDocumentId: 'doc-acb531',
+      reason: 'follow_up_source_lock',
+    });
+  });
 });

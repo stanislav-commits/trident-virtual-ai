@@ -175,10 +175,18 @@ export class ChatDocumentationService {
       const storedDocumentationFollowUpState =
         this.sourceLockService?.getFollowUpStateFromHistory(messageHistory) ??
         null;
+      const shouldReuseStoredDocumentationFollowUpState =
+        Boolean(storedDocumentationFollowUpState) &&
+        this.queryService.shouldUseDocumentationFollowUpState(
+          userQuery,
+          normalizedQuery,
+        );
       const previousDocumentationFollowUpState =
-        normalizedQuery?.followUpMode === 'standalone'
-          ? null
-          : storedDocumentationFollowUpState;
+        shouldReuseStoredDocumentationFollowUpState
+          ? storedDocumentationFollowUpState
+          : normalizedQuery?.followUpMode === 'standalone'
+            ? null
+            : storedDocumentationFollowUpState;
       const semanticQuery = this.semanticNormalizer
         ? await this.semanticNormalizer.normalize({
             userQuery: effectiveUserQuery,

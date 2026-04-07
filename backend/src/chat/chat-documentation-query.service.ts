@@ -412,6 +412,39 @@ export class ChatDocumentationQueryService {
     );
   }
 
+  shouldUseDocumentationFollowUpState(
+    userQuery: string,
+    normalizedQuery?: ChatNormalizedQuery,
+  ): boolean {
+    if (
+      normalizedQuery?.followUpMode === 'follow_up' ||
+      normalizedQuery?.followUpMode === 'clarification_reply'
+    ) {
+      return true;
+    }
+
+    const trimmed = userQuery.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    if (
+      this.hasStrongSpecificAnchor(trimmed) &&
+      !this.isContextualFollowUpQuery(trimmed)
+    ) {
+      return false;
+    }
+
+    return (
+      this.isContextualFollowUpQuery(trimmed) ||
+      this.isSubjectDetailFollowUpQuery(trimmed) ||
+      this.isCompletenessVerificationFollowUpQuery(trimmed) ||
+      this.isSummaryFollowUpQuery(trimmed) ||
+      this.isBroadContinuationQuery(trimmed) ||
+      this.isGenericDocumentationDetailFollowUp(trimmed)
+    );
+  }
+
   buildClarificationResolvedQuery(
     pendingClarification: ChatClarificationState | string | null | undefined,
     clarificationReply: string,
@@ -1711,6 +1744,27 @@ export class ChatDocumentationQueryService {
 
     return /\b(when\s+should\s+we\s+do\s+next\s+maintenance|when\s+is\s+the\s+next\s+maintenance|what\s+maintenance\s+is\s+(?:next|due)|what\s+service\s+is\s+(?:next|due)|what\s+maintenance\s+is\s+last\s+due|what\s+service\s+is\s+last\s+due|last\s+due|next\s+due|next\s+maintenance|next\s+service|what\s+tasks?\s+are\s+included|what\s+(?:spare\s+)?parts?\s+are\s+(?:needed|required|listed)|how\s+do\s+i|how\s+to|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done)\b/i.test(
       query,
+    );
+  }
+
+  private isGenericDocumentationDetailFollowUp(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 10) {
+      return false;
+    }
+
+    return (
+      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|warnings?|requirements?|limits?|tools?|materials?)\b/i.test(
+        trimmed,
+      ) ||
+      /\b(?:who|what|which)\s+should\s+(?:be\s+)?(?:notified|involved|checked|recorded|completed)\b/i.test(
+        trimmed,
+      )
     );
   }
 

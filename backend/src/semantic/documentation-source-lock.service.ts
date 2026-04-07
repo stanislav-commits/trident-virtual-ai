@@ -96,6 +96,7 @@ export class DocumentationSourceLockService {
     if (
       params.followUpState?.lockedManualId &&
       (this.isContextualSourceFollowUp(params.userQuery) ||
+        this.isGenericSourceDetailFollowUp(params.userQuery) ||
         params.normalizedQuery?.followUpMode === 'follow_up' ||
         params.normalizedQuery?.followUpMode === 'clarification_reply' ||
         params.semanticQuery.pageHint !== null ||
@@ -270,6 +271,27 @@ export class DocumentationSourceLockService {
       ) ||
       /\b(in|from)\s+(this|that|same)\b/i.test(query) ||
       /\b(page|p\.?|section|chapter)\s*#?\s*\d{1,4}\b/i.test(query)
+    );
+  }
+
+  private isGenericSourceDetailFollowUp(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 10) {
+      return false;
+    }
+
+    return (
+      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|warnings?|requirements?|limits?|tools?|materials?)\b/i.test(
+        trimmed,
+      ) ||
+      /\b(?:who|what|which)\s+should\s+(?:be\s+)?(?:notified|involved|checked|recorded|completed)\b/i.test(
+        trimmed,
+      )
     );
   }
 
