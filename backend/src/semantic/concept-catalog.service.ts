@@ -39,6 +39,26 @@ const STATIC_CONCEPTS: ConceptDefinition[] = [
     relatedSystems: ['sewage_system'],
   },
   {
+    id: 'helm_station_control',
+    family: 'asset_system',
+    label: 'Helm station control',
+    description:
+      'Helm station, control station, active station selection, and transfer of vessel control between stations.',
+    aliases: [
+      'helm station',
+      'control station',
+      'active station',
+      'station transfer',
+      'transfer control',
+      'helm station transfer',
+      'station activation',
+      'helm station change',
+    ],
+    sourcePreferences: ['MANUALS'],
+    relatedSystems: ['control_system', 'helm_station', 'steering_control'],
+    relatedEquipment: ['helm_station', 'control_levers'],
+  },
+  {
     id: 'maintenance_checklist',
     family: 'maintenance_topic',
     label: 'Maintenance checklist',

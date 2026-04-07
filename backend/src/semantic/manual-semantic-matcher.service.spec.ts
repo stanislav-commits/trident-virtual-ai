@@ -270,4 +270,106 @@ describe('ManualSemanticMatcherService', () => {
       }),
     );
   });
+
+  it('prefers helm-station manual evidence over generic transfer procedures', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-volvo',
+            ragflowDocumentId: 'doc-volvo',
+            filename: 'Volvo Penta operators manual.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['helm station', 'control system'],
+              equipment: ['control levers', 'helm station panel'],
+              vendor: 'Volvo Penta',
+              model: null,
+              aliases: ['active station', 'station activation'],
+              summary:
+                'Procedures for changing and activating helm stations and transferring control between stations.',
+              sections: [
+                {
+                  title: 'Changing and Activating Helm Stations',
+                  pageStart: 70,
+                  pageEnd: 72,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary:
+                    'Move control levers to neutral, activate the helm station, and transfer control.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-bunkering',
+            ragflowDocumentId: 'doc-bunkering',
+            filename: 'Procedures - Bunkering and Transfers (3).pdf',
+            category: 'HISTORY_PROCEDURES',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'HISTORY_PROCEDURES',
+              primaryConceptIds: ['bunkering_operation'],
+              secondaryConceptIds: [],
+              systems: ['fuel system'],
+              equipment: [],
+              vendor: null,
+              model: null,
+              aliases: ['fuel transfer'],
+              summary:
+                'Procedure for bunkering, fuel transfer monitoring, and spill prevention.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'operational_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['helm_station_control'],
+      candidateConceptIds: ['helm_station_control', 'bunkering_operation'],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.78,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'How do I transfer control to another helm station?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS', 'HISTORY_PROCEDURES'],
+    });
+
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-volvo',
+        reasons: expect.arrayContaining(['source_preference', 'profile_text']),
+      }),
+    );
+    expect(candidates[0].score).toBeGreaterThan(
+      candidates.find((candidate) => candidate.manualId === 'manual-bunkering')
+        ?.score ?? 0,
+    );
+  });
 });

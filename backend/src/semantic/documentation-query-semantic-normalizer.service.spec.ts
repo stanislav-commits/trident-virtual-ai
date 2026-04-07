@@ -114,4 +114,59 @@ describe('DocumentationQuerySemanticNormalizerService', () => {
       expect.arrayContaining(['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION']),
     );
   });
+
+  it('uses concept source preferences before generic operational source routing', async () => {
+    const conceptCatalog = {
+      shortlistFamilies: jest.fn().mockResolvedValue(['asset_system']),
+      shortlistConcepts: jest.fn().mockResolvedValue([
+        {
+          conceptId: 'helm_station_control',
+          label: 'Helm station control',
+          family: 'asset_system',
+          score: 22,
+        },
+        {
+          conceptId: 'bunkering_operation',
+          label: 'Bunkering operation',
+          family: 'operational_topic',
+          score: 2,
+        },
+      ]),
+      listConcepts: jest.fn().mockResolvedValue([
+        {
+          id: 'helm_station_control',
+          family: 'asset_system',
+          label: 'Helm station control',
+          description: 'Transfer vessel control between helm stations.',
+          aliases: ['helm station', 'transfer control'],
+          sourcePreferences: ['MANUALS'],
+        },
+        {
+          id: 'bunkering_operation',
+          family: 'operational_topic',
+          label: 'Bunkering operation',
+          description: 'Receiving fuel onboard and monitoring transfer.',
+          aliases: ['bunkering', 'fuel transfer'],
+          sourcePreferences: ['HISTORY_PROCEDURES', 'REGULATION'],
+        },
+      ]),
+      getConceptById: jest.fn().mockResolvedValue(null),
+    } as unknown as ConceptCatalogService;
+    const semanticLlm = {
+      isConfigured: jest.fn().mockReturnValue(false),
+      generateStructuredObject: jest.fn(),
+    } as unknown as SemanticLlmService;
+    const service = new DocumentationQuerySemanticNormalizerService(
+      conceptCatalog,
+      semanticLlm,
+    );
+
+    const result = await service.normalize({
+      userQuery: 'How do I transfer control to another helm station?',
+      retrievalQuery: 'How do I transfer control to another helm station?',
+    });
+
+    expect(result.selectedConceptIds).toEqual(['helm_station_control']);
+    expect(result.sourcePreferences[0]).toBe('MANUALS');
+  });
 });

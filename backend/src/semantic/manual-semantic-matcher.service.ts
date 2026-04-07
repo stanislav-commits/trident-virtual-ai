@@ -212,13 +212,12 @@ export class ManualSemanticMatcherService {
       reasons.push('query_anchor');
     }
 
-    if (
-      category &&
-      semanticQuery.sourcePreferences.includes(
-        category as SemanticSourceCategory,
-      )
-    ) {
-      score += 12;
+    const sourcePreferenceScore = this.scoreSourcePreference(
+      category,
+      semanticQuery.sourcePreferences,
+    );
+    if (sourcePreferenceScore > 0) {
+      score += sourcePreferenceScore;
       reasons.push('source_preference');
     }
 
@@ -607,6 +606,22 @@ export class ManualSemanticMatcherService {
     return right
       .map((value) => this.normalizeText(value))
       .filter((value) => leftValues.has(value)).length;
+  }
+
+  private scoreSourcePreference(
+    category: string | null,
+    sourcePreferences: SemanticSourceCategory[],
+  ): number {
+    if (!category) {
+      return 0;
+    }
+
+    const index = sourcePreferences.indexOf(category as SemanticSourceCategory);
+    if (index < 0) {
+      return 0;
+    }
+
+    return Math.max(4, 14 - index * 3);
   }
 
   private normalizeCategory(value?: string | null): string | null {

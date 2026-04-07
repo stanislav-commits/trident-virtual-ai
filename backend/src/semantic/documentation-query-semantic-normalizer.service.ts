@@ -52,7 +52,11 @@ export class DocumentationQuerySemanticNormalizerService {
     );
     const conceptDefinitions =
       await this.resolveConceptDefinitions(conceptCandidates);
-    const fallback = this.buildFallbackQuery(params, conceptCandidates);
+    const fallback = this.buildFallbackQuery(
+      params,
+      conceptCandidates,
+      conceptDefinitions,
+    );
 
     if (!this.semanticLlm.isConfigured()) {
       this.logger.debug(
@@ -83,6 +87,7 @@ export class DocumentationQuerySemanticNormalizerService {
         parsed,
         fallback,
         conceptCandidates,
+        conceptDefinitions,
         params,
       );
       this.logger.debug(
@@ -212,6 +217,7 @@ export class DocumentationQuerySemanticNormalizerService {
       followUpState?: DocumentationFollowUpState | null;
     },
     candidates: ConceptCandidate[],
+    conceptDefinitions: ConceptDefinition[],
   ): DocumentationSemanticQuery {
     const query = params.retrievalQuery || params.userQuery;
     const plannedIntent = this.queryPlanner.classifyPrimaryIntent(query);
@@ -219,15 +225,20 @@ export class DocumentationQuerySemanticNormalizerService {
       this.mapPlannerIntentToSemanticIntent(plannedIntent),
       candidates[0]?.family,
     );
+    const selectedConceptIds = this.selectFallbackConceptIds(candidates);
+    const conceptSourcePreferences = this.mapConceptSourcePreferences(
+      conceptDefinitions,
+      selectedConceptIds,
+    );
     const sourcePreferences = this.mergeSourcePreferences(
       this.mapNormalizedSourceHints(params.normalizedQuery),
+      conceptSourcePreferences,
       this.mapIntentToSourcePreferences(intent),
       ...candidates.map((candidate) =>
         this.mapFamilyToSourcePreferences(candidate.family),
       ),
       params.followUpState?.sourcePreferences ?? [],
     );
-    const selectedConceptIds = this.selectFallbackConceptIds(candidates);
     const confidence =
       selectedConceptIds.length > 0
         ? Math.min(0.78, 0.54 + candidates[0].score / 50)
@@ -279,6 +290,7 @@ export class DocumentationQuerySemanticNormalizerService {
     parsed: DocumentationSemanticQuery,
     fallback: DocumentationSemanticQuery,
     candidates: ConceptCandidate[],
+    conceptDefinitions: ConceptDefinition[],
     params: {
       userQuery: string;
       followUpState?: DocumentationFollowUpState | null;
@@ -293,6 +305,16 @@ export class DocumentationQuerySemanticNormalizerService {
       contextualFollowUp && selectedConceptIds.length === 0
         ? (params.followUpState?.conceptIds ?? [])
         : [];
+    const effectiveConceptIds =
+      selectedConceptIds.length > 0
+        ? selectedConceptIds
+        : inheritedConceptIds.length > 0
+          ? inheritedConceptIds
+          : fallback.selectedConceptIds;
+    const conceptSourcePreferences = this.mapConceptSourcePreferences(
+      conceptDefinitions,
+      effectiveConceptIds,
+    );
     const confidence = Math.max(0, Math.min(1, parsed.confidence));
     const pageHint =
       this.extractPageHint(params.userQuery) ??
@@ -310,15 +332,11 @@ export class DocumentationQuerySemanticNormalizerService {
     return {
       ...parsed,
       schemaVersion: SEMANTIC_PROFILE_SCHEMA_VERSION,
-      selectedConceptIds:
-        selectedConceptIds.length > 0
-          ? selectedConceptIds
-          : inheritedConceptIds.length > 0
-            ? inheritedConceptIds
-            : fallback.selectedConceptIds,
+      selectedConceptIds: effectiveConceptIds,
       candidateConceptIds: candidateIds,
       sourcePreferences: this.mergeSourcePreferences(
         parsed.sourcePreferences,
+        conceptSourcePreferences,
         this.mapIntentToSourcePreferences(parsed.intent),
         fallback.sourcePreferences,
       ),
@@ -350,6 +368,30 @@ export class DocumentationQuerySemanticNormalizerService {
       .filter((candidate) => candidate.score >= Math.max(6, best * 0.6))
       .slice(0, 3)
       .map((candidate) => candidate.conceptId);
+  }
+
+  private mapConceptSourcePreferences(
+    conceptDefinitions: ConceptDefinition[],
+    conceptIds: string[],
+  ): SemanticSourceCategory[] {
+    if (conceptIds.length === 0) {
+      return [];
+    }
+
+    const conceptById = new Map(
+      conceptDefinitions.map((concept) => [concept.id, concept]),
+    );
+    const preferences: SemanticSourceCategory[] = [];
+    for (const conceptId of conceptIds) {
+      const concept = conceptById.get(conceptId);
+      for (const preference of concept?.sourcePreferences ?? []) {
+        if (!preferences.includes(preference)) {
+          preferences.push(preference);
+        }
+      }
+    }
+
+    return preferences;
   }
 
   private mapPlannerIntentToSemanticIntent(value: string): SemanticIntent {
