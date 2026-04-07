@@ -1835,7 +1835,7 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     ).toBeUndefined();
   });
 
-  it('uses the current user turn for explicit source-locked retrieval', () => {
+  it('uses the clean selected-source question for explicit source-locked retrieval', () => {
     const service = new ChatDocumentationService(
       {} as never,
       new ChatDocumentationQueryService(),
@@ -1860,9 +1860,53 @@ Location: BOX 25 VOLVO PENTA SPARES`,
           reason: 'explicit_source',
         },
       }),
+    ).toBe('Summarize that as a checklist.');
+
+    expect(
+      (service as any).resolveSourceLockedRetrievalQuery({
+        userQuery:
+          'From SOP 12.31 Bunkering v2.pdf document: i will have bunkering soon, describe me step by step procedure',
+        effectiveUserQuery:
+          'From SOP 12.31 Bunkering v2.pdf document: i will have bunkering soon, describe me step by step procedure',
+        retrievalQuery: 'stale previous topic',
+        semanticQuery: { explicitSource: 'SOP 12.31 Bunkering v2.pdf' },
+        sourceLockDecision: {
+          active: true,
+          lockedManualId: 'manual-1',
+          lockedManualTitle: 'SOP 12.31 Bunkering v2.pdf',
+          lockedDocumentId: 'doc-1',
+          reason: 'explicit_source',
+        },
+      }),
     ).toBe(
-      'From Selected Procedure.pdf document: Summarize that as a checklist.',
+      'i will have bunkering soon, describe me step by step procedure',
     );
+  });
+
+  it('keeps explicit source queries intact when there is no generated source-selection question', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(
+      (service as any).resolveSourceLockedRetrievalQuery({
+        userQuery: 'Use Selected Procedure.pdf as the source',
+        effectiveUserQuery: 'Use Selected Procedure.pdf as the source',
+        retrievalQuery: 'stale previous topic',
+        semanticQuery: { explicitSource: 'Selected Procedure.pdf' },
+        sourceLockDecision: {
+          active: true,
+          lockedManualId: 'manual-1',
+          lockedManualTitle: 'Selected Procedure.pdf',
+          lockedDocumentId: 'doc-1',
+          reason: 'explicit_source',
+        },
+      }),
+    ).toBe('Use Selected Procedure.pdf as the source');
   });
 
   it('prefers a narrow tag scope when semantic shortlist candidates conflict with it', () => {

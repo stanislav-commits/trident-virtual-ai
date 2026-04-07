@@ -1181,7 +1181,15 @@ export class ChatDocumentationService {
 
     if (semanticQuery?.explicitSource) {
       const currentTurnQuery = userQuery.trim() || effectiveUserQuery.trim();
-      return currentTurnQuery || retrievalQuery;
+      return (
+        this.extractQuestionFromExplicitSourceSelection(
+          currentTurnQuery,
+          semanticQuery.explicitSource,
+          sourceLockDecision.lockedManualTitle,
+        ) ||
+        currentTurnQuery ||
+        retrievalQuery
+      );
     }
 
     const hasPageOrSectionHint =
@@ -1195,6 +1203,63 @@ export class ChatDocumentationService {
 
     const currentTurnQuery = userQuery.trim() || effectiveUserQuery.trim();
     return currentTurnQuery || retrievalQuery;
+  }
+
+  private extractQuestionFromExplicitSourceSelection(
+    query: string,
+    explicitSource?: string | null,
+    lockedManualTitle?: string | null,
+  ): string | null {
+    const trimmed = query.replace(/\s+/g, ' ').trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const sourceSelectionMatch = trimmed.match(
+      /^(?:from|according\s+to|inside|in)\s+(?:the\s+)?(.{2,180}?)\s+(?:manual|guide|handbook|document|procedure|file)\s*(?::|-|,)\s*(.+)$/i,
+    );
+    const sourceLabel = sourceSelectionMatch?.[1]?.trim();
+    const question = sourceSelectionMatch?.[2]?.trim();
+    if (
+      !sourceLabel ||
+      !question ||
+      !this.isCompatibleExplicitSourceSelection(
+        sourceLabel,
+        explicitSource,
+        lockedManualTitle,
+      )
+    ) {
+      return null;
+    }
+
+    return question;
+  }
+
+  private isCompatibleExplicitSourceSelection(
+    sourceLabel: string,
+    explicitSource?: string | null,
+    lockedManualTitle?: string | null,
+  ): boolean {
+    const normalizedLabel = this.queryService
+      .normalizeSourceTitleHint(sourceLabel)
+      ?.toLowerCase();
+    const expectedSources = [explicitSource, lockedManualTitle]
+      .map((source) =>
+        this.queryService.normalizeSourceTitleHint(source ?? undefined),
+      )
+      .filter((source): source is string => Boolean(source))
+      .map((source) => source.toLowerCase());
+
+    if (!normalizedLabel || expectedSources.length === 0) {
+      return true;
+    }
+
+    return expectedSources.some(
+      (source) =>
+        source === normalizedLabel ||
+        source.includes(normalizedLabel) ||
+        normalizedLabel.includes(source),
+    );
   }
 
   private prioritizeSourceLockedEvidence(params: {
