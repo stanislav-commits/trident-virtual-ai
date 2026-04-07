@@ -4807,6 +4807,14 @@ export class ChatService {
       semanticQuery,
     );
     if (!documentationIntent) {
+      if (
+        semanticQuery.intent === 'general_information' &&
+        semanticQuery.sourcePreferences.includes('MANUALS') &&
+        this.isProcedureOrDocumentationQuestion(userQuery)
+      ) {
+        return true;
+      }
+
       return false;
     }
 
