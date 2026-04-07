@@ -386,6 +386,86 @@ describe('ChatContextService', () => {
     );
   });
 
+  it('uses a scoped chunk scan when scoped RAGFlow results produce no usable citations', async () => {
+    const prisma = {
+      ship: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'ship-1',
+            name: 'Sea Wolf X',
+            ragflowDatasetId: 'dataset-1',
+            manuals: [
+              {
+                id: 'manual-procedure',
+                ragflowDocumentId: 'doc-procedure',
+                filename: 'Operational Procedure.pdf',
+                category: 'MANUALS',
+              },
+              {
+                id: 'manual-other',
+                ragflowDocumentId: 'doc-other',
+                filename: 'Other Manual.pdf',
+                category: 'MANUALS',
+              },
+            ],
+          },
+        ]),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      searchDataset: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-unmapped',
+          doc_id: 'doc-other',
+          doc_name: 'Other Manual.pdf',
+          content: 'General operating procedure overview.',
+          similarity: 0.94,
+          meta: { page_num: 2 },
+        },
+      ]),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-procedure',
+          doc_id: 'doc-procedure',
+          doc_name: 'Operational Procedure.pdf',
+          content:
+            'Bunkering procedure: prepare equipment, establish communication, start fueling, monitor flow rate, then secure the filling point.',
+          meta: { page_num: 1 },
+        },
+      ]),
+    };
+
+    const service = new ChatContextService(prisma as never, ragflow as never);
+
+    const citations = await service.findContextForAdminQuery(
+      'i will have bunkering soon, describe me step by step procedure',
+      2,
+      2,
+      ['MANUALS'],
+      ['manual-procedure'],
+    );
+
+    expect(citations).toEqual([
+      expect.objectContaining({
+        shipManualId: 'manual-procedure',
+        chunkId: 'chunk-procedure',
+        sourceTitle: 'Operational Procedure.pdf (Sea Wolf X)',
+        pageNumber: 1,
+      }),
+    ]);
+    expect(ragflow.searchDataset).toHaveBeenCalledWith(
+      'dataset-1',
+      'i will have bunkering soon, describe me step by step procedure',
+      48,
+    );
+    expect(ragflow.listDocumentChunks).toHaveBeenCalledWith(
+      'dataset-1',
+      'doc-procedure',
+      300,
+    );
+  });
+
   it('rejects scoped chunk fallback matches that miss model or acronym anchors', async () => {
     const prisma = {
       ship: {

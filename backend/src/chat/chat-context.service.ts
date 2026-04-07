@@ -582,7 +582,7 @@ export class ChatContextService {
       });
     }
 
-    return this.mapResultsToCitations(
+    const citations = this.mapResultsToCitations(
       results,
       manuals,
       snippetCharLimit,
@@ -590,6 +590,27 @@ export class ChatContextService {
       sourceTitleSuffix,
       queryProfile,
     );
+
+    if (
+      citations.length > 0 ||
+      !this.shouldUseScopedChunkFallback(allowedDocumentIds, manuals)
+    ) {
+      return citations;
+    }
+
+    this.logger.debug(
+      `Scoped RAGFlow retrieval returned no usable citations for query="${query.replace(/\s+/g, ' ').trim()}"; falling back to chunk scan for ${allowedDocumentIds.size} document(s)`,
+    );
+
+    return this.searchScopedDocumentChunks({
+      datasetId,
+      query,
+      retrievalK,
+      snippetCharLimit,
+      manuals,
+      allowedDocumentIds,
+      sourceTitleSuffix,
+    });
   }
 
   private shouldUseScopedChunkFallback(
@@ -597,6 +618,9 @@ export class ChatContextService {
     manuals: SearchableManual[],
   ): allowedDocumentIds is Set<string> {
     if (!allowedDocumentIds?.size) {
+      return false;
+    }
+    if (typeof this.ragflow.listDocumentChunks !== 'function') {
       return false;
     }
     if (allowedDocumentIds.size > MAX_SCOPED_CHUNK_FALLBACK_DOCUMENTS) {
@@ -714,11 +738,16 @@ export class ChatContextService {
       'are',
       'can',
       'does',
+      'describe',
       'for',
       'from',
+      'give',
+      'have',
       'how',
       'into',
       'manual',
+      'need',
+      'needs',
       'now',
       'of',
       'on',
@@ -737,7 +766,9 @@ export class ChatContextService {
       'when',
       'where',
       'which',
+      'will',
       'with',
+      'would',
     ]);
     const tokens = [
       ...new Set(
@@ -786,13 +817,17 @@ export class ChatContextService {
       })
       .map((token) => this.normalizeLexicalText(token))
       .filter((token) => token.length > 1);
-    const lowercaseAcronymTokens = normalizedRawTokens.filter(
-      (token) =>
-        /^[a-z]{3,4}$/.test(token) &&
-        (token.match(/[aeiou]/g)?.length ?? 0) <= 1 &&
-        !stopWords.has(token) &&
-        !LOWERCASE_ACRONYM_STOP_WORDS.has(token),
-    );
+    const lowercaseAcronymTokens = [
+      ...new Set(
+        normalizedRawTokens.filter(
+          (token) =>
+            /^[a-z]{3,4}$/.test(token) &&
+            (token.match(/[aeiou]/g)?.length ?? 0) <= 1 &&
+            !stopWords.has(token) &&
+            !LOWERCASE_ACRONYM_STOP_WORDS.has(token),
+        ),
+      ),
+    ];
     const inferredLowercaseAcronymTokens =
       lowercaseAcronymTokens.length >= 2 ? lowercaseAcronymTokens : [];
 
