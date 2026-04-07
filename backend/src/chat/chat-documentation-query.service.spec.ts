@@ -98,6 +98,29 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(true);
   });
 
+  it('treats interval maintenance questions with hourly wording and minor typos as procedure queries', () => {
+    expect(
+      service.isProcedureQuery(
+        'what shoul i do at 500 hourly diesel generator maintenanace?',
+      ),
+    ).toBe(true);
+    expect(
+      service.isIntervalMaintenanceQuery(
+        'what shoul i do at 500 hourly diesel generator maintenanace?',
+      ),
+    ).toBe(true);
+  });
+
+  it('extracts interval-specific numeric search phrases instead of only a bare number', () => {
+    expect(
+      service.extractSignificantNumericTokens(
+        'what shoul i do at 500 hourly diesel generator maintenanace?',
+      ),
+    ).toEqual(
+      expect.arrayContaining(['500 hour', '500 hours', '500 hrs', 'every 500']),
+    );
+  });
+
   it('does not ask for clarification for broader asset lookups that already name one concrete subject', () => {
     const userQuery = 'What spare parts do I need for the compressor?';
 

@@ -389,6 +389,157 @@ export class ChatDocumentationScanService {
     return collected;
   }
 
+  async expandManualIntervalMaintenanceChunkCitations(
+    shipId: string | null,
+    retrievalQuery: string,
+    userQuery: string,
+    citations: ChatCitation[],
+    allowedDocumentCategories?: ChatDocumentSourceCategory[],
+    allowedManualIds?: string[],
+  ): Promise<ChatCitation[]> {
+    if (!this.ragflowService.isConfigured()) return [];
+
+    const queryContext =
+      retrievalQuery.trim().length >= userQuery.trim().length
+        ? retrievalQuery
+        : userQuery;
+    if (!this.queryService.isIntervalMaintenanceQuery(queryContext)) {
+      return [];
+    }
+
+    const scanContexts = await this.loadDocumentScanContexts(
+      shipId,
+      citations,
+      allowedDocumentCategories,
+      allowedManualIds,
+    );
+    if (scanContexts.length === 0) {
+      this.logger.debug(
+        'Manual interval maintenance chunk scan skipped: no contexts available',
+      );
+      return [];
+    }
+
+    const intervalPhrases =
+      this.queryService.extractMaintenanceIntervalSearchPhrases(queryContext);
+    const collected: ChatCitation[] = [];
+    let scannedManualCount = 0;
+
+    for (const scanContext of scanContexts) {
+      const candidateManuals = this.selectCandidateManualsForDocumentScan(
+        scanContext.manuals,
+        citations,
+        { preferMaintenanceDocs: true },
+      ).slice(0, 4);
+      scannedManualCount += candidateManuals.length;
+
+      for (const manual of candidateManuals) {
+        try {
+          const chunks = await this.ragflowService.listDocumentChunks(
+            scanContext.ragflowDatasetId,
+            manual.ragflowDocumentId,
+            300,
+          );
+          const scoredChunks = chunks
+            .map((chunk) => {
+              const score = this.scoreManualIntervalMaintenanceChunk(
+                queryContext,
+                manual.filename,
+                chunk.content ?? '',
+                intervalPhrases,
+              );
+              return {
+                chunk,
+                score,
+                pageNumber: this.extractChunkPageNumber(chunk),
+                minY: this.extractChunkMinY(chunk.positions),
+              };
+            })
+            .filter((entry) => entry.score > 0)
+            .sort((left, right) => {
+              if (right.score !== left.score) {
+                return right.score - left.score;
+              }
+              if (
+                left.pageNumber !== undefined &&
+                right.pageNumber !== undefined &&
+                left.pageNumber !== right.pageNumber
+              ) {
+                return left.pageNumber - right.pageNumber;
+              }
+              if (
+                left.minY !== undefined &&
+                right.minY !== undefined &&
+                left.minY !== right.minY
+              ) {
+                return left.minY - right.minY;
+              }
+              return left.chunk.id.localeCompare(right.chunk.id);
+            });
+
+          if (scoredChunks.length === 0) {
+            continue;
+          }
+
+          const bestChunk = scoredChunks[0];
+          const pageScopedChunks =
+            bestChunk.pageNumber !== undefined
+              ? scoredChunks.filter(
+                  (entry) => entry.pageNumber === bestChunk.pageNumber,
+                )
+              : scoredChunks;
+          const selectedChunks = pageScopedChunks
+            .filter((entry) => entry.score >= bestChunk.score - 4)
+            .slice(0, 8)
+            .sort((left, right) => {
+              if (
+                left.minY !== undefined &&
+                right.minY !== undefined &&
+                left.minY !== right.minY
+              ) {
+                return left.minY - right.minY;
+              }
+              return left.chunk.id.localeCompare(right.chunk.id);
+            });
+
+          const combinedSnippet = this.buildCombinedChunkSnippet(
+            selectedChunks.map((entry) => entry.chunk.content ?? ''),
+          );
+
+          collected.push({
+            shipManualId: manual.id,
+            chunkId: `manual-interval-scan:${manual.id}:${bestChunk.pageNumber ?? bestChunk.chunk.id}`,
+            score: Math.max(bestChunk.score, 1.03),
+            pageNumber: bestChunk.pageNumber,
+            snippet: combinedSnippet,
+            sourceTitle: manual.filename,
+            sourceCategory: manual.category,
+          });
+
+          collected.push(
+            ...selectedChunks.slice(0, 3).map((entry) =>
+              this.mapDocumentChunkToCitation(
+                manual,
+                entry.chunk,
+                Math.max(0.92, entry.score / 100),
+              ),
+            ),
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Manual interval maintenance chunk scan skipped for ${manual.filename}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+
+    this.logger.debug(
+      `Manual interval maintenance chunk scan completed: contexts=${scanContexts.length}, manuals=${scannedManualCount}, collected=${collected.length}`,
+    );
+
+    return collected;
+  }
+
   async expandCertificateExpiryDocumentChunkCitations(
     shipId: string | null,
     retrievalQuery: string,
@@ -1583,6 +1734,109 @@ export class ChatDocumentationScanService {
         'category_label',
       ),
     };
+  }
+
+  private scoreManualIntervalMaintenanceChunk(
+    query: string,
+    filename: string,
+    content: string,
+    intervalPhrases: string[],
+  ): number {
+    const haystack = `${filename}\n${content}`.toLowerCase();
+    const hasMaintenanceTerms =
+      /\b(mainten[a-z]*|service|periodic|inspection|checks?|tasks?|schedule)\b/i.test(
+        haystack,
+      );
+    const hasActionTerms =
+      /\b(replace|inspect|check|clean|change|verify|adjust|test|sample|drain|grease)\b/i.test(
+        haystack,
+      );
+    const hasIntervalTerms =
+      /\b(before\s+starting|first\s+check\s+after|every\s+\d{2,6}|hours?|hrs?|monthly|annual|annually|maintenance\s+as\s+needed)\b/i.test(
+        haystack,
+      );
+
+    if (!hasMaintenanceTerms && !(hasActionTerms && hasIntervalTerms)) {
+      return 0;
+    }
+
+    let score = 0;
+
+    if (hasMaintenanceTerms) {
+      score += 6;
+    }
+    if (hasActionTerms) {
+      score += 4;
+    }
+    if (hasIntervalTerms) {
+      score += 6;
+    }
+    if (
+      /\b(periodic\s+checks?\s+and\s+maintenance|perform\s+service\s+at\s+intervals?|maintenance\s+as\s+needed)\b/i.test(
+        haystack,
+      )
+    ) {
+      score += 12;
+    }
+    if (
+      /\b(general|fuel\s+system|lubrication\s+system|cooling\s+system|gas\s+intake|electrical\s+system|engine\s+and\s+assembly|remote\s+control\s+system)\b/i.test(
+        haystack,
+      )
+    ) {
+      score += 5;
+    }
+    if (/<table\b/i.test(content)) {
+      score += 4;
+    }
+
+    const intervalMatches = intervalPhrases.filter((phrase) =>
+      haystack.includes(phrase.toLowerCase()),
+    ).length;
+    score += intervalMatches * 10;
+
+    if (
+      intervalMatches === 0 &&
+      /\b(fuel\s+circuit|diesel\s+fuel\s+inlet|fuel\s+outlet|inside\s+diameter|non-?return\s+valve|opening)\b/i.test(
+        haystack,
+      )
+    ) {
+      score -= 8;
+    }
+
+    if (
+      intervalMatches === 0 &&
+      /\b\d{2,6}\s*(?:mm|mbar|bar|psi|v|volt|volts|amp|amps|a|kw|kva|rpm|c)\b/i.test(
+        haystack,
+      ) &&
+      !hasMaintenanceTerms
+    ) {
+      score -= 6;
+    }
+
+    if (
+      /\b(generator|genset|diesel)\b/i.test(query) &&
+      /\b(generator|genset|diesel)\b/i.test(haystack)
+    ) {
+      score += 2;
+    }
+
+    return score;
+  }
+
+  private buildCombinedChunkSnippet(snippets: string[]): string {
+    const normalized = snippets
+      .map((snippet) => snippet.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const unique: string[] = [];
+    const seen = new Set<string>();
+
+    for (const snippet of normalized) {
+      if (seen.has(snippet)) continue;
+      seen.add(snippet);
+      unique.push(snippet);
+    }
+
+    return unique.join('\n').slice(0, 3600);
   }
 
   private extractChunkMetadataValue(

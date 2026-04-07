@@ -223,6 +223,33 @@ describe('ChatDocumentationCitationService', () => {
     ).toBe(false);
   });
 
+  it('prioritizes manual interval-maintenance table evidence over incidental numeric installation data', () => {
+    const citations = [
+      {
+        sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+        snippet:
+          '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
+        score: 0.97,
+      },
+      {
+        sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+        snippet:
+          '6.24 Periodic checks and maintenance. Perform service at intervals indicated. Fuel system: Replace fuel filter and prefilter. Lubrication system: Change oil and filter. Every 500 hrs. or 12 Month.',
+        score: 0.88,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'what shoul i do at 500 hourly diesel generator maintenanace?',
+      'what shoul i do at 500 hourly diesel generator maintenanace?',
+      citations,
+    );
+
+    expect(refined[0].snippet).toContain('Periodic checks and maintenance');
+    expect(refined[0].snippet).toContain('Replace fuel filter and prefilter');
+    expect(refined[0].snippet).not.toContain('500 mm');
+  });
+
   it('prioritizes history procedures over manuals for next-due questions', () => {
     const citations = [
       {

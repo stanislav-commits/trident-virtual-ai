@@ -89,4 +89,48 @@ describe('TagMatcherService', () => {
 
     expect(matches).toHaveLength(0);
   });
+
+  it('matches emergency bilge pump phrasing to the emergency bilge pump tag', () => {
+    const tags = [
+      {
+        id: 'bilge-pump-emergency',
+        key: 'equipment:bilge:pump_emergency',
+        category: 'equipment',
+        subcategory: 'bilge',
+        item: 'pump_emergency',
+        description: 'Emergency diesel-driven bilge and fire pump.',
+      },
+    ];
+
+    const matches = service.matchTags(
+      service.buildProfiles(tags),
+      'How to replace fuel filter on emergency bilge pump',
+      'query',
+    );
+
+    expect(matches.map((match) => match.tagId)).toEqual([
+      'bilge-pump-emergency',
+    ]);
+  });
+
+  it('does not map generic shaft wording to a side-specific shaft tag', () => {
+    const tags = [
+      {
+        id: 'shaft-ps',
+        key: 'equipment:propulsion:shaft_ps',
+        category: 'equipment',
+        subcategory: 'propulsion',
+        item: 'shaft_ps',
+        description: 'Port side propeller shaft, shaft seal, and associated bearings.',
+      },
+    ];
+
+    const matches = service.matchTags(
+      service.buildProfiles(tags),
+      'Unpack the pump and check that the shaft turns freely before use.',
+      'manual',
+    );
+
+    expect(matches).toHaveLength(0);
+  });
 });

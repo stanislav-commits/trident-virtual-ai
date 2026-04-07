@@ -593,8 +593,32 @@ export class ChatQueryPlannerService {
   }
 
   private isMaintenanceProcedureQuery(query: string): boolean {
-    return /\b(procedure|steps?|how\s+to|how\s+do\s+i|how\s+can\s+i|instruction|instructions|checklist|perform|replace|clean|inspect|test|grease|carry\s+out|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+does\s+.*include)\b/i.test(
-      query,
+    return (
+      /\b(procedure|steps?|how\s+to|how\s+do\s+i|how\s+can\s+i|instruction|instructions|checklist|perform|replace|clean|inspect|test|grease|carry\s+out|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+does\s+.*include)\b/i.test(
+        query,
+      ) || this.isIntervalMaintenanceProcedureQuery(query)
+    );
+  }
+
+  private isIntervalMaintenanceProcedureQuery(query: string): boolean {
+    const hasIntervalSignal =
+      /\b\d{2,6}\s*(?:h(?:ours?|rs?)?|hourly|months?|month|years?|year)\b/i.test(
+        query,
+      ) ||
+      /\b(annual|annually|monthly|weekly|daily|periodic|intervals?)\b/i.test(
+        query,
+      );
+    if (!hasIntervalSignal) {
+      return false;
+    }
+
+    return (
+      /\b(service|servicing|mainten[a-z]*|inspection|checks?|tasks?|schedule|overhaul|included|due)\b/i.test(
+        query,
+      ) ||
+      /\b(what\s+should\s+i\s+do|what\s+shoul\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done|what\s+is\s+included|perform|carry\s+out)\b/i.test(
+        query,
+      )
     );
   }
 

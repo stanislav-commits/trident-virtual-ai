@@ -595,6 +595,21 @@ export class ChatDocumentationService {
         citations,
         maintenanceDocumentFallbackCitations,
       );
+      const manualIntervalFallbackCitations = await this.expandScanCitations(
+        this.scanService.expandManualIntervalMaintenanceChunkCitations?.bind(
+          this.scanService,
+        ),
+        shipId,
+        documentationRetrievalQuery,
+        effectiveUserQuery,
+        citations,
+        effectiveDocumentCategories,
+        tagScopedManualIds,
+      );
+      citations = this.citationService.mergeCitations(
+        citations,
+        manualIntervalFallbackCitations,
+      );
 
       const certificateDocumentFallbackCitations =
         await this.expandScanCitations(
@@ -740,6 +755,22 @@ export class ChatDocumentationService {
         citations = this.citationService.mergeCitations(
           citations,
           resolvedMaintenanceDocumentFallbackCitations,
+        );
+        const resolvedManualIntervalFallbackCitations =
+          await this.expandScanCitations(
+            this.scanService.expandManualIntervalMaintenanceChunkCitations?.bind(
+              this.scanService,
+            ),
+            shipId,
+            resolvedSubjectQuery,
+            effectiveUserQuery,
+            citations,
+            effectiveDocumentCategories,
+            baseAllowedManualIds,
+          );
+        citations = this.citationService.mergeCitations(
+          citations,
+          resolvedManualIntervalFallbackCitations,
         );
 
         const narrowedCitations = this.citationService.focusCitationsForQuery(
@@ -1064,7 +1095,7 @@ export class ChatDocumentationService {
   }
 
   private expandScanCitations(
-    expand: ChatScanExpansion,
+    expand: ChatScanExpansion | undefined,
     shipId: string | null,
     retrievalQuery: string,
     userQuery: string,
@@ -1072,6 +1103,10 @@ export class ChatDocumentationService {
     allowedDocumentCategories?: ChatDocumentSourceCategory[],
     allowedManualIds?: string[],
   ): Promise<ChatCitation[]> {
+    if (!expand) {
+      return Promise.resolve([]);
+    }
+
     return allowedDocumentCategories?.length || allowedManualIds?.length
       ? expand(
           shipId,

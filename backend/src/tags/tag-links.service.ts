@@ -8,6 +8,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
 import { TagMatcherService, type MatchableTag } from './tag-matcher.service';
+import type { ManualSemanticProfile } from '../semantic/semantic.types';
+import { parseManualSemanticProfile } from '../semantic/semantic.validators';
 
 export interface TagLinkSummary {
   id: string;
@@ -33,6 +35,7 @@ const MANUAL_CONTENT_TAG_MAX_CHUNKS = 120;
 const MANUAL_CONTENT_TAG_MAX_CHARS = 24_000;
 const MANUAL_CONTENT_TAG_MIN_SCORE = 18;
 const MANUAL_CONTENT_TAG_MIN_HITS = 2;
+const MANUAL_SEMANTIC_TAG_MAX_MATCHES = 3;
 
 interface QueryTagMatch {
   tagId: string;
@@ -306,6 +309,7 @@ export class TagLinksService {
         filename: true,
         category: true,
         ragflowDocumentId: true,
+        semanticProfile: true,
         ship: {
           select: {
             ragflowDatasetId: true,
@@ -339,7 +343,7 @@ export class TagLinksService {
           manualLabel: manual.filename,
           existingCount: manual.tags.length,
           source: match.source,
-          tagIds: this.pickSingleTagIds(match.tagIds),
+          tagIds: this.pickManualTagIds(match.tagIds),
         };
       }),
     );
@@ -679,6 +683,91 @@ export class TagLinksService {
     return [manual.filename, manual.category].filter(Boolean).join(' ');
   }
 
+  private buildManualSemanticMatchText(profile: ManualSemanticProfile): string {
+    return [
+      profile.vendor,
+      profile.model,
+      ...profile.aliases,
+      ...profile.systems,
+      ...profile.equipment,
+      profile.summary,
+      ...profile.pageTopics.map((topic) => topic.summary),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(' ');
+  }
+
+  private buildManualSemanticFragments(
+    profile: ManualSemanticProfile,
+  ): Array<{ text: string; weight: number }> {
+    return [
+      { text: profile.vendor ?? '', weight: 1 },
+      { text: profile.model ?? '', weight: 1 },
+      ...profile.aliases.map((alias) => ({ text: alias, weight: 2 })),
+      ...profile.systems.map((system) => ({ text: system, weight: 3 })),
+      ...profile.equipment.map((equipment) => ({ text: equipment, weight: 2 })),
+      { text: profile.summary ?? '', weight: 2 },
+      ...profile.pageTopics.map((topic) => ({
+        text: topic.summary,
+        weight: 1,
+      })),
+      { text: this.buildManualSemanticMatchText(profile), weight: 1 },
+    ].filter((entry) => entry.text.trim().length > 0);
+  }
+
+  private collectManualSemanticTagEvidence(
+    profiles: Array<{
+      tag: MatchableTag;
+      profile: ReturnType<TagMatcherService['buildProfiles']>[number];
+    }>,
+    fragments: Array<{ text: string; weight: number }>,
+  ): Map<string, number> {
+    const evidence = new Map<
+      string,
+      { totalScore: number; bestScore: number; hitCount: number }
+    >();
+
+    for (const fragment of fragments) {
+      const matches = this.matcher.rankTags(
+        profiles.map((entry) => entry.profile),
+        fragment.text,
+        'manual',
+        { restrictToBestWindow: false, limit: 24 },
+      );
+
+      for (const match of matches) {
+        const weightedScore =
+          match.score + Math.max(fragment.weight - 1, 0) * 2;
+        const entry = evidence.get(match.tagId) ?? {
+          totalScore: 0,
+          bestScore: 0,
+          hitCount: 0,
+        };
+        entry.totalScore += weightedScore;
+        entry.bestScore = Math.max(entry.bestScore, weightedScore);
+        entry.hitCount += 1;
+        evidence.set(match.tagId, entry);
+      }
+    }
+
+    return new Map(
+      [...evidence.entries()].map(([tagId, entry]) => [
+        tagId,
+        entry.bestScore + Math.min((entry.hitCount - 1) * 2, 4),
+      ]),
+    );
+  }
+
+  private buildManualRoleHintTokens(profile: ManualSemanticProfile): Set<string> {
+    return new Set(
+      this.normalizeQueryText(
+        [...profile.aliases, ...profile.equipment].join(' '),
+      )
+        .split(' ')
+        .filter((token) => token.length > 2),
+    );
+  }
+
   private async matchManualTagIds(
     manual: {
       id: string;
@@ -686,22 +775,31 @@ export class TagLinksService {
       category: string;
       ragflowDocumentId: string;
       ship: { ragflowDatasetId: string | null };
+      semanticProfile?: unknown;
     },
     profiles: Array<{
       tag: MatchableTag;
       profile: ReturnType<TagMatcherService['buildProfiles']>[number];
     }>,
-  ): Promise<{ tagIds: string[]; source: 'content' | 'title' | 'none' }> {
+  ): Promise<{ tagIds: string[]; source: 'semantic' | 'content' | 'title' | 'none' }> {
     const matcherProfiles = profiles.map((entry) => entry.profile);
     const titleMatches = this.matcher
       .matchTags(matcherProfiles, this.buildManualMatchText(manual), 'manual')
       .map((match) => match.tagId);
+    const semanticMatches = this.matchManualTagIdsFromSemanticProfile(
+      manual,
+      profiles,
+      titleMatches,
+    );
     const contentMatches = await this.matchManualTagIdsFromContent(
       manual,
       profiles,
       titleMatches,
     );
 
+    if (semanticMatches.length > 0) {
+      return { tagIds: semanticMatches, source: 'semantic' };
+    }
     if (contentMatches.length > 0) {
       return { tagIds: contentMatches, source: 'content' };
     }
@@ -719,6 +817,7 @@ export class TagLinksService {
       category: string;
       ragflowDocumentId: string;
       ship: { ragflowDatasetId: string | null };
+      semanticProfile?: unknown;
     },
     profiles: Array<{
       tag: MatchableTag;
@@ -738,6 +837,118 @@ export class TagLinksService {
     } catch {
       return [];
     }
+  }
+
+  private matchManualTagIdsFromSemanticProfile(
+    manual: {
+      filename: string;
+      category: string;
+      semanticProfile?: unknown;
+    },
+    profiles: Array<{
+      tag: MatchableTag;
+      profile: ReturnType<TagMatcherService['buildProfiles']>[number];
+    }>,
+    titleMatches: string[],
+  ): string[] {
+    const profile = parseManualSemanticProfile(manual.semanticProfile);
+    if (!profile) {
+      return [];
+    }
+
+    const titleAlignedTagIds = new Set(titleMatches);
+    const primaryConcepts = new Set(profile.primaryConceptIds);
+    const secondaryConcepts = new Set(profile.secondaryConceptIds);
+    const structuredConcepts = new Set(
+      [...profile.sections, ...profile.pageTopics].flatMap(
+        (entry) => entry.conceptIds,
+      ),
+    );
+    const roleHintTokens = this.buildManualRoleHintTokens(profile);
+    const semanticMatchMap = this.collectManualSemanticTagEvidence(
+      profiles,
+      this.buildManualSemanticFragments(profile),
+    );
+
+    const rankedCandidates = profiles.map(({ tag, profile: tagProfile }) => {
+      const conceptId = `tag:${tag.key}`;
+      const semanticScore = semanticMatchMap.get(tag.id) ?? 0;
+      const structuredSupport = structuredConcepts.has(conceptId);
+      const titleSupport = titleAlignedTagIds.has(tag.id);
+      const specificityBonus =
+        (tagProfile.genericSingleToken ? 0 : 2) +
+        (tagProfile.stemTokens.length > 1 ? 1 : 0);
+      const roleHintBonus = tagProfile.stemTokens.some((token) =>
+        roleHintTokens.has(token),
+      )
+        ? 4
+        : 0;
+      const baseEvidenceScore =
+        semanticScore +
+        (structuredSupport ? 16 : 0) +
+        (titleSupport ? 4 : 0) +
+        roleHintBonus;
+      const evidenceScore =
+        baseEvidenceScore > 0 ? baseEvidenceScore + specificityBonus : 0;
+      const fallbackScore =
+        (primaryConcepts.has(conceptId) ? 24 : 0) +
+        (structuredSupport ? 18 : 0) +
+        (secondaryConcepts.has(conceptId) ? 8 : 0) +
+        (titleSupport ? 4 : 0);
+      const specificity =
+        (tagProfile.genericSingleToken ? 0 : 2) +
+        Math.min(tagProfile.stemTokens.length, 3) +
+        Math.min(tagProfile.descriptionTokens.length, 3);
+
+      return {
+        tagId: tag.id,
+        evidenceScore,
+        fallbackScore,
+        specificity,
+        structuredSupport,
+      };
+    });
+    const hasEvidenceBackedCandidate = rankedCandidates.some(
+      (entry) => entry.evidenceScore > 0,
+    );
+    const ranked = rankedCandidates
+      .map((entry) => ({
+        ...entry,
+        score: hasEvidenceBackedCandidate ? entry.evidenceScore : entry.fallbackScore,
+      }))
+      .filter((entry) => entry.score >= 10)
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        if (right.specificity !== left.specificity) {
+          return right.specificity - left.specificity;
+        }
+        return left.tagId.localeCompare(right.tagId);
+      });
+
+    const top = ranked[0];
+    const second = ranked[1];
+    if (!top) {
+      return [];
+    }
+
+    if (!second) {
+      return [top.tagId];
+    }
+
+    if (hasEvidenceBackedCandidate) {
+      return ranked
+        .filter((entry) => entry.score >= Math.max(10, top.score - 4))
+        .slice(0, MANUAL_SEMANTIC_TAG_MAX_MATCHES)
+        .map((entry) => entry.tagId);
+    }
+
+    if (top.score >= second.score + 6) {
+      return [top.tagId];
+    }
+
+    return [];
   }
 
   private rankManualContentTagMatches(
@@ -931,6 +1142,13 @@ export class TagLinksService {
   private pickSingleTagIds(tagIds: string[]): string[] {
     const normalized = [...new Set(tagIds.map((id) => id?.trim()).filter(Boolean))];
     return normalized.length > 0 ? [normalized[0]] : [];
+  }
+
+  private pickManualTagIds(tagIds: string[]): string[] {
+    return [...new Set(tagIds.map((id) => id?.trim()).filter(Boolean))].slice(
+      0,
+      MANUAL_SEMANTIC_TAG_MAX_MATCHES,
+    );
   }
 
   private truncateForLog(value: string, maxLength: number = 140): string {

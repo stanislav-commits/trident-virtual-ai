@@ -26,6 +26,7 @@ interface TagSearchProfile {
   subcategoryTokens: string[];
   stemPhrase: string;
   stemTokens: string[];
+  descriptionTokens: string[];
   exactPhrases: string[];
   synonymPhrases: string[];
 }
@@ -53,6 +54,28 @@ const GENERIC_SINGLE_TOKEN_ITEMS = new Set([
   'switch',
   'tank',
   'transducer',
+]);
+
+const DESCRIPTION_TOKEN_STOP_WORDS = new Set([
+  'and',
+  'associated',
+  'component',
+  'components',
+  'device',
+  'driven',
+  'equipment',
+  'for',
+  'inside',
+  'main',
+  'monitoring',
+  'of',
+  'onboard',
+  'related',
+  'side',
+  'system',
+  'systems',
+  'the',
+  'with',
 ]);
 
 const ITEM_SYNONYMS: Record<string, string[]> = {
@@ -105,14 +128,11 @@ const ITEM_SYNONYMS: Record<string, string[]> = {
 
 @Injectable()
 export class TagMatcherService {
-  buildProfiles(tags: MatchableTag[]): TagSearchProfile[] {
-    return tags.map((tag) => this.buildProfile(tag));
-  }
-
-  matchTags(
+  rankTags(
     profiles: TagSearchProfile[],
     text: string,
     mode: TagMatcherMode,
+    options?: { restrictToBestWindow?: boolean; limit?: number },
   ): TagMatchResult[] {
     const context = this.buildSearchContext(text);
     const threshold = mode === 'query' ? 9 : 7;
@@ -128,12 +148,29 @@ export class TagMatcherService {
       return [];
     }
 
+    const limit = options?.limit ?? (mode === 'query' ? 8 : 12);
+    if (options?.restrictToBestWindow === false) {
+      return scored.slice(0, limit);
+    }
+
     const bestScore = scored[0].score;
     const scoreWindow = mode === 'query' ? 1 : 2;
 
     return scored
       .filter((match) => bestScore - match.score <= scoreWindow)
-      .slice(0, mode === 'query' ? 8 : 12);
+      .slice(0, limit);
+  }
+
+  buildProfiles(tags: MatchableTag[]): TagSearchProfile[] {
+    return tags.map((tag) => this.buildProfile(tag));
+  }
+
+  matchTags(
+    profiles: TagSearchProfile[],
+    text: string,
+    mode: TagMatcherMode,
+  ): TagMatchResult[] {
+    return this.rankTags(profiles, text, mode);
   }
 
   private buildProfile(tag: MatchableTag): TagSearchProfile {
@@ -152,8 +189,18 @@ export class TagMatcherService {
     const genericSingleToken =
       stemTokens.length === 1 &&
       GENERIC_SINGLE_TOKEN_ITEMS.has(stemTokens[0] ?? '');
+    const descriptionTokens = [
+      ...new Set(
+        this.tokenize(this.normalizeText(tag.description ?? '')).filter(
+          (token) =>
+            token.length > 2 && !DESCRIPTION_TOKEN_STOP_WORDS.has(token),
+        ),
+      ),
+    ];
     const exactPhrases = [
-      ...(genericSingleToken ? [] : [stemPhrase]),
+      ...(genericSingleToken || (side && stemTokens.length <= 1)
+        ? []
+        : [stemPhrase]),
       `${subcategoryPhrase} ${stemPhrase}`.trim(),
       this.normalizeText(tag.key.replace(/:/g, ' ')),
     ].filter(Boolean);
@@ -185,6 +232,7 @@ export class TagMatcherService {
       subcategoryTokens,
       stemPhrase,
       stemTokens,
+      descriptionTokens,
       exactPhrases,
       synonymPhrases,
     };
@@ -201,6 +249,10 @@ export class TagMatcherService {
     const hasStemTokens =
       profile.stemTokens.length > 0 &&
       profile.stemTokens.every((token) => context.tokens.has(token));
+    const descriptionMatchCount = profile.descriptionTokens.filter((token) =>
+      context.tokens.has(token),
+    ).length;
+    const hasDescriptionSupport = descriptionMatchCount >= 2;
     const exactPhraseMatch = profile.exactPhrases.some((phrase) =>
       this.hasPhrase(context.normalized, phrase),
     );
@@ -214,22 +266,33 @@ export class TagMatcherService {
         if (!(hasStemTokens && sideMatch)) {
           return 0;
         }
-      } else if (!hasStemTokens) {
+      } else if (!(hasStemTokens && (sideMatch || hasSubcategory || hasDescriptionSupport))) {
         return 0;
       }
     }
 
     if (!profile.side && !synonymMatch && !exactPhraseMatch) {
       if (profile.genericSingleToken) {
-        if (!(hasSubcategory && hasStemTokens)) {
+        if (!(hasSubcategory && (hasStemTokens || hasDescriptionSupport))) {
           return 0;
         }
-      } else if (!(hasStemTokens && (hasSubcategory || profile.stemTokens.length > 1))) {
+      } else if (
+        !(
+          (hasStemTokens && (hasSubcategory || profile.stemTokens.length > 1)) ||
+          (hasDescriptionSupport &&
+            (hasSubcategory || hasStemTokens || descriptionMatchCount >= 3))
+        )
+      ) {
         return 0;
       }
     }
 
-    if (mode === 'query' && !synonymMatch && !exactPhraseMatch) {
+    if (
+      mode === 'query' &&
+      !synonymMatch &&
+      !exactPhraseMatch &&
+      !hasDescriptionSupport
+    ) {
       if (profile.genericSingleToken || !hasSubcategory) {
         return 0;
       }
@@ -251,6 +314,10 @@ export class TagMatcherService {
 
     if (hasStemTokens) {
       score += profile.stemTokens.length > 1 ? 5 : 3;
+    }
+
+    if (hasDescriptionSupport) {
+      score += Math.min(descriptionMatchCount * 2, 8);
     }
 
     if (profile.side && sideMatch) {

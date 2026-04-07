@@ -572,4 +572,104 @@ describe('ManualSemanticMatcherService', () => {
       expect.objectContaining({ manualId: 'manual-converter' }),
     );
   });
+
+  it('boosts manuals linked to a matching equipment tag above generic procedures', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-oem-pump',
+            ragflowDocumentId: 'doc-oem-pump',
+            filename: 'MN_MACB531.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['spare_parts_catalog'],
+              systems: ['bilge pumping', 'fire-fighting', 'diesel transfer'],
+              equipment: ['centrifugal self-priming pump', 'diesel engine'],
+              vendor: 'Gianneschi Pumps and Blowers',
+              model: 'MACB531',
+              aliases: ['MACB 531'],
+              summary:
+                'Operating manual for a diesel-driven self-priming pump with installation, starting, maintenance and spare parts.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [
+              {
+                tag: {
+                  key: 'equipment:bilge:pump_emergency',
+                  category: 'equipment',
+                  subcategory: 'bilge',
+                  item: 'pump_emergency',
+                  description: 'Emergency diesel-driven bilge and fire pump.',
+                },
+              },
+            ],
+          },
+          {
+            id: 'manual-generic-procedure',
+            ragflowDocumentId: 'doc-generic-procedure',
+            filename: 'Common Maintenance and Procedure Tasks.pdf',
+            category: 'HISTORY_PROCEDURES',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'HISTORY_PROCEDURES',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['general machinery'],
+              equipment: ['fuel filter'],
+              vendor: null,
+              model: null,
+              aliases: ['routine maintenance'],
+              summary:
+                'General maintenance tasks for filters, lubricants, and routine inspections.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:bilge:pump_emergency'],
+      candidateConceptIds: ['tag:equipment:bilge:pump_emergency'],
+      equipment: ['emergency bilge pump', 'fuel filter'],
+      systems: ['bilge', 'fuel'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'fuel filter replacement',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.88,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'how to replace fuel filter on emergency bilge pump',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS', 'HISTORY_PROCEDURES'],
+    });
+
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-oem-pump',
+        reasons: expect.arrayContaining(['manual_tag', 'manual_tag_text']),
+      }),
+    );
+  });
 });

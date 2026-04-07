@@ -87,6 +87,10 @@ export class ChatDocumentationCitationService {
 
     refined = this.refineCitationsForRequestedSource(queryContext, refined);
     refined = this.refineMaintenanceScheduleCitations(queryContext, refined);
+    refined = this.refineManualIntervalMaintenanceCitations(
+      queryContext,
+      refined,
+    );
 
     const referenceIds = [
       ...new Set(
@@ -1985,6 +1989,100 @@ export class ChatDocumentationCitationService {
     }
 
     return [...scheduleMatched, ...supplementalProcedureCitations];
+  }
+
+  private refineManualIntervalMaintenanceCitations(
+    query: string,
+    citations: ChatCitation[],
+  ): ChatCitation[] {
+    if (
+      citations.length === 0 ||
+      this.queryService.isPartsQuery(query) ||
+      !this.queryService.isIntervalMaintenanceQuery(query)
+    ) {
+      return citations;
+    }
+
+    const intervalPhrases = this.queryService.extractMaintenanceIntervalSearchPhrases(
+      query,
+    );
+    const scored = citations
+      .map((citation, index) => {
+        const haystack =
+          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+        let score = citation.score ?? 0;
+
+        if (
+          /\b(periodic\s+checks?\s+and\s+maintenance|perform\s+service\s+at\s+intervals?|maintenance\s+as\s+needed|maintenance\s+schedule|service\s+schedule)\b/i.test(
+            haystack,
+          )
+        ) {
+          score += 40;
+        }
+
+        if (
+          /\b(mainten[a-z]*|service|inspection|checks?|schedule)\b/i.test(
+            haystack,
+          )
+        ) {
+          score += 12;
+        }
+
+        if (
+          /\b(before\s+starting|first\s+check\s+after|every\s+\d{2,6}|annual|annually|monthly|hours?|hrs?)\b/i.test(
+            haystack,
+          )
+        ) {
+          score += 18;
+        }
+
+        if (
+          /\b(replace|inspect|check|clean|change|verify|adjust|test|sample)\b/i.test(
+            haystack,
+          )
+        ) {
+          score += 8;
+        }
+
+        const intervalMatches = intervalPhrases.filter((phrase) =>
+          haystack.includes(phrase.toLowerCase()),
+        ).length;
+        score += intervalMatches * 12;
+
+        if (
+          intervalMatches === 0 &&
+          /\b\d{2,6}\s*(?:mm|mbar|bar|psi|v|volt|volts|amp|amps|a|kw|kva|rpm|c)\b/i.test(
+            haystack,
+          ) &&
+          /\b(fuel\s+circuit|diesel\s+fuel\s+inlet|fuel\s+outlet|diameter|opening|connection)\b/i.test(
+            haystack,
+          )
+        ) {
+          score -= 25;
+        }
+
+        return {
+          citation,
+          index,
+          score,
+        };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        return left.index - right.index;
+      });
+
+    const topScore = scored[0]?.score ?? 0;
+    if (topScore <= 0) {
+      return citations;
+    }
+
+    return scored
+      .filter((entry) => entry.score >= topScore - 16)
+      .map((entry) => entry.citation);
   }
 
   private isProcedureSupportCitation(

@@ -342,4 +342,81 @@ describe('ChatDocumentationScanService', () => {
       }),
     ]);
   });
+
+  it('rescues interval-maintenance table chunks from a manual when the initial citation only matched an incidental number', async () => {
+    const ragflowService = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      listDocumentChunks: jest
+        .fn()
+        .mockImplementation((_datasetId: string, documentId: string) => {
+          if (documentId !== 'doc-mase') {
+            return Promise.resolve([]);
+          }
+
+          return Promise.resolve([
+            {
+              id: 'chunk-fuel-circuit',
+              content:
+                '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
+              meta: { page_num: 28 },
+            },
+            {
+              id: 'chunk-maintenance-table',
+              content:
+                '6.24 Periodic checks and maintenance <table><tr><td>Fuel system</td><td>Replace fuel filter and prefilter</td><td>Every 500 hrs. or 12 Month</td></tr><tr><td>Lubrication system</td><td>Change oil and filter</td><td>Every 500 hrs. or 12 Month</td></tr></table>',
+              meta: { page_num: 69 },
+            },
+          ]);
+        }),
+    };
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      ragflowService as never,
+      queryService,
+      {} as never,
+    );
+    jest
+      .spyOn(service as never, 'loadDocumentScanContexts' as never)
+      .mockResolvedValue([
+        {
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-mase',
+              ragflowDocumentId: 'doc-mase',
+              filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+              category: 'MANUALS',
+            },
+          ],
+          score: 1,
+        },
+      ]);
+
+    const citations =
+      await service.expandManualIntervalMaintenanceChunkCitations(
+        'ship-1',
+        'what shoul i do at 500 hourly diesel generator maintenanace?',
+        'what shoul i do at 500 hourly diesel generator maintenanace?',
+        [
+          {
+            shipManualId: 'manual-mase',
+            sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+            snippet:
+              '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
+            score: 0.97,
+          },
+        ],
+        ['MANUALS'],
+      );
+
+    expect(citations[0]).toEqual(
+      expect.objectContaining({
+        sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+        pageNumber: 69,
+        snippet: expect.stringContaining('Periodic checks and maintenance'),
+      }),
+    );
+    expect(citations[0]?.snippet).toContain('Replace fuel filter and prefilter');
+    expect(citations[0]?.snippet).toContain('Every 500 hrs');
+  });
 });

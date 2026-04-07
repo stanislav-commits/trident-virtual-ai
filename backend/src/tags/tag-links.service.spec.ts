@@ -469,4 +469,293 @@ describe('TagLinksService', () => {
       skipDuplicates: true,
     });
   });
+
+  it('prefers semantic-profile concept tags over noisy chunk-only matches for manuals', async () => {
+    const prisma = {
+      tag: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'bilge-pump-emergency',
+            key: 'equipment:bilge:pump_emergency',
+            category: 'equipment',
+            subcategory: 'bilge',
+            item: 'pump_emergency',
+            description: 'Emergency diesel-driven bilge and fire pump.',
+          },
+          {
+            id: 'shaft-ps',
+            key: 'equipment:propulsion:shaft_ps',
+            category: 'equipment',
+            subcategory: 'propulsion',
+            item: 'shaft_ps',
+            description:
+              'Port side propeller shaft, shaft seal, and associated bearings.',
+          },
+        ]),
+      },
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-1',
+            filename: 'OEM pump manual.pdf',
+            category: 'MANUALS',
+            ragflowDocumentId: 'doc-1',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:bilge:pump_emergency'],
+              secondaryConceptIds: [],
+              systems: ['bilge system'],
+              equipment: ['emergency bilge pump'],
+              vendor: 'Gianneschi',
+              model: 'MACB531',
+              aliases: ['Emergency Bilge Pump'],
+              summary: 'Manual for an emergency bilge pump.',
+              sections: [],
+              pageTopics: [],
+            },
+            ship: {
+              ragflowDatasetId: 'dataset-1',
+            },
+            tags: [],
+          },
+        ]),
+      },
+      shipManualTag: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          content:
+            'Unpack the pump and check that the shaft turns freely before use.',
+        },
+      ]),
+    };
+    const service = new TagLinksService(
+      prisma as never,
+      new TagMatcherService(),
+      ragflow as never,
+    );
+
+    await service.autoLinkManuals(['manual-1']);
+
+    expect(prisma.shipManualTag.createMany).toHaveBeenCalledWith({
+      data: [{ shipManualId: 'manual-1', tagId: 'bilge-pump-emergency' }],
+      skipDuplicates: true,
+    });
+  });
+
+  it('can infer an emergency bilge pump tag from semantic profile text for a generic OEM manual', async () => {
+    const prisma = {
+      tag: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'bilge-pump-emergency',
+            key: 'equipment:bilge:pump_emergency',
+            category: 'equipment',
+            subcategory: 'bilge',
+            item: 'pump_emergency',
+            description: 'Emergency diesel-driven bilge and fire pump.',
+          },
+          {
+            id: 'shaft-ps',
+            key: 'equipment:propulsion:shaft_ps',
+            category: 'equipment',
+            subcategory: 'propulsion',
+            item: 'shaft_ps',
+            description:
+              'Port side propeller shaft, shaft seal, and associated bearings.',
+          },
+        ]),
+      },
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-1',
+            filename: 'OEM pump manual.pdf',
+            category: 'MANUALS',
+            ragflowDocumentId: 'doc-1',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['spare_parts_catalog'],
+              systems: ['bilge pumping', 'fire-fighting', 'diesel transfer'],
+              equipment: ['centrifugal self-priming pump', 'diesel engine'],
+              vendor: 'Gianneschi',
+              model: 'MACB531',
+              aliases: ['MACB 531'],
+              summary:
+                'Operating manual for a diesel-driven self-priming pump used for bilge, fire-fighting and transfer duties.',
+              sections: [
+                {
+                  title: 'Diesel Engine Maintenance',
+                  pageStart: 9,
+                  pageEnd: 9,
+                  conceptIds: [],
+                  sectionType: 'checklist',
+                  summary:
+                    'Cold-engine maintenance intervals for oil, air cleaner, oil filter, fuel filter and cooling fins.',
+                },
+              ],
+              pageTopics: [],
+            },
+            ship: {
+              ragflowDatasetId: 'dataset-1',
+            },
+            tags: [],
+          },
+        ]),
+      },
+      shipManualTag: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          content:
+            'This booklet describes the operating procedures for MACB 531 series el/pump. Most common uses are: Bilge, Diesel and Oil Transfer, Fire-Fighting.',
+        },
+      ]),
+    };
+    const service = new TagLinksService(
+      prisma as never,
+      new TagMatcherService(),
+      ragflow as never,
+    );
+
+    await service.autoLinkManuals(['manual-1']);
+
+    expect(prisma.shipManualTag.createMany).toHaveBeenCalledWith({
+      data: [{ shipManualId: 'manual-1', tagId: 'bilge-pump-emergency' }],
+      skipDuplicates: true,
+    });
+  });
+
+  it('does not let noisy primary concepts override stronger equipment-role evidence', async () => {
+    const prisma = {
+      tag: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'bilge-pump-emergency',
+            key: 'equipment:bilge:pump_emergency',
+            category: 'equipment',
+            subcategory: 'bilge',
+            item: 'pump_emergency',
+            description: 'Emergency diesel-driven bilge and fire pump.',
+          },
+          {
+            id: 'fire-pump',
+            key: 'equipment:fire:pump',
+            category: 'equipment',
+            subcategory: 'fire',
+            item: 'pump',
+            description: 'Fire-fighting pump.',
+          },
+          {
+            id: 'water-tank',
+            key: 'equipment:water:tank',
+            category: 'equipment',
+            subcategory: 'water',
+            item: 'tank',
+            description: 'Fresh water tank.',
+          },
+        ]),
+      },
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-1',
+            filename: 'MN_MACB531.pdf',
+            category: 'MANUALS',
+            ragflowDocumentId: 'doc-1',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [
+                'spare_parts_catalog',
+                'regulatory_compliance',
+                'tag:equipment:fire:pump',
+                'tag:equipment:water:tank',
+              ],
+              secondaryConceptIds: ['spare_parts_catalog'],
+              systems: [
+                'sea water transfer',
+                'fresh water transfer',
+                'diesel transfer',
+                'bilge pumping',
+                'fire-fighting',
+                'grey water',
+              ],
+              equipment: [
+                'centrifugal self-priming pump',
+                'diesel engine',
+                'mechanical seal',
+                'impeller',
+                'bearings',
+              ],
+              vendor: 'Gianneschi',
+              model: 'MACB531',
+              aliases: [
+                'MACB 531',
+                'centrifugal self-priming pumps',
+                'elettropompe serie MACB 531',
+                'motopompe MACB 531',
+                'Lombardini 15LD500',
+              ],
+              summary:
+                'Operating and maintenance manual for Gianneschi MACB531 self-priming centrifugal pumps, with installation, starting, maintenance, spare parts and overhaul steps.',
+              sections: [
+                {
+                  title: 'Pump Maintenance',
+                  pageStart: 9,
+                  pageEnd: 10,
+                  conceptIds: [],
+                  sectionType: 'checklist',
+                  summary:
+                    'Service intervals cover pump body inspection, seal replacement, fuel filter checks and diesel-engine maintenance.',
+                },
+              ],
+              pageTopics: [],
+            },
+            ship: {
+              ragflowDatasetId: 'dataset-1',
+            },
+            tags: [],
+          },
+        ]),
+      },
+      shipManualTag: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      listDocumentChunks: jest.fn().mockResolvedValue([]),
+    };
+    const service = new TagLinksService(
+      prisma as never,
+      new TagMatcherService(),
+      ragflow as never,
+    );
+
+    await service.autoLinkManuals(['manual-1']);
+
+    expect(prisma.shipManualTag.createMany).toHaveBeenCalled();
+    const createManyArg = prisma.shipManualTag.createMany.mock.calls[0][0];
+    expect(createManyArg.skipDuplicates).toBe(true);
+    expect(createManyArg.data).toEqual(
+      expect.arrayContaining([
+        { shipManualId: 'manual-1', tagId: 'bilge-pump-emergency' },
+      ]),
+    );
+  });
 });

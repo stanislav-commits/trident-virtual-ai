@@ -14,6 +14,15 @@ interface SearchableSemanticManual {
   filename: string;
   category: string | null;
   semanticProfile: unknown;
+  tags?: Array<{
+    tag: {
+      key: string;
+      category: string;
+      subcategory: string;
+      item: string;
+      description: string | null;
+    };
+  }>;
 }
 
 interface DistinctiveQueryAnchor {
@@ -177,6 +186,19 @@ export class ManualSemanticMatcherService {
               filename: true,
               category: true,
               semanticProfile: true,
+              tags: {
+                select: {
+                  tag: {
+                    select: {
+                      key: true,
+                      category: true,
+                      subcategory: true,
+                      item: true,
+                      description: true,
+                    },
+                  },
+                },
+              },
             },
           },
         },
@@ -193,6 +215,19 @@ export class ManualSemanticMatcherService {
         filename: true,
         category: true,
         semanticProfile: true,
+        tags: {
+          select: {
+            tag: {
+              select: {
+                key: true,
+                category: true,
+                subcategory: true,
+                item: true,
+                description: true,
+              },
+            },
+          },
+        },
       },
     });
   }
@@ -245,6 +280,12 @@ export class ManualSemanticMatcherService {
     if (sourcePreferenceScore > 0) {
       score += sourcePreferenceScore;
       reasons.push('source_preference');
+    }
+
+    const tagScore = this.scoreManualTags(manual, semanticQuery, params.queryText);
+    if (tagScore.score > 0) {
+      score += tagScore.score;
+      reasons.push(...tagScore.reasons);
     }
 
     if (profile) {
@@ -368,6 +409,65 @@ export class ManualSemanticMatcherService {
     }
 
     return { score, reasons };
+  }
+
+  private scoreManualTags(
+    manual: SearchableSemanticManual,
+    query: DocumentationSemanticQuery,
+    queryText: string,
+  ): { score: number; reasons: string[] } {
+    const manualTags = manual.tags ?? [];
+    const tagKeys = manualTags.map((entry) => entry.tag.key);
+    if (tagKeys.length === 0) {
+      return { score: 0, reasons: [] };
+    }
+
+    const reasons: string[] = [];
+    let score = 0;
+
+    const selectedTagConcepts = query.selectedConceptIds
+      .filter((conceptId) => conceptId.startsWith('tag:'))
+      .map((conceptId) => conceptId.slice(4));
+    const candidateTagConcepts = query.candidateConceptIds
+      .filter((conceptId) => conceptId.startsWith('tag:'))
+      .map((conceptId) => conceptId.slice(4));
+    const tagKeySet = new Set(tagKeys);
+
+    for (const tagKey of selectedTagConcepts) {
+      if (tagKeySet.has(tagKey)) {
+        score += 30;
+        reasons.push('manual_tag');
+      }
+    }
+
+    for (const tagKey of candidateTagConcepts) {
+      if (tagKeySet.has(tagKey)) {
+        score += 4;
+      }
+    }
+
+    const queryTokens = this.tokenize(queryText).filter(
+      (token) => !PROFILE_TEXT_QUERY_STOP_WORDS.has(token),
+    );
+    if (queryTokens.length > 0) {
+      const scoreBeforeTagText = score;
+      const manualTagText = manualTags
+        .flatMap(({ tag }) => [
+          tag.key,
+          tag.category,
+          tag.subcategory,
+          tag.item,
+          tag.description,
+        ])
+        .filter((value): value is string => Boolean(value))
+        .join(' ');
+      score += this.scoreProfileField(manualTagText, queryTokens, 4, 20);
+      if (score > scoreBeforeTagText) {
+        reasons.push('manual_tag_text');
+      }
+    }
+
+    return { score, reasons: [...new Set(reasons)] };
   }
 
   private scoreProfileText(

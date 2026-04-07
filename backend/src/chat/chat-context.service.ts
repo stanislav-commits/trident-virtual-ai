@@ -139,10 +139,12 @@ interface SearchableManual {
 
 interface LexicalQueryProfile {
   anchorTokens: string[];
+  maintenanceIntervalPhrases: string[];
   phrases: string[];
   requiredSubjectTokens: string[];
   strongPhrases: string[];
   tokens: string[];
+  wantsMaintenanceIntervalEvidence: boolean;
   wantsProcedureEvidence: boolean;
   wantsSpecificationEvidence: boolean;
 }
@@ -832,6 +834,15 @@ export class ChatContextService {
     const inferredLowercaseAcronymTokens =
       lowercaseAcronymTokens.length >= 2 ? lowercaseAcronymTokens : [];
 
+    const maintenanceIntervalPhrases = this.extractMaintenanceIntervalPhrases(
+      lexicalQuery,
+    );
+    const wantsMaintenanceIntervalEvidence =
+      maintenanceIntervalPhrases.length > 0 &&
+      /\b(service|servicing|mainten[a-z]*|inspection|checks?|tasks?|schedule|overhaul|included|due|generator|genset|engine|pump|compressor|watermaker|separator|filter)\b/i.test(
+        lexicalQuery,
+      );
+
     return {
       tokens,
       phrases: phraseList,
@@ -848,10 +859,12 @@ export class ChatContextService {
           ...inferredLowercaseAcronymTokens,
         ]),
       ],
+      maintenanceIntervalPhrases,
+      wantsMaintenanceIntervalEvidence,
       wantsProcedureEvidence:
         /\b(step\s*by\s*step|steps?|procedure|procedures|process|check\s*list|checklist|instructions?|how\s+(?:do|should)\s+i|what\s+should\s+i\s+do)\b/i.test(
           lexicalQuery,
-        ),
+        ) || wantsMaintenanceIntervalEvidence,
       wantsSpecificationEvidence:
         /\b(technical\s+data|technical\s+specifications?|specifications?|spec\s+sheet|data\s+sheet|rated|rating|ratings|parameters?|dimensions?|capacity|capacities|limits?|ranges?)\b/i.test(
           lexicalQuery,
@@ -875,6 +888,10 @@ export class ChatContextService {
     const procedureEvidenceScore = queryProfile.wantsProcedureEvidence
       ? this.scoreProcedureEvidence(content, normalizedContent)
       : 0;
+    const maintenanceIntervalEvidenceScore =
+      queryProfile.wantsMaintenanceIntervalEvidence
+        ? this.scoreMaintenanceIntervalEvidence(queryProfile, content, normalizedContent)
+        : 0;
     if (queryProfile.anchorTokens.length > 0) {
       const anchorMatches = this.countAnchorMatches(
         queryProfile.anchorTokens,
@@ -894,7 +911,8 @@ export class ChatContextService {
       ) === 0 &&
       !this.hasStrongPhraseMatch(queryProfile, normalizedContent) &&
       specificationHeadingScore === 0 &&
-      procedureEvidenceScore === 0
+      procedureEvidenceScore === 0 &&
+      maintenanceIntervalEvidenceScore === 0
     ) {
       return 0;
     }
@@ -931,11 +949,15 @@ export class ChatContextService {
     if (queryProfile.wantsProcedureEvidence) {
       score += procedureEvidenceScore;
     }
+    if (queryProfile.wantsMaintenanceIntervalEvidence) {
+      score += maintenanceIntervalEvidenceScore;
+    }
 
     if (
       matchedTokens === 0 &&
       specificationHeadingScore === 0 &&
-      procedureEvidenceScore === 0
+      procedureEvidenceScore === 0 &&
+      maintenanceIntervalEvidenceScore === 0
     ) {
       return 0;
     }
@@ -946,6 +968,7 @@ export class ChatContextService {
       phraseMatches > 0 ||
       specificationHeadingScore > 0 ||
       procedureEvidenceScore > 0 ||
+      maintenanceIntervalEvidenceScore > 0 ||
       (queryTokenCount <= 2 &&
         queryProfile.tokens.some(
           (token) => token.length >= 5 && normalizedContent.includes(token),
@@ -986,6 +1009,97 @@ export class ChatContextService {
     }
 
     return score;
+  }
+
+  private scoreMaintenanceIntervalEvidence(
+    queryProfile: LexicalQueryProfile,
+    rawContent: string,
+    normalizedContent: string,
+  ): number {
+    let score = 0;
+
+    if (
+      /\b(periodic\s+checks?\s+and\s+maintenance|perform\s+service\s+at\s+intervals?|maintenance\s+as\s+needed|maintenance\s+schedule|service\s+schedule)\b/i.test(
+        normalizedContent,
+      )
+    ) {
+      score += 8;
+    }
+    if (
+      /\b(before\s+starting|first\s+check\s+after|every\s+\d{2,6}|annual|annually|monthly|hours?|hrs?)\b/i.test(
+        normalizedContent,
+      )
+    ) {
+      score += 5;
+    }
+    if (/<table\b/i.test(rawContent)) {
+      score += 3;
+    }
+    if (
+      /\b(general|fuel\s+system|lubrication\s+system|cooling\s+system|gas\s+intake|electrical\s+system|engine\s+and\s+assembly|remote\s+control\s+system)\b/i.test(
+        normalizedContent,
+      )
+    ) {
+      score += 4;
+    }
+    if (
+      /\b(replace|inspect|check|clean|change|verify|adjust|test|sample)\b/i.test(
+        normalizedContent,
+      )
+    ) {
+      score += 3;
+    }
+
+    const intervalMatches = queryProfile.maintenanceIntervalPhrases.filter((phrase) =>
+      normalizedContent.includes(phrase),
+    ).length;
+    score += intervalMatches * 6;
+
+    if (
+      intervalMatches === 0 &&
+      /\b(fuel\s+circuit|diesel\s+fuel\s+inlet|fuel\s+outlet|inside\s+diameter|non-?return\s+valve|opening)\b/i.test(
+        normalizedContent,
+      )
+    ) {
+      score -= 6;
+    }
+
+    return score;
+  }
+
+  private extractMaintenanceIntervalPhrases(query: string): string[] {
+    const phrases = new Set<string>();
+
+    for (const match of query.matchAll(
+      /\b(\d{2,6})\s*(h(?:ours?|rs?)?|hourly)\b/gi,
+    )) {
+      const value = match[1];
+      phrases.add(`${value} hour`);
+      phrases.add(`${value} hours`);
+      phrases.add(`${value} hrs`);
+      phrases.add(`every ${value}`);
+    }
+
+    for (const match of query.matchAll(/\b(\d{1,4})\s*(months?|month)\b/gi)) {
+      const value = match[1];
+      phrases.add(`${value} month`);
+      phrases.add(`${value} months`);
+      phrases.add(`every ${value}`);
+    }
+
+    for (const match of query.matchAll(/\b(\d{1,4})\s*(years?|year)\b/gi)) {
+      const value = match[1];
+      phrases.add(`${value} year`);
+      phrases.add(`${value} years`);
+      phrases.add(`every ${value}`);
+    }
+
+    if (/\bannual|annually\b/i.test(query)) {
+      phrases.add('annual');
+      phrases.add('annually');
+    }
+
+    return [...phrases];
   }
 
   private scoreSpecificationEvidence(

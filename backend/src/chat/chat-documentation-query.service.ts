@@ -924,9 +924,38 @@ export class ChatDocumentationQueryService {
   }
 
   isProcedureQuery(query: string): boolean {
-    return /\b(procedure|steps?|how\s+to|how\s+do\s+i|instruction|instructions|checklist|perform|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)\b/i.test(
-      query,
+    return (
+      /\b(procedure|steps?|how\s+to|how\s+do\s+i|instruction|instructions|checklist|perform|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)\b/i.test(
+        query,
+      ) || this.isIntervalMaintenanceQuery(query)
     );
+  }
+
+  isIntervalMaintenanceQuery(query: string): boolean {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return false;
+
+    const hasIntervalSignal =
+      /\b\d{2,6}\s*(?:h(?:ours?|rs?)?|hourly|months?|month|years?|year)\b/i.test(
+        normalized,
+      ) ||
+      /\b(annual|annually|monthly|weekly|daily|periodic|intervals?)\b/i.test(
+        normalized,
+      );
+    if (!hasIntervalSignal) {
+      return false;
+    }
+
+    const hasMaintenanceSignal =
+      /\b(service|servicing|mainten[a-z]*|inspection|checks?|tasks?|schedule|overhaul|included|due)\b/i.test(
+        normalized,
+      );
+    const hasActionSignal =
+      /\b(how\s+to|how\s+do\s+i|what\s+should\s+i\s+do|what\s+shoul\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+is\s+included|what\s+should\s+be\s+done|perform|carry\s+out)\b/i.test(
+        normalized,
+      );
+
+    return hasMaintenanceSignal || hasActionSignal;
   }
 
   isAuditChecklistLookupQuery(query: string): boolean {
@@ -1378,8 +1407,8 @@ export class ChatDocumentationQueryService {
   extractSignificantNumericTokens(query: string): string[] {
     const tokens = new Set<string>();
 
-    for (const match of query.matchAll(/\b(\d{2,6})\s*(hrs?|hours?)\b/gi)) {
-      tokens.add(match[1]);
+    for (const phrase of this.extractMaintenanceIntervalSearchPhrases(query)) {
+      tokens.add(phrase);
     }
 
     for (const match of query.matchAll(/\b1p\d{2,}\b/gi)) {
@@ -1387,6 +1416,45 @@ export class ChatDocumentationQueryService {
     }
 
     return [...tokens];
+  }
+
+  extractMaintenanceIntervalSearchPhrases(query: string): string[] {
+    const phrases = new Set<string>();
+
+    for (const match of query.matchAll(
+      /\b(\d{2,6})\s*(h(?:ours?|rs?)?|hourly)\b/gi,
+    )) {
+      const value = match[1];
+      phrases.add(`${value} hour`);
+      phrases.add(`${value} hours`);
+      phrases.add(`${value} hrs`);
+      phrases.add(`every ${value}`);
+    }
+
+    for (const match of query.matchAll(/\b(\d{1,4})\s*(months?|month)\b/gi)) {
+      const value = match[1];
+      phrases.add(`${value} month`);
+      phrases.add(`${value} months`);
+      phrases.add(`every ${value}`);
+    }
+
+    for (const match of query.matchAll(/\b(\d{1,4})\s*(years?|year)\b/gi)) {
+      const value = match[1];
+      phrases.add(`${value} year`);
+      phrases.add(`${value} years`);
+      phrases.add(`every ${value}`);
+    }
+
+    if (/\bannual|annually\b/i.test(query)) {
+      phrases.add('annual');
+      phrases.add('annually');
+    }
+
+    if (/\bperiodic\b/i.test(query)) {
+      phrases.add('periodic');
+    }
+
+    return [...phrases];
   }
 
   private isContextualFollowUpQuery(query: string): boolean {
