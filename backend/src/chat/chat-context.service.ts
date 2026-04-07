@@ -33,6 +33,8 @@ const DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS = (() => {
   return Math.min(parsed, 4000);
 })();
 
+const MAX_SCOPED_CHUNK_FALLBACK_DOCUMENTS = 6;
+
 interface RAGFlowSearchResult {
   id: string;
   doc_id: string;
@@ -59,6 +61,11 @@ interface SearchableManual {
   ragflowDocumentId?: string | null;
   filename?: string | null;
   category?: string | null;
+}
+
+interface LexicalQueryProfile {
+  phrases: string[];
+  tokens: string[];
 }
 
 @Injectable()
@@ -470,11 +477,31 @@ export class ChatContextService {
       retrievalK,
       Boolean(allowedDocumentIds?.size),
     );
-    const results = await this.ragflow.searchDataset(
-      datasetId,
-      query,
-      searchPoolSize,
-    );
+    let results: RAGFlowSearchResult[];
+    try {
+      results = await this.ragflow.searchDataset(
+        datasetId,
+        query,
+        searchPoolSize,
+      );
+    } catch (error) {
+      if (!this.shouldUseScopedChunkFallback(allowedDocumentIds, manuals)) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `RAGFlow retrieval failed for scoped query="${query.replace(/\s+/g, ' ').trim()}"; falling back to chunk scan for ${allowedDocumentIds.size} document(s): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return this.searchScopedDocumentChunks({
+        datasetId,
+        query,
+        retrievalK,
+        snippetCharLimit,
+        manuals,
+        allowedDocumentIds,
+        sourceTitleSuffix,
+      });
+    }
 
     return this.mapResultsToCitations(
       results,
@@ -483,6 +510,213 @@ export class ChatContextService {
       allowedDocumentIds,
       sourceTitleSuffix,
     );
+  }
+
+  private shouldUseScopedChunkFallback(
+    allowedDocumentIds: Set<string> | null | undefined,
+    manuals: SearchableManual[],
+  ): allowedDocumentIds is Set<string> {
+    if (!allowedDocumentIds?.size) {
+      return false;
+    }
+    if (allowedDocumentIds.size > MAX_SCOPED_CHUNK_FALLBACK_DOCUMENTS) {
+      return false;
+    }
+
+    const knownDocumentIds = new Set(
+      manuals
+        .map((manual) => manual.ragflowDocumentId?.trim())
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    return [...allowedDocumentIds].every((id) => knownDocumentIds.has(id));
+  }
+
+  private async searchScopedDocumentChunks(params: {
+    datasetId: string;
+    query: string;
+    retrievalK: number;
+    snippetCharLimit: number;
+    manuals: SearchableManual[];
+    allowedDocumentIds: Set<string>;
+    sourceTitleSuffix?: string;
+  }): Promise<ContextCitation[]> {
+    const {
+      datasetId,
+      query,
+      retrievalK,
+      snippetCharLimit,
+      manuals,
+      allowedDocumentIds,
+      sourceTitleSuffix,
+    } = params;
+    const queryProfile = this.buildLexicalQueryProfile(query);
+
+    if (queryProfile.tokens.length === 0) {
+      return [];
+    }
+
+    const scoredResults: RAGFlowSearchResult[] = [];
+
+    for (const documentId of allowedDocumentIds) {
+      try {
+        const chunks = await this.ragflow.listDocumentChunks(
+          datasetId,
+          documentId,
+          300,
+        );
+
+        for (const chunk of chunks) {
+          const score = this.scoreChunkLexically(queryProfile, chunk.content);
+          if (score <= 0) {
+            continue;
+          }
+          scoredResults.push({
+            ...chunk,
+            similarity: score,
+          });
+        }
+      } catch (error) {
+        this.logger.warn(
+          `RAGFlow chunk scan fallback failed for document=${documentId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    if (scoredResults.length === 0) {
+      return [];
+    }
+
+    scoredResults.sort((left, right) => {
+      if ((right.similarity ?? 0) !== (left.similarity ?? 0)) {
+        return (right.similarity ?? 0) - (left.similarity ?? 0);
+      }
+      return left.id.localeCompare(right.id);
+    });
+
+    return this.mapResultsToCitations(
+      scoredResults.slice(0, retrievalK),
+      manuals,
+      snippetCharLimit,
+      allowedDocumentIds,
+      sourceTitleSuffix,
+    );
+  }
+
+  private buildLexicalQueryProfile(query: string): LexicalQueryProfile {
+    const normalizedQuery = this.normalizeLexicalText(query);
+    const stopWords = new Set([
+      'about',
+      'and',
+      'are',
+      'can',
+      'does',
+      'for',
+      'from',
+      'how',
+      'into',
+      'manual',
+      'now',
+      'of',
+      'on',
+      'page',
+      'please',
+      'say',
+      'section',
+      'should',
+      'show',
+      'tell',
+      'that',
+      'the',
+      'this',
+      'to',
+      'what',
+      'when',
+      'where',
+      'which',
+      'with',
+    ]);
+    const tokens = [
+      ...new Set(
+        normalizedQuery
+          .split(' ')
+          .filter((token) => token.length > 2 && !stopWords.has(token)),
+      ),
+    ];
+    const phrases = new Set<string>();
+
+    for (let index = 0; index < tokens.length - 1; index += 1) {
+      phrases.add(`${tokens[index]} ${tokens[index + 1]}`);
+    }
+    for (let index = 0; index < tokens.length - 2; index += 1) {
+      phrases.add(`${tokens[index]} ${tokens[index + 1]} ${tokens[index + 2]}`);
+    }
+
+    return {
+      tokens,
+      phrases: [...phrases],
+    };
+  }
+
+  private scoreChunkLexically(
+    queryProfile: LexicalQueryProfile,
+    content: string,
+  ): number {
+    const normalizedContent = this.normalizeLexicalText(content);
+    if (!normalizedContent) {
+      return 0;
+    }
+
+    const contentTokens = new Set(normalizedContent.split(' '));
+    let score = 0;
+    let matchedTokens = 0;
+
+    for (const token of queryProfile.tokens) {
+      if (contentTokens.has(token)) {
+        matchedTokens += 1;
+        score += token.length >= 5 ? 1.4 : 1;
+      } else if (token.length >= 6 && normalizedContent.includes(token)) {
+        matchedTokens += 1;
+        score += 0.6;
+      }
+    }
+
+    let phraseMatches = 0;
+    for (const phrase of queryProfile.phrases) {
+      if (normalizedContent.includes(phrase)) {
+        phraseMatches += 1;
+        score += 1.75;
+      }
+    }
+
+    if (matchedTokens === 0) {
+      return 0;
+    }
+
+    const queryTokenCount = queryProfile.tokens.length;
+    const enoughSignal =
+      matchedTokens >= Math.min(2, queryTokenCount) ||
+      phraseMatches > 0 ||
+      (queryTokenCount <= 2 &&
+        queryProfile.tokens.some(
+          (token) => token.length >= 5 && normalizedContent.includes(token),
+        ));
+
+    if (!enoughSignal) {
+      return 0;
+    }
+
+    return score + matchedTokens / Math.max(1, queryTokenCount);
+  }
+
+  private normalizeLexicalText(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/[_:./\\-]+/g, ' ')
+      .replace(/[^a-z0-9\s]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private mapResultsToCitations(

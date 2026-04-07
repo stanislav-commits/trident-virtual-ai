@@ -300,6 +300,90 @@ describe('ChatContextService', () => {
     ]);
   });
 
+  it('uses a scoped chunk scan when RAGFlow retrieval fails for a selected manual', async () => {
+    const prisma = {
+      ship: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'ship-1',
+            name: 'Sea Wolf X',
+            ragflowDatasetId: 'dataset-1',
+            manuals: [
+              {
+                id: 'manual-ups',
+                ragflowDocumentId: 'doc-ups',
+                filename: 'UPS Manual.pdf',
+                category: 'MANUALS',
+              },
+              {
+                id: 'manual-other',
+                ragflowDocumentId: 'doc-other',
+                filename: 'Other Manual.pdf',
+                category: 'MANUALS',
+              },
+            ],
+          },
+        ]),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      searchDataset: jest
+        .fn()
+        .mockRejectedValue(new Error('RAGFlow retrieval failed')),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-unrelated',
+          doc_id: 'doc-ups',
+          doc_name: 'UPS Manual.pdf',
+          content: 'Installation dimensions and cabinet clearances.',
+          meta: { page_num: 2 },
+        },
+        {
+          id: 'chunk-modes',
+          doc_id: 'doc-ups',
+          doc_name: 'UPS Manual.pdf',
+          content:
+            'UPS operating modes include normal mode, battery mode, bypass mode and ECO mode.',
+          meta: {
+            page_num: 8,
+            category: 'MANUALS',
+            category_label: 'Manuals',
+          },
+        },
+      ]),
+    };
+
+    const service = new ChatContextService(prisma as never, ragflow as never);
+
+    const citations = await service.findContextForAdminQuery(
+      'What are the UPS operating modes?',
+      2,
+      2,
+      ['MANUALS'],
+      ['manual-ups'],
+    );
+
+    expect(citations).toEqual([
+      expect.objectContaining({
+        shipManualId: 'manual-ups',
+        chunkId: 'chunk-modes',
+        sourceTitle: 'UPS Manual.pdf (Sea Wolf X)',
+        pageNumber: 8,
+      }),
+    ]);
+    expect(ragflow.searchDataset).toHaveBeenCalledWith(
+      'dataset-1',
+      'What are the UPS operating modes?',
+      48,
+    );
+    expect(ragflow.listDocumentChunks).toHaveBeenCalledWith(
+      'dataset-1',
+      'doc-ups',
+      300,
+    );
+  });
+
   it('applies the same tag-first retrieval preference for admin document searches', async () => {
     const prisma = {
       ship: {
