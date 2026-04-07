@@ -595,6 +595,8 @@ export class ChatService {
           normalizedQuery: effectiveNormalizedQuery,
           previousUserQuery,
           messageHistory,
+          sourceLockActive,
+          lockedManualId: documentationFollowUpState?.lockedManualId,
         });
       const carriedForwardSummaryDocumentationCitations =
         this.getCarriedForwardSummaryDocumentationCitations({
@@ -1497,13 +1499,37 @@ export class ChatService {
     normalizedQuery: ChatNormalizedQuery;
     previousUserQuery?: string;
     messageHistory?: ChatHistoryMessage[];
+    sourceLockActive?: boolean;
+    lockedManualId?: string | null;
   }): ChatCitation[] {
-    const { userQuery, normalizedQuery, previousUserQuery, messageHistory } =
-      params;
+    const {
+      userQuery,
+      normalizedQuery,
+      previousUserQuery,
+      messageHistory,
+      sourceLockActive,
+      lockedManualId,
+    } = params;
+    if (!messageHistory?.length) {
+      return [];
+    }
+
+    const canCarryLockedSourceCitations =
+      sourceLockActive &&
+      this.shouldCarryForwardLockedDocumentationCitations(userQuery);
+    if (canCarryLockedSourceCitations) {
+      const carried = this.findRecentLockedDocumentationCitations(
+        messageHistory,
+        lockedManualId,
+      );
+      if (carried.length > 0) {
+        return carried;
+      }
+    }
+
     if (
       normalizedQuery.followUpMode !== 'follow_up' ||
-      !this.isPersonnelDetailFollowUpQuery(userQuery) ||
-      !messageHistory?.length
+      !this.isPersonnelDetailFollowUpQuery(userQuery)
     ) {
       return [];
     }
@@ -1562,6 +1588,99 @@ export class ChatService {
     }
 
     return [];
+  }
+
+  private shouldCarryForwardLockedDocumentationCitations(
+    userQuery: string,
+  ): boolean {
+    const trimmed = userQuery.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 12) {
+      return false;
+    }
+
+    return (
+      /\b(it|its|that|this|they|them|their|those|these|same|one)\b/i.test(
+        trimmed,
+      ) ||
+      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|warnings?|requirements?|limits?|tools?|materials?)\b/i.test(
+        trimmed,
+      )
+    );
+  }
+
+  private findRecentLockedDocumentationCitations(
+    messageHistory: ChatHistoryMessage[],
+    lockedManualId?: string | null,
+  ): ChatCitation[] {
+    const normalizedLockedManualId = lockedManualId?.trim();
+
+    for (let index = messageHistory.length - 1; index >= 0; index -= 1) {
+      const message = messageHistory[index];
+      if (message.role !== 'assistant') {
+        continue;
+      }
+
+      const context =
+        message.ragflowContext && typeof message.ragflowContext === 'object'
+          ? (message.ragflowContext as Record<string, unknown>)
+          : null;
+      if (context?.usedDocumentation !== true) {
+        continue;
+      }
+
+      const references = message.contextReferences ?? [];
+      if (references.length === 0) {
+        continue;
+      }
+
+      const contextualManualId =
+        normalizedLockedManualId ??
+        this.extractLockedManualIdFromRagflowContext(context);
+      const sourceScopedReferences = contextualManualId
+        ? references.filter(
+            (reference) => reference.shipManualId === contextualManualId,
+          )
+        : references;
+      if (sourceScopedReferences.length === 0) {
+        continue;
+      }
+
+      const manualIds = [
+        ...new Set(
+          sourceScopedReferences
+            .map((reference) => reference.shipManualId)
+            .filter((manualId): manualId is string => Boolean(manualId)),
+        ),
+      ];
+      if (!contextualManualId && manualIds.length !== 1) {
+        continue;
+      }
+
+      return this.dedupeChatCitations(sourceScopedReferences);
+    }
+
+    return [];
+  }
+
+  private extractLockedManualIdFromRagflowContext(
+    context: Record<string, unknown> | null,
+  ): string | null {
+    const followUpState =
+      context?.documentationFollowUpState &&
+      typeof context.documentationFollowUpState === 'object'
+        ? (context.documentationFollowUpState as Record<string, unknown>)
+        : null;
+    const lockedManualId =
+      typeof followUpState?.lockedManualId === 'string'
+        ? followUpState.lockedManualId.trim()
+        : '';
+
+    return lockedManualId || null;
   }
 
   private getCarriedForwardSummaryDocumentationCitations(params: {

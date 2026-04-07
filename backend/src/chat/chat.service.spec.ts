@@ -4203,6 +4203,109 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('reuses recent locked-source citations for short documentation detail follow-ups', async () => {
+    const previousCitation = {
+      shipManualId: 'manual-1',
+      chunkId: 'chunk-parts',
+      score: 0.91,
+      pageNumber: 14,
+      snippet:
+        'Seal kit table: O-Ring 3243 quantity 1; Lip Seal 40x58x7 quantity 2.',
+      sourceTitle: 'Selected Parts Manual.pdf',
+      shipManual: { category: 'MANUALS' },
+    };
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What are the quantities?',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+        {
+          role: 'assistant',
+          content: 'The seal kit parts are listed on page 14.',
+          ragflowContext: {
+            usedDocumentation: true,
+            documentationSourceLockActive: true,
+            documentationFollowUpState: {
+              lockedManualId: 'manual-1',
+              lockedManualTitle: 'Selected Parts Manual.pdf',
+              sourceLock: true,
+            },
+          },
+          contextReferences: [previousCitation],
+        },
+        {
+          role: 'user',
+          content: 'What parts are included in the seal kit?',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: 'What parts are included in the seal kit?',
+      retrievalQuery: 'What are the quantities?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+      sourceLockActive: true,
+      documentationFollowUpState: {
+        lockedManualId: 'manual-1',
+        lockedManualTitle: 'Selected Parts Manual.pdf',
+        lockedDocumentId: 'doc-1',
+        sourceLock: true,
+      },
+    });
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {},
+      totalActiveMetrics: 0,
+      matchedMetrics: 0,
+      prefiltered: false,
+      matchMode: 'none',
+      clarification: null,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'The cited kit table lists quantity 1 for the O-ring and quantity 2 for the lip seal.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What are the quantities?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        citations: [
+          expect.objectContaining({
+            pageNumber: 14,
+            sourceTitle: 'Selected Parts Manual.pdf',
+          }),
+        ],
+        noDocumentation: false,
+      }),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('quantity'),
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        usedDocumentation: true,
+        documentationSourceLockActive: true,
+      }),
+      [
+        expect.objectContaining({
+          shipManualId: 'manual-1',
+          pageNumber: 14,
+        }),
+      ],
+    );
+  });
+
   it('does not fall back to LLM when semantic documentation retrieval has no evidence', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
