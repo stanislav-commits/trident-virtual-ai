@@ -36,12 +36,17 @@ export class DocumentationSourceLockService {
     }
 
     let skippedLatestUser = false;
+    let skippedContextlessClarification = false;
     for (let index = messageHistory.length - 1; index >= 0; index -= 1) {
       const message = messageHistory[index];
 
       if (message.role === 'user') {
         if (!skippedLatestUser) {
           skippedLatestUser = true;
+          continue;
+        }
+        if (skippedContextlessClarification) {
+          skippedContextlessClarification = false;
           continue;
         }
         return null;
@@ -65,6 +70,11 @@ export class DocumentationSourceLockService {
       const inferred = this.inferFollowUpStateFromReferences(message);
       if (inferred) {
         return inferred;
+      }
+
+      if (this.isDocumentationClarificationMessage(message)) {
+        skippedContextlessClarification = true;
+        continue;
       }
 
       return null;
@@ -252,6 +262,19 @@ export class DocumentationSourceLockService {
       score: 1,
       reasons: ['single_source_answer'],
     };
+  }
+
+  private isDocumentationClarificationMessage(
+    message: ChatHistoryMessage,
+  ): boolean {
+    const context =
+      message.ragflowContext && typeof message.ragflowContext === 'object'
+        ? (message.ragflowContext as Record<string, unknown>)
+        : null;
+    return (
+      context?.awaitingClarification === true &&
+      context.clarificationDomain === 'documentation'
+    );
   }
 
   private uniqueManualIds(citations: ChatCitation[]): string[] {

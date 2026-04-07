@@ -66,6 +66,54 @@ describe('DocumentationSourceLockService', () => {
     });
   });
 
+  it('skips contextless documentation clarification prompts when recovering the last source lock', () => {
+    const followUpState = service.getFollowUpStateFromHistory([
+      {
+        role: 'assistant',
+        content: 'Manual answer with evidence.',
+        ragflowContext: {
+          usedDocumentation: true,
+          documentationFollowUpState: {
+            schemaVersion: '2026-04-06.semantic-v2',
+            intent: 'manual_lookup',
+            conceptIds: [],
+            sourcePreferences: ['MANUALS'],
+            sourceLock: true,
+            lockedManualId: 'manual-handbook',
+            lockedManualTitle: 'Marine Application Handbook.pdf',
+            lockedDocumentId: 'doc-handbook',
+            pageHint: null,
+            sectionHint: null,
+            vendor: null,
+            model: null,
+            systems: [],
+            equipment: [],
+          },
+        },
+        contextReferences: [],
+      },
+      { role: 'user', content: 'Which tables or diagrams are relevant?' },
+      {
+        role: 'assistant',
+        content: 'Which source should I use?',
+        ragflowContext: {
+          awaitingClarification: true,
+          clarificationDomain: 'documentation',
+          clarificationReason: 'semantic_source_ambiguous',
+        },
+        contextReferences: [],
+      },
+      { role: 'user', content: 'What are the limitations?' },
+    ]);
+
+    expect(followUpState).toMatchObject({
+      sourceLock: true,
+      lockedManualId: 'manual-handbook',
+      lockedManualTitle: 'Marine Application Handbook.pdf',
+      lockedDocumentId: 'doc-handbook',
+    });
+  });
+
   it('builds a reusable follow-up state from single-source citations', () => {
     const state = service.buildNextFollowUpState({
       semanticQuery: {

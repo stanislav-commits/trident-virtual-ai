@@ -428,6 +428,10 @@ export class ChatDocumentationQueryService {
       return false;
     }
 
+    if (this.isGenericDocumentationDetailFollowUp(trimmed)) {
+      return true;
+    }
+
     if (
       this.hasStrongSpecificAnchor(trimmed) &&
       !this.isContextualFollowUpQuery(trimmed)
@@ -440,8 +444,7 @@ export class ChatDocumentationQueryService {
       this.isSubjectDetailFollowUpQuery(trimmed) ||
       this.isCompletenessVerificationFollowUpQuery(trimmed) ||
       this.isSummaryFollowUpQuery(trimmed) ||
-      this.isBroadContinuationQuery(trimmed) ||
-      this.isGenericDocumentationDetailFollowUp(trimmed)
+      this.isBroadContinuationQuery(trimmed)
     );
   }
 
@@ -1759,10 +1762,13 @@ export class ChatDocumentationQueryService {
     }
 
     return (
-      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|warnings?|requirements?|limits?|tools?|materials?)\b/i.test(
+      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|warnings?|requirements?|limits?|limitations?|tools?|materials?|tables?|diagrams?|figures?|drawings?|charts?|summar(?:y|ies|ize)|process(?:es)?|sequence|overview)\b/i.test(
         trimmed,
       ) ||
       /\b(?:who|what|which)\s+should\s+(?:be\s+)?(?:notified|involved|checked|recorded|completed)\b/i.test(
+        trimmed,
+      ) ||
+      /\bwhat\s+(?:should|do)\s+i\s+check\s+first\b/i.test(
         trimmed,
       )
     );

@@ -1864,4 +1864,28 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       'From Selected Procedure.pdf document: Summarize that as a checklist.',
     );
   });
+
+  it('prefers a narrow tag scope when semantic shortlist candidates conflict with it', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(
+      (service as any).resolveRetrievalManualScope({
+        sourceLockDecision: {
+          active: false,
+          lockedManualId: null,
+          lockedManualTitle: null,
+          lockedDocumentId: null,
+          reason: null,
+        },
+        semanticManualIds: ['manual-generic-1', 'manual-generic-2'],
+        tagScopedManualIds: ['manual-tagged'],
+      }),
+    ).toEqual(['manual-tagged']);
+  });
 });

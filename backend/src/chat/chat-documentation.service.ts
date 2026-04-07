@@ -1421,7 +1421,12 @@ export class ChatDocumentationService {
       const intersection = semanticManualIds.filter((manualId) =>
         tagScopedSet.has(manualId),
       );
-      return intersection.length > 0 ? intersection : semanticManualIds;
+      if (intersection.length > 0) {
+        return intersection;
+      }
+      return tagScopedManualIds.length <= 3
+        ? tagScopedManualIds
+        : semanticManualIds;
     }
 
     if (semanticManualIds.length > 0) {

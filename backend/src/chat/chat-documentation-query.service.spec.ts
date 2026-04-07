@@ -526,6 +526,31 @@ describe('ChatDocumentationQueryService', () => {
         },
       ),
     ).toBe(false);
+
+    for (const followUp of [
+      'Which tables or diagrams are relevant?',
+      'What are the limitations?',
+      'Can you summarize the process?',
+      'What should I check first?',
+    ]) {
+      expect(
+        service.shouldUseDocumentationFollowUpState(followUp, {
+          rawQuery: followUp,
+          normalizedQuery: followUp.toLowerCase(),
+          retrievalQuery: followUp,
+          effectiveQuery: followUp,
+          previousUserQuery:
+            'From Marine Application Handbook.pdf document: What is the propulsion design loop?',
+          followUpMode: 'standalone',
+          subject: followUp.toLowerCase(),
+          operation: 'lookup',
+          timeIntent: { kind: 'none' },
+          sourceHints: [],
+          isClarificationReply: false,
+          ambiguityFlags: [],
+        }),
+      ).toBe(true);
+    }
   });
 
   it('does not classify a maintenance procedure request as a parts-only query', () => {
