@@ -500,6 +500,69 @@ describe('ChatContextService', () => {
     ]);
   });
 
+  it('prioritizes technical-data table evidence in scoped chunk fallback', async () => {
+    const prisma = {
+      ship: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'ship-1',
+            name: 'Sea Wolf X',
+            ragflowDatasetId: 'dataset-1',
+            manuals: [
+              {
+                id: 'manual-oil-separator',
+                ragflowDocumentId: 'doc-oil-separator',
+                filename: 'Oil Separator Manual.pdf',
+                category: 'MANUALS',
+              },
+            ],
+          },
+        ]),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      searchDataset: jest
+        .fn()
+        .mockRejectedValue(new Error('RAGFlow retrieval failed')),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-safety',
+          doc_id: 'doc-oil-separator',
+          doc_name: 'Oil Separator Manual.pdf',
+          content:
+            'Oil separator safety notes. Keep the separator clean and observe warning labels before maintenance.',
+          meta: { page_num: 29 },
+        },
+        {
+          id: 'chunk-technical-data',
+          doc_id: 'doc-oil-separator',
+          doc_name: 'Oil Separator Manual.pdf',
+          content:
+            'Technical Data <table><tr><td>Oil separator</td><td>Rated bowl speed 8500 rpm</td></tr><tr><td>Throughput</td><td>2000 l/h</td></tr><tr><td>Density</td><td>991 kg/m3</td></tr></table>',
+          meta: { page_num: 2 },
+        },
+      ]),
+    };
+    const service = new ChatContextService(prisma as never, ragflow as never);
+
+    const citations = await service.findContextForAdminQuery(
+      'What technical data is listed for the oil separator?',
+      2,
+      2,
+      ['MANUALS'],
+      ['manual-oil-separator'],
+    );
+
+    expect(citations[0]).toEqual(
+      expect.objectContaining({
+        shipManualId: 'manual-oil-separator',
+        chunkId: 'chunk-technical-data',
+        pageNumber: 2,
+      }),
+    );
+  });
+
   it('filters RAGFlow hits that miss acronym/model evidence for high-anchor queries', async () => {
     const prisma = {
       ship: {

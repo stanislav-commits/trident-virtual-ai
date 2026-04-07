@@ -140,6 +140,7 @@ interface LexicalQueryProfile {
   requiredSubjectTokens: string[];
   strongPhrases: string[];
   tokens: string[];
+  wantsSpecificationEvidence: boolean;
 }
 
 @Injectable()
@@ -808,6 +809,10 @@ export class ChatContextService {
           ...inferredLowercaseAcronymTokens,
         ]),
       ],
+      wantsSpecificationEvidence:
+        /\b(technical\s+data|technical\s+specifications?|specifications?|spec\s+sheet|data\s+sheet|rated|rating|ratings|parameters?|dimensions?|capacity|capacities|limits?|ranges?)\b/i.test(
+          lexicalQuery,
+        ),
     };
   }
 
@@ -864,6 +869,10 @@ export class ChatContextService {
       }
     }
 
+    if (queryProfile.wantsSpecificationEvidence) {
+      score += this.scoreSpecificationEvidence(content, normalizedContent);
+    }
+
     if (matchedTokens === 0) {
       return 0;
     }
@@ -882,6 +891,49 @@ export class ChatContextService {
     }
 
     return score + matchedTokens / Math.max(1, queryTokenCount);
+  }
+
+  private scoreSpecificationEvidence(
+    rawContent: string,
+    normalizedContent: string,
+  ): number {
+    let score = 0;
+
+    if (/\btechnical data\b/i.test(normalizedContent)) {
+      score += 8;
+    }
+    if (
+      /\b(technical specifications?|specifications?|data sheet|spec sheet|parameters?|ratings?)\b/i.test(
+        normalizedContent,
+      )
+    ) {
+      score += 4;
+    }
+    if (/<table\b/i.test(rawContent)) {
+      score += 3;
+      if (
+        /\b(value|unit|description|type|model|min|max|rated|nominal)\b/i.test(
+          normalizedContent,
+        )
+      ) {
+        score += 2;
+      }
+    }
+    if (
+      /\b(throughput|density|temperature|pressure|speed|capacity|dimension|weight|voltage|current|frequency|power|flow|rated|nominal)\b/i.test(
+        normalizedContent,
+      )
+    ) {
+      score += 3;
+    }
+
+    const unitMatches =
+      normalizedContent.match(
+        /\b\d+(?:\.\d+)?\s*(?:kw|kva|v|hz|rpm|bar|psi|c|kg|mm|cm|m3|l|liters?|litres?|gpm|lpm|mbar|mpa)\b/gi,
+      ) ?? [];
+    score += Math.min(unitMatches.length, 4);
+
+    return score;
   }
 
   private hasStrongPhraseMatch(
