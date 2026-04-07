@@ -29,6 +29,12 @@ interface SourceEvidenceProfile {
   phoneValues: string[];
 }
 
+const SPECIFICATION_QUERY_PATTERN =
+  /\b(?:technical\s*data|technical\s*specifications?|specifications?|specs?|data\s*sheet|spec\s*sheet|operating\s+data|process\s+data|parameters?)\b/i;
+
+const SPECIFICATION_SECTION_HEADING_PATTERN =
+  /^\s*(?:\d+(?:\.\d+)*\s*)?(?:technical\s*data|technical\s*specifications?|specifications?|data\s*sheet|spec\s*sheet|operating\s+data|process\s+data|parameters?)(?:\b|\d)/i;
+
 @Injectable()
 export class ChatDocumentationCitationService {
   private readonly queryPlanner: ChatQueryPlannerService;
@@ -205,17 +211,29 @@ export class ChatDocumentationCitationService {
       };
     }
 
-    const profiles = this.buildSourceEvidenceProfiles(retrievalQuery, citations);
+    const answerCitations = this.prioritizeSpecificationCitations(
+      `${retrievalQuery}\n${userQuery}`,
+      citations,
+    );
+
+    const profiles = this.buildSourceEvidenceProfiles(
+      retrievalQuery,
+      answerCitations,
+    );
     if (profiles.length < 2) {
       return {
-        citations,
+        citations: answerCitations,
         compareBySource: false,
         sourceComparisonTitles: [],
       };
     }
 
     const broadCertificateSoonCitations =
-      this.prepareBroadCertificateSoonAnswerCitations(userQuery, citations, profiles);
+      this.prepareBroadCertificateSoonAnswerCitations(
+        userQuery,
+        answerCitations,
+        profiles,
+      );
     if (broadCertificateSoonCitations.length > 0) {
       return {
         citations: broadCertificateSoonCitations,
@@ -234,7 +252,11 @@ export class ChatDocumentationCitationService {
         comparisonProfiles.map((profile) => profile.sourceKey),
       );
       return {
-        citations: this.balanceCitationsAcrossSources(citations, sourceKeys, 4),
+        citations: this.balanceCitationsAcrossSources(
+          answerCitations,
+          sourceKeys,
+          4,
+        ),
         compareBySource: true,
         sourceComparisonTitles: comparisonProfiles.map(
           (profile) => profile.sourceTitle,
@@ -250,7 +272,7 @@ export class ChatDocumentationCitationService {
     if (preferredSourceKeys.length > 0) {
       return {
         citations: this.filterCitationsBySourceKeys(
-          citations,
+          answerCitations,
           new Set(preferredSourceKeys),
         ),
         compareBySource: false,
@@ -259,7 +281,7 @@ export class ChatDocumentationCitationService {
     }
 
     return {
-      citations,
+      citations: answerCitations,
       compareBySource: false,
       sourceComparisonTitles: [],
     };
@@ -370,6 +392,55 @@ export class ChatDocumentationCitationService {
       .map((entry) => entry.citation);
 
     return matched.length > 0 ? matched : citations;
+  }
+
+  private prioritizeSpecificationCitations(
+    query: string,
+    citations: ChatCitation[],
+  ): ChatCitation[] {
+    if (citations.length <= 1 || !SPECIFICATION_QUERY_PATTERN.test(query)) {
+      return citations;
+    }
+
+    const scored = citations.map((citation, index) => {
+      const plainSnippet = this.stripHtmlLikeMarkup(citation.snippet ?? '');
+      const headingEvidence = SPECIFICATION_SECTION_HEADING_PATTERN.test(
+        plainSnippet.trim(),
+      )
+        ? 1
+        : 0;
+      const earlySectionEvidence =
+        headingEvidence === 0 &&
+        SPECIFICATION_QUERY_PATTERN.test(plainSnippet.slice(0, 180))
+          ? 1
+          : 0;
+
+      return {
+        citation,
+        index,
+        headingEvidence,
+        score:
+          headingEvidence * 100 +
+          earlySectionEvidence * 20 +
+          (citation.score ?? 0),
+      };
+    });
+
+    if (!scored.some((entry) => entry.headingEvidence > 0)) {
+      return citations;
+    }
+
+    return scored
+      .sort((left, right) => {
+        if (right.headingEvidence !== left.headingEvidence) {
+          return right.headingEvidence - left.headingEvidence;
+        }
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        return left.index - right.index;
+      })
+      .map((entry) => entry.citation);
   }
 
   limitCitationsForLlm(

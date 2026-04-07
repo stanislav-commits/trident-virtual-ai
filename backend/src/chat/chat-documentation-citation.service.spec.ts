@@ -571,6 +571,42 @@ describe('ChatDocumentationCitationService', () => {
     ).toBe(false);
   });
 
+  it('prioritizes specification section headings over incidental data snippets', () => {
+    const citations = [
+      {
+        sourceTitle: 'Oil Separator Manual.pdf',
+        pageNumber: 151,
+        snippet:
+          'Spare parts list. Contact rating: 24 VDC, 1 A. Oil separator service notes.',
+        score: 18,
+      },
+      {
+        sourceTitle: 'Oil Separator Manual.pdf',
+        pageNumber: 57,
+        snippet:
+          'Electrical connection. Level switch contact rating: 230 VAC. Cable size 0.75 mm2.',
+        score: 30.15,
+      },
+      {
+        sourceTitle: 'Oil Separator Manual.pdf',
+        pageNumber: 59,
+        snippet:
+          'Technical Data2.15 Subject to modification! The order-specific process data are given on the operating data sheet.',
+        score: 46.55,
+      },
+    ];
+
+    const prepared = service.prepareCitationsForAnswer(
+      'What technical data is listed for the oil separator?',
+      'What technical data is listed for the oil separator?',
+      citations,
+    );
+
+    expect(prepared.compareBySource).toBe(false);
+    expect(prepared.citations[0].pageNumber).toBe(59);
+    expect(prepared.citations[0].snippet).toContain('Technical Data2.15');
+  });
+
   it('hard-filters explicit source requests by source title instead of matching nearby snippet text', () => {
     const citations = [
       {
