@@ -35,6 +35,9 @@ const DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS = (() => {
 
 const MAX_SCOPED_CHUNK_FALLBACK_DOCUMENTS = 6;
 
+const SPECIFICATION_SECTION_HEADING_PATTERN =
+  /^\s*(?:\d+(?:\.\d+)*\s*)?(?:technical\s*data|technical\s*specifications?|specifications?|data\s*sheet|spec\s*sheet|parameters?)(?:\b|\d)/i;
+
 const LOWERCASE_ACRONYM_STOP_WORDS = new Set([
   'air',
   'and',
@@ -826,6 +829,9 @@ export class ChatContextService {
     }
 
     const contentTokens = new Set(normalizedContent.split(' '));
+    const specificationHeadingScore = queryProfile.wantsSpecificationEvidence
+      ? this.scoreSpecificationHeadingEvidence(content)
+      : 0;
     if (queryProfile.anchorTokens.length > 0) {
       const anchorMatches = this.countAnchorMatches(
         queryProfile.anchorTokens,
@@ -843,7 +849,8 @@ export class ChatContextService {
         normalizedContent,
         contentTokens,
       ) === 0 &&
-      !this.hasStrongPhraseMatch(queryProfile, normalizedContent)
+      !this.hasStrongPhraseMatch(queryProfile, normalizedContent) &&
+      specificationHeadingScore === 0
     ) {
       return 0;
     }
@@ -870,10 +877,14 @@ export class ChatContextService {
     }
 
     if (queryProfile.wantsSpecificationEvidence) {
-      score += this.scoreSpecificationEvidence(content, normalizedContent);
+      score += this.scoreSpecificationEvidence(
+        content,
+        normalizedContent,
+        specificationHeadingScore,
+      );
     }
 
-    if (matchedTokens === 0) {
+    if (matchedTokens === 0 && specificationHeadingScore === 0) {
       return 0;
     }
 
@@ -881,6 +892,7 @@ export class ChatContextService {
     const enoughSignal =
       matchedTokens >= Math.min(2, queryTokenCount) ||
       phraseMatches > 0 ||
+      specificationHeadingScore > 0 ||
       (queryTokenCount <= 2 &&
         queryProfile.tokens.some(
           (token) => token.length >= 5 && normalizedContent.includes(token),
@@ -896,10 +908,11 @@ export class ChatContextService {
   private scoreSpecificationEvidence(
     rawContent: string,
     normalizedContent: string,
+    headingScore: number = this.scoreSpecificationHeadingEvidence(rawContent),
   ): number {
-    let score = 0;
+    let score = headingScore;
 
-    if (/\btechnical data\b/i.test(normalizedContent)) {
+    if (/(?:\btechnical data\b|\btechnical\s*data\d)/i.test(normalizedContent)) {
       score += 8;
     }
     if (
@@ -934,6 +947,23 @@ export class ChatContextService {
     score += Math.min(unitMatches.length, 4);
 
     return score;
+  }
+
+  private scoreSpecificationHeadingEvidence(rawContent: string): number {
+    const chunkStart = rawContent.trimStart().slice(0, 180);
+    if (!chunkStart) {
+      return 0;
+    }
+
+    const normalizedStart = this.normalizeLexicalText(chunkStart);
+    if (
+      SPECIFICATION_SECTION_HEADING_PATTERN.test(chunkStart) ||
+      SPECIFICATION_SECTION_HEADING_PATTERN.test(normalizedStart)
+    ) {
+      return 18;
+    }
+
+    return 0;
   }
 
   private hasStrongPhraseMatch(

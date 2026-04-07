@@ -535,12 +535,20 @@ describe('ChatContextService', () => {
           meta: { page_num: 29 },
         },
         {
+          id: 'chunk-component-rating',
+          doc_id: 'doc-oil-separator',
+          doc_name: 'Oil Separator Manual.pdf',
+          content:
+            'The maximum electrical contact rating stated on the nameplate must not be exceeded. Westfalia Separator Mineraloil Systems. <table><tr><td>Contact rating</td><td>250 V 4 A 100 W 50 Hz 1.0 kW</td></tr><tr><td>Oil separator service</td><td>rated contact capacity</td></tr></table>',
+          meta: { page_num: 55 },
+        },
+        {
           id: 'chunk-technical-data',
           doc_id: 'doc-oil-separator',
           doc_name: 'Oil Separator Manual.pdf',
           content:
-            'Technical Data <table><tr><td>Oil separator</td><td>Rated bowl speed 8500 rpm</td></tr><tr><td>Throughput</td><td>2000 l/h</td></tr><tr><td>Density</td><td>991 kg/m3</td></tr></table>',
-          meta: { page_num: 2 },
+            'Technical Data2.15 <table><tr><td>Bowl</td><td>Rated bowl speed 8500 rpm</td></tr><tr><td>Throughput</td><td>2000 l/h</td></tr><tr><td>Density</td><td>991 kg/m3</td></tr></table>',
+          meta: { page_num: 59 },
         },
       ]),
     };
@@ -558,7 +566,7 @@ describe('ChatContextService', () => {
       expect.objectContaining({
         shipManualId: 'manual-oil-separator',
         chunkId: 'chunk-technical-data',
-        pageNumber: 2,
+        pageNumber: 59,
       }),
     );
   });
