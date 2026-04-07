@@ -454,6 +454,97 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('preserves documentation context when LLM generation fails after retrieval', async () => {
+    const citation = {
+      shipManualId: 'manual-1',
+      sourceTitle: 'Electrical Manual.pdf',
+      sourceCategory: 'MANUALS',
+      snippet:
+        'Reset the inverter from the control panel and verify the alarm has cleared.',
+      pageNumber: 12,
+    };
+    const documentationFollowUpState = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'operational_procedure',
+      conceptIds: ['electrical_system'],
+      sourcePreferences: ['MANUALS'],
+      sourceLock: true,
+      lockedManualId: 'manual-1',
+      lockedManualTitle: 'Electrical Manual.pdf',
+      lockedDocumentId: 'doc-1',
+      pageHint: null,
+      sectionHint: null,
+      vendor: null,
+      model: null,
+      systems: ['electrical_system'],
+      equipment: [],
+    };
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content:
+            'From Electrical Manual.pdf document: How do I reset the inverter?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [citation],
+      previousUserQuery: undefined,
+      retrievalQuery:
+        'From Electrical Manual.pdf document: How do I reset the inverter?',
+      resolvedSubjectQuery: 'reset inverter',
+      answerQuery: undefined,
+      documentationFollowUpState,
+      sourceLockActive: true,
+      retrievalTrace: {
+        rawQuery:
+          'From Electrical Manual.pdf document: How do I reset the inverter?',
+        retrievalQuery:
+          'From Electrical Manual.pdf document: How do I reset the inverter?',
+        lockedManualId: 'manual-1',
+        lockedManualTitle: 'Electrical Manual.pdf',
+        sourceLockActive: true,
+      },
+    });
+    llmService.generateResponse.mockRejectedValue(
+      new Error('LLM generation failed: 429 quota'),
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'From Electrical Manual.pdf document: How do I reset the inverter?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    const assistantCall = (service.addAssistantMessage as jest.Mock).mock.calls
+      .at(-1);
+    expect(assistantCall?.[1]).toContain('LLM generation failed: 429 quota');
+    expect(assistantCall?.[2]).toEqual(
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        usedLlm: false,
+        usedDocumentation: true,
+        documentationFollowUpState,
+        documentationSourceLockActive: true,
+        llmGenerationError: true,
+        llmGenerationErrorMessage: 'LLM generation failed: 429 quota',
+      }),
+    );
+    expect(assistantCall?.[3]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          shipManualId: 'manual-1',
+          sourceTitle: 'Electrical Manual.pdf',
+          pageNumber: 12,
+        }),
+      ]),
+    );
+  });
+
   it('keeps forecast questions on the LLM path instead of returning telemetry clarification or current aggregates', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

@@ -438,6 +438,11 @@ export class ChatService {
     shipName?: string,
     role: string = 'user',
   ): Promise<ChatMessageResponseDto> {
+    let llmErrorFallbackContext: {
+      normalizedQuery: ChatNormalizedQuery;
+      ragflowContext: Record<string, unknown>;
+      contextReferences: ChatCitation[];
+    } | null = null;
     try {
       const session = await this.prisma.chatSession.findUnique({
         where: { id: sessionId },
@@ -1106,6 +1111,26 @@ export class ChatService {
 
       const previousLlmResponseId =
         this.getLatestLlmResponseIdFromRecentAssistant(messageHistory);
+      llmErrorFallbackContext = {
+        normalizedQuery: effectiveNormalizedQuery,
+        ragflowContext: {
+          ...documentationTurnContext,
+          resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+          ...(telemetryShips.length > 0
+            ? { telemetryShips: [...new Set(telemetryShips)] }
+            : {}),
+          ...(citationsForAnswer.length === 0 && !telemetryOnlyQuery
+            ? { noDocumentation: true }
+            : {}),
+          usedDocumentation: citationsForAnswer.length > 0,
+          usedCurrentTelemetry:
+            Object.keys(llmTelemetryContext.telemetry).length > 0,
+          ...(previousLlmResponseId
+            ? { llmPreviousResponseId: previousLlmResponseId }
+            : {}),
+        },
+        contextReferences: citationsForAnswer,
+      };
       const response = await this.llmService.generateResponse({
         userQuery: effectiveUserQuery,
         previousUserQuery: answerQuery
@@ -1165,8 +1190,11 @@ export class ChatService {
         contextReferences: citationsForAnswer,
       });
     } catch (error) {
-      const fallback = `I encountered an issue processing your query: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`;
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const fallback = `I encountered an issue processing your query: ${errorMessage}. Please try again or contact support.`;
       const fallbackNormalizedQuery =
+        llmErrorFallbackContext?.normalizedQuery ??
         this.queryNormalizationService.normalizeTurn({
           userQuery,
         });
@@ -1175,11 +1203,17 @@ export class ChatService {
         content: fallback,
         route: 'llm_generation',
         normalizedQuery: fallbackNormalizedQuery,
-        routeTrace: ['error:fallback'],
+        routeTrace: llmErrorFallbackContext
+          ? ['llm:error_fallback']
+          : ['error:fallback'],
         ragflowContext: {
+          ...(llmErrorFallbackContext?.ragflowContext ?? {}),
           usedLlm: false,
+          llmGenerationError: true,
+          llmGenerationErrorMessage: this.truncateForLog(errorMessage),
         },
-        contextReferences: [],
+        contextReferences:
+          llmErrorFallbackContext?.contextReferences ?? [],
       });
     }
   }
