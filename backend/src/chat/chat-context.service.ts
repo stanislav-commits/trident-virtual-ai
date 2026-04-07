@@ -143,6 +143,7 @@ interface LexicalQueryProfile {
   requiredSubjectTokens: string[];
   strongPhrases: string[];
   tokens: string[];
+  wantsProcedureEvidence: boolean;
   wantsSpecificationEvidence: boolean;
 }
 
@@ -847,6 +848,10 @@ export class ChatContextService {
           ...inferredLowercaseAcronymTokens,
         ]),
       ],
+      wantsProcedureEvidence:
+        /\b(step\s*by\s*step|steps?|procedure|procedures|process|check\s*list|checklist|instructions?|how\s+(?:do|should)\s+i|what\s+should\s+i\s+do)\b/i.test(
+          lexicalQuery,
+        ),
       wantsSpecificationEvidence:
         /\b(technical\s+data|technical\s+specifications?|specifications?|spec\s+sheet|data\s+sheet|rated|rating|ratings|parameters?|dimensions?|capacity|capacities|limits?|ranges?)\b/i.test(
           lexicalQuery,
@@ -867,6 +872,9 @@ export class ChatContextService {
     const specificationHeadingScore = queryProfile.wantsSpecificationEvidence
       ? this.scoreSpecificationHeadingEvidence(content)
       : 0;
+    const procedureEvidenceScore = queryProfile.wantsProcedureEvidence
+      ? this.scoreProcedureEvidence(content, normalizedContent)
+      : 0;
     if (queryProfile.anchorTokens.length > 0) {
       const anchorMatches = this.countAnchorMatches(
         queryProfile.anchorTokens,
@@ -885,7 +893,8 @@ export class ChatContextService {
         contentTokens,
       ) === 0 &&
       !this.hasStrongPhraseMatch(queryProfile, normalizedContent) &&
-      specificationHeadingScore === 0
+      specificationHeadingScore === 0 &&
+      procedureEvidenceScore === 0
     ) {
       return 0;
     }
@@ -919,7 +928,15 @@ export class ChatContextService {
       );
     }
 
-    if (matchedTokens === 0 && specificationHeadingScore === 0) {
+    if (queryProfile.wantsProcedureEvidence) {
+      score += procedureEvidenceScore;
+    }
+
+    if (
+      matchedTokens === 0 &&
+      specificationHeadingScore === 0 &&
+      procedureEvidenceScore === 0
+    ) {
       return 0;
     }
 
@@ -928,6 +945,7 @@ export class ChatContextService {
       matchedTokens >= Math.min(2, queryTokenCount) ||
       phraseMatches > 0 ||
       specificationHeadingScore > 0 ||
+      procedureEvidenceScore > 0 ||
       (queryTokenCount <= 2 &&
         queryProfile.tokens.some(
           (token) => token.length >= 5 && normalizedContent.includes(token),
@@ -938,6 +956,36 @@ export class ChatContextService {
     }
 
     return score + matchedTokens / Math.max(1, queryTokenCount);
+  }
+
+  private scoreProcedureEvidence(
+    rawContent: string,
+    normalizedContent: string,
+  ): number {
+    let score = 0;
+
+    const numberedSteps = rawContent.match(/\b\d{1,2}\.\s+\S/g) ?? [];
+    if (numberedSteps.length >= 2) {
+      score += Math.min(numberedSteps.length, 5);
+    }
+    if (/<table\b/i.test(rawContent)) {
+      score += 2;
+    }
+    if (/[•·]/.test(rawContent)) {
+      score += 2;
+    }
+    if (/\b(check\s*list|checklist|instructions?|steps?)\b/i.test(normalizedContent)) {
+      score += 3;
+    }
+    if (
+      /\b(prepare|ensure|establish|confirm|complete|commence|start|stop|check|monitor|inform|secure|remove|connect|disconnect|press|hold|open|close|raise|drop)\b/i.test(
+        normalizedContent,
+      )
+    ) {
+      score += 2;
+    }
+
+    return score;
   }
 
   private scoreSpecificationEvidence(

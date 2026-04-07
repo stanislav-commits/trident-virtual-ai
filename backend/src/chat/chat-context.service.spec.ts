@@ -430,7 +430,7 @@ describe('ChatContextService', () => {
           doc_id: 'doc-procedure',
           doc_name: 'Operational Procedure.pdf',
           content:
-            'Bunkering procedure: prepare equipment, establish communication, start fueling, monitor flow rate, then secure the filling point.',
+            'Filling the vessel with diesel: prepare the spill kit, establish communication, ensure one person is at the bunkering point, commence fueling, monitor flow rate, complete the checklist, then secure the filling point.',
           meta: { page_num: 1 },
         },
       ]),
