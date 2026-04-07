@@ -434,6 +434,72 @@ describe('ChatContextService', () => {
     ).resolves.toEqual([]);
   });
 
+  it('filters RAGFlow hits that miss acronym/model evidence for high-anchor queries', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'ship-1',
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-display',
+              ragflowDocumentId: 'doc-display',
+              filename: 'Display Manual.pdf',
+              category: 'MANUALS',
+            },
+            {
+              id: 'manual-converter',
+              ragflowDocumentId: 'doc-converter',
+              filename: 'Converter Manual.pdf',
+              category: 'MANUALS',
+            },
+          ],
+        }),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      searchDataset: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-generic-connect',
+          doc_id: 'doc-display',
+          doc_name: 'Display Manual.pdf',
+          content:
+            'Connect the remote display unit according to the wiring diagram.',
+          similarity: 0.92,
+          meta: { page_num: 37 },
+        },
+        {
+          id: 'chunk-sdi-hdmi',
+          doc_id: 'doc-converter',
+          doc_name: 'Converter Manual.pdf',
+          content:
+            'Connect the SDI source to the SDI input and connect the HDMI display to the HDMI output.',
+          similarity: 0.81,
+          meta: { page_num: 4 },
+        },
+      ]),
+    };
+
+    const service = new ChatContextService(prisma as never, ragflow as never);
+
+    const result = await service.findContextForQuery(
+      'ship-1',
+      'How do I connect an SDI source to an HDMI display?',
+      2,
+      2,
+      ['MANUALS'],
+    );
+
+    expect(result.citations).toEqual([
+      expect.objectContaining({
+        shipManualId: 'manual-converter',
+        chunkId: 'chunk-sdi-hdmi',
+        sourceTitle: 'Converter Manual.pdf',
+      }),
+    ]);
+  });
+
   it('applies the same tag-first retrieval preference for admin document searches', async () => {
     const prisma = {
       ship: {

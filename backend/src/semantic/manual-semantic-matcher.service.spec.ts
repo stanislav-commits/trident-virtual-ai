@@ -123,4 +123,64 @@ describe('ManualSemanticMatcherService', () => {
         ?.score ?? 0,
     );
   });
+
+  it('uses model-like filename anchors when semantic profiles are unavailable', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-generic-pump',
+            ragflowDocumentId: 'doc-generic-pump',
+            filename: 'MN_ACB531.pdf',
+            category: 'MANUALS',
+            semanticProfile: null,
+          },
+          {
+            id: 'manual-model-catalogue',
+            ragflowDocumentId: 'doc-model-catalogue',
+            filename:
+              '901.65966 - Turbodrive 240 H.C.T. - L.V.T. - Spare part catalogue.pdf',
+            category: 'MANUALS',
+            semanticProfile: null,
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'parts_lookup',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'table',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.64,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText:
+        'Which spare parts are in the Turbodrive 240 H.C.T. seal kit?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-model-catalogue',
+        reasons: expect.arrayContaining(['filename_overlap']),
+      }),
+    );
+  });
 });

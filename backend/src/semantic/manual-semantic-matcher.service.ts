@@ -428,11 +428,11 @@ export class ManualSemanticMatcherService {
     let overlap = 0;
     for (const token of rightTokens) {
       if (leftTokens.has(token)) {
-        overlap += 1;
+        overlap += /\d/.test(token) || token.length >= 6 ? 3 : 1;
       }
     }
 
-    return Math.min(overlap * 2, 14);
+    return Math.min(overlap * 2, 30);
   }
 
   private scoreArrayOverlap(left: string[], right: string[]): number {
@@ -463,12 +463,41 @@ export class ManualSemanticMatcherService {
   }
 
   private tokenize(value: string): string[] {
-    return this.normalizeText(value)
+    return this.mergeAcronymLetterTokens(this.normalizeText(value).split(' '))
       .split(' ')
       .map((token) => this.normalizeToken(token))
       .filter(
         (token) => token.length > 1 && !PROFILE_MATCH_STOP_WORDS.has(token),
       );
+  }
+
+  private mergeAcronymLetterTokens(tokens: string[]): string {
+    const merged: string[] = [];
+    let acronymBuffer = '';
+
+    const flushAcronymBuffer = () => {
+      if (!acronymBuffer) {
+        return;
+      }
+      merged.push(acronymBuffer);
+      acronymBuffer = '';
+    };
+
+    for (const token of tokens) {
+      if (/^[a-z]$/.test(token)) {
+        acronymBuffer += token;
+        if (acronymBuffer.length >= 3) {
+          flushAcronymBuffer();
+        }
+        continue;
+      }
+
+      flushAcronymBuffer();
+      merged.push(token);
+    }
+
+    flushAcronymBuffer();
+    return merged.join(' ');
   }
 
   private normalizeToken(token: string): string {

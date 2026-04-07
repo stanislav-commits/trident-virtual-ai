@@ -478,6 +478,7 @@ export class ChatContextService {
       retrievalK,
       Boolean(allowedDocumentIds?.size),
     );
+    const queryProfile = this.buildLexicalQueryProfile(query);
     let results: RAGFlowSearchResult[];
     try {
       results = await this.ragflow.searchDataset(
@@ -510,6 +511,7 @@ export class ChatContextService {
       snippetCharLimit,
       allowedDocumentIds,
       sourceTitleSuffix,
+      queryProfile,
     );
   }
 
@@ -601,6 +603,7 @@ export class ChatContextService {
       snippetCharLimit,
       allowedDocumentIds,
       sourceTitleSuffix,
+      queryProfile,
     );
   }
 
@@ -707,13 +710,15 @@ export class ChatContextService {
     }
 
     const contentTokens = new Set(normalizedContent.split(' '));
-    if (
-      queryProfile.anchorTokens.length > 0 &&
-      !queryProfile.anchorTokens.some(
-        (token) => contentTokens.has(token) || normalizedContent.includes(token),
-      )
-    ) {
-      return 0;
+    if (queryProfile.anchorTokens.length > 0) {
+      const anchorMatches = this.countAnchorMatches(
+        queryProfile.anchorTokens,
+        normalizedContent,
+        contentTokens,
+      );
+      if (anchorMatches < Math.min(2, queryProfile.anchorTokens.length)) {
+        return 0;
+      }
     }
 
     let score = 0;
@@ -757,6 +762,21 @@ export class ChatContextService {
     return score + matchedTokens / Math.max(1, queryTokenCount);
   }
 
+  private countAnchorMatches(
+    anchorTokens: string[],
+    normalizedContent: string,
+    contentTokens: Set<string>,
+  ): number {
+    const compactContent = normalizedContent.replace(/\s+/g, '');
+    return anchorTokens.filter((token) => {
+      if (contentTokens.has(token) || normalizedContent.includes(token)) {
+        return true;
+      }
+
+      return token.length > 3 && compactContent.includes(token);
+    }).length;
+  }
+
   private normalizeLexicalText(value: string): string {
     return value
       .toLowerCase()
@@ -773,6 +793,7 @@ export class ChatContextService {
     snippetCharLimit: number,
     allowedDocumentIds?: Set<string> | null,
     sourceTitleSuffix?: string,
+    queryProfile?: LexicalQueryProfile,
   ): ContextCitation[] {
     const manualByDocumentId = new Map(
       manuals
@@ -787,6 +808,9 @@ export class ChatContextService {
         .filter(
           (result) =>
             !allowedDocumentIds || allowedDocumentIds.has(result.doc_id),
+        )
+        .filter((result) =>
+          this.hasEnoughLexicalEvidenceForQuery(result, queryProfile),
         )
         .map((result) => {
           const manual = manualByDocumentId.get(result.doc_id);
@@ -818,6 +842,17 @@ export class ChatContextService {
           };
         }),
     );
+  }
+
+  private hasEnoughLexicalEvidenceForQuery(
+    result: RAGFlowSearchResult,
+    queryProfile?: LexicalQueryProfile,
+  ): boolean {
+    if (!queryProfile?.anchorTokens.length) {
+      return true;
+    }
+
+    return this.scoreChunkLexically(queryProfile, result.content ?? '') > 0;
   }
 
   private buildManualDocumentIdSet(
