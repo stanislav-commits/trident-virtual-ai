@@ -4112,6 +4112,86 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('does not fall back to LLM when semantic documentation retrieval has no evidence', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What are the UPS operating modes?',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'What are the UPS operating modes?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+      sourceLockActive: false,
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'general_information',
+        conceptFamily: 'asset_system',
+        selectedConceptIds: ['tag:equipment:electrical:ups'],
+        candidateConceptIds: ['tag:equipment:electrical:ups'],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'direct_answer',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.78,
+      },
+      retrievalTrace: {
+        rawQuery: 'What are the UPS operating modes?',
+        retrievalQuery: 'What are the UPS operating modes?',
+        semanticIntent: 'general_information',
+        semanticConceptIds: ['tag:equipment:electrical:ups'],
+        semanticConfidence: 0.78,
+        candidateConceptIds: ['tag:equipment:electrical:ups'],
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        sourceLockActive: false,
+        pageHint: null,
+        sectionHint: null,
+        shortlistedManualIds: ['manual-ups'],
+        shortlistedManualTitles: ['UPS manual.pdf'],
+        fallbackWideningUsed: true,
+      },
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'What are the UPS operating modes?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining("couldn't find supporting documentation"),
+      expect.objectContaining({
+        answerRoute: 'deterministic_document',
+        noDocumentation: true,
+        documentationNoEvidence: true,
+        usedCurrentTelemetry: false,
+      }),
+      [],
+    );
+  });
+
   it('builds documentation history from the latest turns in chronological order', async () => {
     const returnedMessages = Array.from({ length: 20 }, (_, index) => ({
       role: index % 2 === 0 ? 'user' : 'assistant',

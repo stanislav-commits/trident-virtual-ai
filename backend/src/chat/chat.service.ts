@@ -1076,6 +1076,34 @@ export class ChatService {
         });
       }
 
+      if (
+        this.shouldFailClosedForDocumentationMiss({
+          queryPlan,
+          userQuery: effectiveUserQuery,
+          semanticQuery,
+          citationsForAnswer,
+          telemetryOnlyQuery,
+          llmTelemetryContext,
+        })
+      ) {
+        return this.addRoutedAssistantMessage({
+          sessionId,
+          content:
+            "I couldn't find supporting documentation for that question in the available manuals. I won't answer from general knowledge unless you ask me to search more broadly or choose a specific source.",
+          route: 'deterministic_document',
+          normalizedQuery: effectiveNormalizedQuery,
+          routeTrace: ['documentation:no_evidence'],
+          ragflowContext: {
+            ...documentationTurnContext,
+            resolvedSubjectQuery: resolvedSubjectQuery ?? retrievalQuery,
+            noDocumentation: true,
+            documentationNoEvidence: true,
+            usedCurrentTelemetry: false,
+          },
+          contextReferences: [],
+        });
+      }
+
       const previousLlmResponseId =
         this.getLatestLlmResponseIdFromRecentAssistant(messageHistory);
       const response = await this.llmService.generateResponse({
@@ -4796,6 +4824,13 @@ export class ChatService {
       return true;
     }
 
+    if (
+      semanticQuery.intent === 'general_information' &&
+      this.hasSpecificDocumentationAnchor(semanticQuery)
+    ) {
+      return true;
+    }
+
     switch (queryPlan.primaryIntent) {
       case 'maintenance_procedure':
       case 'troubleshooting':
@@ -4820,9 +4855,61 @@ export class ChatService {
       case 'regulation_compliance':
       case 'certificate_lookup':
         return true;
+      case 'general_information':
+        return this.hasSpecificDocumentationAnchor(semanticQuery);
       default:
         return false;
     }
+  }
+
+  private hasSpecificDocumentationAnchor(
+    semanticQuery: DocumentationSemanticQuery,
+  ): boolean {
+    return (
+      semanticQuery.selectedConceptIds.length > 0 ||
+      semanticQuery.equipment.length > 0 ||
+      semanticQuery.systems.length > 0 ||
+      Boolean(semanticQuery.vendor) ||
+      Boolean(semanticQuery.model) ||
+      Boolean(semanticQuery.explicitSource) ||
+      Boolean(semanticQuery.pageHint) ||
+      Boolean(semanticQuery.sectionHint)
+    );
+  }
+
+  private shouldFailClosedForDocumentationMiss(params: {
+    queryPlan: ChatQueryPlan;
+    userQuery: string;
+    semanticQuery?: DocumentationSemanticQuery;
+    citationsForAnswer: ChatCitation[];
+    telemetryOnlyQuery: boolean;
+    llmTelemetryContext: {
+      telemetry: Record<string, unknown>;
+    };
+  }): boolean {
+    const {
+      queryPlan,
+      userQuery,
+      semanticQuery,
+      citationsForAnswer,
+      telemetryOnlyQuery,
+      llmTelemetryContext,
+    } = params;
+
+    if (
+      citationsForAnswer.length > 0 ||
+      telemetryOnlyQuery ||
+      Object.keys(llmTelemetryContext.telemetry).length > 0 ||
+      this.isExplicitTelemetrySourceQuery(userQuery)
+    ) {
+      return false;
+    }
+
+    return this.shouldPreferDocumentationOverCurrentTelemetry(
+      queryPlan,
+      userQuery,
+      semanticQuery,
+    );
   }
 
   private isProcedureOrDocumentationQuestion(userQuery: string): boolean {
