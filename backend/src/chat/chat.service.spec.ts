@@ -165,7 +165,9 @@ describe('ChatService telemetry clarification', () => {
       }),
       [],
     );
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
@@ -218,7 +220,9 @@ describe('ChatService telemetry clarification', () => {
       }),
       [],
     );
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
@@ -264,7 +268,9 @@ describe('ChatService telemetry clarification', () => {
       }),
       [],
     );
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
@@ -287,7 +293,8 @@ describe('ChatService telemetry clarification', () => {
     documentationService.prepareDocumentationContext.mockResolvedValue({
       citations: [],
       previousUserQuery: undefined,
-      retrievalQuery: 'What was the average generator load over the last 7 days?',
+      retrievalQuery:
+        'What was the average generator load over the last 7 days?',
       resolvedSubjectQuery: undefined,
       answerQuery: undefined,
     });
@@ -323,7 +330,9 @@ describe('ChatService telemetry clarification', () => {
       }),
       [],
     );
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
@@ -347,7 +356,8 @@ describe('ChatService telemetry clarification', () => {
         },
       ],
       previousUserQuery: undefined,
-      retrievalQuery: 'When does the fire suppression system certificate expire?',
+      retrievalQuery:
+        'When does the fire suppression system certificate expire?',
       resolvedSubjectQuery: undefined,
       answerQuery: undefined,
     });
@@ -363,7 +373,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).toHaveBeenCalledWith(
       expect.objectContaining({
         telemetry: {},
@@ -429,7 +441,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).toHaveBeenCalledWith(
       expect.objectContaining({
         telemetry: {},
@@ -520,8 +534,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const assistantCall = (service.addAssistantMessage as jest.Mock).mock.calls
-      .at(-1);
+    const assistantCall = (
+      service.addAssistantMessage as jest.Mock
+    ).mock.calls.at(-1);
     expect(assistantCall?.[1]).toContain('LLM generation failed: 429 quota');
     expect(assistantCall?.[2]).toEqual(
       expect.objectContaining({
@@ -793,7 +808,7 @@ describe('ChatService telemetry clarification', () => {
           sourceTitle: 'Seawolf X SOPEP.pdf',
           pageNumber: 10,
           snippet:
-            "SHIPBOARD OIL POLLUTION EMERGENCY PLAN List Of Tank Capacities <table><caption> FUELOILTANKS</caption> <tr><td >TANK No</td><td >DESCRIPTION</td><td >IMP. GAL.</td><td >CAPACITY (It)</td><td >FRAME</td></tr> <tr><td >FO1.PS</td><td >Midship/Aft Port Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr> <tr><td >FO2.STBD</td><td >Midship/Aft Starboard Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr></table>",
+            'SHIPBOARD OIL POLLUTION EMERGENCY PLAN List Of Tank Capacities <table><caption> FUELOILTANKS</caption> <tr><td >TANK No</td><td >DESCRIPTION</td><td >IMP. GAL.</td><td >CAPACITY (It)</td><td >FRAME</td></tr> <tr><td >FO1.PS</td><td >Midship/Aft Port Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr> <tr><td >FO2.STBD</td><td >Midship/Aft Starboard Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr></table>',
         },
       ],
       previousUserQuery: undefined,
@@ -818,9 +833,15 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[1];
-    const contextRefs = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[3];
-    expect(content).toContain('FO1.PS - Midship/Aft Port Fuel Tank: 4970 liters');
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(
+      -1,
+    )?.[1];
+    const contextRefs = (
+      service.addAssistantMessage as jest.Mock
+    ).mock.calls.at(-1)?.[3];
+    expect(content).toContain(
+      'FO1.PS - Midship/Aft Port Fuel Tank: 4970 liters',
+    );
     expect(content).toContain(
       'FO2.STBD - Midship/Aft Starboard Fuel Tank: 4970 liters',
     );
@@ -964,7 +985,11 @@ describe('ChatService telemetry clarification', () => {
           answerRoute: 'deterministic_certificate',
           usedLlm: false,
         }),
-        [expect.objectContaining({ sourceTitle: 'Fire Suppression Survey.pdf' })],
+        [
+          expect.objectContaining({
+            sourceTitle: 'Fire Suppression Survey.pdf',
+          }),
+        ],
       );
     } finally {
       nowSpy.mockRestore();
@@ -1142,8 +1167,7 @@ describe('ChatService telemetry clarification', () => {
           {
             sourceTitle: 'Fire Equipment Type Approval.pdf',
             sourceCategory: 'CERTIFICATES',
-            snippet:
-              'Product Design Assessment. Expiry Date 22-DEC-2027.',
+            snippet: 'Product Design Assessment. Expiry Date 22-DEC-2027.',
             pageNumber: 12,
           },
         ],
@@ -1170,14 +1194,16 @@ describe('ChatService telemetry clarification', () => {
       );
 
       expect(llmService.generateResponse).not.toHaveBeenCalled();
-      const assistantCall = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1);
+      const assistantCall = (
+        service.addAssistantMessage as jest.Mock
+      ).mock.calls.at(-1);
       expect(assistantCall?.[1]).toContain(
         'The nearest upcoming certificate expiries I found are:',
       );
-      expect(assistantCall?.[1]).not.toContain(
-        'within the next 180 days',
+      expect(assistantCall?.[1]).not.toContain('within the next 180 days');
+      expect((assistantCall?.[1].match(/15 January 2027/g) ?? []).length).toBe(
+        1,
       );
-      expect((assistantCall?.[1].match(/15 January 2027/g) ?? []).length).toBe(1);
     } finally {
       nowSpy.mockRestore();
     }
@@ -1280,8 +1306,7 @@ describe('ChatService telemetry clarification', () => {
           {
             sourceTitle: '26.03.04 Renewal Radio Licence COMMERCIAL.pdf',
             sourceCategory: 'CERTIFICATES',
-            snippet:
-              'This Licence expires on: 15 January 2027.',
+            snippet: 'This Licence expires on: 15 January 2027.',
             pageNumber: 1,
           },
         ],
@@ -1441,11 +1466,17 @@ describe('ChatService telemetry clarification', () => {
         'user',
       );
 
-      const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[1];
-      const contextRefs = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[3];
+      const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(
+        -1,
+      )?.[1];
+      const contextRefs = (
+        service.addAssistantMessage as jest.Mock
+      ).mock.calls.at(-1)?.[3];
 
       expect(content).toContain('15 January 2027');
-      expect(content).not.toContain("Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf");
+      expect(content).not.toContain(
+        "Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf",
+      );
       expect(contextRefs).toEqual([
         expect.objectContaining({
           sourceTitle: '26.03.04 Renewal Radio Licence COMMERCIAL.pdf',
@@ -1532,7 +1563,8 @@ describe('ChatService telemetry clarification', () => {
       messages: [
         {
           role: 'user',
-          content: 'calculate how many fuel onboard according to all fuel tanks',
+          content:
+            'calculate how many fuel onboard according to all fuel tanks',
           ragflowContext: null,
         },
       ],
@@ -1546,7 +1578,8 @@ describe('ChatService telemetry clarification', () => {
         },
       ],
       previousUserQuery: undefined,
-      retrievalQuery: 'calculate how many fuel onboard according to all fuel tanks',
+      retrievalQuery:
+        'calculate how many fuel onboard according to all fuel tanks',
       resolvedSubjectQuery: undefined,
       answerQuery: undefined,
     });
@@ -1583,7 +1616,8 @@ describe('ChatService telemetry clarification', () => {
         'The total fuel onboard from the current matched telemetry readings is 15,381',
       ),
       expect.objectContaining({
-        resolvedSubjectQuery: 'calculate how many fuel onboard according to all fuel tanks',
+        resolvedSubjectQuery:
+          'calculate how many fuel onboard according to all fuel tanks',
         answerRoute: 'current_telemetry',
         usedDocumentation: false,
         usedCurrentTelemetry: true,
@@ -2015,7 +2049,9 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('The current matched telemetry readings are [Telemetry]:'),
+      expect.stringContaining(
+        'The current matched telemetry readings are [Telemetry]:',
+      ),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         usedLlm: false,
@@ -2031,7 +2067,8 @@ describe('ChatService telemetry clarification', () => {
       messages: [
         {
           role: 'user',
-          content: 'What are the port generator battery charger voltages right now?',
+          content:
+            'What are the port generator battery charger voltages right now?',
           ragflowContext: null,
         },
       ],
@@ -2073,7 +2110,9 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('The current matched telemetry readings are [Telemetry]:'),
+      expect.stringContaining(
+        'The current matched telemetry readings are [Telemetry]:',
+      ),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         usedLlm: false,
@@ -2231,7 +2270,9 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('The current matched telemetry readings are [Telemetry]:'),
+      expect.stringContaining(
+        'The current matched telemetry readings are [Telemetry]:',
+      ),
       expect.objectContaining({
         resolvedSubjectQuery: 'What is the current water depth?',
       }),
@@ -2240,25 +2281,19 @@ describe('ChatService telemetry clarification', () => {
 
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining(
-        '- environment.depth.belowKeel: 4.8 m',
-      ),
+      expect.stringContaining('- environment.depth.belowKeel: 4.8 m'),
       expect.anything(),
       [],
     );
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining(
-        '- environment.depth.belowSurface: 5.4 m',
-      ),
+      expect.stringContaining('- environment.depth.belowSurface: 5.4 m'),
       expect.anything(),
       [],
     );
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining(
-        '- environment.depth.belowTransducer: 6.1 m',
-      ),
+      expect.stringContaining('- environment.depth.belowTransducer: 6.1 m'),
       expect.anything(),
       [],
     );
@@ -2310,7 +2345,8 @@ describe('ChatService telemetry clarification', () => {
       'session-1',
       'The documented interval is 500 hours [Manual: Volvo Penta_operators manual_47710211.pdf].',
       expect.objectContaining({
-        resolvedSubjectQuery: 'What is the oil change interval in the Volvo manual?',
+        resolvedSubjectQuery:
+          'What is the oil change interval in the Volvo manual?',
       }),
       expect.arrayContaining([
         expect.objectContaining({
@@ -2325,7 +2361,8 @@ describe('ChatService telemetry clarification', () => {
       messages: [
         {
           role: 'user',
-          content: 'What is the normal coolant temperature range for this Volvo engine?',
+          content:
+            'What is the normal coolant temperature range for this Volvo engine?',
           ragflowContext: null,
         },
       ],
@@ -2340,7 +2377,8 @@ describe('ChatService telemetry clarification', () => {
         },
       ],
       previousUserQuery: undefined,
-      retrievalQuery: 'What is the normal coolant temperature range for this Volvo engine?',
+      retrievalQuery:
+        'What is the normal coolant temperature range for this Volvo engine?',
       resolvedSubjectQuery: undefined,
       answerQuery: undefined,
     });
@@ -2384,7 +2422,8 @@ describe('ChatService telemetry clarification', () => {
       messages: [
         {
           role: 'user',
-          content: 'What is the normal coolant temperature range for this Volvo engine?',
+          content:
+            'What is the normal coolant temperature range for this Volvo engine?',
           ragflowContext: null,
         },
       ],
@@ -2405,7 +2444,8 @@ describe('ChatService telemetry clarification', () => {
         },
       ],
       previousUserQuery: undefined,
-      retrievalQuery: 'What is the normal coolant temperature range for this Volvo engine?',
+      retrievalQuery:
+        'What is the normal coolant temperature range for this Volvo engine?',
       resolvedSubjectQuery: undefined,
       answerQuery: undefined,
     });
@@ -2470,7 +2510,8 @@ describe('ChatService telemetry clarification', () => {
         },
       ],
       previousUserQuery: undefined,
-      retrievalQuery: 'What is the current starboard engine coolant temperature?',
+      retrievalQuery:
+        'What is the current starboard engine coolant temperature?',
       resolvedSubjectQuery: undefined,
       answerQuery: undefined,
     });
@@ -2542,7 +2583,9 @@ describe('ChatService telemetry clarification', () => {
       matchMode: 'direct',
       clarification: null,
     });
-    llmService.generateResponse.mockResolvedValue('Documented procedure answer.');
+    llmService.generateResponse.mockResolvedValue(
+      'Documented procedure answer.',
+    );
 
     await (service as any).generateAssistantResponse(
       'ship-1',
@@ -2599,7 +2642,9 @@ describe('ChatService telemetry clarification', () => {
       matchMode: 'direct',
       clarification: null,
     });
-    llmService.generateResponse.mockResolvedValue('Documented troubleshooting answer.');
+    llmService.generateResponse.mockResolvedValue(
+      'Documented troubleshooting answer.',
+    );
 
     await (service as any).generateAssistantResponse(
       'ship-1',
@@ -2670,7 +2715,8 @@ describe('ChatService telemetry clarification', () => {
       'Check the documented dipstick range before taking action.',
       expect.objectContaining({
         answerRoute: 'llm_generation',
-        resolvedSubjectQuery: 'Based on the current oil level, what should I do next?',
+        resolvedSubjectQuery:
+          'Based on the current oil level, what should I do next?',
         llmResponseId: 'resp_guidance_1',
         usedLlm: true,
         usedDocumentation: true,
@@ -2815,7 +2861,8 @@ describe('ChatService telemetry clarification', () => {
         },
         {
           role: 'assistant',
-          content: 'The DPA approves amendments and ensures current texts are kept.',
+          content:
+            'The DPA approves amendments and ensures current texts are kept.',
           ragflowContext: {
             answerRoute: 'llm_generation',
             usedLlm: true,
@@ -2852,7 +2899,9 @@ describe('ChatService telemetry clarification', () => {
       matchMode: 'none',
       clarification: null,
     });
-    llmService.generateResponse.mockResolvedValue('The DPA keeps documentation current.');
+    llmService.generateResponse.mockResolvedValue(
+      'The DPA keeps documentation current.',
+    );
 
     await (service as any).generateAssistantResponse(
       'ship-1',
@@ -2988,7 +3037,8 @@ describe('ChatService telemetry clarification', () => {
       messages: [
         {
           role: 'user',
-          content: 'What manual says about replacing the fuel separator element?',
+          content:
+            'What manual says about replacing the fuel separator element?',
           ragflowContext: null,
         },
         {
@@ -3342,7 +3392,8 @@ describe('ChatService telemetry clarification', () => {
       citations: [
         {
           sourceTitle: 'SEAWOLF X - NTVRP 2025.pdf',
-          snippet: 'DPA contact email candidates from an unrelated response plan.',
+          snippet:
+            'DPA contact email candidates from an unrelated response plan.',
         },
       ],
       previousUserQuery: 'vessel dpa contact details',
@@ -3511,15 +3562,17 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (
-      service.addAssistantMessage as jest.Mock
-    ).mock.calls.at(-1)?.[1];
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(
+      -1,
+    )?.[1];
 
     expect(content).toContain('Franc Jansen');
     expect(content).toContain('Zoe Bolt Falconer');
     expect(content).toContain('Tom Vannieuwenhuyse');
     expect(llmService.generateResponse).not.toHaveBeenCalled();
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
       expect.any(String),
@@ -3572,9 +3625,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (
-      service.addAssistantMessage as jest.Mock
-    ).mock.calls.at(-1)?.[1];
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(
+      -1,
+    )?.[1];
 
     expect(content).toContain('JMS Founder, Director & DPA');
     expect(content).toContain('Commercial Director');
@@ -3616,9 +3669,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (
-      service.addAssistantMessage as jest.Mock
-    ).mock.calls.at(-1)?.[1];
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(
+      -1,
+    )?.[1];
 
     expect(content).toContain('Franc Jansen');
     expect(content).toContain('Zoe Bolt Falconer');
@@ -3660,9 +3713,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (
-      service.addAssistantMessage as jest.Mock
-    ).mock.calls.at(-1)?.[1];
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(
+      -1,
+    )?.[1];
 
     expect(content).toContain('Zoe Bolt Falconer');
     expect(content).toContain('Tom Vannieuwenhuyse');
@@ -3706,7 +3759,9 @@ describe('ChatService telemetry clarification', () => {
     const content = (service.addAssistantMessage as jest.Mock).mock.calls[0][1];
 
     expect(content).toContain('Showing the first 12 of 13 matching contacts.');
-    expect(content).toContain('additional contact is listed in the source document.');
+    expect(content).toContain(
+      'additional contact is listed in the source document.',
+    );
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
@@ -3759,8 +3814,12 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[1];
-    const contextRefs = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[3];
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(
+      -1,
+    )?.[1];
+    const contextRefs = (
+      service.addAssistantMessage as jest.Mock
+    ).mock.calls.at(-1)?.[3];
 
     expect(content).toContain('James Kirby');
     expect(content).toContain('Carla Swaine');
@@ -3832,7 +3891,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(-1)?.[1];
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(
+      -1,
+    )?.[1];
     expect(content).toContain(
       'Arne Jansson - Yacht Manager - +34 649 231 000 - arne@jmsyachting.com',
     );
@@ -3887,7 +3948,8 @@ describe('ChatService telemetry clarification', () => {
       messages: [
         {
           role: 'user',
-          content: 'show all directors from the company contact details document',
+          content:
+            'show all directors from the company contact details document',
           ragflowContext: null,
         },
       ],
@@ -3915,9 +3977,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    const content = (
-      service.addAssistantMessage as jest.Mock
-    ).mock.calls.at(-1)?.[1];
+    const content = (service.addAssistantMessage as jest.Mock).mock.calls.at(
+      -1,
+    )?.[1];
 
     expect(content).toContain('Franc Jansen');
     expect(content).toContain('Sam Thompson');
@@ -3940,7 +4002,8 @@ describe('ChatService telemetry clarification', () => {
           content: 'At 2026-03-28 11:15 UTC, the historical total was ...',
           ragflowContext: {
             answerRoute: 'historical_telemetry',
-            resolvedSubjectQuery: 'how much total fuel was 5 days ago show all available',
+            resolvedSubjectQuery:
+              'how much total fuel was 5 days ago show all available',
           },
         },
         {
@@ -3952,7 +4015,8 @@ describe('ChatService telemetry clarification', () => {
     });
     documentationService.prepareDocumentationContext.mockResolvedValue({
       citations: [],
-      previousUserQuery: 'how much total fuel was 5 days ago show all available',
+      previousUserQuery:
+        'how much total fuel was 5 days ago show all available',
       retrievalQuery: 'how much total fuel is in the tanks right now',
       resolvedSubjectQuery: 'how much total fuel is in the tanks right now',
       answerQuery: undefined,
@@ -4015,7 +4079,8 @@ describe('ChatService telemetry clarification', () => {
         },
         {
           role: 'assistant',
-          content: 'The current matched telemetry readings are [Telemetry]: ...',
+          content:
+            'The current matched telemetry readings are [Telemetry]: ...',
           ragflowContext: {
             answerRoute: 'current_telemetry',
             resolvedSubjectQuery: 'Show fuel tank levels for Sea Wolf X',
@@ -4091,7 +4156,8 @@ describe('ChatService telemetry clarification', () => {
           content: 'At 2026-03-31 19:03 UTC, the historical total was ...',
           ragflowContext: {
             answerRoute: 'historical_telemetry',
-            resolvedSubjectQuery: 'what is the fuel level in the tanks right now',
+            resolvedSubjectQuery:
+              'what is the fuel level in the tanks right now',
           },
         },
         {
@@ -4187,8 +4253,12 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    expect(metricsService.resolveHistoricalTelemetryQuery).not.toHaveBeenCalled();
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.resolveHistoricalTelemetryQuery,
+    ).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
@@ -4379,7 +4449,95 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining("couldn't find supporting documentation"),
+      expect.objectContaining({
+        answerRoute: 'deterministic_document',
+        noDocumentation: true,
+        documentationNoEvidence: true,
+        usedCurrentTelemetry: false,
+      }),
+      [],
+    );
+  });
+
+  it('does not downgrade document-data queries to current telemetry when manual evidence is missing', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content:
+            'Where can I find order-specific operating data for the separator?',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery:
+        'Where can I find order-specific operating data for the separator?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+      sourceLockActive: false,
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'general_information',
+        conceptFamily: 'asset_system',
+        selectedConceptIds: ['tag:equipment:fuel:separator'],
+        candidateConceptIds: ['tag:equipment:fuel:separator'],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'direct_answer',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.78,
+      },
+      retrievalTrace: {
+        rawQuery:
+          'Where can I find order-specific operating data for the separator?',
+        retrievalQuery:
+          'Where can I find order-specific operating data for the separator?',
+        semanticIntent: 'general_information',
+        semanticConceptIds: ['tag:equipment:fuel:separator'],
+        semanticConfidence: 0.78,
+        candidateConceptIds: ['tag:equipment:fuel:separator'],
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        sourceLockActive: false,
+        pageHint: null,
+        sectionHint: null,
+        shortlistedManualIds: ['manual-separator'],
+        shortlistedManualTitles: ['Separator manual.pdf'],
+        fallbackWideningUsed: true,
+      },
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'Where can I find order-specific operating data for the separator?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
@@ -4459,7 +4617,9 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
@@ -4512,8 +4672,9 @@ describe('ChatService telemetry clarification', () => {
       }),
     );
     expect(
-      documentationService.prepareDocumentationContext.mock.calls[0][0]
-        .messageHistory.map((message: { content: string }) => message.content),
+      documentationService.prepareDocumentationContext.mock.calls[0][0].messageHistory.map(
+        (message: { content: string }) => message.content,
+      ),
     ).toEqual(Array.from({ length: 20 }, (_, index) => `message-${index + 3}`));
   });
 });
