@@ -35,6 +35,77 @@ const DEFAULT_RAGFLOW_CONTEXT_SNIPPET_CHARS = (() => {
 
 const MAX_SCOPED_CHUNK_FALLBACK_DOCUMENTS = 6;
 
+const LOWERCASE_ACRONYM_STOP_WORDS = new Set([
+  'air',
+  'and',
+  'are',
+  'bus',
+  'can',
+  'day',
+  'fan',
+  'for',
+  'gas',
+  'hot',
+  'how',
+  'kit',
+  'low',
+  'man',
+  'max',
+  'min',
+  'new',
+  'now',
+  'off',
+  'oil',
+  'old',
+  'out',
+  'own',
+  'per',
+  'raw',
+  'run',
+  'sea',
+  'set',
+  'the',
+  'top',
+  'use',
+  'way',
+  'wet',
+]);
+
+const REQUIRED_SUBJECT_TOKEN_STOP_WORDS = new Set([
+  'action',
+  'actions',
+  'application',
+  'check',
+  'checks',
+  'connect',
+  'connecting',
+  'connection',
+  'data',
+  'diagram',
+  'diagrams',
+  'display',
+  'document',
+  'function',
+  'guide',
+  'included',
+  'includes',
+  'limits',
+  'listed',
+  'manual',
+  'modes',
+  'operating',
+  'operation',
+  'parts',
+  'procedure',
+  'process',
+  'requirements',
+  'section',
+  'selecting',
+  'source',
+  'steps',
+  'technical',
+]);
+
 interface RAGFlowSearchResult {
   id: string;
   doc_id: string;
@@ -66,6 +137,7 @@ interface SearchableManual {
 interface LexicalQueryProfile {
   anchorTokens: string[];
   phrases: string[];
+  requiredSubjectTokens: string[];
   tokens: string[];
 }
 
@@ -677,25 +749,46 @@ export class ChatContextService {
       phrases.add(`${tokens[index]} ${tokens[index + 1]} ${tokens[index + 2]}`);
     }
 
+    const rawTokens = query.match(/[A-Za-z0-9]{2,16}/g) ?? [];
+    const normalizedRawTokens = rawTokens
+      .map((token) => this.normalizeLexicalText(token))
+      .filter(Boolean);
+    const upperAnchorTokens = rawTokens
+      .filter((token) => {
+        const hasLetter = /[A-Za-z]/.test(token);
+        const hasDigit = /\d/.test(token);
+        const isUpperSymbol =
+          token === token.toUpperCase() &&
+          /[A-Z]/.test(token) &&
+          !upperStopWords.has(token);
+
+        return hasLetter && (hasDigit || isUpperSymbol);
+      })
+      .map((token) => this.normalizeLexicalText(token))
+      .filter((token) => token.length > 1);
+    const lowercaseAcronymTokens = normalizedRawTokens.filter(
+      (token) =>
+        /^[a-z]{2,5}$/.test(token) &&
+        !stopWords.has(token) &&
+        !LOWERCASE_ACRONYM_STOP_WORDS.has(token),
+    );
+    const inferredLowercaseAcronymTokens =
+      lowercaseAcronymTokens.length >= 2 ? lowercaseAcronymTokens : [];
+
     return {
       tokens,
       phrases: [...phrases],
+      requiredSubjectTokens: tokens.filter(
+        (token) =>
+          token.length >= 6 &&
+          !REQUIRED_SUBJECT_TOKEN_STOP_WORDS.has(token) &&
+          !/^\d+$/.test(token),
+      ),
       anchorTokens: [
-        ...new Set(
-          (query.match(/[A-Za-z0-9]{2,16}/g) ?? [])
-            .filter((token) => {
-              const hasLetter = /[A-Za-z]/.test(token);
-              const hasDigit = /\d/.test(token);
-              const isUpperSymbol =
-                token === token.toUpperCase() &&
-                /[A-Z]/.test(token) &&
-                !upperStopWords.has(token);
-
-              return hasLetter && (hasDigit || isUpperSymbol);
-            })
-            .map((token) => this.normalizeLexicalText(token))
-            .filter((token) => token.length > 1),
-        ),
+        ...new Set([
+          ...upperAnchorTokens,
+          ...inferredLowercaseAcronymTokens,
+        ]),
       ],
     };
   }
@@ -719,6 +812,16 @@ export class ChatContextService {
       if (anchorMatches < Math.min(2, queryProfile.anchorTokens.length)) {
         return 0;
       }
+    }
+    if (
+      queryProfile.requiredSubjectTokens.length > 0 &&
+      this.countAnchorMatches(
+        queryProfile.requiredSubjectTokens,
+        normalizedContent,
+        contentTokens,
+      ) === 0
+    ) {
+      return 0;
     }
 
     let score = 0;
@@ -854,7 +957,11 @@ export class ChatContextService {
     result: RAGFlowSearchResult,
     queryProfile?: LexicalQueryProfile,
   ): boolean {
-    if (!queryProfile?.anchorTokens.length) {
+    if (
+      !queryProfile ||
+      (queryProfile.anchorTokens.length === 0 &&
+        queryProfile.requiredSubjectTokens.length === 0)
+    ) {
       return true;
     }
 

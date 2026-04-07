@@ -43,7 +43,8 @@ describe('ChatContextService', () => {
           id: 'chunk-manual',
           doc_id: 'doc-manual',
           doc_name: 'Engine Manual.pdf',
-          content: 'Replacement interval is documented in the manual',
+          content:
+            'The seawater pump impeller replacement interval is documented in the manual.',
           similarity: 0.94,
           meta: {
             page_num: 44,
@@ -251,7 +252,8 @@ describe('ChatContextService', () => {
             id: 'chunk-other-fallback',
             doc_id: 'doc-other',
             doc_name: 'Other Manual.pdf',
-            content: 'Fallback maintenance procedure that still answers the query',
+            content:
+              'Fallback seawater pump impeller maintenance procedure that still answers the query',
             similarity: 0.91,
             meta: {
               page_num: 5,
@@ -496,6 +498,138 @@ describe('ChatContextService', () => {
         shipManualId: 'manual-converter',
         chunkId: 'chunk-sdi-hdmi',
         sourceTitle: 'Converter Manual.pdf',
+      }),
+    ]);
+  });
+
+  it('keeps acronym evidence requirements when fallback queries are lowercased', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'ship-1',
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-display',
+              ragflowDocumentId: 'doc-display',
+              filename: 'Display Manual.pdf',
+              category: 'MANUALS',
+            },
+            {
+              id: 'manual-converter',
+              ragflowDocumentId: 'doc-converter',
+              filename: 'Converter Manual.pdf',
+              category: 'MANUALS',
+            },
+          ],
+        }),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      searchDataset: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-generic-connect',
+          doc_id: 'doc-display',
+          doc_name: 'Display Manual.pdf',
+          content:
+            'Connect the remote display unit according to the wiring diagram.',
+          similarity: 0.92,
+          meta: { page_num: 37 },
+        },
+        {
+          id: 'chunk-sdi-hdmi',
+          doc_id: 'doc-converter',
+          doc_name: 'Converter Manual.pdf',
+          content:
+            'Connect the SDI source to the SDI input and connect the HDMI display to the HDMI output.',
+          similarity: 0.81,
+          meta: { page_num: 4 },
+        },
+      ]),
+    };
+
+    const service = new ChatContextService(prisma as never, ragflow as never);
+
+    const result = await service.findContextForQuery(
+      'ship-1',
+      'connect sdi source hdmi display',
+      2,
+      2,
+      ['MANUALS'],
+    );
+
+    expect(result.citations).toEqual([
+      expect.objectContaining({
+        shipManualId: 'manual-converter',
+        chunkId: 'chunk-sdi-hdmi',
+        sourceTitle: 'Converter Manual.pdf',
+      }),
+    ]);
+  });
+
+  it('requires distinctive long subject terms before accepting generic matches', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'ship-1',
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-application',
+              ragflowDocumentId: 'doc-application',
+              filename: 'Application Handbook.pdf',
+              category: 'MANUALS',
+            },
+            {
+              id: 'manual-waterjet',
+              ragflowDocumentId: 'doc-waterjet',
+              filename: 'Waterjet Manual.pdf',
+              category: 'MANUALS',
+            },
+          ],
+        }),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      searchDataset: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-generic-application',
+          doc_id: 'doc-application',
+          doc_name: 'Application Handbook.pdf',
+          content:
+            'This application manual describes unit installation requirements and limits.',
+          similarity: 0.94,
+          meta: { page_num: 11 },
+        },
+        {
+          id: 'chunk-waterjet-limits',
+          doc_id: 'doc-waterjet',
+          doc_name: 'Waterjet Manual.pdf',
+          content:
+            'Waterjet application limits include installation angle, operating draught and hull inlet constraints.',
+          similarity: 0.82,
+          meta: { page_num: 18 },
+        },
+      ]),
+    };
+
+    const service = new ChatContextService(prisma as never, ragflow as never);
+
+    const result = await service.findContextForQuery(
+      'ship-1',
+      'What are the application limits for the waterjet unit?',
+      2,
+      2,
+      ['MANUALS'],
+    );
+
+    expect(result.citations).toEqual([
+      expect.objectContaining({
+        shipManualId: 'manual-waterjet',
+        chunkId: 'chunk-waterjet-limits',
+        sourceTitle: 'Waterjet Manual.pdf',
       }),
     ]);
   });
