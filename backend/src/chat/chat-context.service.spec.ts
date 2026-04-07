@@ -384,6 +384,56 @@ describe('ChatContextService', () => {
     );
   });
 
+  it('rejects scoped chunk fallback matches that miss model or acronym anchors', async () => {
+    const prisma = {
+      ship: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'ship-1',
+            name: 'Sea Wolf X',
+            ragflowDatasetId: 'dataset-1',
+            manuals: [
+              {
+                id: 'manual-tagged',
+                ragflowDocumentId: 'doc-tagged',
+                filename: 'Tagged Manual.pdf',
+                category: 'MANUALS',
+              },
+            ],
+          },
+        ]),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      searchDataset: jest
+        .fn()
+        .mockRejectedValue(new Error('RAGFlow retrieval failed')),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-generic-modes',
+          doc_id: 'doc-tagged',
+          doc_name: 'Tagged Manual.pdf',
+          content:
+            'The controller operating modes include automatic and manual operation.',
+          meta: { page_num: 12 },
+        },
+      ]),
+    };
+
+    const service = new ChatContextService(prisma as never, ragflow as never);
+
+    await expect(
+      service.findContextForAdminQuery(
+        'What are the UPS operating modes?',
+        2,
+        2,
+        ['MANUALS'],
+        ['manual-tagged'],
+      ),
+    ).resolves.toEqual([]);
+  });
+
   it('applies the same tag-first retrieval preference for admin document searches', async () => {
     const prisma = {
       ship: {

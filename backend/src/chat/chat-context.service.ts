@@ -64,6 +64,7 @@ interface SearchableManual {
 }
 
 interface LexicalQueryProfile {
+  anchorTokens: string[];
   phrases: string[];
   tokens: string[];
 }
@@ -605,6 +606,27 @@ export class ChatContextService {
 
   private buildLexicalQueryProfile(query: string): LexicalQueryProfile {
     const normalizedQuery = this.normalizeLexicalText(query);
+    const upperStopWords = new Set([
+      'A',
+      'AN',
+      'AND',
+      'ARE',
+      'FOR',
+      'FROM',
+      'HOW',
+      'IN',
+      'IS',
+      'OF',
+      'ON',
+      'OR',
+      'THE',
+      'TO',
+      'WHAT',
+      'WHEN',
+      'WHERE',
+      'WHICH',
+      'WITH',
+    ]);
     const stopWords = new Set([
       'about',
       'and',
@@ -655,6 +677,23 @@ export class ChatContextService {
     return {
       tokens,
       phrases: [...phrases],
+      anchorTokens: [
+        ...new Set(
+          (query.match(/[A-Za-z0-9]{2,16}/g) ?? [])
+            .filter((token) => {
+              const hasLetter = /[A-Za-z]/.test(token);
+              const hasDigit = /\d/.test(token);
+              const isUpperSymbol =
+                token === token.toUpperCase() &&
+                /[A-Z]/.test(token) &&
+                !upperStopWords.has(token);
+
+              return hasLetter && (hasDigit || isUpperSymbol);
+            })
+            .map((token) => this.normalizeLexicalText(token))
+            .filter((token) => token.length > 1),
+        ),
+      ],
     };
   }
 
@@ -668,6 +707,15 @@ export class ChatContextService {
     }
 
     const contentTokens = new Set(normalizedContent.split(' '));
+    if (
+      queryProfile.anchorTokens.length > 0 &&
+      !queryProfile.anchorTokens.some(
+        (token) => contentTokens.has(token) || normalizedContent.includes(token),
+      )
+    ) {
+      return 0;
+    }
+
     let score = 0;
     let matchedTokens = 0;
 
