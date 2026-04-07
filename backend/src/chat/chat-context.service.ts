@@ -138,6 +138,7 @@ interface LexicalQueryProfile {
   anchorTokens: string[];
   phrases: string[];
   requiredSubjectTokens: string[];
+  strongPhrases: string[];
   tokens: string[];
 }
 
@@ -680,7 +681,8 @@ export class ChatContextService {
   }
 
   private buildLexicalQueryProfile(query: string): LexicalQueryProfile {
-    const normalizedQuery = this.normalizeLexicalText(query);
+    const lexicalQuery = this.extractLexicalUserQuestion(query);
+    const normalizedQuery = this.normalizeLexicalText(lexicalQuery);
     const upperStopWords = new Set([
       'A',
       'AN',
@@ -749,7 +751,21 @@ export class ChatContextService {
       phrases.add(`${tokens[index]} ${tokens[index + 1]} ${tokens[index + 2]}`);
     }
 
-    const rawTokens = query.match(/[A-Za-z0-9]{2,16}/g) ?? [];
+    const phraseList = [...phrases];
+    const strongPhrases = phraseList.filter((phrase) => {
+      const phraseTokens = phrase.split(' ');
+      const substantiveTokens = phraseTokens.filter(
+        (token) =>
+          token.length >= 3 &&
+          !stopWords.has(token) &&
+          !REQUIRED_SUBJECT_TOKEN_STOP_WORDS.has(token) &&
+          !/^\d+$/.test(token),
+      );
+
+      return substantiveTokens.length >= Math.min(2, phraseTokens.length);
+    });
+
+    const rawTokens = lexicalQuery.match(/[A-Za-z0-9]{2,16}/g) ?? [];
     const normalizedRawTokens = rawTokens
       .map((token) => this.normalizeLexicalText(token))
       .filter(Boolean);
@@ -768,7 +784,8 @@ export class ChatContextService {
       .filter((token) => token.length > 1);
     const lowercaseAcronymTokens = normalizedRawTokens.filter(
       (token) =>
-        /^[a-z]{2,5}$/.test(token) &&
+        /^[a-z]{3,4}$/.test(token) &&
+        (token.match(/[aeiou]/g)?.length ?? 0) <= 1 &&
         !stopWords.has(token) &&
         !LOWERCASE_ACRONYM_STOP_WORDS.has(token),
     );
@@ -777,13 +794,14 @@ export class ChatContextService {
 
     return {
       tokens,
-      phrases: [...phrases],
+      phrases: phraseList,
       requiredSubjectTokens: tokens.filter(
         (token) =>
           token.length >= 6 &&
           !REQUIRED_SUBJECT_TOKEN_STOP_WORDS.has(token) &&
           !/^\d+$/.test(token),
       ),
+      strongPhrases,
       anchorTokens: [
         ...new Set([
           ...upperAnchorTokens,
@@ -819,7 +837,8 @@ export class ChatContextService {
         queryProfile.requiredSubjectTokens,
         normalizedContent,
         contentTokens,
-      ) === 0
+      ) === 0 &&
+      !this.hasStrongPhraseMatch(queryProfile, normalizedContent)
     ) {
       return 0;
     }
@@ -865,6 +884,15 @@ export class ChatContextService {
     return score + matchedTokens / Math.max(1, queryTokenCount);
   }
 
+  private hasStrongPhraseMatch(
+    queryProfile: LexicalQueryProfile,
+    normalizedContent: string,
+  ): boolean {
+    return queryProfile.strongPhrases.some((phrase) =>
+      normalizedContent.includes(phrase),
+    );
+  }
+
   private countAnchorMatches(
     anchorTokens: string[],
     normalizedContent: string,
@@ -894,6 +922,18 @@ export class ChatContextService {
       .replace(/[^a-z0-9\s]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private extractLexicalUserQuestion(query: string): string {
+    const trimmed = query.trim();
+    const marker = ' document:';
+    const markerIndex = trimmed.toLowerCase().indexOf(marker);
+    if (trimmed.toLowerCase().startsWith('from ') && markerIndex >= 0) {
+      const suffix = trimmed.slice(markerIndex + marker.length).trim();
+      return suffix || trimmed;
+    }
+
+    return trimmed;
   }
 
   private mapResultsToCitations(

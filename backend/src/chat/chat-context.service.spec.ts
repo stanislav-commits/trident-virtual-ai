@@ -436,6 +436,70 @@ describe('ChatContextService', () => {
     ).resolves.toEqual([]);
   });
 
+  it('keeps selected-manual fallback chunks when the answer uses a strong subject phrase instead of the source title', async () => {
+    const prisma = {
+      ship: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'ship-1',
+            name: 'Sea Wolf X',
+            ragflowDatasetId: 'dataset-1',
+            manuals: [
+              {
+                id: 'manual-catalogue',
+                ragflowDocumentId: 'doc-catalogue',
+                filename: 'Model 240 Spare Parts Catalogue.pdf',
+                category: 'MANUALS',
+              },
+            ],
+          },
+        ]),
+      },
+    };
+    const ragflow = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      searchDataset: jest
+        .fn()
+        .mockRejectedValue(new Error('RAGFlow retrieval failed')),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-general',
+          doc_id: 'doc-catalogue',
+          doc_name: 'Model 240 Spare Parts Catalogue.pdf',
+          content: 'TD240HCT pump body assembly and installation notes.',
+          meta: { page_num: 3 },
+        },
+        {
+          id: 'chunk-seal-kit',
+          doc_id: 'doc-catalogue',
+          doc_name: 'Model 240 Spare Parts Catalogue.pdf',
+          content:
+            '592.04014 - TD240HCT SEAL KIT CODE DESCRIPTION 381.10506 O-Ring 381.14086 O-Ring 382.14004 Lip Seal.',
+          meta: { page_num: 5 },
+        },
+      ]),
+    };
+
+    const service = new ChatContextService(prisma as never, ragflow as never);
+
+    const citations = await service.findContextForAdminQuery(
+      'From Model 240 Spare Parts Catalogue.pdf document: Show me the spare parts for the Turbodrive 240 H.C.T. seal kit.',
+      2,
+      2,
+      ['MANUALS'],
+      ['manual-catalogue'],
+    );
+
+    expect(citations).toEqual([
+      expect.objectContaining({
+        shipManualId: 'manual-catalogue',
+        chunkId: 'chunk-seal-kit',
+        sourceTitle: 'Model 240 Spare Parts Catalogue.pdf (Sea Wolf X)',
+        pageNumber: 5,
+      }),
+    ]);
+  });
+
   it('filters RAGFlow hits that miss acronym/model evidence for high-anchor queries', async () => {
     const prisma = {
       ship: {
