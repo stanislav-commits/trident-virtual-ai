@@ -131,9 +131,23 @@ describe('ManualSemanticMatcherService', () => {
           {
             id: 'manual-generic-pump',
             ragflowDocumentId: 'doc-generic-pump',
-            filename: 'MN_ACB531.pdf',
+            filename: 'MN_ACB531 spare parts catalogue.pdf',
             category: 'MANUALS',
-            semanticProfile: null,
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'parts_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['spare_parts_catalog'],
+              secondaryConceptIds: [],
+              systems: [],
+              equipment: ['pump'],
+              vendor: null,
+              model: null,
+              aliases: [],
+              summary: 'Generic spare parts catalogue with seal kits.',
+              sections: [],
+              pageTopics: [],
+            },
           },
           {
             id: 'manual-model-catalogue',
@@ -151,8 +165,8 @@ describe('ManualSemanticMatcherService', () => {
       schemaVersion: '2026-04-06.semantic-v2',
       intent: 'parts_lookup',
       conceptFamily: 'asset_system',
-      selectedConceptIds: [],
-      candidateConceptIds: [],
+      selectedConceptIds: ['spare_parts_catalog'],
+      candidateConceptIds: ['spare_parts_catalog'],
       equipment: [],
       systems: [],
       vendor: null,
@@ -179,7 +193,80 @@ describe('ManualSemanticMatcherService', () => {
     expect(candidates[0]).toEqual(
       expect.objectContaining({
         manualId: 'manual-model-catalogue',
-        reasons: expect.arrayContaining(['filename_overlap']),
+        reasons: expect.arrayContaining(['filename_overlap', 'query_anchor']),
+      }),
+    );
+  });
+
+  it('lets a distinctive filename anchor beat a generic profile match', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-generic-converter',
+            ragflowDocumentId: 'doc-generic-converter',
+            filename: 'Generic converter manual.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'general_information',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:navigation:converter'],
+              secondaryConceptIds: [],
+              systems: ['navigation display'],
+              equipment: ['converter'],
+              vendor: null,
+              model: null,
+              aliases: [],
+              summary: 'General converter information.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-distinctive-vendor',
+            ragflowDocumentId: 'doc-distinctive-vendor',
+            filename: '42805_LINDY_MAN_0817.pdf',
+            category: 'MANUALS',
+            semanticProfile: null,
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'general_information',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:navigation:converter'],
+      candidateConceptIds: ['tag:equipment:navigation:converter'],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'direct_answer',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.7,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText:
+        'What does the LINDY converter say about connecting SDI to HDMI?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-distinctive-vendor',
+        reasons: expect.arrayContaining(['query_anchor']),
       }),
     );
   });

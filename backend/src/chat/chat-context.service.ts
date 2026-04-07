@@ -769,11 +769,17 @@ export class ChatContextService {
   ): number {
     const compactContent = normalizedContent.replace(/\s+/g, '');
     return anchorTokens.filter((token) => {
-      if (contentTokens.has(token) || normalizedContent.includes(token)) {
+      if (contentTokens.has(token)) {
         return true;
       }
 
-      return token.length > 3 && compactContent.includes(token);
+      if (token.length <= 3) {
+        return false;
+      }
+
+      return (
+        normalizedContent.includes(token) || compactContent.includes(token)
+      );
     }).length;
   }
 

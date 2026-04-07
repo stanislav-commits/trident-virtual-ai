@@ -16,6 +16,11 @@ interface SearchableSemanticManual {
   semanticProfile: unknown;
 }
 
+interface DistinctiveQueryAnchor {
+  token: string;
+  emphasized: boolean;
+}
+
 const PROFILE_MATCH_STOP_WORDS = new Set([
   'a',
   'an',
@@ -54,6 +59,39 @@ const GENERIC_EXPLICIT_SOURCE_TOKENS = new Set([
   'pdf',
   'procedure',
   'user',
+]);
+
+const QUERY_ANCHOR_STOP_WORDS = new Set([
+  ...PROFILE_MATCH_STOP_WORDS,
+  ...GENERIC_EXPLICIT_SOURCE_TOKENS,
+  'catalog',
+  'catalogue',
+  'check',
+  'connect',
+  'connecting',
+  'connection',
+  'converter',
+  'display',
+  'equipment',
+  'information',
+  'instruction',
+  'kit',
+  'limit',
+  'limitation',
+  'mode',
+  'operate',
+  'operating',
+  'operation',
+  'overview',
+  'page',
+  'part',
+  'procedure',
+  'seal',
+  'source',
+  'spare',
+  'system',
+  'unit',
+  'vessel',
 ]);
 
 @Injectable()
@@ -162,6 +200,16 @@ export class ManualSemanticMatcherService {
     if (filenameScore > 0) {
       score += filenameScore;
       reasons.push('filename_overlap');
+    }
+
+    const anchorScore = this.scoreDistinctiveQueryAnchors(
+      manual,
+      profile,
+      params.queryText,
+    );
+    if (anchorScore > 0) {
+      score += anchorScore;
+      reasons.push('query_anchor');
     }
 
     if (
@@ -421,9 +469,9 @@ export class ManualSemanticMatcherService {
     const leftTokens = new Set(
       this.tokenize(left).filter((token) => token.length > 2),
     );
-    const rightTokens = this.tokenize(right).filter(
-      (token) => token.length > 2,
-    );
+    const rightTokens = [
+      ...new Set(this.tokenize(right).filter((token) => token.length > 2)),
+    ];
 
     let overlap = 0;
     for (const token of rightTokens) {
@@ -433,6 +481,121 @@ export class ManualSemanticMatcherService {
     }
 
     return Math.min(overlap * 2, 30);
+  }
+
+  private scoreDistinctiveQueryAnchors(
+    manual: SearchableSemanticManual,
+    profile: ManualSemanticProfile | null,
+    queryText: string,
+  ): number {
+    const anchors = this.extractDistinctiveQueryAnchors(queryText);
+    if (anchors.length === 0) {
+      return 0;
+    }
+
+    const filenameTokens = new Set(this.tokenize(manual.filename));
+    const profileTokens = profile
+      ? new Set(this.tokenize(this.buildProfileAnchorText(profile)))
+      : new Set<string>();
+    let matchedAnchors = 0;
+    let score = 0;
+
+    for (const anchor of anchors) {
+      if (filenameTokens.has(anchor.token)) {
+        matchedAnchors += 1;
+        score += this.queryAnchorWeight(anchor, true);
+        continue;
+      }
+
+      if (profileTokens.has(anchor.token)) {
+        matchedAnchors += 1;
+        score += this.queryAnchorWeight(anchor, false);
+      }
+    }
+
+    if (matchedAnchors === 0) {
+      return 0;
+    }
+
+    if (matchedAnchors >= 2) {
+      score += 16;
+    }
+    if (matchedAnchors >= 3) {
+      score += 18;
+    }
+
+    return Math.min(score, 120);
+  }
+
+  private extractDistinctiveQueryAnchors(
+    queryText: string,
+  ): DistinctiveQueryAnchor[] {
+    const emphasizedTokens = new Set(
+      [
+        ...(queryText.match(/\b[A-Z0-9]{2,}(?:[.\-][A-Z0-9]+)*\b/g) ?? []),
+        ...(queryText.match(/\b[A-Z][A-Za-z0-9]{4,}\b/g) ?? []),
+      ].flatMap((value) => this.tokenize(value)),
+    );
+    const seen = new Set<string>();
+    const anchors: DistinctiveQueryAnchor[] = [];
+
+    for (const token of this.tokenize(queryText)) {
+      if (
+        token.length <= 2 ||
+        QUERY_ANCHOR_STOP_WORDS.has(token) ||
+        seen.has(token)
+      ) {
+        continue;
+      }
+
+      const emphasized = emphasizedTokens.has(token);
+      if (!emphasized && !/\d/.test(token) && token.length < 7) {
+        continue;
+      }
+
+      seen.add(token);
+      anchors.push({ token, emphasized });
+    }
+
+    return anchors;
+  }
+
+  private queryAnchorWeight(
+    anchor: DistinctiveQueryAnchor,
+    matchedFilename: boolean,
+  ): number {
+    let weight = matchedFilename ? 46 : 12;
+    if (anchor.emphasized) {
+      weight += matchedFilename ? 34 : 6;
+    }
+    if (/\d/.test(anchor.token)) {
+      weight += matchedFilename ? 8 : 4;
+    }
+    if (anchor.token.length >= 7) {
+      weight += matchedFilename ? 6 : 3;
+    }
+    if (anchor.token.length <= 4) {
+      weight += matchedFilename ? 4 : 2;
+    }
+    return weight;
+  }
+
+  private buildProfileAnchorText(profile: ManualSemanticProfile): string {
+    return [
+      profile.vendor,
+      profile.model,
+      ...profile.aliases,
+      ...profile.equipment,
+      ...profile.systems,
+      profile.summary,
+      ...profile.sections.flatMap((section) => [
+        section.title,
+        section.summary,
+      ]),
+      ...profile.pageTopics.map((topic) => topic.summary),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(' ');
   }
 
   private scoreArrayOverlap(left: string[], right: string[]): number {

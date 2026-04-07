@@ -415,7 +415,7 @@ describe('ChatContextService', () => {
           doc_id: 'doc-tagged',
           doc_name: 'Tagged Manual.pdf',
           content:
-            'The controller operating modes include automatic and manual operation.',
+            'The controller groups operating modes include automatic and manual operation.',
           meta: { page_num: 12 },
         },
       ]),
