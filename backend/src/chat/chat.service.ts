@@ -1598,6 +1598,10 @@ export class ChatService {
       return false;
     }
 
+    if (/\b(?:page|p\.?)\s*#?\s*\d{1,4}\b/i.test(trimmed)) {
+      return false;
+    }
+
     const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
     if (wordCount > 12) {
       return false;

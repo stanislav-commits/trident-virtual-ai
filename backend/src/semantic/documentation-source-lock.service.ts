@@ -269,6 +269,12 @@ export class DocumentationSourceLockService {
       /\b(this|that|same|current|previous)\s+(manual|guide|document|procedure|one)\b/i.test(
         query,
       ) ||
+      /\b(page|p\.?|section|chapter)\b.*\b(this|that|same|current|previous)\b/i.test(
+        query,
+      ) ||
+      /\b(this|that|same|current|previous)\b.*\b(page|p\.?|section|chapter)\b/i.test(
+        query,
+      ) ||
       /\b(in|from)\s+(this|that|same)\b/i.test(query) ||
       /\b(page|p\.?|section|chapter)\s*#?\s*\d{1,4}\b/i.test(query)
     );
@@ -286,10 +292,13 @@ export class DocumentationSourceLockService {
     }
 
     return (
-      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|warnings?|requirements?|limits?|tools?|materials?)\b/i.test(
+      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|warnings?|requirements?|limits?|limitations?|tools?|materials?|tables?|diagrams?|figures?|drawings?|charts?|summar(?:y|ies|ize)|process(?:es)?|sequence|overview)\b/i.test(
         trimmed,
       ) ||
       /\b(?:who|what|which)\s+should\s+(?:be\s+)?(?:notified|involved|checked|recorded|completed)\b/i.test(
+        trimmed,
+      ) ||
+      /\bwhat\s+(?:should|do)\s+i\s+check\s+first\b/i.test(
         trimmed,
       )
     );

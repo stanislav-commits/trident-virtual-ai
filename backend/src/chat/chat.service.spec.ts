@@ -4306,6 +4306,14 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('does not carry previous citations into explicit page follow-ups', () => {
+    expect(
+      (service as any).shouldCarryForwardLockedDocumentationCitations(
+        'What does page 121 say in this manual?',
+      ),
+    ).toBe(false);
+  });
+
   it('does not fall back to LLM when semantic documentation retrieval has no evidence', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

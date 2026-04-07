@@ -271,4 +271,63 @@ describe('DocumentationSourceLockService', () => {
       reason: 'follow_up_source_lock',
     });
   });
+
+  it('keeps the selected manual for generic table and limitation follow-ups', () => {
+    const followUpState = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'manual_lookup' as const,
+      conceptIds: [],
+      sourcePreferences: ['MANUALS' as const],
+      sourceLock: true,
+      lockedManualId: 'manual-handbook',
+      lockedManualTitle: 'Marine Application Handbook.pdf',
+      lockedDocumentId: 'doc-handbook',
+      pageHint: null,
+      sectionHint: null,
+      vendor: null,
+      model: null,
+      systems: [],
+      equipment: [],
+    };
+    const semanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'general_information' as const,
+      conceptFamily: 'asset_system',
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS' as const],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'direct_answer' as const,
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.5,
+    };
+
+    for (const userQuery of [
+      'Which tables or diagrams are relevant?',
+      'What are the limitations?',
+      'Can you summarize the process for a new engineer?',
+      'What page is this from?',
+    ]) {
+      expect(
+        service.resolveSourceLock({
+          userQuery,
+          semanticQuery,
+          followUpState,
+          candidates: [],
+        }),
+      ).toMatchObject({
+        active: true,
+        lockedManualId: 'manual-handbook',
+        lockedManualTitle: 'Marine Application Handbook.pdf',
+        reason: 'follow_up_source_lock',
+      });
+    }
+  });
 });
