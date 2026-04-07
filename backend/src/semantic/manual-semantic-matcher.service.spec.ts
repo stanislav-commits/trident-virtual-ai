@@ -97,8 +97,7 @@ describe('ManualSemanticMatcherService', () => {
     const candidates = await service.shortlistManuals({
       shipId: null,
       role: 'admin',
-      queryText:
-        'What is the safe procedure for entering an enclosed space?',
+      queryText: 'What is the safe procedure for entering an enclosed space?',
       semanticQuery,
       allowedDocumentCategories: ['MANUALS', 'REGULATION'],
     });
@@ -184,8 +183,7 @@ describe('ManualSemanticMatcherService', () => {
     const candidates = await service.shortlistManuals({
       shipId: null,
       role: 'admin',
-      queryText:
-        'Which spare parts are in the Turbodrive 240 H.C.T. seal kit?',
+      queryText: 'Which spare parts are in the Turbodrive 240 H.C.T. seal kit?',
       semanticQuery,
       allowedDocumentCategories: ['MANUALS'],
     });
@@ -370,6 +368,208 @@ describe('ManualSemanticMatcherService', () => {
     expect(candidates[0].score).toBeGreaterThan(
       candidates.find((candidate) => candidate.manualId === 'manual-bunkering')
         ?.score ?? 0,
+    );
+  });
+
+  it('does not let generic transfer wording beat helm-station evidence', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-volvo',
+            ragflowDocumentId: 'doc-volvo',
+            filename: 'Volvo Penta_operators manual_47710211.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['Electronic Vessel Control system'],
+              equipment: ['External Helm', 'control levers'],
+              vendor: 'Volvo Penta',
+              model: 'D13',
+              aliases: ['Operator manual D13'],
+              summary:
+                'Operator manual covering operation, alarms, emergency actions, maintenance, settings and technical data.',
+              sections: [
+                {
+                  title: 'Operation',
+                  pageStart: 65,
+                  pageEnd: 90,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary:
+                    'Operating procedures for the engine and control system.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-bunkering',
+            ragflowDocumentId: 'doc-bunkering',
+            filename: 'Procedures - Bunkering and Transfers (3).pdf',
+            category: 'REGULATION',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'regulation_compliance',
+              sourceCategory: 'REGULATION',
+              primaryConceptIds: ['bunkering_operation'],
+              secondaryConceptIds: [],
+              systems: ['fuel system'],
+              equipment: ['bunkering hose', 'tank vents', 'fuel meter'],
+              vendor: null,
+              model: null,
+              aliases: ['fuel transfer', 'fuel oil transfers'],
+              summary:
+                'Procedure for bunkering, fuel transfer monitoring, and spill prevention.',
+              sections: [
+                {
+                  title: 'Centrifugal Fuel Separator',
+                  pageStart: 8,
+                  pageEnd: 8,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary:
+                    'Fuel transfer and centrifuge control cabinet checks.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['helm_station_control'],
+      candidateConceptIds: ['helm_station_control', 'bunkering_operation'],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.78,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'How do I transfer control to another helm station?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS', 'REGULATION'],
+    });
+
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({ manualId: 'manual-volvo' }),
+    );
+    expect(
+      candidates.find((candidate) => candidate.manualId === 'manual-bunkering')
+        ?.score ?? 0,
+    ).toBeLessThan(candidates[0].score);
+  });
+
+  it('does not rank generic guide/start-up text above converter evidence', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-fridge',
+            ragflowDocumentId: 'doc-fridge',
+            filename: 'Vitrifrigo_Fridge mod. c50i.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: [],
+              equipment: ['refrigerator', 'compressor', 'thermostat'],
+              vendor: 'Vitrifrigo',
+              model: 'C50I',
+              aliases: ['fridge manual'],
+              summary:
+                "Manual intended as a guide to the appliance's proper use.",
+              sections: [
+                {
+                  title: 'Start-up',
+                  pageStart: 10,
+                  pageEnd: 11,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary: 'Start-up and temperature adjustment.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-converter',
+            ragflowDocumentId: 'doc-converter',
+            filename: 'Power converter manual.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['shore power'],
+              equipment: ['power converter', 'interface module', 'LCD display'],
+              vendor: null,
+              model: 'SPC-II',
+              aliases: ['shore power converter'],
+              summary: 'Manual for a power converter and its interface module.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'manual_lookup',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:navigation:converter'],
+      candidateConceptIds: ['tag:equipment:navigation:converter'],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'direct_answer',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.7,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'What information is in the converter quick-start guide?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({ manualId: 'manual-converter' }),
     );
   });
 });

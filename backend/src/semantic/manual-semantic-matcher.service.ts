@@ -70,6 +70,7 @@ const QUERY_ANCHOR_STOP_WORDS = new Set([
   'connect',
   'connecting',
   'connection',
+  'control',
   'converter',
   'display',
   'equipment',
@@ -90,8 +91,33 @@ const QUERY_ANCHOR_STOP_WORDS = new Set([
   'source',
   'spare',
   'system',
+  'transfer',
+  'transfers',
+  'another',
   'unit',
   'vessel',
+]);
+
+const PROFILE_TEXT_QUERY_STOP_WORDS = new Set([
+  ...PROFILE_MATCH_STOP_WORDS,
+  ...GENERIC_EXPLICIT_SOURCE_TOKENS,
+  'another',
+  'control',
+  'information',
+  'quick',
+  'start',
+  'startup',
+  'transfer',
+  'transfers',
+]);
+
+const CONCEPT_TEXT_STOP_WORDS = new Set([
+  ...PROFILE_TEXT_QUERY_STOP_WORDS,
+  'equipment',
+  'sb',
+  'system',
+  'systems',
+  'tag',
 ]);
 
 @Injectable()
@@ -320,6 +346,21 @@ export class ManualSemanticMatcherService {
       }
     }
 
+    const selectedConceptTextScore = this.scoreSelectedConceptText(
+      profile,
+      query.selectedConceptIds.filter(
+        (conceptId) =>
+          !primaryConcepts.has(conceptId) &&
+          !secondaryConcepts.has(conceptId) &&
+          !sectionConcepts.has(conceptId) &&
+          !pageConcepts.has(conceptId),
+      ),
+    );
+    if (selectedConceptTextScore > 0) {
+      score += selectedConceptTextScore;
+      reasons.push('selected_concept_text');
+    }
+
     const profileTextScore = this.scoreProfileText(profile, queryText);
     if (profileTextScore > 0) {
       score += profileTextScore;
@@ -333,7 +374,9 @@ export class ManualSemanticMatcherService {
     profile: ManualSemanticProfile,
     queryText: string,
   ): number {
-    const queryTokens = this.tokenize(queryText);
+    const queryTokens = this.tokenize(queryText).filter(
+      (token) => !PROFILE_TEXT_QUERY_STOP_WORDS.has(token),
+    );
     if (queryTokens.length === 0) {
       return 0;
     }
@@ -377,7 +420,9 @@ export class ManualSemanticMatcherService {
       'troubleshooting',
       'regulation_compliance',
     ]);
-    return procedureIntents.has(documentType) && procedureIntents.has(queryIntent);
+    return (
+      procedureIntents.has(documentType) && procedureIntents.has(queryIntent)
+    );
   }
 
   private scoreProfileFields(
@@ -413,6 +458,38 @@ export class ManualSemanticMatcherService {
 
     const matches = queryTokens.filter((token) => fieldTokens.has(token));
     return Math.min(matches.length * perToken, maxScore);
+  }
+
+  private scoreSelectedConceptText(
+    profile: ManualSemanticProfile,
+    selectedConceptIds: string[],
+  ): number {
+    if (selectedConceptIds.length === 0) {
+      return 0;
+    }
+
+    const profileTokens = new Set(
+      this.tokenize(this.buildProfileAnchorText(profile)),
+    );
+    if (profileTokens.size === 0) {
+      return 0;
+    }
+
+    const conceptTokens = [
+      ...new Set(
+        selectedConceptIds
+          .flatMap((conceptId) => this.tokenize(conceptId))
+          .filter(
+            (token) => token.length > 2 && !CONCEPT_TEXT_STOP_WORDS.has(token),
+          ),
+      ),
+    ];
+    if (conceptTokens.length === 0) {
+      return 0;
+    }
+
+    const matches = conceptTokens.filter((token) => profileTokens.has(token));
+    return Math.min(matches.length * 8, 24);
   }
 
   private buildCategoryFilter(categories?: string[]): string[] | null {
@@ -469,7 +546,12 @@ export class ManualSemanticMatcherService {
       this.tokenize(left).filter((token) => token.length > 2),
     );
     const rightTokens = [
-      ...new Set(this.tokenize(right).filter((token) => token.length > 2)),
+      ...new Set(
+        this.tokenize(right).filter(
+          (token) =>
+            token.length > 2 && !PROFILE_TEXT_QUERY_STOP_WORDS.has(token),
+        ),
+      ),
     ];
 
     let overlap = 0;

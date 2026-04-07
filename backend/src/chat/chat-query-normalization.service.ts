@@ -143,7 +143,11 @@ export class ChatQueryNormalizationService {
       return 'delta';
     }
 
-    if (/\b(total|sum|overall|combined|onboard|left|remaining)\b/i.test(normalized)) {
+    if (
+      /\b(total|sum|overall|combined|onboard|left|remaining)\b/i.test(
+        normalized,
+      )
+    ) {
       return 'sum';
     }
 
@@ -257,6 +261,14 @@ export class ChatQueryNormalizationService {
       add('DOCUMENTATION');
     }
 
+    const asksForDocumentData =
+      /\b(?:order[-\s]*specific\s+)?(?:operating|process|technical)\s+data\b/i.test(
+        normalized,
+      ) || /\b(?:data|spec)\s*sheet\b/i.test(normalized);
+    if (asksForDocumentData) {
+      add('DOCUMENTATION');
+    }
+
     if (/\b(certificate|certificates|expiry|expire)\b/i.test(normalized)) {
       add('CERTIFICATES');
     }
@@ -273,7 +285,10 @@ export class ChatQueryNormalizationService {
       add('HISTORY');
     }
 
-    if (/\b(forecast|order|budget|next month|coming month)\b/i.test(normalized)) {
+    if (
+      !asksForDocumentData &&
+      /\b(forecast|order|budget|next month|coming month)\b/i.test(normalized)
+    ) {
       add('ANALYTICS');
     }
 
@@ -466,7 +481,10 @@ export class ChatQueryNormalizationService {
     return value.replace(/\s+/g, ' ').trim().toLowerCase();
   }
 
-  private extractMatchedFragment(value: string, pattern: RegExp): string | undefined {
+  private extractMatchedFragment(
+    value: string,
+    pattern: RegExp,
+  ): string | undefined {
     return value.match(pattern)?.[0];
   }
 

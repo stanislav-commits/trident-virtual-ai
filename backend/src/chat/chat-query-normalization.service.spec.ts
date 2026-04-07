@@ -53,7 +53,8 @@ describe('ChatQueryNormalizationService', () => {
       userQuery: 'what was the difference in total fuel over the last 7 days?',
     });
     const abrupt = service.normalizeTurn({
-      userQuery: 'were there any sharp jumps in bilge level over the last week?',
+      userQuery:
+        'were there any sharp jumps in bilge level over the last week?',
     });
 
     expect(trend.operation).toBe('trend');
@@ -77,6 +78,16 @@ describe('ChatQueryNormalizationService', () => {
     expect(normalized.sourceHints).not.toContain('TELEMETRY');
   });
 
+  it('treats order-specific operating data as documentation rather than analytics', () => {
+    const normalized = service.normalizeTurn({
+      userQuery:
+        'Where can I find order-specific operating data for the separator?',
+    });
+
+    expect(normalized.sourceHints).toContain('DOCUMENTATION');
+    expect(normalized.sourceHints).not.toContain('ANALYTICS');
+  });
+
   it('attaches a time-only reply to the active historical clarification state', () => {
     const normalized = service.normalizeTurn({
       userQuery: '12:00 UTC',
@@ -87,7 +98,8 @@ describe('ChatQueryNormalizationService', () => {
         },
         {
           role: 'assistant',
-          content: 'Please specify the exact time for this historical telemetry lookup.',
+          content:
+            'Please specify the exact time for this historical telemetry lookup.',
           ragflowContext: {
             awaitingClarification: true,
             answerRoute: 'clarification',
@@ -376,7 +388,8 @@ describe('ChatQueryNormalizationService', () => {
 
   it('detects telemetry hints for plural current-reading queries', () => {
     const normalized = service.normalizeTurn({
-      userQuery: 'What are the port generator battery charger voltages right now?',
+      userQuery:
+        'What are the port generator battery charger voltages right now?',
     });
 
     expect(normalized.sourceHints).toContain('TELEMETRY');
