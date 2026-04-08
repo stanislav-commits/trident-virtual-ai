@@ -415,14 +415,17 @@ export class ChatDocumentationService {
         semanticScopeActive &&
         !sourceLockDecision.active
       ) {
-        retrievalTrace.fallbackWideningUsed = true;
-        const widenedAllowedManualIds = tagScopedManualIds?.length
-          ? tagScopedManualIds
-          : undefined;
-        citations = await searchCitationsForQuery(
-          documentationRetrievalQuery,
-          widenedAllowedManualIds,
-        );
+        const widenedAllowedManualIds = this.resolveSafeFallbackManualScope({
+          baseAllowedManualIds,
+          tagScopedManualIds,
+        });
+        if (widenedAllowedManualIds) {
+          retrievalTrace.fallbackWideningUsed = true;
+          citations = await searchCitationsForQuery(
+            documentationRetrievalQuery,
+            widenedAllowedManualIds,
+          );
+        }
       }
 
       if (
@@ -1502,6 +1505,34 @@ export class ChatDocumentationService {
       message: `From ${candidate.filename} document: ${userQuery}`,
       kind: 'suggestion',
     }));
+  }
+
+  private resolveSafeFallbackManualScope(params: {
+    baseAllowedManualIds?: string[];
+    tagScopedManualIds?: string[];
+  }): string[] | undefined {
+    const tagScopedManualIds = [
+      ...new Set(
+        (params.tagScopedManualIds ?? []).map((manualId) => manualId.trim()),
+      ),
+    ].filter(Boolean);
+    if (tagScopedManualIds.length === 0) {
+      return undefined;
+    }
+
+    const baseAllowedManualIds = new Set(
+      (params.baseAllowedManualIds ?? [])
+        .map((manualId) => manualId.trim())
+        .filter(Boolean),
+    );
+    if (baseAllowedManualIds.size === 0) {
+      return tagScopedManualIds;
+    }
+
+    const expandsBeyondSemanticScope = tagScopedManualIds.some(
+      (manualId) => !baseAllowedManualIds.has(manualId),
+    );
+    return expandsBeyondSemanticScope ? tagScopedManualIds : undefined;
   }
 
   private uniqueCandidateSources(

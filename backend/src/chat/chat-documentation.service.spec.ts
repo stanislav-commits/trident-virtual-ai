@@ -2137,6 +2137,35 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     ).toEqual(['manual-tagged']);
   });
 
+  it('does not widen to the full dataset when semantic scope has no citations and tag scope adds nothing new', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(
+      (service as any).resolveSafeFallbackManualScope({
+        baseAllowedManualIds: ['manual-turbodrive'],
+        tagScopedManualIds: undefined,
+      }),
+    ).toBeUndefined();
+    expect(
+      (service as any).resolveSafeFallbackManualScope({
+        baseAllowedManualIds: ['manual-turbodrive'],
+        tagScopedManualIds: ['manual-turbodrive'],
+      }),
+    ).toBeUndefined();
+    expect(
+      (service as any).resolveSafeFallbackManualScope({
+        baseAllowedManualIds: ['manual-turbodrive'],
+        tagScopedManualIds: ['manual-turbodrive', 'manual-catalogue'],
+      }),
+    ).toEqual(['manual-turbodrive', 'manual-catalogue']);
+  });
+
   it('records shortlisted manual titles from the selected semantic scope instead of the full raw candidate tail', () => {
     const service = new ChatDocumentationService(
       {} as never,

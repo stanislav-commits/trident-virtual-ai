@@ -1084,6 +1084,7 @@ export class ManualSemanticMatcherService {
     const subjectText = this.buildCandidateSubjectText(candidate);
     const normalizedSubject = this.normalizeText(subjectText);
     const collapsedSubject = this.collapseText(subjectText);
+    const subjectTokens = new Set(this.tokenize(normalizedSubject));
     const subjectIdentifiers = new Set(
       this.extractIdentifierAnchors([subjectText]),
     );
@@ -1128,12 +1129,17 @@ export class ManualSemanticMatcherService {
     }
 
     if (params.subjectPhrases.length > 0) {
-      const phraseMatches = params.subjectPhrases.filter(
-        (phrase) =>
-          normalizedSubject.includes(phrase.normalized) ||
-          collapsedSubject.includes(phrase.collapsed),
-      ).length;
-      score += phraseMatches * 4;
+      score += params.subjectPhrases.reduce(
+        (total, phrase) =>
+          total +
+          this.scoreSpecificSubjectPhraseMatch(
+            phrase,
+            normalizedSubject,
+            collapsedSubject,
+            subjectTokens,
+          ),
+        0,
+      );
     }
 
     if (candidate.reasons.includes('manual_tag')) {
@@ -1237,6 +1243,47 @@ export class ManualSemanticMatcherService {
     }
 
     return phrases;
+  }
+
+  private scoreSpecificSubjectPhraseMatch(
+    phrase: SpecificSubjectPhrase,
+    normalizedSubject: string,
+    collapsedSubject: string,
+    subjectTokens: Set<string>,
+  ): number {
+    if (
+      normalizedSubject.includes(phrase.normalized) ||
+      collapsedSubject.includes(phrase.collapsed)
+    ) {
+      return 4;
+    }
+
+    const matchedTokens = phrase.tokens.filter((token) =>
+      this.matchesToken(subjectTokens, collapsedSubject, token),
+    );
+    if (matchedTokens.length === 0) {
+      return 0;
+    }
+
+    const overlapRatio = matchedTokens.length / phrase.tokens.length;
+    const distinctiveMatches = matchedTokens.filter(
+      (token) => token.length >= 4 || /\d/.test(token),
+    ).length;
+
+    if (overlapRatio >= 0.8) {
+      return 4;
+    }
+    if (
+      overlapRatio >= 0.6 &&
+      distinctiveMatches >= Math.min(2, matchedTokens.length)
+    ) {
+      return 3;
+    }
+    if (matchedTokens.length >= 2 && distinctiveMatches >= 1) {
+      return 2;
+    }
+
+    return 0;
   }
 
   private matchesConcreteSubjectSignal(

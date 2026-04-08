@@ -1035,6 +1035,239 @@ describe('ManualSemanticMatcherService', () => {
     );
   });
 
+  it('prefers the mini-alarm manual over generic sounder datasheets for natural-language sounder queries', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-mini-alarm',
+            ragflowDocumentId: 'doc-mini-alarm',
+            filename: 'Mini Alarm Instruction Manual Atex.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:bilge:alarm'],
+              systems: ['alarm system', 'intrinsic safety'],
+              equipment: ['IS-mA1AN minialarm sounder'],
+              vendor: 'European Safety Systems Ltd.',
+              model: 'IS-mA1AN',
+              aliases: ['Mini Alarm', 'minialarm sounder'],
+              summary:
+                'Instruction manual for an intrinsically safe mini alarm sounder with mounting and wiring details.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-roshni',
+            ragflowDocumentId: 'doc-roshni',
+            filename: 'roshnilp_cgb.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['alarm system'],
+              equipment: ['electronic sounder', 'alarm unit'],
+              vendor: 'Roshni',
+              model: 'RoLP',
+              aliases: ['Roshni LP sounder'],
+              summary:
+                'Product datasheet for an electronic sounder used for general alarm signalling.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-askari',
+            ragflowDocumentId: 'doc-askari',
+            filename: 'askari_cx.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['alarm system'],
+              equipment: ['electronic sounder', 'local siren'],
+              vendor: null,
+              model: 'Askari',
+              aliases: ['Askari electronic sounder'],
+              summary:
+                'Product sheet for an electronic sounder with installation options and specifications.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'operational_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:bilge:alarm'],
+      candidateConceptIds: ['tag:equipment:bilge:alarm'],
+      equipment: ['intrinsically safe mini alarm sounder'],
+      systems: ['alarm system'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'mounting and wiring',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.34,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText:
+        'How do I mount and wire the intrinsically safe mini alarm sounder?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-mini-alarm',
+      }),
+    );
+  });
+
+  it('prefers the Akasol installation manual over fire-safety regulations for battery-room ventilation queries', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-akasol',
+            ragflowDocumentId: 'doc-akasol',
+            filename:
+              '35 - 510323E - Akasol Batteries Installation Philosophy Rev E.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:electrical:battery_pack'],
+              systems: ['battery space ventilation', 'cooling system'],
+              equipment: ['Akasol battery modules', 'battery pack'],
+              vendor: 'Akasol',
+              model: null,
+              aliases: ['battery installation philosophy'],
+              summary:
+                'Installation philosophy for Akasol battery packs, covering ventilation, gas release, and cooling data.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-fire-cic',
+            ragflowDocumentId: 'doc-fire-cic',
+            filename: '009 Fire Safety CIC 31072023.pdf',
+            category: 'REGULATION',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'REGULATION',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:hvac:er_ventilation'],
+              systems: ['fire main system'],
+              equipment: ['battery room ventilators'],
+              vendor: null,
+              model: null,
+              aliases: ['fire safety questionnaire'],
+              summary:
+                'Port State Control fire safety inspection questionnaire mentioning battery room ventilator checks.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-lithium-circular',
+            ragflowDocumentId: 'doc-lithium-circular',
+            filename: 'Fleet Circular JMS 07 2022 - Lithium Batteries copy.pdf',
+            category: 'REGULATION',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'REGULATION',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:electrical:battery_pack'],
+              systems: ['forced ventilation system'],
+              equipment: ['lithium batteries'],
+              vendor: 'JMS',
+              model: null,
+              aliases: ['lithium battery hazards'],
+              summary:
+                'Fleet circular on lithium battery hazards, storage, ventilation, and fire suppression.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'manual_lookup',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:electrical:battery_pack'],
+      candidateConceptIds: [
+        'tag:equipment:electrical:battery_pack',
+        'tag:equipment:hvac:er_ventilation',
+      ],
+      equipment: ['Akasol battery room', 'battery pack'],
+      systems: ['battery room ventilation'],
+      vendor: 'Akasol',
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint:
+        'ventilation rate during normal operation and gas release',
+      answerFormat: 'direct_answer',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.72,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText:
+        'What ventilation rate is required for the Akasol battery room during normal operation and gas release?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS', 'REGULATION'],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-akasol',
+      }),
+    );
+  });
+
   it('prefers a vendor-specific battery manual over a generic sibling battery manual', async () => {
     const prisma = {
       shipManual: {
