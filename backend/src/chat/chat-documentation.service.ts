@@ -1524,6 +1524,7 @@ export class ChatDocumentationService {
     candidate: DocumentationSemanticCandidate,
   ): boolean {
     const strongReasons = new Set([
+      'concrete_subject',
       'equipment_overlap',
       'explicit_source',
       'filename_overlap',

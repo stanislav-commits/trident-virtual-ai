@@ -30,6 +30,13 @@ interface DistinctiveQueryAnchor {
   emphasized: boolean;
 }
 
+interface ConcreteSubjectSignal {
+  normalized: string;
+  collapsed: string;
+  tokens: string[];
+  weight: number;
+}
+
 const PROFILE_MATCH_STOP_WORDS = new Set([
   'a',
   'an',
@@ -76,6 +83,8 @@ const QUERY_ANCHOR_STOP_WORDS = new Set([
   'catalog',
   'catalogue',
   'check',
+  'configure',
+  'configuration',
   'connect',
   'connecting',
   'connection',
@@ -84,11 +93,18 @@ const QUERY_ANCHOR_STOP_WORDS = new Set([
   'display',
   'equipment',
   'information',
+  'inspect',
+  'inspection',
+  'install',
+  'installation',
   'instruction',
   'kit',
   'limit',
   'limitation',
+  'maintenance',
   'mode',
+  'mount',
+  'mounting',
   'operate',
   'operating',
   'operation',
@@ -96,6 +112,11 @@ const QUERY_ANCHOR_STOP_WORDS = new Set([
   'page',
   'part',
   'procedure',
+  'repair',
+  'replace',
+  'replacement',
+  'service',
+  'setup',
   'seal',
   'source',
   'spare',
@@ -148,9 +169,13 @@ export class ManualSemanticMatcherService {
       return [];
     }
 
-    const candidates = manuals
+    const candidates = this.filterConcreteSubjectCandidates(
+      manuals
       .map((manual) => this.scoreManual(manual, params))
       .filter((candidate) => candidate.score > 0)
+      ,
+      params,
+    )
       .sort((left, right) => right.score - left.score)
       .slice(0, params.limit ?? 8);
 
@@ -298,6 +323,17 @@ export class ManualSemanticMatcherService {
         score += profileScore.score;
         reasons.push(...profileScore.reasons);
       }
+    }
+
+    const concreteSubjectScore = this.scoreConcreteSubjectSignals(
+      manual,
+      profile,
+      params.semanticQuery,
+      params.queryText,
+    );
+    if (concreteSubjectScore > 0) {
+      score += concreteSubjectScore;
+      reasons.push('concrete_subject');
     }
 
     return {
@@ -486,6 +522,33 @@ export class ManualSemanticMatcherService {
     return { score, reasons: [...new Set(reasons)] };
   }
 
+  private filterConcreteSubjectCandidates(
+    candidates: DocumentationSemanticCandidate[],
+    params: {
+      queryText: string;
+      semanticQuery: DocumentationSemanticQuery;
+    },
+  ): DocumentationSemanticCandidate[] {
+    const subjectSignals = this.collectConcreteSubjectSignals(
+      params.semanticQuery,
+      params.queryText,
+    );
+    if (
+      subjectSignals.length === 0 ||
+      !this.shouldRequireConcreteSubjectEvidence(
+        params.semanticQuery,
+        subjectSignals,
+      )
+    ) {
+      return candidates;
+    }
+
+    const gatedCandidates = candidates.filter((candidate) =>
+      this.hasConcreteSubjectEvidence(candidate),
+    );
+    return gatedCandidates.length > 0 ? gatedCandidates : candidates;
+  }
+
   private scoreProfileText(
     profile: ManualSemanticProfile,
     queryText: string,
@@ -567,12 +630,16 @@ export class ManualSemanticMatcherService {
       return 0;
     }
 
-    const fieldTokens = new Set(this.tokenize(value));
+    const normalizedValue = this.normalizeText(value);
+    const fieldTokens = new Set(this.tokenize(normalizedValue));
+    const collapsedValue = this.collapseText(normalizedValue);
     if (fieldTokens.size === 0) {
       return 0;
     }
 
-    const matches = queryTokens.filter((token) => fieldTokens.has(token));
+    const matches = queryTokens.filter((token) =>
+      this.matchesToken(fieldTokens, collapsedValue, token),
+    );
     return Math.min(matches.length * perToken, maxScore);
   }
 
@@ -658,9 +725,11 @@ export class ManualSemanticMatcherService {
   }
 
   private scoreTextOverlap(left: string, right: string): number {
+    const normalizedLeft = this.normalizeText(left);
     const leftTokens = new Set(
-      this.tokenize(left).filter((token) => token.length > 2),
+      this.tokenize(normalizedLeft).filter((token) => token.length > 2),
     );
+    const collapsedLeft = this.collapseText(normalizedLeft);
     const rightTokens = [
       ...new Set(
         this.tokenize(right).filter(
@@ -672,7 +741,7 @@ export class ManualSemanticMatcherService {
 
     let overlap = 0;
     for (const token of rightTokens) {
-      if (leftTokens.has(token)) {
+      if (this.matchesToken(leftTokens, collapsedLeft, token)) {
         overlap += /\d/.test(token) || token.length >= 6 ? 3 : 1;
       }
     }
@@ -690,21 +759,26 @@ export class ManualSemanticMatcherService {
       return 0;
     }
 
-    const filenameTokens = new Set(this.tokenize(manual.filename));
+    const normalizedFilename = this.normalizeText(manual.filename);
+    const filenameTokens = new Set(this.tokenize(normalizedFilename));
+    const collapsedFilename = this.collapseText(normalizedFilename);
     const profileTokens = profile
       ? new Set(this.tokenize(this.buildProfileAnchorText(profile)))
       : new Set<string>();
+    const collapsedProfile = profile
+      ? this.collapseText(this.buildProfileAnchorText(profile))
+      : '';
     let matchedAnchors = 0;
     let score = 0;
 
     for (const anchor of anchors) {
-      if (filenameTokens.has(anchor.token)) {
+      if (this.matchesToken(filenameTokens, collapsedFilename, anchor.token)) {
         matchedAnchors += 1;
         score += this.queryAnchorWeight(anchor, true);
         continue;
       }
 
-      if (profileTokens.has(anchor.token)) {
+      if (this.matchesToken(profileTokens, collapsedProfile, anchor.token)) {
         matchedAnchors += 1;
         score += this.queryAnchorWeight(anchor, false);
       }
@@ -722,6 +796,48 @@ export class ManualSemanticMatcherService {
     }
 
     return Math.min(score, 120);
+  }
+
+  private scoreConcreteSubjectSignals(
+    manual: SearchableSemanticManual,
+    profile: ManualSemanticProfile | null,
+    semanticQuery: DocumentationSemanticQuery,
+    queryText: string,
+  ): number {
+    const signals = this.collectConcreteSubjectSignals(semanticQuery, queryText);
+    if (signals.length === 0) {
+      return 0;
+    }
+
+    const normalizedManualSubject = this.buildManualSubjectText(manual, profile);
+    if (!normalizedManualSubject) {
+      return 0;
+    }
+
+    const manualTokens = new Set(this.tokenize(normalizedManualSubject));
+    const collapsedManual = this.collapseText(normalizedManualSubject);
+    let score = 0;
+    let matches = 0;
+
+    for (const signal of signals) {
+      if (
+        this.matchesConcreteSubjectSignal(
+          signal,
+          normalizedManualSubject,
+          manualTokens,
+          collapsedManual,
+        )
+      ) {
+        matches += 1;
+        score += signal.weight;
+      }
+    }
+
+    if (matches >= 2) {
+      score += 8;
+    }
+
+    return Math.min(score, 72);
   }
 
   private extractDistinctiveQueryAnchors(
@@ -757,6 +873,137 @@ export class ManualSemanticMatcherService {
     return anchors;
   }
 
+  private collectConcreteSubjectSignals(
+    semanticQuery: DocumentationSemanticQuery,
+    queryText: string,
+  ): ConcreteSubjectSignal[] {
+    const signals: ConcreteSubjectSignal[] = [];
+    const seen = new Set<string>();
+    const addSignal = (value: string | null | undefined, weight: number) => {
+      const normalized = this.normalizeText(value ?? '');
+      if (!normalized) {
+        return;
+      }
+
+      const tokens = this.tokenizeStructuredPhrase(normalized);
+      if (tokens.size === 0) {
+        return;
+      }
+
+      const tokenList = [...tokens];
+      const key = tokenList.join(' ');
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      signals.push({
+        normalized: tokenList.join(' '),
+        collapsed: tokenList.join(''),
+        tokens: tokenList,
+        weight,
+      });
+    };
+
+    addSignal(semanticQuery.explicitSource, 28);
+    addSignal(semanticQuery.vendor, 22);
+    addSignal(semanticQuery.model, 22);
+
+    for (const equipment of semanticQuery.equipment) {
+      addSignal(equipment, this.tokenizeStructuredPhrase(equipment).size > 1 ? 18 : 14);
+    }
+    for (const system of semanticQuery.systems) {
+      addSignal(system, this.tokenizeStructuredPhrase(system).size > 1 ? 16 : 12);
+    }
+    for (const anchor of this.extractDistinctiveQueryAnchors(queryText)) {
+      addSignal(anchor.token, anchor.emphasized ? 18 : 14);
+    }
+
+    return signals;
+  }
+
+  private shouldRequireConcreteSubjectEvidence(
+    semanticQuery: DocumentationSemanticQuery,
+    signals: ConcreteSubjectSignal[],
+  ): boolean {
+    return (
+      Boolean(semanticQuery.explicitSource) ||
+      Boolean(semanticQuery.vendor) ||
+      Boolean(semanticQuery.model) ||
+      semanticQuery.equipment.length > 0 ||
+      semanticQuery.systems.length > 0 ||
+      signals.some(
+        (signal) =>
+          signal.tokens.length > 1 ||
+          signal.tokens[0].length >= 7 ||
+          /\d/.test(signal.tokens[0]),
+      )
+    );
+  }
+
+  private hasConcreteSubjectEvidence(
+    candidate: DocumentationSemanticCandidate,
+  ): boolean {
+    const concreteReasons = new Set([
+      'concrete_subject',
+      'equipment_overlap',
+      'explicit_source',
+      'filename_overlap',
+      'model',
+      'query_anchor',
+      'vendor',
+    ]);
+    return candidate.reasons.some((reason) => concreteReasons.has(reason));
+  }
+
+  private buildManualSubjectText(
+    manual: SearchableSemanticManual,
+    profile: ManualSemanticProfile | null,
+  ): string {
+    const tagText = (manual.tags ?? [])
+      .flatMap(({ tag }) => [
+        tag.key,
+        tag.category,
+        tag.subcategory,
+        tag.item,
+        tag.description,
+      ])
+      .filter((value): value is string => Boolean(value))
+      .join(' ');
+
+    return this.normalizeText(
+      [
+        manual.filename,
+        profile?.vendor,
+        profile?.model,
+        ...(profile?.aliases ?? []),
+        ...(profile?.equipment ?? []),
+        ...(profile?.systems ?? []),
+        tagText,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(' '),
+    );
+  }
+
+  private matchesConcreteSubjectSignal(
+    signal: ConcreteSubjectSignal,
+    normalizedManualSubject: string,
+    manualTokens: Set<string>,
+    collapsedManual: string,
+  ): boolean {
+    if (
+      signal.tokens.length > 1 &&
+      (normalizedManualSubject.includes(signal.normalized) ||
+        collapsedManual.includes(signal.collapsed))
+    ) {
+      return true;
+    }
+
+    return signal.tokens.every((token) =>
+      this.matchesToken(manualTokens, collapsedManual, token),
+    );
+  }
+
   private queryAnchorWeight(
     anchor: DistinctiveQueryAnchor,
     matchedFilename: boolean,
@@ -775,6 +1022,25 @@ export class ManualSemanticMatcherService {
       weight += matchedFilename ? 4 : 2;
     }
     return weight;
+  }
+
+  private matchesToken(
+    tokens: Set<string>,
+    collapsedText: string,
+    token: string,
+  ): boolean {
+    if (tokens.has(token)) {
+      return true;
+    }
+
+    return (
+      (token.length >= 6 || /\d/.test(token)) &&
+      collapsedText.includes(this.collapseText(token))
+    );
+  }
+
+  private collapseText(value: string): string {
+    return this.normalizeText(value).replace(/\s+/g, '');
   }
 
   private buildProfileAnchorText(profile: ManualSemanticProfile): string {

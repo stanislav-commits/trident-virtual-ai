@@ -673,6 +673,241 @@ describe('ManualSemanticMatcherService', () => {
     );
   });
 
+  it('filters out installation-oriented manuals that lack concrete subject evidence', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-mini-alarm',
+            ragflowDocumentId: 'doc-mini-alarm',
+            filename: 'Mini Alarm Instruction Manual Atex.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:bilge:alarm'],
+              systems: [
+                'hazardous area electrical installation',
+                'intrinsic safety',
+              ],
+              equipment: ['IS-mA1AN minialarm sounder', 'sounder'],
+              vendor: 'European Safety Systems Ltd.',
+              model: 'IS-mA1AN',
+              aliases: ['Mini Alarm', 'minialarm sounder'],
+              summary:
+                'Instruction manual for IS-mA1AN intrinsically safe sounder covering installation and hazardous-area wiring.',
+              sections: [
+                {
+                  title: 'Mounting',
+                  pageStart: 4,
+                  pageEnd: 4,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary:
+                    'Mount base to a flat surface and complete minialarm installation wiring.',
+                },
+              ],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-bilgmon',
+            ragflowDocumentId: 'doc-bilgmon',
+            filename: 'bilgmon488_instruction_manual_vAE - 2020.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:bilge:alarm'],
+              systems: ['bilge monitoring', 'fresh water flushing'],
+              equipment: ['BilgMon488', '15 ppm bilge alarm'],
+              vendor: 'Brannstrom Sweden AB',
+              model: 'BilgMon488',
+              aliases: ['BilgMon 488'],
+              summary:
+                'Instruction manual for BilgMon488 15 ppm bilge alarm covering installation and maintenance.',
+              sections: [
+                {
+                  title: 'Installation',
+                  pageStart: 8,
+                  pageEnd: 12,
+                  conceptIds: ['tag:equipment:bilge:alarm'],
+                  sectionType: 'procedure',
+                  summary:
+                    'Mechanical and electrical installation for BilgMon488.',
+                },
+              ],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-furuno',
+            ragflowDocumentId: 'doc-furuno',
+            filename: 'FS1575_2575_5075_IME56770R2.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['SSB radiotelephone', 'wiring'],
+              equipment: ['FS-1575', 'FS-2575', 'FS-5075'],
+              vendor: 'FURUNO',
+              model: 'FS-1575/FS-2575/FS-5075',
+              aliases: ['SSB radiotelephone'],
+              summary:
+                'Installation manual for Furuno SSB radiotelephone with wiring and grounding.',
+              sections: [
+                {
+                  title: 'How to Install the System',
+                  pageStart: 11,
+                  pageEnd: 15,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary:
+                    'Installation procedures for control unit and antenna coupler.',
+                },
+              ],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:bilge:alarm'],
+      candidateConceptIds: ['tag:equipment:bilge:alarm'],
+      equipment: ['minialarm'],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'installation',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.31,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'how to install minialarm?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-mini-alarm',
+        reasons: expect.arrayContaining([
+          'concrete_subject',
+          'equipment_overlap',
+        ]),
+      }),
+    );
+  });
+
+  it('keeps multiple candidates for broad alarm-installation queries without a concrete subject anchor', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-mini-alarm',
+            ragflowDocumentId: 'doc-mini-alarm',
+            filename: 'Mini Alarm Instruction Manual Atex.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:bilge:alarm'],
+              systems: ['hazardous area electrical installation'],
+              equipment: ['alarm sounder'],
+              vendor: null,
+              model: null,
+              aliases: ['Mini Alarm'],
+              summary: 'Alarm installation manual for an intrinsically safe sounder.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-bilgmon',
+            ragflowDocumentId: 'doc-bilgmon',
+            filename: 'bilgmon488_instruction_manual_vAE - 2020.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:bilge:alarm'],
+              systems: ['bilge monitoring'],
+              equipment: ['15 ppm bilge alarm'],
+              vendor: null,
+              model: null,
+              aliases: ['BilgMon 488'],
+              summary: 'Bilge alarm instruction manual with installation section.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:bilge:alarm'],
+      candidateConceptIds: ['tag:equipment:bilge:alarm'],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'installation',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.42,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'how to install an alarm?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates.map((candidate) => candidate.manualId)).toEqual(
+      expect.arrayContaining(['manual-mini-alarm', 'manual-bilgmon']),
+    );
+  });
+
   it('prefers an asset-specific generator manual over a generic maintenance checklist for broad 500-hour queries', async () => {
     const prisma = {
       shipManual: {
