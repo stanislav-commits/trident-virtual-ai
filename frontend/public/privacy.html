@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy &amp; Terms of Use — Trident Intelligence Platform</title>
+  <meta name="description" content="Privacy Policy and Terms of Use for the Trident Intelligence Platform mobile application by Trident Virtual." />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f14;
+      --surface: #13161e;
+      --surface2: #1a1e28;
+      --border: rgba(255,255,255,0.08);
+      --text: #e8eaf0;
+      --text-muted: #8b939e;
+      --text-subtle: #5a6270;
+      --accent: #4f9cf9;
+      --radius: 14px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    .pp-layout {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 16px 80px;
+    }
+
+    .pp-container {
+      width: 100%;
+      max-width: 720px;
+    }
+
+    /* ── Header ── */
+    .pp-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 0 18px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 10;
+    }
+
+    .pp-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .pp-logo img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+    }
+
+    .pp-logo-name {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .pp-header-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    /* ── Title block ── */
+    .pp-title-block {
+      padding: 48px 0 32px;
+    }
+
+    .pp-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(79, 156, 249, 0.1);
+      border: 1px solid rgba(79, 156, 249, 0.2);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      border-radius: 100px;
+      margin-bottom: 20px;
+    }
+
+    .pp-main-title {
+      font-size: clamp(32px, 6vw, 48px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.15;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+
+    .pp-subtitle {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0.3px;
+      margin-bottom: 28px;
+    }
+
+    .pp-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .pp-preamble {
+      font-size: 15px;
+      line-height: 1.7;
+      color: var(--text-muted);
+    }
+
+    /* ── Sections ── */
+    .pp-section {
+      border-top: 1px solid var(--border);
+      padding: 28px 0;
+    }
+
+    .pp-section-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .pp-num-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .pp-section-title {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.4;
+      letter-spacing: 0.1px;
+      color: var(--text);
+      flex: 1;
+    }
+
+    .pp-body {
+      padding-left: 42px;
+    }
+
+    .pp-para {
+      font-size: 14px;
+      line-height: 1.75;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .pp-para:last-child { margin-bottom: 0; }
+
+    /* ── Contact block ── */
+    .pp-contact-block {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin: 12px 0;
+      color: var(--text-muted);
+    }
+
+    .pp-contact-block svg { flex-shrink: 0; }
+
+    .pp-contact-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-subtle);
+      margin-bottom: 3px;
+    }
+
+    .pp-contact-email {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+
+    .pp-contact-email:hover { opacity: 0.75; }
+
+    /* ── Footer note ── */
+    .pp-footer-note {
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--text-subtle);
+      text-align: center;
+      padding: 28px 24px 0;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 480px) {
+      .pp-main-title { font-size: 28px; }
+      .pp-title-block { padding: 32px 0 24px; }
+      .pp-section { padding: 22px 0; }
+      .pp-body { padding-left: 0; margin-top: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="pp-layout">
+    <div class="pp-container">
+
+      <!-- Header -->
+      <div class="pp-header">
+        <a href="/" class="pp-logo">
+          <img src="/favicon.png" alt="Trident Virtual logo" />
+          <span class="pp-logo-name">Trident Virtual</span>
+        </a>
+        <span class="pp-header-title">Privacy Policy &amp; Terms</span>
+      </div>
+
+      <!-- Title block -->
+      <div class="pp-title-block">
+        <div class="pp-badge">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          Legal Document
+        </div>
+        <h1 class="pp-main-title">Privacy Policy<br />&amp; Terms of Use</h1>
+        <p class="pp-subtitle">Trident Intelligence Platform · Version 1.0 · March 2026</p>
+        <hr class="pp-divider" />
+        <p class="pp-preamble">
+          This Privacy Policy and Terms of Use ("App Terms") governs access to and use of the Trident Intelligence Platform mobile application provided by Trident Virtual ("the Company"). The Application is an integral part of the remote engineering and vessel management services supplied under the Trident Virtual Service Agreement. By accessing or using the Application, you agree to be bound by these App Terms.
+        </p>
+      </div>
+
+      <!-- Section 1 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">1</span>
+          <h2 class="pp-section-title">Information We Collect and Use</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">We collect and process:</p>
+          <p class="pp-para">• User-Provided Information (name, professional email, role) during onboarding.<br />
+          • Technical Manuals supplied by the Client or Vessel owner for secure integration into the Application's database.<br />
+          • Vessel Operational Metrics and Vessel Data (pressure, temperature, engine load, RPM, machinery hours, maintenance records, operational logs, etc.) received in real time from the Vessel's systems.</p>
+          <p class="pp-para">All Vessel Data remains the property of the Client / Vessel owner. The Client hereby grants, and shall procure that the Vessel owner grants, to the Company a non-exclusive, worldwide, perpetual, irrevocable, royalty-free licence to access, use, store, process, analyse, reproduce and derive insights from the Vessel Data for the purposes of providing the Services, AI analysis, service improvement, product development, analytics and internal business purposes.</p>
+          <p class="pp-para">All rights in any analyses, reports, models, algorithms, aggregated datasets, insights or other outputs created by the Company from the Vessel Data vest exclusively and irrevocably in the Company.</p>
+        </div>
+      </div>
+
+      <!-- Section 2 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">2</span>
+          <h2 class="pp-section-title">Artificial Intelligence and Third-Party Subprocessors</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">The Application uses third-party AI models (e.g. OpenAI, Google Gemini, Anthropic or equivalent) solely to generate context-aware technical responses. User queries, relevant sections of technical manuals and Vessel Data are sent to these subprocessors under strict data-processing agreements that prohibit use of the data for training their general models.</p>
+          <p class="pp-para">Data is processed only for the specific request and is deleted after processing.</p>
+        </div>
+      </div>
+
+      <!-- Section 3 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">3</span>
+          <h2 class="pp-section-title">Automatically Collected Information</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">We may automatically collect device type, unique device ID, IP address, operating system, browser type and app usage statistics.</p>
+        </div>
+      </div>
+
+      <!-- Section 4 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">4</span>
+          <h2 class="pp-section-title">Data Security</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">All data is encrypted in transit (HTTPS/TLS). Access is restricted to authorised personnel on a need-to-know basis. However, the Company shall have no liability for any cyber security incident, unauthorised access, malware or breach affecting the Vessel's systems or the Application except to the extent caused solely by the Company's gross negligence or wilful default.</p>
+        </div>
+      </div>
+
+      <!-- Section 5 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">5</span>
+          <h2 class="pp-section-title">Advisory Nature – No Operational Responsibility</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">The Application and all AI-generated insights are advisory and informational only. The Company does not assume and shall not be deemed to assume any control, command or operational responsibility in respect of the Vessel, its systems or its Crew.</p>
+          <p class="pp-para">All decisions relating to operation, navigation, maintenance and safety of the Vessel remain at all times the sole responsibility of the Client, the Vessel owner and the Crew. The Company shall have no liability whatsoever for any act, omission or decision taken by the Client, Vessel owner or Crew whether or not based on or in reliance upon any output from the Application.</p>
+        </div>
+      </div>
+
+      <!-- Section 6 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">6</span>
+          <h2 class="pp-section-title">No Warranty – "As Is"</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">The Application is provided "as is" and "as available" without any warranty of fitness for purpose, accuracy, completeness or uninterrupted operation. The Company does not warrant that the AI analysis or Vessel Data processing will be error-free or suitable for operational or safety-critical decisions.</p>
+          <p class="pp-para">Users must always cross-check against primary gauges and manufacturer documentation.</p>
+        </div>
+      </div>
+
+      <!-- Section 7 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">7</span>
+          <h2 class="pp-section-title">Limitation of Liability</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">To the maximum extent permitted by law, the Company's liability arising under or in connection with the Application (whether in contract, tort including negligence, or otherwise) shall not exceed the lower of (i) the total aggregate fees paid by the Client under the Service Agreement or (ii) €1,000,000.</p>
+          <p class="pp-para">The Company shall in no event be liable for any indirect, consequential or special loss including loss of profit, loss of data, loss of use, or any loss arising from failure of onboard systems, internet connectivity, data inaccuracy or any decision based on Application outputs.</p>
+          <p class="pp-para">This clause survives termination.</p>
+        </div>
+      </div>
+
+      <!-- Section 8 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">8</span>
+          <h2 class="pp-section-title">Intellectual Property</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">All rights in the Application, its software, algorithms, AI models, interfaces, reports and outputs remain exclusively with the Company and its licensors. The Client is granted only a non-exclusive, non-transferable, revocable licence during the term of the Service Agreement solely for use on the Vessel.</p>
+        </div>
+      </div>
+
+      <!-- Section 9 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">9</span>
+          <h2 class="pp-section-title">Account Deletion and Data Requests</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">Users cannot self-delete accounts. Deletion of personal data may be requested in writing to info@trident-virtual.com. All personal data will be deleted within a reasonable period subject to legal retention obligations and the perpetual licence granted in respect of Vessel Data.</p>
+        </div>
+      </div>
+
+      <!-- Section 10 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">10</span>
+          <h2 class="pp-section-title">Governing Law and Dispute Resolution</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">These App Terms and any dispute arising out of or in connection with the Application shall be governed by the laws of England and Wales and shall be subject to the arbitration provisions set out in clause 12.7 of the Service Agreement (London arbitration).</p>
+        </div>
+      </div>
+
+      <!-- Section 11 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">11</span>
+          <h2 class="pp-section-title">Survival Clauses</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">Clauses 1 (Vessel Data licence), 5 (Advisory Nature), 6 (No Warranty), 7 (Limitation of Liability), 8 (IP) and 10 (Governing Law) shall survive any termination or expiry.</p>
+        </div>
+      </div>
+
+      <!-- Section 12 -->
+      <div class="pp-section">
+        <div class="pp-section-header">
+          <span class="pp-num-badge">12</span>
+          <h2 class="pp-section-title">Entire Agreement</h2>
+        </div>
+        <div class="pp-body">
+          <p class="pp-para">These App Terms together with the Service Agreement constitute the entire agreement in respect of the Application and supersede any prior statements. No variation shall be effective unless in writing signed by the Company.</p>
+        </div>
+      </div>
+
+      <!-- Contact -->
+      <div class="pp-contact-block">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="20" height="16" x="2" y="4" rx="2" />
+          <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+        </svg>
+        <div>
+          <div class="pp-contact-label">Privacy &amp; data queries</div>
+          <a href="mailto:info@trident-virtual.com" class="pp-contact-email">info@trident-virtual.com</a>
+        </div>
+      </div>
+
+      <!-- Footer note -->
+      <p class="pp-footer-note">
+        By using the Application you confirm that you have read, understood and agree to these App Terms and the Service Agreement.
+      </p>
+
+    </div>
+  </div>
+</body>
+</html>
