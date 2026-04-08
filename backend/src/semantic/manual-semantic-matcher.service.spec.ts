@@ -783,6 +783,39 @@ describe('ManualSemanticMatcherService', () => {
             },
             tags: [],
           },
+          {
+            id: 'manual-furuno',
+            ragflowDocumentId: 'doc-furuno',
+            filename: 'FS1575_2575_5075_IME56770R2.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['SSB radiotelephone', 'antenna coupler'],
+              equipment: ['FS-1575', 'FS-2575', 'FS-5075'],
+              vendor: 'FURUNO',
+              model: 'FS-1575/FS-2575/FS-5075',
+              aliases: ['SSB radiotelephone'],
+              summary:
+                'Installation manual for Furuno radiotelephone equipment.',
+              sections: [
+                {
+                  title: 'How to Install the System',
+                  pageStart: 11,
+                  pageEnd: 20,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary:
+                    'Installation procedures for the control unit and antenna coupler.',
+                },
+              ],
+              pageTopics: [],
+            },
+            tags: [],
+          },
         ]),
       },
     } as any;
@@ -906,6 +939,9 @@ describe('ManualSemanticMatcherService', () => {
 
     expect(candidates.map((candidate) => candidate.manualId)).toEqual(
       expect.arrayContaining(['manual-mini-alarm', 'manual-bilgmon']),
+    );
+    expect(candidates.map((candidate) => candidate.manualId)).not.toContain(
+      'manual-furuno',
     );
   });
 
