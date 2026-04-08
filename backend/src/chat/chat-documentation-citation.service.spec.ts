@@ -294,10 +294,11 @@ describe('ChatDocumentationCitationService', () => {
       },
       {
         chunkId: 'ragflow:pms-43',
+        sourceCategory: 'HISTORY_PROCEDURES',
         sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
         snippet:
-          'Task name: Generator seawater pump replacement. Interval: 3000 hours.',
-        score: 0.95,
+          'Task name: Generator seawater pump replacement. Interval: 3000 hours. Reference ID: 1P58.',
+        score: 1.18,
       },
     ];
 

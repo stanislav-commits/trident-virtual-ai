@@ -2006,9 +2006,11 @@ export class ChatDocumentationCitationService {
     const intervalPhrases = this.queryService.extractMaintenanceIntervalSearchPhrases(
       query,
     );
-    const preferredStructuredSourceTitle = citations.find((citation) =>
-      citation.chunkId?.startsWith('manual-interval-scan:'),
-    )?.sourceTitle;
+    const prefersHistoricalIntervalEvidence =
+      this.queryService.isNextDueLookupQuery(query) ||
+      /\b(last|previous|history|historical|completed|postponed|reference\s*id|task\s+name|component\s+name)\b/i.test(
+        query,
+      );
     const scored = citations
       .map((citation, index) => {
         const haystack =
@@ -2052,14 +2054,6 @@ export class ChatDocumentationCitationService {
         ).length;
         score += intervalMatches * 12;
 
-        if (preferredStructuredSourceTitle) {
-          if (citation.sourceTitle === preferredStructuredSourceTitle) {
-            score += 14;
-          } else {
-            score -= 8;
-          }
-        }
-
         if (
           intervalMatches === 0 &&
           /\b\d{2,6}\s*(?:mm|mbar|bar|psi|v|volt|volts|amp|amps|a|kw|kva|rpm|c)\b/i.test(
@@ -2072,9 +2066,49 @@ export class ChatDocumentationCitationService {
           score -= 25;
         }
 
+        if (prefersHistoricalIntervalEvidence) {
+          if (
+            citation.sourceCategory === 'HISTORY_PROCEDURES' ||
+            /maintenance\s+tasks/i.test(citation.sourceTitle ?? '') ||
+            /\b(next\s+due|last\s+due|reference\s*id|task\s+name|component\s+name|completed|postponed)\b/i.test(
+              haystack,
+            )
+          ) {
+            score += 28;
+          } else if (
+            citation.chunkId?.startsWith('manual-interval-scan:') === true
+          ) {
+            score -= 6;
+          }
+        }
+
         return {
           citation,
           index,
+          hasStructuredScan:
+            citation.chunkId?.startsWith('manual-interval-scan:') === true,
+          score,
+        };
+      });
+
+    const strongestStructuredSourceTitle = scored
+      .filter((entry) => entry.hasStructuredScan && entry.citation.sourceTitle)
+      .sort((left, right) => right.score - left.score)[0]?.citation.sourceTitle;
+
+    const boosted = scored
+      .map((entry) => {
+        let score = entry.score;
+
+        if (strongestStructuredSourceTitle) {
+          if (entry.citation.sourceTitle === strongestStructuredSourceTitle) {
+            score += 14;
+          } else {
+            score -= 8;
+          }
+        }
+
+        return {
+          ...entry,
           score,
         };
       })
@@ -2086,14 +2120,24 @@ export class ChatDocumentationCitationService {
         return left.index - right.index;
       });
 
-    const topScore = scored[0]?.score ?? 0;
+    const topScore = boosted[0]?.score ?? 0;
     if (topScore <= 0) {
       return citations;
     }
 
-    return scored
-      .filter((entry) => entry.score >= topScore - 16)
-      .map((entry) => entry.citation);
+    const shortlisted = boosted.filter((entry) => entry.score >= topScore - 16);
+
+    if (strongestStructuredSourceTitle && !prefersHistoricalIntervalEvidence) {
+      const preferredSourceEntries = shortlisted.filter(
+        (entry) => entry.citation.sourceTitle === strongestStructuredSourceTitle,
+      );
+
+      if (preferredSourceEntries.length > 0) {
+        return preferredSourceEntries.map((entry) => entry.citation);
+      }
+    }
+
+    return shortlisted.map((entry) => entry.citation);
   }
 
   private isProcedureSupportCitation(
