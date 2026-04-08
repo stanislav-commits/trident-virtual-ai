@@ -355,6 +355,22 @@ export class ManualSemanticMatcherService {
 
     score += this.scoreArrayOverlap(profile.systems, query.systems) * 8;
     score += this.scoreArrayOverlap(profile.equipment, query.equipment) * 8;
+    const systemOverlapScore = this.scoreStructuredPhraseOverlap(
+      profile.systems,
+      query.systems,
+    );
+    if (systemOverlapScore > 0) {
+      score += systemOverlapScore * 6;
+      reasons.push('system_overlap');
+    }
+    const equipmentOverlapScore = this.scoreStructuredPhraseOverlap(
+      profile.equipment,
+      query.equipment,
+    );
+    if (equipmentOverlapScore > 0) {
+      score += equipmentOverlapScore * 8;
+      reasons.push('equipment_overlap');
+    }
 
     if (
       query.vendor &&
@@ -788,6 +804,75 @@ export class ManualSemanticMatcherService {
     return right
       .map((value) => this.normalizeText(value))
       .filter((value) => leftValues.has(value)).length;
+  }
+
+  private scoreStructuredPhraseOverlap(
+    profileValues: string[],
+    queryValues: string[],
+  ): number {
+    if (profileValues.length === 0 || queryValues.length === 0) {
+      return 0;
+    }
+
+    const profileTokenSets = profileValues
+      .map((value) => this.tokenizeStructuredPhrase(value))
+      .filter((tokens) => tokens.size > 0);
+    if (profileTokenSets.length === 0) {
+      return 0;
+    }
+
+    let score = 0;
+    for (const queryValue of queryValues) {
+      const queryTokens = this.tokenizeStructuredPhrase(queryValue);
+      if (queryTokens.size === 0) {
+        continue;
+      }
+
+      let bestMatch = 0;
+      for (const profileTokens of profileTokenSets) {
+        const sharedTokens = [...queryTokens].filter((token) =>
+          profileTokens.has(token),
+        );
+        if (sharedTokens.length === 0) {
+          continue;
+        }
+
+        if (
+          sharedTokens.length === queryTokens.size &&
+          sharedTokens.length === profileTokens.size
+        ) {
+          bestMatch = Math.max(bestMatch, 2);
+          continue;
+        }
+
+        const overlapRatio = sharedTokens.length / queryTokens.size;
+        if (overlapRatio >= 0.5) {
+          bestMatch = Math.max(bestMatch, 1);
+        }
+      }
+
+      score += bestMatch;
+    }
+
+    return score;
+  }
+
+  private tokenizeStructuredPhrase(value: string): Set<string> {
+    const structuredStopWords = new Set([
+      ...PROFILE_MATCH_STOP_WORDS,
+      'equipment',
+      'set',
+      'system',
+      'systems',
+      'unit',
+      'units',
+    ]);
+
+    return new Set(
+      this.tokenize(value).filter(
+        (token) => token.length > 2 && !structuredStopWords.has(token),
+      ),
+    );
   }
 
   private scoreSourcePreference(

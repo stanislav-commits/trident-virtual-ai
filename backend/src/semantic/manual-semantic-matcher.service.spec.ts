@@ -672,4 +672,160 @@ describe('ManualSemanticMatcherService', () => {
       }),
     );
   });
+
+  it('prefers an asset-specific generator manual over a generic maintenance checklist for broad 500-hour queries', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-mase',
+            ragflowDocumentId: 'doc-mase',
+            filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['electrical system', 'fuel circuit', 'cooling system'],
+              equipment: ['generator set', 'genset', 'generator unit'],
+              vendor: 'MASE Generators',
+              model: 'VS 350 SV',
+              aliases: ['marine generator'],
+              summary:
+                'Use, maintenance and installation manual for a marine genset with periodic checks and maintenance intervals.',
+              sections: [
+                {
+                  title: 'Periodic checks and maintenance',
+                  pageStart: 69,
+                  pageEnd: 69,
+                  conceptIds: [],
+                  sectionType: 'checklist',
+                  summary:
+                    'Periodic maintenance schedule for the generator set with hour-based intervals.',
+                },
+              ],
+              pageTopics: [
+                {
+                  page: 69,
+                  conceptIds: [],
+                  summary:
+                    'Periodic checks and maintenance table for the generator set including 500-hour items.',
+                },
+              ],
+            },
+            tags: [
+              {
+                tag: {
+                  key: 'equipment:electrical:generator_ps',
+                  category: 'equipment',
+                  subcategory: 'electrical',
+                  item: 'generator_ps',
+                  description: 'Port-side diesel generator.',
+                },
+              },
+            ],
+          },
+          {
+            id: 'manual-common',
+            ragflowDocumentId: 'doc-common',
+            filename: 'Common Maintenance and Procedure Tasks.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['maintenance_checklist'],
+              secondaryConceptIds: ['tag:equipment:electrical:emergency_generator'],
+              systems: ['hydraulic systems', 'movement systems'],
+              equipment: ['electrical control panels', 'wire ropes'],
+              vendor: null,
+              model: null,
+              aliases: ['routine maintenance'],
+              summary:
+                'Rossinavi procedures for emergency manual operation and general maintenance.',
+              sections: [
+                {
+                  title: 'Hydraulic Power Units - Routine Checks',
+                  pageStart: 10,
+                  pageEnd: 12,
+                  conceptIds: ['maintenance_checklist'],
+                  sectionType: 'checklist',
+                  summary:
+                    'Routine checks for hydraulic systems and emergency generator support.',
+                },
+              ],
+              pageTopics: [
+                {
+                  page: 13,
+                  conceptIds: ['maintenance_checklist'],
+                  summary:
+                    'Periodic hydraulic maintenance intervals and replacement guidance.',
+                },
+              ],
+            },
+            tags: [
+              {
+                tag: {
+                  key: 'equipment:electrical:emergency_generator',
+                  category: 'equipment',
+                  subcategory: 'electrical',
+                  item: 'emergency_generator',
+                  description: 'Emergency generator support system.',
+                },
+              },
+            ],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'maintenance_topic',
+      selectedConceptIds: [],
+      candidateConceptIds: [
+        'maintenance_checklist',
+        'tag:equipment:electrical:emergency_generator',
+        'tag:equipment:electrical:generator_ps',
+        'tag:equipment:electrical:generator_sb',
+      ],
+      equipment: ['diesel generator'],
+      systems: ['electrical'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: '500-hour maintenance',
+      answerFormat: 'checklist',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.73,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'what is included in the 500-hour diesel generator maintenance?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-mase',
+        reasons: expect.arrayContaining([
+          'equipment_overlap',
+          'system_overlap',
+        ]),
+      }),
+    );
+    expect(candidates[0].score).toBeGreaterThan(
+      candidates.find((candidate) => candidate.manualId === 'manual-common')
+        ?.score ?? 0,
+    );
+  });
 });

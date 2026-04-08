@@ -1517,11 +1517,13 @@ export class ChatDocumentationService {
     candidate: DocumentationSemanticCandidate,
   ): boolean {
     const strongReasons = new Set([
+      'equipment_overlap',
       'explicit_source',
       'filename_overlap',
       'query_anchor',
       'vendor',
       'model',
+      'system_overlap',
     ]);
 
     return candidate.reasons.some((reason) => strongReasons.has(reason));

@@ -172,6 +172,74 @@ describe('ChatDocumentationService', () => {
     expect(clarification).toBeNull();
   });
 
+  it('does not ask for semantic source clarification when the top candidate has stronger structured asset overlap', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const clarification = (service as any).buildSemanticSourceClarification({
+      userQuery: 'what is included in the 500-hour diesel generator maintenance?',
+      retrievalQuery:
+        'what is included in the 500-hour diesel generator maintenance?',
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'maintenance_procedure',
+        conceptFamily: 'maintenance_topic',
+        selectedConceptIds: [],
+        candidateConceptIds: ['maintenance_checklist'],
+        equipment: ['diesel generator'],
+        systems: ['electrical'],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: '500-hour maintenance',
+        answerFormat: 'checklist',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.73,
+      },
+      semanticCandidates: [
+        {
+          manualId: 'manual-mase',
+          documentId: 'doc-mase',
+          filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+          category: 'MANUALS',
+          score: 211,
+          reasons: ['equipment_overlap', 'system_overlap', 'profile_text'],
+        },
+        {
+          manualId: 'manual-common',
+          documentId: 'doc-common',
+          filename: 'Common Maintenance and Procedure Tasks.pdf',
+          category: 'MANUALS',
+          score: 203,
+          reasons: ['manual_tag_text', 'profile_text'],
+        },
+      ],
+      sourceLockDecision: {
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      },
+      followUpState: null,
+    });
+
+    expect(clarification).toBeNull();
+  });
+
   it('prioritizes locked page-aware citations and searches with the current follow-up text', async () => {
     const contextService = {
       findContextForQuery: jest.fn().mockResolvedValue({
