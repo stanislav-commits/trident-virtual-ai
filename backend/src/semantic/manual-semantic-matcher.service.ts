@@ -80,6 +80,8 @@ const GENERIC_EXPLICIT_SOURCE_TOKENS = new Set([
 const QUERY_ANCHOR_STOP_WORDS = new Set([
   ...PROFILE_MATCH_STOP_WORDS,
   ...GENERIC_EXPLICIT_SOURCE_TOKENS,
+  'alarm',
+  'alarms',
   'catalog',
   'catalogue',
   'check',
@@ -543,6 +545,13 @@ export class ManualSemanticMatcherService {
       return candidates;
     }
 
+    const concreteMatches = candidates.filter((candidate) =>
+      candidate.reasons.includes('concrete_subject'),
+    );
+    if (concreteMatches.length > 0) {
+      return concreteMatches;
+    }
+
     const gatedCandidates = candidates.filter((candidate) =>
       this.hasConcreteSubjectEvidence(candidate),
     );
@@ -879,7 +888,11 @@ export class ManualSemanticMatcherService {
   ): ConcreteSubjectSignal[] {
     const signals: ConcreteSubjectSignal[] = [];
     const seen = new Set<string>();
-    const addSignal = (value: string | null | undefined, weight: number) => {
+    const addSignal = (
+      value: string | null | undefined,
+      weight: number,
+      options?: { allowGeneric?: boolean },
+    ) => {
       const normalized = this.normalizeText(value ?? '');
       if (!normalized) {
         return;
@@ -891,6 +904,13 @@ export class ManualSemanticMatcherService {
       }
 
       const tokenList = [...tokens];
+      if (
+        !options?.allowGeneric &&
+        !this.isConcreteSubjectTokenList(tokenList)
+      ) {
+        return;
+      }
+
       const key = tokenList.join(' ');
       if (seen.has(key)) {
         return;
@@ -904,9 +924,9 @@ export class ManualSemanticMatcherService {
       });
     };
 
-    addSignal(semanticQuery.explicitSource, 28);
-    addSignal(semanticQuery.vendor, 22);
-    addSignal(semanticQuery.model, 22);
+    addSignal(semanticQuery.explicitSource, 28, { allowGeneric: true });
+    addSignal(semanticQuery.vendor, 22, { allowGeneric: true });
+    addSignal(semanticQuery.model, 22, { allowGeneric: true });
 
     for (const equipment of semanticQuery.equipment) {
       addSignal(equipment, this.tokenizeStructuredPhrase(equipment).size > 1 ? 18 : 14);
@@ -919,6 +939,13 @@ export class ManualSemanticMatcherService {
     }
 
     return signals;
+  }
+
+  private isConcreteSubjectTokenList(tokens: string[]): boolean {
+    return (
+      tokens.length > 1 ||
+      tokens.some((token) => token.length >= 7 || /\d/.test(token))
+    );
   }
 
   private shouldRequireConcreteSubjectEvidence(
@@ -944,8 +971,6 @@ export class ManualSemanticMatcherService {
     candidate: DocumentationSemanticCandidate,
   ): boolean {
     const concreteReasons = new Set([
-      'concrete_subject',
-      'equipment_overlap',
       'explicit_source',
       'filename_overlap',
       'model',

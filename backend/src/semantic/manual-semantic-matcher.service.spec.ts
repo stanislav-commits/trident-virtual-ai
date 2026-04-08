@@ -692,7 +692,11 @@ describe('ManualSemanticMatcherService', () => {
                 'hazardous area electrical installation',
                 'intrinsic safety',
               ],
-              equipment: ['IS-mA1AN minialarm sounder', 'sounder'],
+              equipment: [
+                'IS-mA1AN minialarm sounder',
+                'alarm sounder',
+                'sounder',
+              ],
               vendor: 'European Safety Systems Ltd.',
               model: 'IS-mA1AN',
               aliases: ['Mini Alarm', 'minialarm sounder'],
@@ -789,7 +793,7 @@ describe('ManualSemanticMatcherService', () => {
       conceptFamily: 'asset_system',
       selectedConceptIds: ['tag:equipment:bilge:alarm'],
       candidateConceptIds: ['tag:equipment:bilge:alarm'],
-      equipment: ['minialarm'],
+      equipment: ['alarm'],
       systems: [],
       vendor: null,
       model: null,
@@ -815,10 +819,7 @@ describe('ManualSemanticMatcherService', () => {
     expect(candidates[0]).toEqual(
       expect.objectContaining({
         manualId: 'manual-mini-alarm',
-        reasons: expect.arrayContaining([
-          'concrete_subject',
-          'equipment_overlap',
-        ]),
+        reasons: expect.arrayContaining(['concrete_subject']),
       }),
     );
   });
