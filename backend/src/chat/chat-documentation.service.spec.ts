@@ -104,6 +104,74 @@ describe('ChatDocumentationService', () => {
     expect(contextService.findContextForQuery).not.toHaveBeenCalled();
   });
 
+  it('does not ask for semantic source clarification when the top candidate has stronger direct source-match evidence', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const clarification = (service as any).buildSemanticSourceClarification({
+      userQuery: 'list all 500-hour maintenance items for the diesel generator',
+      retrievalQuery:
+        'list all 500-hour maintenance items for the diesel generator',
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'maintenance_procedure',
+        conceptFamily: 'asset_system',
+        selectedConceptIds: [],
+        candidateConceptIds: [],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'direct_answer',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.72,
+      },
+      semanticCandidates: [
+        {
+          manualId: 'manual-mase',
+          documentId: 'doc-mase',
+          filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+          category: 'MANUALS',
+          score: 203,
+          reasons: ['filename_overlap', 'query_anchor', 'profile_text'],
+        },
+        {
+          manualId: 'manual-common',
+          documentId: 'doc-common',
+          filename: 'Common Maintenance and Procedure Tasks.pdf',
+          category: 'MANUALS',
+          score: 203,
+          reasons: ['manual_tag_text', 'profile_text'],
+        },
+      ],
+      sourceLockDecision: {
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      },
+      followUpState: null,
+    });
+
+    expect(clarification).toBeNull();
+  });
+
   it('prioritizes locked page-aware citations and searches with the current follow-up text', async () => {
     const contextService = {
       findContextForQuery: jest.fn().mockResolvedValue({

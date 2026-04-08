@@ -1463,6 +1463,17 @@ export class ChatDocumentationService {
       return null;
     }
 
+    const topCandidate = closeCandidates[0];
+    const competingCandidates = closeCandidates.slice(1);
+    if (
+      this.hasStrongDirectSourceMatch(topCandidate) &&
+      competingCandidates.every(
+        (candidate) => !this.hasStrongDirectSourceMatch(candidate),
+      )
+    ) {
+      return null;
+    }
+
     return {
       question:
         'I found relevant information in multiple documents. Which source should I use?',
@@ -1500,6 +1511,20 @@ export class ChatDocumentationService {
     }
 
     return unique;
+  }
+
+  private hasStrongDirectSourceMatch(
+    candidate: DocumentationSemanticCandidate,
+  ): boolean {
+    const strongReasons = new Set([
+      'explicit_source',
+      'filename_overlap',
+      'query_anchor',
+      'vendor',
+      'model',
+    ]);
+
+    return candidate.reasons.some((reason) => strongReasons.has(reason));
   }
 
   private resolveRetrievalManualScope(params: {

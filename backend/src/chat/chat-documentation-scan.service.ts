@@ -481,26 +481,8 @@ export class ChatDocumentationScanService {
             continue;
           }
 
-          const bestChunk = scoredChunks[0];
-          const pageScopedChunks =
-            bestChunk.pageNumber !== undefined
-              ? scoredChunks.filter(
-                  (entry) => entry.pageNumber === bestChunk.pageNumber,
-                )
-              : scoredChunks;
-          const selectedChunks = pageScopedChunks
-            .filter((entry) => entry.score >= bestChunk.score - 4)
-            .slice(0, 8)
-            .sort((left, right) => {
-              if (
-                left.minY !== undefined &&
-                right.minY !== undefined &&
-                left.minY !== right.minY
-              ) {
-                return left.minY - right.minY;
-              }
-              return left.chunk.id.localeCompare(right.chunk.id);
-            });
+          const { bestChunk, selectedChunks, citationPageNumber } =
+            this.selectBestIntervalMaintenancePageChunks(scoredChunks);
 
           const combinedSnippet = this.buildCombinedChunkSnippet(
             selectedChunks.map((entry) => entry.chunk.content ?? ''),
@@ -508,9 +490,9 @@ export class ChatDocumentationScanService {
 
           collected.push({
             shipManualId: manual.id,
-            chunkId: `manual-interval-scan:${manual.id}:${bestChunk.pageNumber ?? bestChunk.chunk.id}`,
+            chunkId: `manual-interval-scan:${manual.id}:${citationPageNumber ?? bestChunk.chunk.id}`,
             score: Math.max(bestChunk.score, 1.03),
-            pageNumber: bestChunk.pageNumber,
+            pageNumber: citationPageNumber,
             snippet: combinedSnippet,
             sourceTitle: manual.filename,
             sourceCategory: manual.category,
@@ -1837,6 +1819,145 @@ export class ChatDocumentationScanService {
     }
 
     return unique.join('\n').slice(0, 3600);
+  }
+
+  private selectBestIntervalMaintenancePageChunks(
+    scoredChunks: Array<{
+      chunk: RagflowChunk;
+      score: number;
+      pageNumber?: number;
+      minY?: number;
+    }>,
+  ): {
+    bestChunk: {
+      chunk: RagflowChunk;
+      score: number;
+      pageNumber?: number;
+      minY?: number;
+    };
+    selectedChunks: Array<{
+      chunk: RagflowChunk;
+      score: number;
+      pageNumber?: number;
+      minY?: number;
+    }>;
+    citationPageNumber?: number;
+  } {
+    const bestChunk = scoredChunks[0];
+    if (bestChunk.pageNumber === undefined) {
+      return {
+        bestChunk,
+        selectedChunks: this.sortIntervalMaintenanceChunks(
+          scoredChunks.filter((entry) => entry.score >= bestChunk.score - 4),
+        ).slice(0, 8),
+        citationPageNumber: undefined,
+      };
+    }
+
+    const pageGroups = new Map<
+      number,
+      Array<{
+        chunk: RagflowChunk;
+        score: number;
+        pageNumber?: number;
+        minY?: number;
+      }>
+    >();
+    for (const entry of scoredChunks) {
+      if (entry.pageNumber === undefined) {
+        continue;
+      }
+      const group = pageGroups.get(entry.pageNumber) ?? [];
+      group.push(entry);
+      pageGroups.set(entry.pageNumber, group);
+    }
+
+    const rankedGroups = [...pageGroups.entries()]
+      .map(([pageNumber, entries]) => {
+        const sortedEntries = this.sortIntervalMaintenanceChunks(entries);
+        const strongestScore = sortedEntries[0]?.score ?? 0;
+        const nearTopEntries = sortedEntries.filter(
+          (entry) => entry.score >= strongestScore - 4,
+        );
+        const aggregateScore = nearTopEntries.reduce(
+          (total, entry) => total + entry.score,
+          0,
+        );
+
+        return {
+          pageNumber,
+          strongestScore,
+          aggregateScore,
+          nearTopEntries,
+          sortedEntries,
+        };
+      })
+      .sort((left, right) => {
+        if (right.strongestScore !== left.strongestScore) {
+          return right.strongestScore - left.strongestScore;
+        }
+        if (right.aggregateScore !== left.aggregateScore) {
+          return right.aggregateScore - left.aggregateScore;
+        }
+        if (right.nearTopEntries.length !== left.nearTopEntries.length) {
+          return right.nearTopEntries.length - left.nearTopEntries.length;
+        }
+        return right.pageNumber - left.pageNumber;
+      });
+
+    const bestGroup = rankedGroups[0];
+    if (!bestGroup) {
+      return {
+        bestChunk,
+        selectedChunks: this.sortIntervalMaintenanceChunks(
+          scoredChunks.filter((entry) => entry.score >= bestChunk.score - 4),
+        ).slice(0, 8),
+        citationPageNumber: bestChunk.pageNumber,
+      };
+    }
+
+    return {
+      bestChunk: bestGroup.sortedEntries[0],
+      selectedChunks: this.sortIntervalMaintenanceChunks(
+        bestGroup.nearTopEntries,
+      ).slice(0, 8),
+      citationPageNumber: bestGroup.pageNumber,
+    };
+  }
+
+  private sortIntervalMaintenanceChunks(
+    entries: Array<{
+      chunk: RagflowChunk;
+      score: number;
+      pageNumber?: number;
+      minY?: number;
+    }>,
+  ): Array<{
+    chunk: RagflowChunk;
+    score: number;
+    pageNumber?: number;
+    minY?: number;
+  }> {
+    return [...entries].sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      if (
+        left.minY !== undefined &&
+        right.minY !== undefined &&
+        left.minY !== right.minY
+      ) {
+        return left.minY - right.minY;
+      }
+      if (
+        left.pageNumber !== undefined &&
+        right.pageNumber !== undefined &&
+        left.pageNumber !== right.pageNumber
+      ) {
+        return left.pageNumber - right.pageNumber;
+      }
+      return left.chunk.id.localeCompare(right.chunk.id);
+    });
   }
 
   private extractChunkMetadataValue(

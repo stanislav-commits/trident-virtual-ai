@@ -488,4 +488,78 @@ describe('ChatDocumentationScanService', () => {
     expect(citations[0]?.snippet).toContain('Change oil and filter');
     expect(citations[0]?.snippet).toContain('Every 500 hrs');
   });
+
+  it('prefers the strongest maintenance-table page group over an earlier cross-page chunk when scoring ties', async () => {
+    const ragflowService = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-page-68-cross',
+          content:
+            'SCR System maintenance note. 6.24 Periodic checks and maintenance <table><tr><td>Fuel system</td><td>Replace fuel filter and prefilter</td><td>Every 500 hrs. or 12 Month</td></tr></table>',
+          meta: { page_num: 68 },
+        },
+        {
+          id: 'chunk-page-69-table-top',
+          content:
+            '6.24 Periodic checks and maintenance <table><tr><td>Fuel system</td><td>Replace fuel filter and prefilter</td><td>Every 500 hrs. or 12 Month</td></tr><tr><td>Lubrication system</td><td>Change oil and filter</td><td>Every 500 hrs. or 12 Month</td></tr></table>',
+          meta: { page_num: 69 },
+        },
+        {
+          id: 'chunk-page-69-table-bottom',
+          content:
+            '<table><tr><td>Cooling system</td><td>Replace the seawater pump</td><td>Every 500 hrs. or 12 Month</td></tr><tr><td>Cooling system</td><td>Replace alternator coolant pump (Aux. pump)</td><td>Every 500 hrs. or 12 Month</td></tr></table>',
+          meta: { page_num: 69 },
+        },
+      ]),
+    };
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      ragflowService as never,
+      queryService,
+      {} as never,
+    );
+    jest
+      .spyOn(service as never, 'loadDocumentScanContexts' as never)
+      .mockResolvedValue([
+        {
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-mase',
+              ragflowDocumentId: 'doc-mase',
+              filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+              category: 'MANUALS',
+            },
+          ],
+          score: 1,
+        },
+      ]);
+
+    const citations =
+      await service.expandManualIntervalMaintenanceChunkCitations(
+        'ship-1',
+        'what is included in the 500-hour diesel generator maintenance?',
+        'what is included in the 500-hour diesel generator maintenance?',
+        [
+          {
+            shipManualId: 'manual-mase',
+            sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+            snippet:
+              '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
+            score: 0.97,
+          },
+        ],
+        ['MANUALS'],
+      );
+
+    expect(citations[0]).toEqual(
+      expect.objectContaining({
+        sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+        pageNumber: 69,
+      }),
+    );
+    expect(citations[0]?.snippet).toContain('Change oil and filter');
+    expect(citations[0]?.snippet).not.toContain('SCR System maintenance note');
+  });
 });
