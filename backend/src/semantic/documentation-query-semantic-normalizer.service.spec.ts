@@ -169,4 +169,86 @@ describe('DocumentationQuerySemanticNormalizerService', () => {
     expect(result.selectedConceptIds).toEqual(['helm_station_control']);
     expect(result.sourcePreferences[0]).toBe('MANUALS');
   });
+
+  it('demotes broad maintenance-topic concepts when the query already names a concrete asset', async () => {
+    const conceptCatalog = {
+      shortlistFamilies: jest.fn().mockResolvedValue(['maintenance_topic']),
+      shortlistConcepts: jest.fn().mockResolvedValue([
+        {
+          conceptId: 'maintenance_checklist',
+          label: 'Maintenance checklist',
+          family: 'maintenance_topic',
+          score: 22,
+        },
+      ]),
+      listConcepts: jest.fn().mockResolvedValue([
+        {
+          id: 'maintenance_checklist',
+          family: 'maintenance_topic',
+          label: 'Maintenance checklist',
+          description: 'Planned maintenance tasks and periodic checks.',
+          aliases: ['maintenance checklist', 'maintenance tasks'],
+          sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES'],
+        },
+      ]),
+      getConceptById: jest.fn().mockResolvedValue(null),
+    } as unknown as ConceptCatalogService;
+    const semanticLlm = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      generateStructuredObject: jest.fn().mockResolvedValue({
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'maintenance_procedure',
+        conceptFamily: 'maintenance_topic',
+        selectedConceptIds: ['maintenance_checklist'],
+        candidateConceptIds: ['maintenance_checklist'],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'checklist',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.89,
+      }),
+    } as unknown as SemanticLlmService;
+    const service = new DocumentationQuerySemanticNormalizerService(
+      conceptCatalog,
+      semanticLlm,
+    );
+
+    const result = await service.normalize({
+      userQuery:
+        'list all 500-hour maintenance items for the diesel generator',
+      retrievalQuery:
+        'list all 500-hour maintenance items for the diesel generator',
+      normalizedQuery: {
+        rawQuery:
+          'list all 500-hour maintenance items for the diesel generator',
+        normalizedQuery:
+          'list all 500-hour maintenance items for the diesel generator',
+        retrievalQuery:
+          'list all 500-hour maintenance items for the diesel generator',
+        effectiveQuery:
+          'list all 500-hour maintenance items for the diesel generator',
+        followUpMode: 'standalone',
+        subject: '500-hour items diesel generator',
+        asset: 'generator',
+        operation: 'lookup',
+        timeIntent: { kind: 'none' },
+        sourceHints: [],
+        isClarificationReply: false,
+        ambiguityFlags: [],
+      },
+    });
+
+    expect(result.selectedConceptIds).toEqual([]);
+    expect(result.candidateConceptIds).toEqual(['maintenance_checklist']);
+    expect(result.sourcePreferences).toEqual(
+      expect.arrayContaining(['MANUALS', 'HISTORY_PROCEDURES']),
+    );
+  });
 });

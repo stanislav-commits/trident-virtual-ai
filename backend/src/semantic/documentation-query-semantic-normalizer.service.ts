@@ -170,6 +170,7 @@ export class DocumentationQuerySemanticNormalizerService {
       'Do not answer the user.',
       'Select canonical concepts only from the provided candidate concept shortlist.',
       'If no candidate concept fits, leave selectedConceptIds empty rather than inventing a concept.',
+      'When a query already names a concrete asset or equipment, do not rely only on a broad maintenance-topic concept to route the query.',
       'Prefer exact source/page/section hints when the user names a concrete manual/document title or asks for a page.',
       'When the user says "this manual", "that document", or similar contextual wording, keep explicitSource null and rely on follow-up state.',
       'Use sourcePreferences to route retrieval, not to answer the question.',
@@ -225,7 +226,11 @@ export class DocumentationQuerySemanticNormalizerService {
       this.mapPlannerIntentToSemanticIntent(plannedIntent),
       candidates[0]?.family,
     );
-    const selectedConceptIds = this.selectFallbackConceptIds(candidates);
+    const selectedConceptIds = this.demoteBroadTopicConceptIds(
+      this.selectFallbackConceptIds(candidates),
+      conceptDefinitions,
+      params.normalizedQuery,
+    );
     const conceptSourcePreferences = this.mapConceptSourcePreferences(
       conceptDefinitions,
       selectedConceptIds,
@@ -293,6 +298,7 @@ export class DocumentationQuerySemanticNormalizerService {
     conceptDefinitions: ConceptDefinition[],
     params: {
       userQuery: string;
+      normalizedQuery?: ChatNormalizedQuery;
       followUpState?: DocumentationFollowUpState | null;
     },
   ): DocumentationSemanticQuery {
@@ -305,12 +311,15 @@ export class DocumentationQuerySemanticNormalizerService {
       contextualFollowUp && selectedConceptIds.length === 0
         ? (params.followUpState?.conceptIds ?? [])
         : [];
-    const effectiveConceptIds =
+    const effectiveConceptIds = this.demoteBroadTopicConceptIds(
       selectedConceptIds.length > 0
         ? selectedConceptIds
         : inheritedConceptIds.length > 0
           ? inheritedConceptIds
-          : fallback.selectedConceptIds;
+          : fallback.selectedConceptIds,
+      conceptDefinitions,
+      params.normalizedQuery,
+    );
     const conceptSourcePreferences = this.mapConceptSourcePreferences(
       conceptDefinitions,
       effectiveConceptIds,
@@ -356,6 +365,58 @@ export class DocumentationQuerySemanticNormalizerService {
           ? 'semantic_low_confidence'
           : null),
     };
+  }
+
+  private demoteBroadTopicConceptIds(
+    conceptIds: string[],
+    conceptDefinitions: ConceptDefinition[],
+    normalizedQuery?: ChatNormalizedQuery,
+  ): string[] {
+    if (conceptIds.length === 0 || !this.hasConcreteAssetAnchor(normalizedQuery)) {
+      return conceptIds;
+    }
+
+    const conceptById = new Map(
+      conceptDefinitions.map((concept) => [concept.id, concept]),
+    );
+    const narrowed = conceptIds.filter((conceptId) => {
+      const concept = conceptById.get(conceptId);
+      return !concept || !this.isBroadMaintenanceTopicConcept(concept);
+    });
+
+    return narrowed;
+  }
+
+  private hasConcreteAssetAnchor(normalizedQuery?: ChatNormalizedQuery): boolean {
+    const asset = normalizedQuery?.asset?.trim().toLowerCase();
+    if (!asset) {
+      return false;
+    }
+
+    return !new Set([
+      'component',
+      'document',
+      'equipment',
+      'item',
+      'manual',
+      'maintenance',
+      'part',
+      'procedure',
+      'section',
+      'system',
+      'task',
+      'unit',
+    ]).has(asset);
+  }
+
+  private isBroadMaintenanceTopicConcept(
+    concept: ConceptDefinition,
+  ): boolean {
+    return (
+      concept.family === 'maintenance_topic' &&
+      (!concept.relatedEquipment?.length || concept.relatedEquipment.length === 0) &&
+      (!concept.relatedSystems?.length || concept.relatedSystems.length === 0)
+    );
   }
 
   private selectFallbackConceptIds(candidates: ConceptCandidate[]): string[] {
