@@ -41,9 +41,31 @@ interface EnrichedChunk {
   minY?: number;
 }
 
+interface PdfPageTextItem {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface IntervalHeaderColumn {
+  label: string;
+  x: number;
+  minY: number;
+  maxY: number;
+}
+
+interface IntervalMaintenanceSnippet {
+  heading?: string;
+  intervalLabel: string;
+  items: string[];
+}
+
 @Injectable()
 export class ChatDocumentationScanService {
   private readonly logger = new Logger(ChatDocumentationScanService.name);
+  private pdfJsModulePromise: Promise<any> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -484,9 +506,25 @@ export class ChatDocumentationScanService {
           const { bestChunk, selectedChunks, citationPageNumber } =
             this.selectBestIntervalMaintenancePageChunks(scoredChunks);
 
-          const combinedSnippet = this.buildCombinedChunkSnippet(
-            selectedChunks.map((entry) => entry.chunk.content ?? ''),
-          );
+          const structuredSnippet =
+            await this.buildStructuredIntervalMaintenanceSnippetFromPdfPage(
+              scanContext.ragflowDatasetId,
+              manual,
+              citationPageNumber,
+              queryContext,
+              intervalPhrases,
+            );
+          const combinedSnippet =
+            structuredSnippet ??
+            this.buildCombinedChunkSnippet(
+              selectedChunks.map((entry) => entry.chunk.content ?? ''),
+            );
+
+          if (structuredSnippet) {
+            this.logger.debug(
+              `Manual interval maintenance snippet reconstructed from PDF page ${citationPageNumber} for ${manual.filename}`,
+            );
+          }
 
           collected.push({
             shipManualId: manual.id,
@@ -1819,6 +1857,502 @@ export class ChatDocumentationScanService {
     }
 
     return unique.join('\n').slice(0, 3600);
+  }
+
+  private async buildStructuredIntervalMaintenanceSnippetFromPdfPage(
+    ragflowDatasetId: string,
+    manual: DocumentScanManual,
+    pageNumber: number | undefined,
+    query: string,
+    intervalPhrases: string[],
+  ): Promise<string | null> {
+    if (
+      pageNumber === undefined ||
+      !/\.pdf\b/i.test(manual.filename) ||
+      typeof this.ragflowService.downloadDocument !== 'function'
+    ) {
+      return null;
+    }
+
+    try {
+      const downloaded = await this.ragflowService.downloadDocument(
+        ragflowDatasetId,
+        manual.ragflowDocumentId,
+      );
+      if (
+        !/pdf/i.test(downloaded.contentType) &&
+        !/\.pdf\b/i.test(downloaded.filename)
+      ) {
+        return null;
+      }
+
+      const textItems = await this.loadPdfPageTextItems(
+        downloaded.buffer,
+        pageNumber,
+      );
+      const extracted = this.extractIntervalMaintenanceItemsFromTextItems(
+        textItems,
+        query,
+        intervalPhrases,
+      );
+      if (!extracted || extracted.items.length === 0) {
+        return null;
+      }
+
+      return this.renderIntervalMaintenanceSnippet(extracted);
+    } catch (error) {
+      this.logger.debug(
+        `Structured interval maintenance PDF fallback skipped for ${manual.filename} page ${pageNumber}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  private async loadPdfPageTextItems(
+    buffer: Buffer,
+    pageNumber: number,
+  ): Promise<PdfPageTextItem[]> {
+    const pdfjs = await this.loadPdfJsModule();
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      disableWorker: true,
+      isEvalSupported: false,
+    });
+    const document = await loadingTask.promise;
+
+    try {
+      if (pageNumber < 1 || pageNumber > document.numPages) {
+        return [];
+      }
+
+      const page = await document.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+
+      return textContent.items
+        .filter(
+          (
+            item,
+          ): item is {
+            str: string;
+            transform: number[];
+            width?: number;
+            height?: number;
+          } =>
+            typeof item?.str === 'string' && Array.isArray(item.transform),
+        )
+        .map((item) => ({
+          text: item.str,
+          x: Number(item.transform[4] ?? 0),
+          y: Number(item.transform[5] ?? 0),
+          width: Number(item.width ?? 0),
+          height: Number(item.height ?? 0),
+        }))
+        .filter((item) => item.text.trim().length > 0);
+    } finally {
+      await document.destroy?.();
+    }
+  }
+
+  private async loadPdfJsModule(): Promise<any> {
+    if (!this.pdfJsModulePromise) {
+      this.pdfJsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs');
+    }
+
+    return this.pdfJsModulePromise;
+  }
+
+  private extractIntervalMaintenanceItemsFromTextItems(
+    textItems: PdfPageTextItem[],
+    query: string,
+    intervalPhrases: string[],
+  ): IntervalMaintenanceSnippet | null {
+    if (textItems.length === 0) {
+      return null;
+    }
+
+    const yValues = textItems.map((item) => item.y);
+    const minY = Math.min(...yValues);
+    const maxY = Math.max(...yValues);
+    const headerRegionMinY = maxY - Math.max(60, (maxY - minY) * 0.22);
+    const headerItems = textItems.filter((item) => item.y >= headerRegionMinY);
+    const headerColumns = this.extractIntervalHeaderColumns(headerItems);
+    const targetColumn = this.selectTargetIntervalHeaderColumn(
+      headerColumns,
+      query,
+      intervalPhrases,
+    );
+    if (!targetColumn) {
+      return null;
+    }
+
+    const sortedColumns = [...headerColumns].sort((left, right) => left.x - right.x);
+    const targetIndex = sortedColumns.findIndex(
+      (column) => column.x === targetColumn.x && column.label === targetColumn.label,
+    );
+    if (targetIndex < 0) {
+      return null;
+    }
+
+    const leftBoundary =
+      targetIndex === 0
+        ? targetColumn.x - 20
+        : (sortedColumns[targetIndex - 1].x + targetColumn.x) / 2;
+    const rightBoundary =
+      targetIndex === sortedColumns.length - 1
+        ? targetColumn.x + 20
+        : (targetColumn.x + sortedColumns[targetIndex + 1].x) / 2;
+    const firstIntervalBoundary = Math.max(0, sortedColumns[0].x - 24);
+    const headerBottomY =
+      Math.min(...headerItems.map((item) => item.y)) - 6;
+
+    const rowClusters = this.clusterPdfRows(
+      textItems.filter((item) => item.y < headerBottomY),
+      3.5,
+    );
+    const rawRows = rowClusters
+      .map((rowItems) => {
+        const sortedRowItems = [...rowItems].sort((left, right) => left.x - right.x);
+        const description = this.normalizePdfExtractedText(
+          sortedRowItems
+            .filter(
+              (item) =>
+                item.x < leftBoundary - 8 &&
+                !this.isIntervalTableMarker(item.text),
+            )
+            .map((item) => item.text),
+        );
+        if (!description) {
+          return null;
+        }
+
+        const hasTargetMarker = sortedRowItems.some(
+          (item) =>
+            this.isIntervalTableMarker(item.text) &&
+            item.x >= leftBoundary &&
+            item.x < rightBoundary,
+        );
+        const hasAnyIntervalMarker = sortedRowItems.some(
+          (item) =>
+            this.isIntervalTableMarker(item.text) &&
+            item.x >= firstIntervalBoundary,
+        );
+        const isSectionHeading =
+          !hasAnyIntervalMarker &&
+          this.isLikelyIntervalTableSectionHeading(description);
+
+        return {
+          description,
+          hasTargetMarker,
+          hasAnyIntervalMarker,
+          isSectionHeading,
+        };
+      })
+      .filter(
+        (
+          row,
+        ): row is {
+          description: string;
+          hasTargetMarker: boolean;
+          hasAnyIntervalMarker: boolean;
+          isSectionHeading: boolean;
+        } => row !== null,
+      );
+
+    const logicalRows: Array<{
+      description: string;
+      hasTargetMarker: boolean;
+      hasAnyIntervalMarker: boolean;
+      isSectionHeading: boolean;
+    }> = [];
+
+    for (const row of rawRows) {
+      const previous = logicalRows[logicalRows.length - 1];
+      if (
+        previous &&
+        this.shouldMergeIntervalTableContinuation(previous.description, row)
+      ) {
+        previous.description = this.normalizePdfExtractedText([
+          previous.description,
+          row.description,
+        ]);
+        continue;
+      }
+
+      logicalRows.push({ ...row });
+    }
+
+    const items = [...new Set(
+      logicalRows
+        .filter((row) => row.hasTargetMarker && !row.isSectionHeading)
+        .map((row) => row.description)
+        .filter((value) => value.length > 0),
+    )];
+    if (items.length === 0) {
+      return null;
+    }
+
+    return {
+      heading: this.extractIntervalTableHeading(textItems),
+      intervalLabel: targetColumn.label,
+      items,
+    };
+  }
+
+  private extractIntervalHeaderColumns(
+    headerItems: PdfPageTextItem[],
+  ): IntervalHeaderColumn[] {
+    const clusters = new Map<
+      number,
+      {
+        items: PdfPageTextItem[];
+        xs: number[];
+      }
+    >();
+
+    const sortedItems = [...headerItems].sort((left, right) => left.x - right.x);
+    for (const item of sortedItems) {
+      const clusterKey = [...clusters.keys()].find(
+        (existingX) => Math.abs(existingX - item.x) <= 18,
+      );
+      const key = clusterKey ?? item.x;
+      const cluster = clusters.get(key) ?? { items: [], xs: [] };
+      cluster.items.push(item);
+      cluster.xs.push(item.x);
+      clusters.set(key, cluster);
+    }
+
+    return [...clusters.values()]
+      .map((cluster) => {
+        const items = [...cluster.items].sort((left, right) => {
+          if (right.y !== left.y) {
+            return right.y - left.y;
+          }
+          return left.x - right.x;
+        });
+        const label = this.normalizePdfExtractedText(items.map((item) => item.text));
+        return {
+          label,
+          x:
+            cluster.xs.reduce((sum, value) => sum + value, 0) /
+            Math.max(cluster.xs.length, 1),
+          minY: Math.min(...items.map((item) => item.y)),
+          maxY: Math.max(...items.map((item) => item.y)),
+        };
+      })
+      .filter((column) =>
+        /\b(before\s+starting|first\s+check\s+after|every\s+\d{1,4}|maintenance\s+as\s+needed|as\s+needed)\b/i.test(
+          column.label,
+        ),
+      )
+      .sort((left, right) => left.x - right.x);
+  }
+
+  private selectTargetIntervalHeaderColumn(
+    headerColumns: IntervalHeaderColumn[],
+    query: string,
+    intervalPhrases: string[],
+  ): IntervalHeaderColumn | null {
+    const targets = this.extractIntervalTargets(query);
+    const scored = headerColumns
+      .map((column) => ({
+        column,
+        score: this.scoreIntervalHeaderColumn(column.label, targets, intervalPhrases),
+      }))
+      .sort((left, right) => right.score - left.score || left.column.x - right.column.x);
+
+    return (scored[0]?.score ?? 0) > 0 ? scored[0].column : null;
+  }
+
+  private extractIntervalTargets(
+    query: string,
+  ): Array<{ value: number; unit: 'hour' | 'month' | 'year' }> {
+    const targets: Array<{ value: number; unit: 'hour' | 'month' | 'year' }> =
+      [];
+
+    for (const match of query.matchAll(
+      /\b(\d{1,6})(?:\s*-\s*|\s+)?(h(?:ours?|rs?)?|hourly)\b/gi,
+    )) {
+      targets.push({ value: Number.parseInt(match[1], 10), unit: 'hour' });
+    }
+    for (const match of query.matchAll(
+      /\b(\d{1,4})(?:\s*-\s*|\s+)?months?\b/gi,
+    )) {
+      targets.push({ value: Number.parseInt(match[1], 10), unit: 'month' });
+    }
+    for (const match of query.matchAll(
+      /\b(\d{1,4})(?:\s*-\s*|\s+)?years?\b/gi,
+    )) {
+      targets.push({ value: Number.parseInt(match[1], 10), unit: 'year' });
+    }
+
+    return targets.filter((target) => Number.isFinite(target.value));
+  }
+
+  private scoreIntervalHeaderColumn(
+    label: string,
+    targets: Array<{ value: number; unit: 'hour' | 'month' | 'year' }>,
+    intervalPhrases: string[],
+  ): number {
+    const normalizedLabel = label.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!normalizedLabel) {
+      return 0;
+    }
+
+    let score = 0;
+    for (const target of targets) {
+      const targetValue = String(target.value);
+      if (!normalizedLabel.includes(targetValue)) {
+        continue;
+      }
+
+      if (
+        target.unit === 'hour' &&
+        /\b(h(?:ours?|rs?)?|hourly)\b/i.test(normalizedLabel)
+      ) {
+        score += 18;
+      } else if (target.unit === 'month' && /\bmonths?\b/i.test(normalizedLabel)) {
+        score += 18;
+      } else if (target.unit === 'year' && /\byears?\b/i.test(normalizedLabel)) {
+        score += 18;
+      } else {
+        score += 6;
+      }
+
+      if (/\bevery\b/i.test(normalizedLabel)) {
+        score += 4;
+      }
+    }
+
+    for (const phrase of intervalPhrases) {
+      if (normalizedLabel.includes(phrase.toLowerCase())) {
+        score += 5;
+      }
+    }
+
+    if (/\bmaintenance\s+as\s+needed\b/i.test(normalizedLabel)) {
+      score -= 4;
+    }
+
+    return score;
+  }
+
+  private clusterPdfRows(
+    items: PdfPageTextItem[],
+    tolerance: number,
+  ): PdfPageTextItem[][] {
+    const rows: Array<{ y: number; items: PdfPageTextItem[] }> = [];
+    const sorted = [...items].sort((left, right) => {
+      if (right.y !== left.y) {
+        return right.y - left.y;
+      }
+      return left.x - right.x;
+    });
+
+    for (const item of sorted) {
+      const existingRow = rows.find((row) => Math.abs(row.y - item.y) <= tolerance);
+      if (existingRow) {
+        existingRow.items.push(item);
+        existingRow.y = (existingRow.y * (existingRow.items.length - 1) + item.y) / existingRow.items.length;
+        continue;
+      }
+
+      rows.push({ y: item.y, items: [item] });
+    }
+
+    return rows
+      .sort((left, right) => right.y - left.y)
+      .map((row) => row.items);
+  }
+
+  private isIntervalTableMarker(text: string): boolean {
+    return /^[•·●▪■]$/.test(text.trim());
+  }
+
+  private isLikelyIntervalTableSectionHeading(text: string): boolean {
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return false;
+    }
+
+    if (normalized.length > 48 || /[.:]/.test(normalized)) {
+      return false;
+    }
+
+    return /^[A-Z][A-Za-z/&\s-]{2,}$/.test(normalized);
+  }
+
+  private shouldMergeIntervalTableContinuation(
+    previousDescription: string,
+    row: {
+      description: string;
+      hasTargetMarker: boolean;
+      hasAnyIntervalMarker: boolean;
+      isSectionHeading: boolean;
+    },
+  ): boolean {
+    if (row.hasAnyIntervalMarker || row.isSectionHeading) {
+      return false;
+    }
+
+    const normalized = row.description.trim();
+    if (!normalized) {
+      return false;
+    }
+
+    return (
+      /^[a-z(]/.test(normalized) ||
+      previousDescription.endsWith('(') ||
+      previousDescription.endsWith('/') ||
+      previousDescription.endsWith('-') ||
+      previousDescription.endsWith('"')
+    );
+  }
+
+  private extractIntervalTableHeading(textItems: PdfPageTextItem[]): string | undefined {
+    const headingItems = textItems.filter((item) =>
+      /\b(periodic\s+checks?\s+and\s+maintenance|perform\s+service\s+at\s+intervals\s+indicated)\b/i.test(
+        item.text,
+      ),
+    );
+    if (headingItems.length === 0) {
+      return undefined;
+    }
+
+    return this.normalizePdfExtractedText(
+      headingItems
+        .sort((left, right) => {
+          if (right.y !== left.y) {
+            return right.y - left.y;
+          }
+          return left.x - right.x;
+        })
+        .map((item) => item.text),
+    );
+  }
+
+  private normalizePdfExtractedText(parts: string[]): string {
+    return parts
+      .map((part) => part.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+([,.;:!?])/g, '$1')
+      .replace(/\(\s+/g, '(')
+      .replace(/\s+\)/g, ')')
+      .replace(/\s+\/\s+/g, ' / ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  private renderIntervalMaintenanceSnippet(
+    extracted: IntervalMaintenanceSnippet,
+  ): string {
+    const lines: string[] = [];
+    if (extracted.heading) {
+      lines.push(extracted.heading);
+    }
+    lines.push(`Items due at ${extracted.intervalLabel}:`);
+    lines.push(...extracted.items.map((item) => `- ${item}`));
+    return lines.join('\n').slice(0, 3600);
   }
 
   private selectBestIntervalMaintenancePageChunks(

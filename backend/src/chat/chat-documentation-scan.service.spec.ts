@@ -3,6 +3,47 @@ import { ChatDocumentationScanService } from './chat-documentation-scan.service'
 
 describe('ChatDocumentationScanService', () => {
   const queryService = new ChatDocumentationQueryService();
+  const masePage69TextItems = [
+    { text: '6.24 Periodic checks and maintenance', x: 180, y: 760, width: 180, height: 10 },
+    { text: 'Perform service at intervals indicated', x: 120, y: 720, width: 180, height: 10 },
+    { text: 'Every 200 hrs. or 12 Month', x: 304, y: 720, width: 90, height: 10 },
+    { text: 'Every 500 hrs. or 12 Month', x: 358, y: 720, width: 90, height: 10 },
+    { text: 'Every 1000 hrs. or 24 Month', x: 420, y: 720, width: 100, height: 10 },
+    { text: 'Fuel system', x: 48, y: 666, width: 80, height: 10 },
+    { text: 'Replace fuel filter and prefilter', x: 48, y: 648, width: 160, height: 10 },
+    { text: '•', x: 358, y: 648, width: 6, height: 10 },
+    { text: 'Lubrication system', x: 48, y: 624, width: 100, height: 10 },
+    { text: 'Change oil and filter', x: 48, y: 606, width: 120, height: 10 },
+    { text: '•', x: 358, y: 606, width: 6, height: 10 },
+    { text: 'Cooling system', x: 48, y: 582, width: 100, height: 10 },
+    { text: 'Check coolant levels in engine circuit / generator circuit', x: 48, y: 564, width: 240, height: 10 },
+    { text: '•', x: 304, y: 564, width: 6, height: 10 },
+    { text: '•', x: 358, y: 564, width: 6, height: 10 },
+    { text: 'Clean the seawater filter', x: 48, y: 546, width: 140, height: 10 },
+    { text: '•', x: 304, y: 546, width: 6, height: 10 },
+    { text: 'Replace the seawater pump impeller', x: 48, y: 528, width: 170, height: 10 },
+    { text: '•', x: 358, y: 528, width: 6, height: 10 },
+    { text: 'Replace the seawater pump', x: 48, y: 510, width: 150, height: 10 },
+    { text: '•', x: 420, y: 510, width: 6, height: 10 },
+    { text: 'Replace the aux. pump belt (for alternator cooling)', x: 48, y: 492, width: 220, height: 10 },
+    { text: '•', x: 358, y: 492, width: 6, height: 10 },
+    { text: 'Gas intake / exhaust', x: 48, y: 456, width: 120, height: 10 },
+    { text: 'Replace the air filter', x: 48, y: 438, width: 110, height: 10 },
+    { text: '•', x: 358, y: 438, width: 6, height: 10 },
+    { text: 'Check the exhaust flexible hose', x: 48, y: 420, width: 150, height: 10 },
+    { text: '•', x: 358, y: 420, width: 6, height: 10 },
+    { text: 'Electrical system', x: 48, y: 390, width: 100, height: 10 },
+    { text: 'Clean the battery terminals', x: 48, y: 372, width: 140, height: 10 },
+    { text: '•', x: 358, y: 372, width: 6, height: 10 },
+    { text: 'Engine and assembly', x: 48, y: 342, width: 110, height: 10 },
+    { text: 'Engine speed control and adjustment', x: 48, y: 324, width: 170, height: 10 },
+    { text: '•', x: 358, y: 324, width: 6, height: 10 },
+    { text: 'Check the engine ground connections', x: 48, y: 306, width: 180, height: 10 },
+    { text: '•', x: 358, y: 306, width: 6, height: 10 },
+    { text: 'Remote control system', x: 48, y: 276, width: 120, height: 10 },
+    { text: 'Check software status', x: 48, y: 258, width: 120, height: 10 },
+    { text: '•', x: 358, y: 258, width: 6, height: 10 },
+  ];
 
   it('filters scan contexts to the allowed document categories before fallback selection', async () => {
     const prisma = {
@@ -561,5 +602,146 @@ describe('ChatDocumentationScanService', () => {
     );
     expect(citations[0]?.snippet).toContain('Change oil and filter');
     expect(citations[0]?.snippet).not.toContain('SCR System maintenance note');
+  });
+
+  it('extracts all due items from interval-maintenance table text positions for the requested interval', () => {
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      {} as never,
+      queryService,
+      {} as never,
+    );
+
+    const extracted = (
+      service as unknown as {
+        extractIntervalMaintenanceItemsFromTextItems: (
+          textItems: Array<{
+            text: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          }>,
+          query: string,
+          intervalPhrases: string[],
+        ) => {
+          heading?: string;
+          intervalLabel: string;
+          items: string[];
+        } | null;
+      }
+    ).extractIntervalMaintenanceItemsFromTextItems(
+      masePage69TextItems,
+      'what shoul i do at 500 hourly diesel generator maintenanace?',
+      ['500 hour', '500 hours', '500 hrs', 'every 500'],
+    );
+
+    expect(extracted).toEqual(
+      expect.objectContaining({
+        heading: expect.stringContaining('Periodic checks and maintenance'),
+        intervalLabel: expect.stringContaining('Every 500'),
+      }),
+    );
+    expect(extracted?.items).toEqual(
+      expect.arrayContaining([
+        'Replace fuel filter and prefilter',
+        'Change oil and filter',
+        'Check coolant levels in engine circuit / generator circuit',
+        'Replace the seawater pump impeller',
+        'Replace the aux. pump belt (for alternator cooling)',
+        'Replace the air filter',
+        'Check the exhaust flexible hose',
+        'Clean the battery terminals',
+        'Engine speed control and adjustment',
+        'Check the engine ground connections',
+        'Check software status',
+      ]),
+    );
+    expect(extracted?.items).not.toContain('Clean the seawater filter');
+    expect(extracted?.items).not.toContain('Replace the seawater pump');
+  });
+
+  it('uses structured PDF page extraction to replace incomplete merged interval snippets', async () => {
+    const ragflowService = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      listDocumentChunks: jest.fn().mockResolvedValue([
+        {
+          id: 'chunk-fuel-circuit',
+          content:
+            '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
+          meta: { page_num: 28 },
+        },
+        {
+          id: 'chunk-maintenance-table',
+          content:
+            '6.24 Periodic checks and maintenance <table><tr><td>Cooling system</td><td>Check coolant levels in engine circuit/ generator circuit Clean the seawater filter</td><td>Every 500 hrs. or 12 Month</td></tr><tr><td>Replace the seawater pump</td><td>Every 500 hrs. or 12 Month</td></tr></table>',
+          meta: { page_num: 69 },
+        },
+      ]),
+      downloadDocument: jest.fn().mockResolvedValue({
+        buffer: Buffer.from('%PDF-1.4'),
+        filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+        contentType: 'application/pdf',
+      }),
+    };
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      ragflowService as never,
+      queryService,
+      {} as never,
+    );
+    jest
+      .spyOn(service as never, 'loadDocumentScanContexts' as never)
+      .mockResolvedValue([
+        {
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-mase',
+              ragflowDocumentId: 'doc-mase',
+              filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+              category: 'MANUALS',
+            },
+          ],
+          score: 1,
+        },
+      ]);
+    jest
+      .spyOn(service as never, 'loadPdfPageTextItems' as never)
+      .mockResolvedValue(masePage69TextItems);
+
+    const citations =
+      await service.expandManualIntervalMaintenanceChunkCitations(
+        'ship-1',
+        'what shoul i do at 500 hourly diesel generator maintenanace?',
+        'what shoul i do at 500 hourly diesel generator maintenanace?',
+        [
+          {
+            shipManualId: 'manual-mase',
+            sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+            snippet:
+              '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
+            score: 0.97,
+          },
+        ],
+        ['MANUALS'],
+      );
+
+    expect(ragflowService.downloadDocument).toHaveBeenCalledWith(
+      'dataset-1',
+      'doc-mase',
+    );
+    expect(citations[0]).toEqual(
+      expect.objectContaining({
+        sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+        pageNumber: 69,
+        snippet: expect.stringContaining('Replace fuel filter and prefilter'),
+      }),
+    );
+    expect(citations[0]?.snippet).toContain(
+      'Replace the seawater pump impeller',
+    );
+    expect(citations[0]?.snippet).not.toContain('Replace the seawater pump\n');
+    expect(citations[0]?.snippet).not.toContain('Clean the seawater filter');
   });
 });
