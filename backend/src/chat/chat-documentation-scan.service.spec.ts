@@ -44,6 +44,75 @@ describe('ChatDocumentationScanService', () => {
     { text: 'Check software status', x: 48, y: 258, width: 120, height: 10 },
     { text: '•', x: 358, y: 258, width: 6, height: 10 },
   ];
+  const masePage69RealisticTextItems = [
+    { text: '6.24 Periodic checks and maintenance', x: 182, y: 793, width: 180, height: 10 },
+    { text: 'Perform service at intervals indicated', x: 66, y: 726, width: 180, height: 10 },
+    { text: 'Before', x: 231, y: 734, width: 24, height: 8 },
+    { text: 'starting', x: 229, y: 726, width: 32, height: 8 },
+    { text: 'Every 200', x: 316, y: 736, width: 40, height: 8 },
+    { text: 'hrs.or 12', x: 316, y: 727, width: 40, height: 8 },
+    { text: 'Month', x: 320, y: 719, width: 28, height: 8 },
+    { text: 'Every 500', x: 347, y: 736, width: 40, height: 8 },
+    { text: 'hrs.or 12', x: 348, y: 727, width: 40, height: 8 },
+    { text: 'Month', x: 352, y: 719, width: 28, height: 8 },
+    { text: '1000', x: 385, y: 737, width: 22, height: 8 },
+    { text: 'hrs.or 24', x: 379, y: 729, width: 40, height: 8 },
+    { text: 'Month', x: 382, y: 721, width: 28, height: 8 },
+    { text: 'General', x: 31, y: 705, width: 42, height: 10 },
+    { text: 'Fuel system', x: 31, y: 683, width: 70, height: 10 },
+    { text: 'Water drainage in the water / diesel separator', x: 31, y: 670, width: 160, height: 10 },
+    { text: '●', x: 238, y: 671, width: 6, height: 10 },
+    { text: 'Replace fuel filter and prefilter', x: 31, y: 659, width: 140, height: 10 },
+    { text: '●', x: 358, y: 660, width: 6, height: 10 },
+    { text: 'Lubrication system', x: 31, y: 634, width: 100, height: 10 },
+    { text: 'Change oil and filter', x: 31, y: 609, width: 120, height: 10 },
+    { text: '●', x: 358, y: 611, width: 6, height: 10 },
+    { text: 'Cooling system', x: 31, y: 593, width: 100, height: 10 },
+    { text: 'Check coolant levels in engine circuit / generator circuit', x: 31, y: 579, width: 240, height: 10 },
+    { text: '●', x: 266, y: 581, width: 6, height: 10 },
+    { text: '●', x: 358, y: 581, width: 6, height: 10 },
+    { text: 'Clean the seawater filter', x: 31, y: 566, width: 140, height: 10 },
+    { text: '●', x: 326, y: 566, width: 6, height: 10 },
+    { text: 'Replace the seawater pump impeller', x: 31, y: 554, width: 170, height: 10 },
+    { text: '●', x: 358, y: 556, width: 6, height: 10 },
+    { text: 'Replace the seawater pump', x: 31, y: 543, width: 150, height: 10 },
+    { text: '●', x: 452, y: 545, width: 6, height: 10 },
+    { text: 'Replace the aux. pump belt (for alternator cooling)', x: 31, y: 428, width: 220, height: 10 },
+    { text: '●', x: 358, y: 429, width: 6, height: 10 },
+    { text: 'Replace the air filter', x: 31, y: 315, width: 110, height: 10 },
+    { text: '●', x: 358, y: 316, width: 6, height: 10 },
+    { text: 'Check the exhaust flexible hose', x: 31, y: 303, width: 150, height: 10 },
+    { text: '●', x: 358, y: 305, width: 6, height: 10 },
+    { text: 'Clean the battery terminals', x: 31, y: 236, width: 140, height: 10 },
+    { text: '●', x: 358, y: 238, width: 6, height: 10 },
+    { text: 'Check drive belt and belt tensioner', x: 31, y: 195, width: 170, height: 10 },
+    { text: '●', x: 358, y: 197, width: 6, height: 10 },
+    { text: 'Engine speed control and adjustment', x: 31, y: 150, width: 170, height: 10 },
+    { text: '●', x: 358, y: 152, width: 6, height: 10 },
+    { text: 'Check the engine ground connections', x: 31, y: 139, width: 180, height: 10 },
+    { text: '●', x: 358, y: 141, width: 6, height: 10 },
+    { text: 'Check software status', x: 31, y: 73, width: 120, height: 10 },
+    { text: '●', x: 358, y: 74, width: 6, height: 10 },
+    { text: 'Generator operation test', x: 31, y: 50, width: 120, height: 10 },
+    { text: '●', x: 238, y: 52, width: 6, height: 10 },
+  ];
+  const masePage69RealisticTextItemsWithLaterIntervals = [
+    ...masePage69RealisticTextItems,
+    { text: 'Every', x: 415, y: 745, width: 18, height: 8 },
+    { text: '2000', x: 417, y: 737, width: 22, height: 8 },
+    { text: 'hrs.or 48', x: 410, y: 729, width: 40, height: 8 },
+    { text: 'Month', x: 414, y: 721, width: 28, height: 8 },
+    { text: 'Check alternator coolant pump (Aux. pump)', x: 31, y: 415, width: 170, height: 10 },
+    { text: 'в—Џ', x: 389, y: 417, width: 6, height: 10 },
+    { text: 'Replace alternator coolant pump (Aux. pump)', x: 31, y: 402, width: 180, height: 10 },
+    { text: 'в—Џ', x: 421, y: 404, width: 6, height: 10 },
+    { text: 'Test of thermostats', x: 31, y: 389, width: 110, height: 10 },
+    { text: 'в—Џ', x: 421, y: 391, width: 6, height: 10 },
+    { text: 'Replace drive belt', x: 31, y: 184, width: 110, height: 10 },
+    { text: 'в—Џ', x: 421, y: 186, width: 6, height: 10 },
+    { text: 'Check valve clearance', x: 31, y: 116, width: 120, height: 10 },
+    { text: 'в—Џ', x: 389, y: 118, width: 6, height: 10 },
+  ];
 
   it('filters scan contexts to the allowed document categories before fallback selection', async () => {
     const prisma = {
@@ -659,6 +728,97 @@ describe('ChatDocumentationScanService', () => {
     );
     expect(extracted?.items).not.toContain('Clean the seawater filter');
     expect(extracted?.items).not.toContain('Replace the seawater pump');
+  });
+
+  it('keeps the upper body rows when a maintenance table has a tall title and header block', () => {
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      { isConfigured: jest.fn().mockReturnValue(true) } as never,
+      queryService,
+      {} as never,
+    );
+
+    const extracted = (
+      service as unknown as {
+        extractIntervalMaintenanceItemsFromTextItems: (
+          items: Array<{
+            text: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          }>,
+          query: string,
+          intervalPhrases: string[],
+        ) => {
+          heading?: string;
+          intervalLabel: string;
+          items: string[];
+        } | null;
+      }
+    ).extractIntervalMaintenanceItemsFromTextItems(
+      masePage69RealisticTextItems,
+      'what shoul i do at 500 hourly diesel generator maintenanace?',
+      ['500 hour', '500 hours', '500 hrs', 'every 500'],
+    );
+
+    expect(extracted?.items).toEqual(
+      expect.arrayContaining([
+        'Replace fuel filter and prefilter',
+        'Change oil and filter',
+        'Replace the seawater pump impeller',
+      ]),
+    );
+    expect(extracted?.items).not.toContain('Replace the seawater pump');
+  });
+
+  it('does not leak later interval rows into the selected 500-hour column', () => {
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      { isConfigured: jest.fn().mockReturnValue(true) } as never,
+      queryService,
+      {} as never,
+    );
+
+    const extracted = (
+      service as unknown as {
+        extractIntervalMaintenanceItemsFromTextItems: (
+          items: Array<{
+            text: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          }>,
+          query: string,
+          intervalPhrases: string[],
+        ) => {
+          heading?: string;
+          intervalLabel: string;
+          items: string[];
+        } | null;
+      }
+    ).extractIntervalMaintenanceItemsFromTextItems(
+      masePage69RealisticTextItemsWithLaterIntervals,
+      'what shoul i do at 500 hourly diesel generator maintenanace?',
+      ['500 hour', '500 hours', '500 hrs', 'every 500'],
+    );
+
+    expect(extracted?.items).toEqual(
+      expect.arrayContaining([
+        'Replace fuel filter and prefilter',
+        'Replace the aux. pump belt (for alternator cooling)',
+      ]),
+    );
+    expect(extracted?.items).not.toContain(
+      'Check alternator coolant pump (Aux. pump)',
+    );
+    expect(extracted?.items).not.toContain(
+      'Replace alternator coolant pump (Aux. pump)',
+    );
+    expect(extracted?.items).not.toContain('Test of thermostats');
+    expect(extracted?.items).not.toContain('Replace drive belt');
+    expect(extracted?.items).not.toContain('Check valve clearance');
   });
 
   it('uses structured PDF page extraction to replace incomplete merged interval snippets', async () => {

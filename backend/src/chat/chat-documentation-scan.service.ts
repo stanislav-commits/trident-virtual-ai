@@ -1970,11 +1970,23 @@ export class ChatDocumentationScanService {
       return null;
     }
 
-    const yValues = textItems.map((item) => item.y);
-    const minY = Math.min(...yValues);
-    const maxY = Math.max(...yValues);
-    const headerRegionMinY = maxY - Math.max(60, (maxY - minY) * 0.22);
-    const headerItems = textItems.filter((item) => item.y >= headerRegionMinY);
+    const headerSeedItems = textItems.filter((item) =>
+      this.isLikelyIntervalHeaderText(item.text),
+    );
+    if (headerSeedItems.length === 0) {
+      return null;
+    }
+    const headerBoundaryItems = headerSeedItems.filter(
+      (item) => !this.isLikelyIntervalTableTitleText(item.text),
+    );
+    const headerBottomY =
+      Math.min(
+        ...(headerBoundaryItems.length > 0
+          ? headerBoundaryItems
+          : headerSeedItems
+        ).map((item) => item.y),
+      ) - 8;
+    const headerItems = textItems.filter((item) => item.y >= headerBottomY);
     const headerColumns = this.extractIntervalHeaderColumns(headerItems);
     const targetColumn = this.selectTargetIntervalHeaderColumn(
       headerColumns,
@@ -2002,8 +2014,6 @@ export class ChatDocumentationScanService {
         ? targetColumn.x + 20
         : (targetColumn.x + sortedColumns[targetIndex + 1].x) / 2;
     const firstIntervalBoundary = Math.max(0, sortedColumns[0].x - 24);
-    const headerBottomY =
-      Math.min(...headerItems.map((item) => item.y)) - 6;
 
     const rowClusters = this.clusterPdfRows(
       textItems.filter((item) => item.y < headerBottomY),
@@ -2012,14 +2022,16 @@ export class ChatDocumentationScanService {
     const rawRows = rowClusters
       .map((rowItems) => {
         const sortedRowItems = [...rowItems].sort((left, right) => left.x - right.x);
-        const description = this.normalizePdfExtractedText(
-          sortedRowItems
-            .filter(
-              (item) =>
-                item.x < leftBoundary - 8 &&
-                !this.isIntervalTableMarker(item.text),
-            )
-            .map((item) => item.text),
+        const description = this.normalizeIntervalMaintenanceItemDescription(
+          this.normalizePdfExtractedText(
+            sortedRowItems
+              .filter(
+                (item) =>
+                  item.x < leftBoundary - 8 &&
+                  !this.isIntervalTableMarker(item.text),
+              )
+              .map((item) => item.text),
+          ),
         );
         if (!description) {
           return null;
@@ -2075,6 +2087,9 @@ export class ChatDocumentationScanService {
           previous.description,
           row.description,
         ]);
+        previous.description = this.normalizeIntervalMaintenanceItemDescription(
+          previous.description,
+        );
         continue;
       }
 
@@ -2140,7 +2155,7 @@ export class ChatDocumentationScanService {
         };
       })
       .filter((column) =>
-        /\b(before\s+starting|first\s+check\s+after|every\s+\d{1,4}|maintenance\s+as\s+needed|as\s+needed)\b/i.test(
+        /^(?:before(?:\s+starting)?|first\s+check(?:\s+after(?:\s+\d+\s+hours?)?)?|every\s+\d{1,4}|\d{1,4}|maintenance\s+as\s+needed|as\s+needed)\b/i.test(
           column.label,
         ),
       )
@@ -2268,6 +2283,31 @@ export class ChatDocumentationScanService {
     return /^[•·●▪■]$/.test(text.trim());
   }
 
+  private isLikelyIntervalHeaderText(text: string): boolean {
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return false;
+    }
+
+    return (
+      /^(?:\d+\.\d+\s+periodic\s+checks?\s+and\s+maintenance|periodic\s+checks?\s+and\s+maintenance|perform\s+service\s+at\s+intervals\s+indicated)$/i.test(
+        normalized,
+      ) ||
+      /^(?:before(?:\s+starting)?|first\s+check(?:\s+after\s+\d+\s+hours?)?|check|after\s+\d+|hours?|month|months|maintenance|as\s+needed|needed)$/i.test(
+        normalized,
+      ) ||
+      /^every\s+\d{1,4}(?:\s*h(?:ours?|rs?)?\.?\s*or\s*\d+\s*(?:month|months|year|years))?$/i.test(
+        normalized,
+      ) ||
+      /^hrs?\.?\s*or\s*\d+\s*(?:month|months|year|years)$/i.test(normalized)
+    );
+  }
+
+  private isLikelyIntervalTableTitleText(text: string): boolean {
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    return /\bperiodic\s+checks?\s+and\s+maintenance\b/i.test(normalized);
+  }
+
   private isLikelyIntervalTableSectionHeading(text: string): boolean {
     const normalized = text.replace(/\s+/g, ' ').trim();
     if (!normalized) {
@@ -2339,6 +2379,13 @@ export class ChatDocumentationScanService {
       .replace(/\(\s+/g, '(')
       .replace(/\s+\)/g, ')')
       .replace(/\s+\/\s+/g, ' / ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  private normalizeIntervalMaintenanceItemDescription(text: string): string {
+    return text
+      .replace(/\s+[a-z]$/i, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
   }
