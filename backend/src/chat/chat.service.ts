@@ -4963,6 +4963,13 @@ export class ChatService {
       return false;
     }
 
+    if (
+      queryPlan.primaryIntent === 'maintenance_procedure' &&
+      this.documentationQueryService.isIntervalMaintenanceQuery(userQuery)
+    ) {
+      return true;
+    }
+
     const documentationIntent =
       this.isDocumentationSemanticIntent(semanticQuery);
     if (!documentationIntent) {
@@ -5078,8 +5085,11 @@ export class ChatService {
   }
 
   private isProcedureOrDocumentationQuestion(userQuery: string): boolean {
-    return /\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|how\s+should|how\s+do\s+i|procedure|steps?|check\s*list|checklist|instructions?|before|after|prepare|preparation|safely|safe\s+procedure|manual|documentation|according\s+to)\b/i.test(
-      userQuery,
+    return (
+      /\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|how\s+should|how\s+do\s+i|procedure|steps?|check\s*list|checklist|instructions?|before|after|prepare|preparation|safely|safe\s+procedure|manual|documentation|according\s+to|list\s+all|all\s+items?|included\s+items?)\b/i.test(
+        userQuery,
+      ) ||
+      this.documentationQueryService.isIntervalMaintenanceQuery(userQuery)
     );
   }
 

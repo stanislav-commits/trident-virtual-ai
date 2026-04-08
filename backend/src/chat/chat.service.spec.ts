@@ -2356,6 +2356,56 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('prefers documentation over telemetry fallback for hyphenated interval-maintenance list queries', () => {
+    const shouldPrefer = (service as any).shouldPreferDocumentationOverCurrentTelemetry(
+      {
+        primaryIntent: 'maintenance_procedure',
+        secondaryIntents: [],
+        sourcePriorities: [
+          'MANUALS',
+          'HISTORY_PROCEDURES',
+          'REGULATION',
+          'CERTIFICATES',
+          'TELEMETRY',
+        ],
+        hardDocumentCategories: ['MANUALS'],
+        requiresCurrentDateTime: false,
+        requiresTelemetry: false,
+        requiresTelemetryHistory: false,
+        allowsMaintenanceCalculation: false,
+        prefersExactDocumentRows: true,
+        supportsMultiSourceAggregation: false,
+      },
+      'list all 500-hour maintenance items for the diesel generator',
+      {
+        rawQuery: 'list all 500-hour maintenance items for the diesel generator',
+        normalizedQuery:
+          'list all 500-hour maintenance items for the diesel generator',
+        retrievalQuery:
+          'list all 500-hour maintenance items for the diesel generator',
+        effectiveQuery:
+          'list all 500-hour maintenance items for the diesel generator',
+        intent: 'general_information',
+        family: 'general_reference',
+        sourcePreferences: ['MANUALS'],
+        selectedConceptIds: [],
+        sourceHints: [],
+        confidence: 0.55,
+        answerFormat: 'direct_answer',
+        equipment: [],
+        systems: [],
+        aliases: [],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        needsClarification: false,
+        clarificationReason: null,
+      },
+    );
+
+    expect(shouldPrefer).toBe(true);
+  });
+
   it.skip('answers manual range questions deterministically from cited manual evidence', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

@@ -121,6 +121,16 @@ describe('ChatDocumentationQueryService', () => {
     );
   });
 
+  it('recognizes hyphenated interval-maintenance enumeration phrasing', () => {
+    const query = 'list all 500-hour maintenance items for the diesel generator';
+
+    expect(service.isProcedureQuery(query)).toBe(true);
+    expect(service.isIntervalMaintenanceQuery(query)).toBe(true);
+    expect(service.extractSignificantNumericTokens(query)).toEqual(
+      expect.arrayContaining(['500 hour', '500 hours', '500 hrs', 'every 500']),
+    );
+  });
+
   it('does not ask for clarification for broader asset lookups that already name one concrete subject', () => {
     const userQuery = 'What spare parts do I need for the compressor?';
 

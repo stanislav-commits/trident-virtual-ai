@@ -1071,7 +1071,7 @@ export class ChatContextService {
     const phrases = new Set<string>();
 
     for (const match of query.matchAll(
-      /\b(\d{2,6})\s*(h(?:ours?|rs?)?|hourly)\b/gi,
+      /\b(\d{2,6})(?:\s*-\s*|\s+)?(h(?:ours?|rs?)?|hourly)\b/gi,
     )) {
       const value = match[1];
       phrases.add(`${value} hour`);
@@ -1080,14 +1080,18 @@ export class ChatContextService {
       phrases.add(`every ${value}`);
     }
 
-    for (const match of query.matchAll(/\b(\d{1,4})\s*(months?|month)\b/gi)) {
+    for (const match of query.matchAll(
+      /\b(\d{1,4})(?:\s*-\s*|\s+)?(months?|month)\b/gi,
+    )) {
       const value = match[1];
       phrases.add(`${value} month`);
       phrases.add(`${value} months`);
       phrases.add(`every ${value}`);
     }
 
-    for (const match of query.matchAll(/\b(\d{1,4})\s*(years?|year)\b/gi)) {
+    for (const match of query.matchAll(
+      /\b(\d{1,4})(?:\s*-\s*|\s+)?(years?|year)\b/gi,
+    )) {
       const value = match[1];
       phrases.add(`${value} year`);
       phrases.add(`${value} years`);

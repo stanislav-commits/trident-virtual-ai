@@ -565,6 +565,8 @@ export class LlmService {
         return (
           'Important: This is a maintenance procedure question. ' +
           'Answer from explicitly documented procedure steps only. ' +
+          'If the citations contain a maintenance schedule or periodic-maintenance table for a requested interval, list the documented work items due at that interval instead of saying the procedure is missing. ' +
+          'Treat interval schedule rows as valid documentation for "what is due", "what is included", or "list all items" questions. ' +
           'If the citations contain a step-by-step procedure, present it clearly as documented steps. ' +
           'Only include tools, materials, and safety warnings that are explicitly documented. ' +
           'Do not add generic safety advice, generic electrical cautions, or invented preparation steps. ' +

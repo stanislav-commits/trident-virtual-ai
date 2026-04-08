@@ -491,6 +491,8 @@ export class ChatQueryPlannerService {
       primaryIntent === 'maintenance_due_now' ||
       primaryIntent === 'next_due_calculation' ||
       primaryIntent === 'last_maintenance' ||
+      (primaryIntent === 'maintenance_procedure' &&
+        this.isIntervalMaintenanceProcedureQuery(subjectContext)) ||
       primaryIntent === 'parts_fluids_consumables' ||
       /\b1p\d{2,}\b/i.test(subjectContext)
     );
@@ -602,7 +604,7 @@ export class ChatQueryPlannerService {
 
   private isIntervalMaintenanceProcedureQuery(query: string): boolean {
     const hasIntervalSignal =
-      /\b\d{2,6}\s*(?:h(?:ours?|rs?)?|hourly|months?|month|years?|year)\b/i.test(
+      /\b\d{2,6}(?:\s*-\s*|\s+)?(?:h(?:ours?|rs?)?|hourly|months?|month|years?|year)\b/i.test(
         query,
       ) ||
       /\b(annual|annually|monthly|weekly|daily|periodic|intervals?)\b/i.test(

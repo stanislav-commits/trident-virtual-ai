@@ -54,7 +54,18 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.primaryIntent).toBe('maintenance_procedure');
     expect(plan.sourcePriorities[0]).toBe('MANUALS');
     expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
-    expect(plan.prefersExactDocumentRows).toBe(false);
+    expect(plan.prefersExactDocumentRows).toBe(true);
+  });
+
+  it('routes hyphenated interval maintenance list questions to manuals with exact-row preference', () => {
+    const plan = service.planQuery(
+      'list all 500-hour maintenance items for the diesel generator',
+    );
+
+    expect(plan.primaryIntent).toBe('maintenance_procedure');
+    expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
+    expect(plan.prefersExactDocumentRows).toBe(true);
   });
 
   it('routes certificate expiry questions to certificates first and regulations second', () => {
