@@ -939,7 +939,7 @@ export class ChatDocumentationQueryService {
       /\b\d{2,6}(?:\s*-\s*|\s+)?(?:h(?:ours?|rs?)?|hourly|months?|month|years?|year)\b/i.test(
         normalized,
       ) ||
-      /\b(annual|annually|monthly|weekly|daily|periodic|intervals?)\b/i.test(
+      /\b(annual|annually|monthly|weekly|daily|periodic|intervals?|as\s+needed)\b/i.test(
         normalized,
       );
     if (!hasIntervalSignal) {
@@ -1456,6 +1456,11 @@ export class ChatDocumentationQueryService {
 
     if (/\bperiodic\b/i.test(query)) {
       phrases.add('periodic');
+    }
+
+    if (/\bas\s+needed\b/i.test(query)) {
+      phrases.add('as needed');
+      phrases.add('maintenance as needed');
     }
 
     return [...phrases];

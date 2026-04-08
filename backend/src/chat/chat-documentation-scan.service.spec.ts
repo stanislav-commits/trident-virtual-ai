@@ -821,6 +821,118 @@ describe('ChatDocumentationScanService', () => {
     expect(extracted?.items).not.toContain('Check valve clearance');
   });
 
+  it('merges wrapped interval-table descriptions even when the marker is rendered on the continuation line', () => {
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      { isConfigured: jest.fn().mockReturnValue(true) } as never,
+      queryService,
+      {} as never,
+    );
+    const wrappedTextItems = [
+      { text: 'Periodic checks and maintenance', x: 180, y: 760, width: 180, height: 10 },
+      { text: 'Perform service at intervals indicated', x: 90, y: 720, width: 180, height: 10 },
+      { text: 'Every 200', x: 316, y: 736, width: 40, height: 8 },
+      { text: 'hrs.or 12', x: 316, y: 727, width: 40, height: 8 },
+      { text: 'Month', x: 320, y: 719, width: 28, height: 8 },
+      { text: 'Cooling system', x: 31, y: 690, width: 100, height: 10 },
+      { text: 'Verify and adjust the tension of the aux. pump belt', x: 31, y: 676, width: 220, height: 10 },
+      { text: 'b', x: 252, y: 676, width: 6, height: 10 },
+      { text: '(for', x: 252, y: 676, width: 18, height: 10 },
+      { text: 'alternator cooling)', x: 31, y: 664, width: 90, height: 10 },
+      { text: '●', x: 326, y: 664, width: 6, height: 10 },
+    ];
+
+    const extracted = (
+      service as unknown as {
+        extractIntervalMaintenanceItemsFromTextItems: (
+          items: Array<{
+            text: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          }>,
+          query: string,
+          intervalPhrases: string[],
+        ) => {
+          heading?: string;
+          intervalLabel: string;
+          items: string[];
+        } | null;
+      }
+    ).extractIntervalMaintenanceItemsFromTextItems(
+      wrappedTextItems,
+      'what is due every 200 hours or 12 months on the diesel generator?',
+      ['200 hour', '200 hours', '200 hrs', '12 month', '12 months', 'every 200'],
+    );
+
+    expect(extracted?.items).toContain(
+      'Verify and adjust the tension of the aux. pump belt (for alternator cooling)',
+    );
+    expect(extracted?.items).not.toContain('alternator cooling)');
+  });
+
+  it('extracts maintenance-as-needed rows from interval-maintenance tables', () => {
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      { isConfigured: jest.fn().mockReturnValue(true) } as never,
+      queryService,
+      {} as never,
+    );
+    const asNeededTextItems = [
+      { text: 'Periodic checks and maintenance', x: 180, y: 760, width: 180, height: 10 },
+      { text: 'Perform service at intervals indicated', x: 90, y: 720, width: 180, height: 10 },
+      { text: 'Maintenance', x: 520, y: 736, width: 50, height: 8 },
+      { text: 'as needed', x: 520, y: 727, width: 50, height: 8 },
+      { text: 'Fuel system', x: 31, y: 690, width: 100, height: 10 },
+      { text: 'Check the fuel pump', x: 31, y: 676, width: 120, height: 10 },
+      { text: '●', x: 534, y: 676, width: 6, height: 10 },
+      { text: 'Cooling system', x: 31, y: 650, width: 100, height: 10 },
+      { text: 'Add coolant', x: 31, y: 636, width: 80, height: 10 },
+      { text: '●', x: 534, y: 636, width: 6, height: 10 },
+      { text: 'Gas intake / exhaust', x: 31, y: 610, width: 120, height: 10 },
+      { text: 'Clean the air filter', x: 31, y: 596, width: 110, height: 10 },
+      { text: '●', x: 534, y: 596, width: 6, height: 10 },
+      { text: 'Engine and assembly', x: 31, y: 570, width: 120, height: 10 },
+      { text: 'Check and adjust the fuel injection pump', x: 31, y: 556, width: 190, height: 10 },
+      { text: '●', x: 534, y: 556, width: 6, height: 10 },
+    ];
+
+    const extracted = (
+      service as unknown as {
+        extractIntervalMaintenanceItemsFromTextItems: (
+          items: Array<{
+            text: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          }>,
+          query: string,
+          intervalPhrases: string[],
+        ) => {
+          heading?: string;
+          intervalLabel: string;
+          items: string[];
+        } | null;
+      }
+    ).extractIntervalMaintenanceItemsFromTextItems(
+      asNeededTextItems,
+      'what maintenance is listed as needed for the diesel generator?',
+      ['as needed', 'maintenance as needed'],
+    );
+
+    expect(extracted?.intervalLabel).toContain('Maintenance as needed');
+    expect(extracted?.items).toEqual(
+      expect.arrayContaining([
+        'Check the fuel pump',
+        'Add coolant',
+        'Clean the air filter',
+        'Check and adjust the fuel injection pump',
+      ]),
+    );
+  });
+
   it('uses structured PDF page extraction to replace incomplete merged interval snippets', async () => {
     const ragflowService = {
       isConfigured: jest.fn().mockReturnValue(true),

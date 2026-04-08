@@ -1474,6 +1474,13 @@ export class ChatDocumentationService {
       return null;
     }
 
+    if (
+      this.queryService.isIntervalMaintenanceQuery(params.retrievalQuery) &&
+      this.shouldPreferTopIntervalMaintenanceCandidate(closeCandidates)
+    ) {
+      return null;
+    }
+
     return {
       question:
         'I found relevant information in multiple documents. Which source should I use?',
@@ -1527,6 +1534,28 @@ export class ChatDocumentationService {
     ]);
 
     return candidate.reasons.some((reason) => strongReasons.has(reason));
+  }
+
+  private shouldPreferTopIntervalMaintenanceCandidate(
+    candidates: DocumentationSemanticCandidate[],
+  ): boolean {
+    if (candidates.length < 2) {
+      return true;
+    }
+
+    const [topCandidate, secondCandidate] = candidates;
+    const lead = topCandidate.score - secondCandidate.score;
+    const ratio =
+      secondCandidate.score > 0 ? topCandidate.score / secondCandidate.score : 999;
+
+    if (
+      lead >= 12 &&
+      (ratio >= 1.08 || this.hasStrongDirectSourceMatch(topCandidate))
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   private resolveRetrievalManualScope(params: {

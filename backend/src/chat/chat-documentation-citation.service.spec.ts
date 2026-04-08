@@ -277,6 +277,44 @@ describe('ChatDocumentationCitationService', () => {
     expect(refined[0].snippet).not.toContain('500 mm');
   });
 
+  it('keeps interval-maintenance citations focused on the reconstructed table source when available', () => {
+    const citations = [
+      {
+        chunkId: 'manual-interval-scan:manual-mase:69',
+        sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+        snippet:
+          'Periodic checks and maintenance. Items due at Every 3000 hrs. or 48 Month: - Replace the seawater pump',
+        score: 1.03,
+      },
+      {
+        chunkId: 'ragflow:mase-extra',
+        sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+        snippet: 'Replace the seawater pump. Every 3000 hrs. or 48 Month.',
+        score: 0.92,
+      },
+      {
+        chunkId: 'ragflow:pms-43',
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        snippet:
+          'Task name: Generator seawater pump replacement. Interval: 3000 hours.',
+        score: 0.95,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'what is due every 3000 hours or 48 months on the diesel generator?',
+      'what is due every 3000 hours or 48 months on the diesel generator?',
+      citations,
+    );
+
+    expect(refined[0].sourceTitle).toBe(
+      'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+    );
+    expect(refined.some((citation) => citation.sourceTitle === 'M_Y Seawolf X - Maintenance Tasks.pdf')).toBe(
+      false,
+    );
+  });
+
   it('prioritizes history procedures over manuals for next-due questions', () => {
     const citations = [
       {

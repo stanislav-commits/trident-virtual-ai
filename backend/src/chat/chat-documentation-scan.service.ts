@@ -2090,6 +2090,8 @@ export class ChatDocumentationScanService {
         previous.description = this.normalizeIntervalMaintenanceItemDescription(
           previous.description,
         );
+        previous.hasTargetMarker ||= row.hasTargetMarker;
+        previous.hasAnyIntervalMarker ||= row.hasAnyIntervalMarker;
         continue;
       }
 
@@ -2330,7 +2332,7 @@ export class ChatDocumentationScanService {
       isSectionHeading: boolean;
     },
   ): boolean {
-    if (row.hasAnyIntervalMarker || row.isSectionHeading) {
+    if (row.isSectionHeading) {
       return false;
     }
 
@@ -2339,13 +2341,21 @@ export class ChatDocumentationScanService {
       return false;
     }
 
-    return (
+    const looksLikeContinuation =
       /^[a-z(]/.test(normalized) ||
       previousDescription.endsWith('(') ||
       previousDescription.endsWith('/') ||
       previousDescription.endsWith('-') ||
-      previousDescription.endsWith('"')
-    );
+      previousDescription.endsWith('"');
+    if (!looksLikeContinuation) {
+      return false;
+    }
+
+    if (!row.hasAnyIntervalMarker) {
+      return true;
+    }
+
+    return !/[.;:]$/.test(previousDescription.trim());
   }
 
   private extractIntervalTableHeading(textItems: PdfPageTextItem[]): string | undefined {
@@ -2385,6 +2395,7 @@ export class ChatDocumentationScanService {
 
   private normalizeIntervalMaintenanceItemDescription(text: string): string {
     return text
+      .replace(/\s+[a-z](?=\s*\()/gi, '')
       .replace(/\s+[a-z]$/i, '')
       .replace(/\s{2,}/g, ' ')
       .trim();

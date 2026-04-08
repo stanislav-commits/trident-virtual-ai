@@ -131,6 +131,16 @@ describe('ChatDocumentationQueryService', () => {
     );
   });
 
+  it('treats maintenance-as-needed generator questions as interval-maintenance queries', () => {
+    const query = 'what maintenance is listed as needed for the diesel generator?';
+
+    expect(service.isProcedureQuery(query)).toBe(true);
+    expect(service.isIntervalMaintenanceQuery(query)).toBe(true);
+    expect(service.extractMaintenanceIntervalSearchPhrases(query)).toEqual(
+      expect.arrayContaining(['as needed', 'maintenance as needed']),
+    );
+  });
+
   it('does not ask for clarification for broader asset lookups that already name one concrete subject', () => {
     const userQuery = 'What spare parts do I need for the compressor?';
 

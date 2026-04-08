@@ -2006,6 +2006,9 @@ export class ChatDocumentationCitationService {
     const intervalPhrases = this.queryService.extractMaintenanceIntervalSearchPhrases(
       query,
     );
+    const preferredStructuredSourceTitle = citations.find((citation) =>
+      citation.chunkId?.startsWith('manual-interval-scan:'),
+    )?.sourceTitle;
     const scored = citations
       .map((citation, index) => {
         const haystack =
@@ -2048,6 +2051,14 @@ export class ChatDocumentationCitationService {
           haystack.includes(phrase.toLowerCase()),
         ).length;
         score += intervalMatches * 12;
+
+        if (preferredStructuredSourceTitle) {
+          if (citation.sourceTitle === preferredStructuredSourceTitle) {
+            score += 14;
+          } else {
+            score -= 8;
+          }
+        }
 
         if (
           intervalMatches === 0 &&

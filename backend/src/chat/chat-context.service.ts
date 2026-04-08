@@ -1103,6 +1103,11 @@ export class ChatContextService {
       phrases.add('annually');
     }
 
+    if (/\bas\s+needed\b/i.test(query)) {
+      phrases.add('as needed');
+      phrases.add('maintenance as needed');
+    }
+
     return [...phrases];
   }
 
