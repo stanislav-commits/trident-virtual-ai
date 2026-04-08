@@ -571,8 +571,21 @@ export class ChatQueryPlannerService {
   }
 
   private isRegulationQuery(query: string): boolean {
-    return /\b(regulation|regulations|marpol|imo|flag\s+state|obligation|obligations|compliance|required|requirement|requirements|allowed|prohibited|detention|fine|annex)\b/i.test(
-      query,
+    if (
+      /\b(regulation|regulations|marpol|imo|solas|ism|isps|mlc|flag\s+state|obligation|obligations|compliance|prohibited|detention|fine|annex|class\s+rules?|class\s+requirements?|code|law|laws)\b/i.test(
+        query,
+      )
+    ) {
+      return true;
+    }
+
+    return (
+      /\b(required|requirement|requirements|allowed|permit(?:ted)?|prohibited)\b[\s\S]{0,40}\b(marpol|imo|solas|ism|isps|mlc|flag\s+state|regulation|regulations|annex|class|rule|rules|code|law|laws)\b/i.test(
+        query,
+      ) ||
+      /\b(?:under|according\s+to|per)\s+(?:the\s+)?(?:marpol|imo|solas|ism|isps|mlc|flag\s+state|regulation|regulations|annex|class|rules?|code|law|laws)\b/i.test(
+        query,
+      )
     );
   }
 

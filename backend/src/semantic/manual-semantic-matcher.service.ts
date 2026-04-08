@@ -1258,7 +1258,10 @@ export class ManualSemanticMatcherService {
     if (
       params.queryVendor &&
       (candidateVendor === params.queryVendor ||
-        normalizedSubject.includes(params.queryVendor))
+        this.containsWholeNormalizedPhrase(
+          normalizedSubject,
+          params.queryVendor,
+        ))
     ) {
       score += 2;
     }
@@ -1338,7 +1341,8 @@ export class ManualSemanticMatcherService {
     );
 
     return (
-      candidateVendor === queryVendor || normalizedSubject.includes(queryVendor)
+      candidateVendor === queryVendor ||
+      this.containsWholeNormalizedPhrase(normalizedSubject, queryVendor)
     );
   }
 
@@ -1819,6 +1823,17 @@ export class ManualSemanticMatcherService {
     return hintTokens.every((token) =>
       this.matchesToken(valueTokens, collapsedValue, token),
     );
+  }
+
+  private containsWholeNormalizedPhrase(
+    normalizedText: string,
+    normalizedPhrase: string,
+  ): boolean {
+    if (!normalizedText || !normalizedPhrase) {
+      return false;
+    }
+
+    return ` ${normalizedText} `.includes(` ${normalizedPhrase} `);
   }
 
   private isProcedureIntent(

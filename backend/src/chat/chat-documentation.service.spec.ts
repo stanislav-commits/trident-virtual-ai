@@ -308,6 +308,126 @@ describe('ChatDocumentationService', () => {
     expect(clarification).toBeNull();
   });
 
+  it('filters final citations back to the semantic manual scope before follow-up state is built', async () => {
+    const goodCitation: ChatCitation = {
+      shipManualId: 'manual-macb',
+      chunkId: 'chunk-macb',
+      pageNumber: 12,
+      sourceTitle: 'MN_MACB531.pdf',
+      sourceCategory: 'MANUALS',
+      snippet: 'Replace the fuel filter and bleed the pump before restart.',
+      score: 0.93,
+    };
+    const leakedCitation: ChatCitation = {
+      shipManualId: 'manual-ballast',
+      chunkId: 'chunk-ballast',
+      pageNumber: 4,
+      sourceTitle: 'EXAMPLE BALLAST MNGT PLAN.pdf',
+      sourceCategory: 'MANUALS',
+      snippet: 'Ballast water exchange example procedure.',
+      score: 0.88,
+    };
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({
+        citations: [goodCitation, leakedCitation],
+      }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = new ChatDocumentationCitationService(queryService);
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+    const semanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure' as const,
+      conceptFamily: 'asset_system' as const,
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: ['emergency bilge pump'],
+      systems: ['fuel system'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS' as const],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'fuel filter replacement',
+      answerFormat: 'step_by_step' as const,
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.87,
+    };
+    const semanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue(semanticQuery),
+    };
+    const semanticMatcher = {
+      shortlistManuals: jest.fn().mockResolvedValue([
+        {
+          manualId: 'manual-macb',
+          documentId: 'doc-macb',
+          filename: 'MN_MACB531.pdf',
+          category: 'MANUALS',
+          score: 214,
+          reasons: ['profile_text', 'equipment_overlap'],
+        },
+      ]),
+    };
+    const sourceLockService = {
+      getFollowUpStateFromHistory: jest.fn().mockReturnValue(null),
+      resolveSourceLock: jest.fn().mockReturnValue({
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      }),
+      buildNextFollowUpState: jest.fn().mockReturnValue(null),
+    };
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+      undefined,
+      undefined,
+      semanticNormalizer as never,
+      semanticMatcher as never,
+      sourceLockService as never,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'How do I replace the fuel filter on the emergency bilge pump?',
+    });
+
+    expect(result.citations).toEqual([goodCitation]);
+    expect(result.analysisCitations).toEqual([goodCitation]);
+    expect(sourceLockService.buildNextFollowUpState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        citations: [goodCitation],
+      }),
+    );
+  });
+
   it('prioritizes locked page-aware citations and searches with the current follow-up text', async () => {
     const contextService = {
       findContextForQuery: jest.fn().mockResolvedValue({

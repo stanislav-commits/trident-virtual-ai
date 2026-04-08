@@ -1717,4 +1717,120 @@ describe('ManualSemanticMatcherService', () => {
         ?.score ?? 0,
     );
   });
+
+  it('does not treat vendor substrings inside unrelated equipment names as the same source', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-jets-toilet',
+            ragflowDocumentId: 'doc-jets-toilet',
+            filename: 'Jets.614213.Instruction Manual.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'troubleshooting',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['vacuum sanitary system'],
+              equipment: ['vacuum toilet'],
+              vendor: 'Jets Vacuum AS',
+              model: '614213',
+              aliases: ['jets toilet', 'vacuum toilet'],
+              summary:
+                'Troubleshooting and maintenance guidance for a Jets vacuum toilet that is not flushing correctly.',
+              sections: [
+                {
+                  title: 'Troubleshooting',
+                  pageStart: 18,
+                  pageEnd: 24,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary:
+                    'Check vacuum pressure, discharge valve condition, and control panel alarms when flushing fails.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-jetski-ops',
+            ragflowDocumentId: 'doc-jetski-ops',
+            filename: 'Jet-Ski Operations 1.1.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['personal watercraft'],
+              equipment: ['jet ski'],
+              vendor: null,
+              model: null,
+              aliases: ['JETSKIS', 'pwc'],
+              summary: 'Operating guidance for personal watercraft.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-pwc-fuel',
+            ragflowDocumentId: 'doc-pwc-fuel',
+            filename: 'SOP 12.09 Fueling PWC 1.1.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['personal watercraft fueling'],
+              equipment: ['jet ski'],
+              vendor: null,
+              model: null,
+              aliases: ['jetskis', 'fueling pwc'],
+              summary: 'Fueling procedure for personal watercraft.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'troubleshooting',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: ['vacuum toilet'],
+      systems: ['sanitary system'],
+      vendor: 'Jets',
+      model: null,
+      sourcePreferences: ['MANUALS'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'not flushing properly',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.85,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText:
+        'How do I troubleshoot a Jets vacuum toilet that is not flushing properly?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates.map((candidate) => candidate.manualId)).toEqual([
+      'manual-jets-toilet',
+    ]);
+  });
 });

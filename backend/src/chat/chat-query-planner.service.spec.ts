@@ -164,6 +164,26 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.hardDocumentCategories).toEqual(['REGULATION']);
   });
 
+  it('does not hard-route technical requirement questions to regulation without a regulation anchor', () => {
+    const plan = service.planQuery(
+      'What ventilation is required in the battery room during normal operation and gas release?',
+    );
+
+    expect(plan.primaryIntent).not.toBe('regulation_compliance');
+    expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.hardDocumentCategories).toBeUndefined();
+  });
+
+  it('still routes requirement phrasing to regulation when a regulation anchor is explicit', () => {
+    const plan = service.planQuery(
+      'What is required under MARPOL Annex I for oily water discharge?',
+    );
+
+    expect(plan.primaryIntent).toBe('regulation_compliance');
+    expect(plan.sourcePriorities[0]).toBe('REGULATION');
+    expect(plan.hardDocumentCategories).toEqual(['REGULATION']);
+  });
+
   it('routes forecasting questions to historical data with telemetry support', () => {
     const plan = service.planQuery(
       'How much fuel do we need to order for next month?',

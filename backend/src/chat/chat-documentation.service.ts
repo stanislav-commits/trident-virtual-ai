@@ -799,13 +799,22 @@ export class ChatDocumentationService {
             ) ?? resolvedSubjectQuery;
         }
       }
-      const finalAnalysisCitations = analysisCitations ?? citations;
+      const enforceManualScope = (items: ChatCitation[]) =>
+        this.enforceManualScopeOnCitations({
+          citations: items,
+          baseAllowedManualIds,
+          sourceLockDecision,
+        });
+      const finalAnalysisCitations = enforceManualScope(
+        analysisCitations ?? citations,
+      );
       citations = this.prioritizeSourceLockedEvidence({
         citations,
         pageAwareCitations,
         semanticQuery,
         sourceLockDecision,
       });
+      citations = enforceManualScope(citations);
       const preparedAnswerCitations =
         this.citationService.prepareCitationsForAnswer(
           resolvedSubjectQuery ?? documentationRetrievalQuery,
@@ -818,6 +827,7 @@ export class ChatDocumentationService {
         semanticQuery,
         sourceLockDecision,
       });
+      citations = enforceManualScope(citations);
       citations = this.citationService.limitCitationsForLlm(
         effectiveUserQuery,
         citations,
@@ -829,6 +839,7 @@ export class ChatDocumentationService {
         semanticQuery,
         sourceLockDecision,
       });
+      citations = enforceManualScope(citations);
       const documentationFollowUpState =
         semanticQuery && this.sourceLockService
           ? this.sourceLockService.buildNextFollowUpState({
@@ -1352,6 +1363,48 @@ export class ChatDocumentationService {
     }
 
     return scopedCitations;
+  }
+
+  private enforceManualScopeOnCitations(params: {
+    citations: ChatCitation[];
+    baseAllowedManualIds?: string[];
+    sourceLockDecision: DocumentationSourceLockDecision;
+  }): ChatCitation[] {
+    const { citations, baseAllowedManualIds, sourceLockDecision } = params;
+    if (citations.length === 0) {
+      return citations;
+    }
+
+    const allowedManualIds = new Set(
+      (baseAllowedManualIds ?? []).map((manualId) => manualId.trim()).filter(Boolean),
+    );
+    if (sourceLockDecision.lockedManualId?.trim()) {
+      allowedManualIds.add(sourceLockDecision.lockedManualId.trim());
+    }
+
+    const lockedTitle = sourceLockDecision.lockedManualTitle
+      ? this.queryService.normalizeSourceTitleHint(
+          sourceLockDecision.lockedManualTitle,
+        )
+      : null;
+    if (allowedManualIds.size === 0 && !lockedTitle) {
+      return citations;
+    }
+
+    return citations.filter((citation) => {
+      if (citation.shipManualId && allowedManualIds.has(citation.shipManualId)) {
+        return true;
+      }
+
+      if (!lockedTitle || !citation.sourceTitle) {
+        return false;
+      }
+
+      const citationTitle = this.queryService.normalizeSourceTitleHint(
+        citation.sourceTitle,
+      );
+      return Boolean(citationTitle && citationTitle === lockedTitle);
+    });
   }
 
   private matchesLockedSource(
