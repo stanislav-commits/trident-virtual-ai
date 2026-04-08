@@ -252,6 +252,7 @@ export class ChatDocumentationService {
         retrievalQuery: documentationRetrievalQuery,
         semanticQuery,
         semanticCandidates,
+        shortlistedManualIds: semanticManualIds,
         sourceLockDecision,
       });
       const sourceClarification = this.buildSemanticSourceClarification({
@@ -1598,6 +1599,7 @@ export class ChatDocumentationService {
     retrievalQuery: string;
     semanticQuery?: DocumentationSemanticQuery;
     semanticCandidates: DocumentationSemanticCandidate[];
+    shortlistedManualIds?: string[];
     sourceLockDecision: DocumentationSourceLockDecision;
   }): DocumentationRetrievalTrace {
     const {
@@ -1605,8 +1607,20 @@ export class ChatDocumentationService {
       retrievalQuery,
       semanticQuery,
       semanticCandidates,
+      shortlistedManualIds,
       sourceLockDecision,
     } = params;
+    const scopedCandidates =
+      shortlistedManualIds && shortlistedManualIds.length > 0
+        ? shortlistedManualIds
+            .map((manualId) =>
+              semanticCandidates.find((candidate) => candidate.manualId === manualId),
+            )
+            .filter(
+              (candidate): candidate is DocumentationSemanticCandidate =>
+                Boolean(candidate),
+            )
+        : semanticCandidates;
 
     return {
       rawQuery: userQuery,
@@ -1622,10 +1636,10 @@ export class ChatDocumentationService {
       sourceLockActive: sourceLockDecision.active,
       pageHint: semanticQuery?.pageHint,
       sectionHint: semanticQuery?.sectionHint,
-      shortlistedManualIds: semanticCandidates.map(
+      shortlistedManualIds: scopedCandidates.map(
         (candidate) => candidate.manualId,
       ),
-      shortlistedManualTitles: semanticCandidates.map(
+      shortlistedManualTitles: scopedCandidates.map(
         (candidate) => candidate.filename,
       ),
       fallbackWideningUsed: false,

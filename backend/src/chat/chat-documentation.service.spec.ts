@@ -2136,4 +2136,69 @@ Location: BOX 25 VOLVO PENTA SPARES`,
       }),
     ).toEqual(['manual-tagged']);
   });
+
+  it('records shortlisted manual titles from the selected semantic scope instead of the full raw candidate tail', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const trace = (service as any).buildRetrievalTrace({
+      userQuery: 'how to install an alarm?',
+      retrievalQuery: 'how to install an alarm?',
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'maintenance_procedure',
+        conceptFamily: 'asset_system',
+        selectedConceptIds: ['tag:equipment:bilge:alarm'],
+        candidateConceptIds: ['tag:equipment:bilge:alarm'],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: 'installation',
+        answerFormat: 'step_by_step',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.42,
+      },
+      semanticCandidates: [
+        {
+          manualId: 'manual-bilgmon',
+          documentId: 'doc-bilgmon',
+          filename: 'bilgmon488_instruction_manual_vAE - 2020.pdf',
+          category: 'MANUALS',
+          score: 180,
+          reasons: ['secondary_concept'],
+        },
+        {
+          manualId: 'manual-fs1575',
+          documentId: 'doc-fs1575',
+          filename: 'FS1575_2575_5075_IME56770R2.pdf',
+          category: 'MANUALS',
+          score: 112,
+          reasons: ['intent'],
+        },
+      ],
+      shortlistedManualIds: ['manual-bilgmon'],
+      sourceLockDecision: {
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      },
+    });
+
+    expect(trace.shortlistedManualIds).toEqual(['manual-bilgmon']);
+    expect(trace.shortlistedManualTitles).toEqual([
+      'bilgmon488_instruction_manual_vAE - 2020.pdf',
+    ]);
+  });
 });
