@@ -43,6 +43,15 @@ interface SpecificSubjectPhrase {
   tokens: string[];
 }
 
+interface SpecificSubjectCandidateRank {
+  candidate: DocumentationSemanticCandidate;
+  specificityScore: number;
+  explicitSourceMatched: boolean;
+  vendorMatched: boolean;
+  modelMatched: boolean;
+  identifierMatched: boolean;
+}
+
 const PROFILE_MATCH_STOP_WORDS = new Set([
   'a',
   'an',
@@ -492,6 +501,12 @@ export class ManualSemanticMatcherService {
       reasons.push('profile_text');
     }
 
+    const sectionHintScore = this.scoreSectionHint(profile, query);
+    if (sectionHintScore > 0) {
+      score += sectionHintScore;
+      reasons.push('section_hint');
+    }
+
     return { score, reasons };
   }
 
@@ -604,6 +619,7 @@ export class ManualSemanticMatcherService {
     const explicitSource = this.normalizeText(
       params.semanticQuery.explicitSource ?? '',
     );
+    const sectionHint = this.normalizeText(params.semanticQuery.sectionHint ?? '');
     const queryIdentifiers = new Set(
       this.extractIdentifierAnchors([
         params.queryText,
@@ -620,6 +636,7 @@ export class ManualSemanticMatcherService {
       !queryVendor &&
       !queryModel &&
       !explicitSource &&
+      !sectionHint &&
       queryIdentifiers.size === 0 &&
       subjectPhrases.length === 0
     ) {
@@ -628,23 +645,33 @@ export class ManualSemanticMatcherService {
 
     const rankedCandidates = candidates.map((candidate) => ({
       candidate,
+      explicitSourceMatched: this.matchesExplicitSourceHint(
+        candidate,
+        explicitSource,
+      ),
+      vendorMatched: this.matchesVendorHint(candidate, queryVendor),
+      modelMatched: this.matchesModelHint(candidate, queryModel),
+      identifierMatched: this.matchesIdentifierHint(candidate, queryIdentifiers),
       specificityScore: this.scoreSpecificSubjectCandidate(candidate, {
         queryVendor,
         queryModel,
         explicitSource,
+        sectionHint,
         queryIdentifiers,
         subjectPhrases,
       }),
     }));
+    const anchoredCandidates =
+      this.filterByHardSpecificityAnchors(rankedCandidates);
     const bestScore = Math.max(
-      ...rankedCandidates.map((entry) => entry.specificityScore),
+      ...anchoredCandidates.map((entry) => entry.specificityScore),
     );
 
     if (bestScore <= 0) {
-      return candidates;
+      return anchoredCandidates.map((entry) => entry.candidate);
     }
 
-    return rankedCandidates
+    return anchoredCandidates
       .filter((entry) => entry.specificityScore === bestScore)
       .map((entry) => entry.candidate);
   }
@@ -687,6 +714,80 @@ export class ManualSemanticMatcherService {
     );
 
     return Math.min(score, 72);
+  }
+
+  private scoreSectionHint(
+    profile: ManualSemanticProfile,
+    query: DocumentationSemanticQuery,
+  ): number {
+    const normalizedHint = this.normalizeText(query.sectionHint ?? '');
+    if (!normalizedHint) {
+      return 0;
+    }
+
+    const hintTokens = [...this.tokenizeStructuredPhrase(normalizedHint)].filter(
+      (token) => token.length > 3 || /\d/.test(token),
+    );
+    if (hintTokens.length === 0) {
+      return 0;
+    }
+
+    const searchableText = [
+      profile.summary,
+      ...profile.sections.flatMap((section) => [section.title, section.summary]),
+      ...profile.pageTopics.map((topic) => topic.summary),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(' ');
+    const normalizedSearchableText = this.normalizeText(searchableText);
+    if (!normalizedSearchableText) {
+      return 0;
+    }
+
+    const collapsedSearchableText = this.collapseText(searchableText);
+    const searchableTokens = new Set(this.tokenize(normalizedSearchableText));
+    const matchedTokens = hintTokens.filter((token) =>
+      this.matchesToken(searchableTokens, collapsedSearchableText, token),
+    );
+    if (matchedTokens.length === 0) {
+      return 0;
+    }
+
+    let score = 0;
+    if (
+      normalizedSearchableText.includes(normalizedHint) ||
+      collapsedSearchableText.includes(this.collapseText(normalizedHint))
+    ) {
+      score += 10;
+    } else {
+      const overlapRatio = matchedTokens.length / hintTokens.length;
+      if (overlapRatio >= 0.8) {
+        score += 8;
+      } else if (overlapRatio >= 0.5) {
+        score += 5;
+      } else if (
+        matchedTokens.some((token) => token.length >= 7 || /\d/.test(token))
+      ) {
+        score += 3;
+      }
+    }
+
+    if (
+      this.isProcedureIntent(query.intent) &&
+      profile.sections.some(
+        (section) =>
+          section.sectionType === 'procedure' &&
+          this.matchesSectionHintText(
+            `${section.title} ${section.summary ?? ''}`,
+            normalizedHint,
+            hintTokens,
+          ),
+      )
+    ) {
+      score += 6;
+    }
+
+    return Math.min(score, 18);
   }
 
   private areCompatibleIntents(
@@ -1077,6 +1178,7 @@ export class ManualSemanticMatcherService {
       queryVendor: string;
       queryModel: string;
       explicitSource: string;
+      sectionHint: string;
       queryIdentifiers: Set<string>;
       subjectPhrases: SpecificSubjectPhrase[];
     },
@@ -1128,6 +1230,10 @@ export class ManualSemanticMatcherService {
       score += identifierMatches * 6;
     }
 
+    if (params.sectionHint && candidate.reasons.includes('section_hint')) {
+      score += 8;
+    }
+
     if (params.subjectPhrases.length > 0) {
       score += params.subjectPhrases.reduce(
         (total, phrase) =>
@@ -1158,6 +1264,112 @@ export class ManualSemanticMatcherService {
     }
 
     return score;
+  }
+
+  private filterByHardSpecificityAnchors(
+    rankedCandidates: SpecificSubjectCandidateRank[],
+  ): SpecificSubjectCandidateRank[] {
+    let scopedCandidates = rankedCandidates;
+
+    const exactModelOrIdentifierMatches = scopedCandidates.filter(
+      (entry) => entry.modelMatched || entry.identifierMatched,
+    );
+    if (exactModelOrIdentifierMatches.length > 0) {
+      scopedCandidates = exactModelOrIdentifierMatches;
+    }
+
+    const explicitSourceMatches = scopedCandidates.filter(
+      (entry) => entry.explicitSourceMatched,
+    );
+    if (explicitSourceMatches.length > 0) {
+      scopedCandidates = explicitSourceMatches;
+    }
+
+    const vendorMatches = scopedCandidates.filter((entry) => entry.vendorMatched);
+    if (vendorMatches.length > 0) {
+      scopedCandidates = vendorMatches;
+    }
+
+    return scopedCandidates;
+  }
+
+  private matchesExplicitSourceHint(
+    candidate: DocumentationSemanticCandidate,
+    explicitSource: string,
+  ): boolean {
+    if (!explicitSource) {
+      return false;
+    }
+
+    const normalizedSubject = this.normalizeText(
+      this.buildCandidateSubjectText(candidate),
+    );
+    if (!normalizedSubject) {
+      return false;
+    }
+
+    if (normalizedSubject.includes(explicitSource)) {
+      return true;
+    }
+
+    const sourceTokens = explicitSource
+      .split(' ')
+      .filter(
+        (token) => token.length > 2 && !GENERIC_EXPLICIT_SOURCE_TOKENS.has(token),
+      );
+    return (
+      sourceTokens.length > 0 &&
+      sourceTokens.every((token) => normalizedSubject.includes(token))
+    );
+  }
+
+  private matchesVendorHint(
+    candidate: DocumentationSemanticCandidate,
+    queryVendor: string,
+  ): boolean {
+    if (!queryVendor) {
+      return false;
+    }
+
+    const subjectText = this.buildCandidateSubjectText(candidate);
+    const normalizedSubject = this.normalizeText(subjectText);
+    const candidateVendor = this.normalizeText(
+      candidate.semanticProfile?.vendor ?? '',
+    );
+
+    return (
+      candidateVendor === queryVendor || normalizedSubject.includes(queryVendor)
+    );
+  }
+
+  private matchesModelHint(
+    candidate: DocumentationSemanticCandidate,
+    queryModel: string,
+  ): boolean {
+    if (!queryModel) {
+      return false;
+    }
+
+    const candidateModel = this.normalizeText(
+      candidate.semanticProfile?.model ?? '',
+    );
+    return candidateModel === queryModel;
+  }
+
+  private matchesIdentifierHint(
+    candidate: DocumentationSemanticCandidate,
+    queryIdentifiers: Set<string>,
+  ): boolean {
+    if (queryIdentifiers.size === 0) {
+      return false;
+    }
+
+    const subjectIdentifiers = new Set(
+      this.extractIdentifierAnchors([this.buildCandidateSubjectText(candidate)]),
+    );
+    return [...queryIdentifiers].some((identifier) =>
+      subjectIdentifiers.has(identifier),
+    );
   }
 
   private buildCandidateSubjectText(
@@ -1583,6 +1795,40 @@ export class ManualSemanticMatcherService {
       return token.slice(0, -1);
     }
     return token;
+  }
+
+  private matchesSectionHintText(
+    value: string,
+    normalizedHint: string,
+    hintTokens: string[],
+  ): boolean {
+    const normalizedValue = this.normalizeText(value);
+    if (!normalizedValue) {
+      return false;
+    }
+
+    if (
+      normalizedValue.includes(normalizedHint) ||
+      this.collapseText(normalizedValue).includes(this.collapseText(normalizedHint))
+    ) {
+      return true;
+    }
+
+    const valueTokens = new Set(this.tokenize(normalizedValue));
+    const collapsedValue = this.collapseText(normalizedValue);
+    return hintTokens.every((token) =>
+      this.matchesToken(valueTokens, collapsedValue, token),
+    );
+  }
+
+  private isProcedureIntent(
+    intent: DocumentationSemanticQuery['intent'],
+  ): boolean {
+    return (
+      intent === 'maintenance_procedure' ||
+      intent === 'operational_procedure' ||
+      intent === 'troubleshooting'
+    );
   }
 
   private truncate(value: string, maxLength = 140): string {

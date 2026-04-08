@@ -1268,6 +1268,209 @@ describe('ManualSemanticMatcherService', () => {
     );
   });
 
+  it('keeps a same-vendor manual in scope instead of jumping to a different brand with a better generic equipment match', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-lindy',
+            ragflowDocumentId: 'doc-lindy',
+            filename: '42805_LINDY_MAN_0817.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'general_information',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:navigation:converter'],
+              secondaryConceptIds: [],
+              systems: ['USB extension', 'video extension'],
+              equipment: ['Cat.5 USB extender', 'Lindy extender'],
+              vendor: 'LINDY',
+              model: '42805',
+              aliases: ['Lindy extender'],
+              summary:
+                'Manual for a LINDY extender with general setup and operation details.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-tvone',
+            ragflowDocumentId: 'doc-tvone',
+            filename: '1T-FC-677_manual.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'general_information',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:navigation:converter'],
+              secondaryConceptIds: [],
+              systems: ['SDI', 'HDMI', 'video signal conversion'],
+              equipment: ['SDI to HDMI converter', 'format converter'],
+              vendor: 'tvONE',
+              model: '1T-FC-677',
+              aliases: ['SDI to HDMI converter'],
+              summary:
+                'Manual for a tvONE SDI to HDMI converter with signal-conversion details.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'general_information',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:navigation:converter'],
+      candidateConceptIds: ['tag:equipment:navigation:converter'],
+      equipment: ['SDI to HDMI converter'],
+      systems: ['SDI', 'HDMI', 'video signal conversion'],
+      vendor: 'LINDY',
+      model: null,
+      sourcePreferences: ['MANUALS'],
+      explicitSource: 'Lindy SDI to HDMI converter manual',
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'direct_answer',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.7,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText:
+        'What does the Lindy converter say about connecting an SDI source to an HDMI monitor?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-lindy',
+      }),
+    );
+  });
+
+  it('prefers the installation manual over the operator manual for the same Furuno radio family when the query asks how to install it', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-fs-ime',
+            ragflowDocumentId: 'doc-fs-ime',
+            filename: 'FS1575_2575_5075_IME56770R2.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:navigation:ssb'],
+              secondaryConceptIds: [],
+              systems: ['SSB radiotelephone', 'antenna coupler'],
+              equipment: ['control unit', 'antenna coupler', 'SSB radio'],
+              vendor: 'FURUNO',
+              model: 'FS-1575/FS-2575/FS-5075',
+              aliases: ['SSB radiotelephone'],
+              summary:
+                'Installation manual for the Furuno FS-1575 radio family.',
+              sections: [
+                {
+                  title: 'How to Install the System',
+                  pageStart: 11,
+                  pageEnd: 20,
+                  conceptIds: ['tag:equipment:navigation:ssb'],
+                  sectionType: 'procedure',
+                  summary:
+                    'Install the control unit and antenna coupler with the required wiring.',
+                },
+              ],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-fs-ome',
+            ragflowDocumentId: 'doc-fs-ome',
+            filename: 'FS1575_2575_5075_OME56770M3.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'general_information',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:navigation:ssb'],
+              secondaryConceptIds: [],
+              systems: ['SSB radiotelephone', 'operator controls'],
+              equipment: ['control unit', 'antenna coupler', 'SSB radio'],
+              vendor: 'FURUNO',
+              model: 'FS-1575/FS-2575/FS-5075',
+              aliases: ['SSB radiotelephone'],
+              summary:
+                'Operator manual for the Furuno FS-1575 radio family.',
+              sections: [
+                {
+                  title: 'Operation',
+                  pageStart: 5,
+                  pageEnd: 18,
+                  conceptIds: ['tag:equipment:navigation:ssb'],
+                  sectionType: 'reference',
+                  summary:
+                    'Routine operation, watchkeeping, and channel selection.',
+                },
+              ],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:navigation:ssb'],
+      candidateConceptIds: ['tag:equipment:navigation:ssb'],
+      equipment: ['control unit', 'antenna coupler', 'SSB radio'],
+      systems: ['SSB radiotelephone'],
+      vendor: 'FURUNO',
+      model: 'FS-1575',
+      sourcePreferences: ['MANUALS'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'installation',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.85,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText:
+        'How do I install the control unit and antenna coupler for the SSB radio?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-fs-ime',
+        reasons: expect.arrayContaining(['section_hint']),
+      }),
+    );
+  });
+
   it('prefers a vendor-specific battery manual over a generic sibling battery manual', async () => {
     const prisma = {
       shipManual: {

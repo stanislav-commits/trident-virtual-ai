@@ -576,7 +576,7 @@ export class ChatDocumentationService {
         effectiveUserQuery,
         citations,
         effectiveDocumentCategories,
-        tagScopedManualIds,
+        baseAllowedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -593,7 +593,7 @@ export class ChatDocumentationService {
           effectiveUserQuery,
           citations,
           effectiveDocumentCategories,
-          tagScopedManualIds,
+          baseAllowedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -608,7 +608,7 @@ export class ChatDocumentationService {
         effectiveUserQuery,
         citations,
         effectiveDocumentCategories,
-        tagScopedManualIds,
+        baseAllowedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -625,7 +625,7 @@ export class ChatDocumentationService {
           effectiveUserQuery,
           citations,
           effectiveDocumentCategories,
-          tagScopedManualIds,
+          baseAllowedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -641,7 +641,7 @@ export class ChatDocumentationService {
           effectiveUserQuery,
           citations,
           effectiveDocumentCategories,
-          tagScopedManualIds,
+          baseAllowedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -656,7 +656,7 @@ export class ChatDocumentationService {
         effectiveUserQuery,
         citations,
         effectiveDocumentCategories,
-        tagScopedManualIds,
+        baseAllowedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -671,7 +671,7 @@ export class ChatDocumentationService {
         effectiveUserQuery,
         citations,
         effectiveDocumentCategories,
-        tagScopedManualIds,
+        baseAllowedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -1561,6 +1561,7 @@ export class ChatDocumentationService {
       'explicit_source',
       'filename_overlap',
       'query_anchor',
+      'section_hint',
       'vendor',
       'model',
       'system_overlap',
