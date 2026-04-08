@@ -37,6 +37,12 @@ interface ConcreteSubjectSignal {
   weight: number;
 }
 
+interface SpecificSubjectPhrase {
+  normalized: string;
+  collapsed: string;
+  tokens: string[];
+}
+
 const PROFILE_MATCH_STOP_WORDS = new Set([
   'a',
   'an',
@@ -193,11 +199,13 @@ export class ManualSemanticMatcherService {
       return [];
     }
 
-    const candidates = this.filterConcreteSubjectCandidates(
-      manuals
-      .map((manual) => this.scoreManual(manual, params))
-      .filter((candidate) => candidate.score > 0)
-      ,
+    const candidates = this.filterSpecificSubjectCandidates(
+      this.filterConcreteSubjectCandidates(
+        manuals
+          .map((manual) => this.scoreManual(manual, params))
+          .filter((candidate) => candidate.score > 0),
+        params,
+      ),
       params,
     )
       .sort((left, right) => right.score - left.score)
@@ -578,6 +586,67 @@ export class ManualSemanticMatcherService {
       this.hasConcreteSubjectEvidence(candidate),
     );
     return gatedCandidates.length > 0 ? gatedCandidates : candidates;
+  }
+
+  private filterSpecificSubjectCandidates(
+    candidates: DocumentationSemanticCandidate[],
+    params: {
+      queryText: string;
+      semanticQuery: DocumentationSemanticQuery;
+    },
+  ): DocumentationSemanticCandidate[] {
+    if (candidates.length <= 1) {
+      return candidates;
+    }
+
+    const queryVendor = this.normalizeText(params.semanticQuery.vendor ?? '');
+    const queryModel = this.normalizeText(params.semanticQuery.model ?? '');
+    const explicitSource = this.normalizeText(
+      params.semanticQuery.explicitSource ?? '',
+    );
+    const queryIdentifiers = new Set(
+      this.extractIdentifierAnchors([
+        params.queryText,
+        params.semanticQuery.model,
+        ...params.semanticQuery.equipment,
+        ...params.semanticQuery.systems,
+      ]),
+    );
+    const subjectPhrases = this.collectSpecificSubjectPhrases(
+      params.semanticQuery,
+    );
+
+    if (
+      !queryVendor &&
+      !queryModel &&
+      !explicitSource &&
+      queryIdentifiers.size === 0 &&
+      subjectPhrases.length === 0
+    ) {
+      return candidates;
+    }
+
+    const rankedCandidates = candidates.map((candidate) => ({
+      candidate,
+      specificityScore: this.scoreSpecificSubjectCandidate(candidate, {
+        queryVendor,
+        queryModel,
+        explicitSource,
+        queryIdentifiers,
+        subjectPhrases,
+      }),
+    }));
+    const bestScore = Math.max(
+      ...rankedCandidates.map((entry) => entry.specificityScore),
+    );
+
+    if (bestScore <= 0) {
+      return candidates;
+    }
+
+    return rankedCandidates
+      .filter((entry) => entry.specificityScore === bestScore)
+      .map((entry) => entry.candidate);
   }
 
   private scoreProfileText(
@@ -1002,6 +1071,105 @@ export class ManualSemanticMatcherService {
     return candidate.reasons.some((reason) => concreteReasons.has(reason));
   }
 
+  private scoreSpecificSubjectCandidate(
+    candidate: DocumentationSemanticCandidate,
+    params: {
+      queryVendor: string;
+      queryModel: string;
+      explicitSource: string;
+      queryIdentifiers: Set<string>;
+      subjectPhrases: SpecificSubjectPhrase[];
+    },
+  ): number {
+    const subjectText = this.buildCandidateSubjectText(candidate);
+    const normalizedSubject = this.normalizeText(subjectText);
+    const collapsedSubject = this.collapseText(subjectText);
+    const subjectIdentifiers = new Set(
+      this.extractIdentifierAnchors([subjectText]),
+    );
+    const candidateVendor = this.normalizeText(
+      candidate.semanticProfile?.vendor ?? '',
+    );
+    const candidateModel = this.normalizeText(
+      candidate.semanticProfile?.model ?? '',
+    );
+
+    let score = 0;
+
+    if (params.explicitSource) {
+      const sourceTokens = params.explicitSource
+        .split(' ')
+        .filter(
+          (token) =>
+            token.length > 2 && !GENERIC_EXPLICIT_SOURCE_TOKENS.has(token),
+        );
+      if (
+        normalizedSubject.includes(params.explicitSource) ||
+        (sourceTokens.length > 0 &&
+          sourceTokens.every((token) => normalizedSubject.includes(token)))
+      ) {
+        score += 8;
+      }
+    }
+
+    if (
+      params.queryModel &&
+      candidateModel &&
+      params.queryModel === candidateModel
+    ) {
+      score += 6;
+    }
+
+    if (params.queryIdentifiers.size > 0) {
+      const identifierMatches = [...params.queryIdentifiers].filter((identifier) =>
+        subjectIdentifiers.has(identifier),
+      ).length;
+      score += identifierMatches * 6;
+    }
+
+    if (params.subjectPhrases.length > 0) {
+      const phraseMatches = params.subjectPhrases.filter(
+        (phrase) =>
+          normalizedSubject.includes(phrase.normalized) ||
+          collapsedSubject.includes(phrase.collapsed),
+      ).length;
+      score += phraseMatches * 4;
+    }
+
+    if (candidate.reasons.includes('manual_tag')) {
+      score += 5;
+    }
+    if (candidate.reasons.includes('manual_tag_text')) {
+      score += 3;
+    }
+
+    if (
+      params.queryVendor &&
+      (candidateVendor === params.queryVendor ||
+        normalizedSubject.includes(params.queryVendor))
+    ) {
+      score += 2;
+    }
+
+    return score;
+  }
+
+  private buildCandidateSubjectText(
+    candidate: DocumentationSemanticCandidate,
+  ): string {
+    const profile = candidate.semanticProfile ?? null;
+    return [
+      candidate.filename,
+      profile?.vendor,
+      profile?.model,
+      ...(profile?.aliases ?? []),
+      ...(profile?.equipment ?? []),
+      ...(profile?.systems ?? []),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(' ');
+  }
+
   private buildManualSubjectText(
     manual: SearchableSemanticManual,
     profile: ManualSemanticProfile | null,
@@ -1030,6 +1198,45 @@ export class ManualSemanticMatcherService {
         .filter((value): value is string => Boolean(value))
         .join(' '),
     );
+  }
+
+  private collectSpecificSubjectPhrases(
+    semanticQuery: DocumentationSemanticQuery,
+  ): SpecificSubjectPhrase[] {
+    const seen = new Set<string>();
+    const phrases: SpecificSubjectPhrase[] = [];
+    const addPhrase = (value: string | null | undefined) => {
+      const normalized = this.normalizeText(value ?? '');
+      if (!normalized) {
+        return;
+      }
+
+      const tokens = [...this.tokenizeStructuredPhrase(normalized)];
+      if (tokens.length < 2) {
+        return;
+      }
+
+      const joined = tokens.join(' ');
+      if (seen.has(joined)) {
+        return;
+      }
+
+      seen.add(joined);
+      phrases.push({
+        normalized: joined,
+        collapsed: tokens.join(''),
+        tokens,
+      });
+    };
+
+    for (const equipment of semanticQuery.equipment) {
+      addPhrase(equipment);
+    }
+    for (const system of semanticQuery.systems) {
+      addPhrase(system);
+    }
+
+    return phrases;
   }
 
   private matchesConcreteSubjectSignal(
@@ -1117,6 +1324,69 @@ export class ManualSemanticMatcherService {
     return right
       .map((value) => this.normalizeText(value))
       .filter((value) => leftValues.has(value)).length;
+  }
+
+  private extractIdentifierAnchors(
+    values: Array<string | null | undefined>,
+  ): string[] {
+    const anchors = new Set<string>();
+
+    for (const value of values) {
+      const tokens = this.tokenize(value ?? '');
+      for (let start = 0; start < tokens.length; start += 1) {
+        const firstToken = tokens[start];
+        if (
+          !/\d/.test(firstToken) &&
+          !(
+            /^[a-z]{1,3}$/.test(firstToken) &&
+            /\d/.test(tokens[start + 1] ?? '')
+          )
+        ) {
+          continue;
+        }
+
+        let combined = '';
+        let digitSeen = false;
+        let alphaSeen = false;
+
+        for (
+          let length = 0;
+          length < 3 && start + length < tokens.length;
+          length += 1
+        ) {
+          const token = tokens[start + length];
+          if (!token) {
+            break;
+          }
+
+          if (
+            !/\d/.test(token) &&
+            !/^[a-z]{1,3}$/.test(token) &&
+            combined.length > 0
+          ) {
+            break;
+          }
+
+          combined += token;
+          digitSeen = digitSeen || /\d/.test(token);
+          alphaSeen = alphaSeen || /[a-z]/.test(token);
+
+          if (digitSeen && alphaSeen && combined.length >= 4) {
+            anchors.add(combined);
+          }
+
+          if (
+            length > 0 &&
+            !/\d/.test(token) &&
+            !/^[a-z]{1,3}$/.test(token)
+          ) {
+            break;
+          }
+        }
+      }
+    }
+
+    return [...anchors];
   }
 
   private scoreStructuredPhraseOverlap(

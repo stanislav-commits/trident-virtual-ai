@@ -945,6 +945,187 @@ describe('ManualSemanticMatcherService', () => {
     );
   });
 
+  it('filters out same-vendor manuals with conflicting model identifiers when an exact equipment subject exists', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-fa170',
+            ragflowDocumentId: 'doc-fa170',
+            filename: 'FA170_IME44900J.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['AIS', 'GNSS antenna system'],
+              equipment: ['FA-170', 'AIS transponder', 'monitor unit'],
+              vendor: 'FURUNO',
+              model: 'FA-170',
+              aliases: ['Class A AIS', 'Automatic Identification System'],
+              summary:
+                'Installation and setup manual for the Furuno FA-170 AIS transponder.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-gp170',
+            ragflowDocumentId: 'doc-gp170',
+            filename: 'GP170_IME44820J.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['navigation', 'wiring'],
+              equipment: ['GP-170', 'display unit', 'antenna unit'],
+              vendor: 'FURUNO',
+              model: 'GP-170',
+              aliases: ['GPS/GLONASS'],
+              summary:
+                'Installation and wiring manual for the Furuno GP-170 navigator.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: ['AIS transponder'],
+      systems: ['AIS'],
+      vendor: 'FURUNO',
+      model: 'FA-170',
+      sourcePreferences: ['MANUALS'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'installation',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.84,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'How do I install the Furuno FA-170 AIS transponder?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-fa170',
+      }),
+    );
+  });
+
+  it('prefers a vendor-specific battery manual over a generic sibling battery manual', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-akasol',
+            ragflowDocumentId: 'doc-akasol',
+            filename:
+              '35 - 510323E - Akasol Batteries Installation Philosophy Rev E.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['battery space ventilation', 'cooling system'],
+              equipment: ['Akasol battery modules', 'Master String Manager'],
+              vendor: 'Akasol',
+              model: null,
+              aliases: ['battery installation philosophy'],
+              summary:
+                'Installation philosophy for Akasol battery packs with ventilation and cooling data.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-ebusco',
+            ragflowDocumentId: 'doc-ebusco',
+            filename: 'Instruction_Manual_EMB.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['battery system', 'liquid cooling system'],
+              equipment: ['power battery system', 'battery box'],
+              vendor: 'Ebusco',
+              model: 'Maritime Battery',
+              aliases: ['battery pack'],
+              summary:
+                'Instruction manual for Ebusco Maritime Battery covering installation and cooling.',
+              sections: [],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: ['battery modules'],
+      systems: ['battery space ventilation'],
+      vendor: 'Akasol',
+      model: null,
+      sourcePreferences: ['MANUALS'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'ventilation',
+      answerFormat: 'direct_answer',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.8,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'What ventilation rate is required for the Akasol battery room?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        manualId: 'manual-akasol',
+      }),
+    );
+  });
+
   it('prefers an asset-specific generator manual over a generic maintenance checklist for broad 500-hour queries', async () => {
     const prisma = {
       shipManual: {
