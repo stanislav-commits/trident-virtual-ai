@@ -715,7 +715,7 @@ export class ChatQueryPlannerService {
   private isManualSpecificationQuery(query: string): boolean {
     return (
       /\bwhat\s+(?:manual|does\s+the\s+manual)\s+(?:say|says)\b/i.test(query) ||
-      /\b(?:according\s+to|in|from)\s+the\s+.+?\b(manual|operator'?s\s+manual|operators\s+manual|handbook|guide|document)\b/i.test(
+      /\b(?:according\s+to|from|inside|in)\s+(?:the\s+)?.+?\b(manual|operator'?s\s+manual|operators\s+manual|handbook|guide|document|procedure|file|pdf)\b/i.test(
         query,
       ) ||
       /\bwhat\s+does\s+the\s+.+?\b(manual|operator'?s\s+manual|handbook|guide)\b.*\b(say|specify|recommend)\b/i.test(

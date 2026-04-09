@@ -764,6 +764,7 @@ export class ChatService {
           queryPlan,
           effectiveUserQuery,
           semanticQuery,
+          sourceLockActive,
         );
       const shouldLookupCurrentTelemetry =
         !preferDocumentationOverCurrentTelemetry &&
@@ -4962,9 +4963,14 @@ export class ChatService {
     queryPlan: ChatQueryPlan,
     userQuery: string,
     semanticQuery?: DocumentationSemanticQuery,
+    sourceLockActive = false,
   ): boolean {
     if (!semanticQuery || this.isExplicitTelemetrySourceQuery(userQuery)) {
       return false;
+    }
+
+    if (sourceLockActive || semanticQuery.explicitSource) {
+      return true;
     }
 
     if (
@@ -5085,6 +5091,7 @@ export class ChatService {
       queryPlan,
       userQuery,
       semanticQuery,
+      false,
     );
   }
 

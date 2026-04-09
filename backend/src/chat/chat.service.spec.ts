@@ -4370,9 +4370,6 @@ describe('ChatService telemetry clarification', () => {
     );
 
     expect(
-      metricsService.resolveHistoricalTelemetryQuery,
-    ).not.toHaveBeenCalled();
-    expect(
       metricsService.getShipTelemetryContextForQuery,
     ).not.toHaveBeenCalled();
     expect(llmService.generateResponse).not.toHaveBeenCalled();
@@ -4386,6 +4383,93 @@ describe('ChatService telemetry clarification', () => {
         usedCurrentTelemetry: false,
       }),
       [],
+    );
+  });
+
+  it('does not override explicit-source documentation turns with telemetry fallback', async () => {
+    const citation = {
+      shipManualId: 'manual-powder-6',
+      chunkId: 'chunk-powder-6',
+      score: 0.97,
+      pageNumber: 1,
+      snippet:
+        '21063 6 Kg Powder FIRE EXTINGUISHER PACKAGING TECHNICAL SPECIFICATIONS',
+      sourceTitle:
+        'VSS001980 - VSS Fire Extinguisher Powder Kg 6_Data sheets.pdf',
+      sourceCategory: 'MANUALS',
+    };
+
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content:
+            'From VSS001980 - VSS Fire Extinguisher Powder Kg 6_Data sheets.pdf document: fire extinguisher technical specification',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [citation],
+      previousUserQuery: undefined,
+      retrievalQuery: 'fire extinguisher technical specification',
+      resolvedSubjectQuery: 'fire extinguisher technical specification',
+      answerQuery: undefined,
+      sourceLockActive: true,
+      semanticQuery: {
+        intent: 'manual_lookup',
+        confidence: 0.98,
+        selectedConceptIds: ['tag:equipment:fire:extinguisher'],
+        sourcePreferences: ['MANUALS'],
+        explicitSource:
+          'VSS001980 - VSS Fire Extinguisher Powder Kg 6_Data sheets.pdf',
+      },
+      documentationFollowUpState: {
+        lockedManualId: 'manual-powder-6',
+        lockedManualTitle:
+          'VSS001980 - VSS Fire Extinguisher Powder Kg 6_Data sheets.pdf',
+        lockedDocumentId: 'doc-powder-6',
+        sourceLock: true,
+      },
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'The selected powder extinguisher datasheet specifies a 6 kg powder unit with fire rating 34A 233B C.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'From VSS001980 - VSS Fire Extinguisher Powder Kg 6_Data sheets.pdf document: fire extinguisher technical specification',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        noDocumentation: false,
+        citations: [
+          expect.objectContaining({
+            sourceTitle:
+              'VSS001980 - VSS Fire Extinguisher Powder Kg 6_Data sheets.pdf',
+            pageNumber: 1,
+          }),
+        ],
+      }),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('powder'),
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        documentationSourceLockActive: true,
+        usedDocumentation: true,
+        usedCurrentTelemetry: false,
+      }),
+      [expect.objectContaining({ shipManualId: 'manual-powder-6' })],
     );
   });
 

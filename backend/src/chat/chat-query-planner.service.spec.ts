@@ -135,6 +135,17 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
   });
 
+  it('routes explicit selected-document prompts to manual specification instead of telemetry', () => {
+    const plan = service.planQuery(
+      'From VSS001980 - VSS Fire Extinguisher Powder Kg 6_Data sheets.pdf document: fire extinguisher technical specification',
+    );
+
+    expect(plan.primaryIntent).toBe('manual_specification');
+    expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
+    expect(plan.requiresTelemetry).toBe(false);
+  });
+
   it('routes natural-language kit and seal contents questions to manuals', () => {
     const plan = service.planQuery(
       'Which kit contains the O-rings and lip seals for the waterjet?',
