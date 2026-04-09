@@ -1,7 +1,14 @@
 import { MetricsService } from './metrics.service';
 
 describe('MetricsService telemetry matching', () => {
-  const buildService = (configs: unknown[]) => {
+  const buildService = (
+    configs: unknown[],
+    options?: {
+      tagLinks?: {
+        findTaggedMetricKeysForShipQuery?: jest.Mock;
+      };
+    },
+  ) => {
     const prisma = {
       shipMetricsConfig: {
         findMany: jest.fn().mockResolvedValue(configs),
@@ -20,6 +27,7 @@ describe('MetricsService telemetry matching', () => {
       prisma as never,
       influxdb as never,
       metricDescriptions as never,
+      options?.tagLinks as never,
     );
   };
 
@@ -2083,6 +2091,77 @@ describe('MetricsService telemetry matching', () => {
     expect(Object.keys(result.telemetry)).toHaveLength(2);
     expect(
       Object.keys(result.telemetry).every((key) => /Water Tank/i.test(key)),
+    ).toBe(true);
+  });
+
+  it('fails open when telemetry tag scoping suppresses the direct stored-fluid tank matches', async () => {
+    const tagLinks = {
+      findTaggedMetricKeysForShipQuery: jest
+        .fn()
+        .mockResolvedValue(['Trending::Pumps::Fresh water pressure']),
+    };
+    const service = buildService(
+      [
+        {
+          metricKey: 'Trending::Tanks::Fresh_Water_Tank_1P',
+          latestValue: 620,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'Tanks.Fresh_Water_Tank_1P',
+            description: 'Fresh water tank quantity.',
+            unit: 'L',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fresh_Water_Tank_1P',
+          },
+        },
+        {
+          metricKey: 'Trending::Tanks::Fresh_Water_Tank_2S',
+          latestValue: 605,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'Tanks.Fresh_Water_Tank_2S',
+            description: 'Fresh water tank quantity.',
+            unit: 'L',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fresh_Water_Tank_2S',
+          },
+        },
+        {
+          metricKey: 'Trending::Pumps::Fresh water pressure',
+          latestValue: 2.8,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'Pumps.Fresh water pressure',
+            description: 'Fresh water pressure at the service pump.',
+            unit: 'bar',
+            bucket: 'Trending',
+            measurement: 'Pumps',
+            field: 'Fresh water pressure',
+          },
+        },
+      ],
+      { tagLinks },
+    );
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'How many fresh water onboard right now?',
+    );
+
+    expect(tagLinks.findTaggedMetricKeysForShipQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'How many fresh water onboard right now?',
+    );
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /Water Tank/i.test(key)),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).every((key) => !/pressure/i.test(key)),
     ).toBe(true);
   });
 });

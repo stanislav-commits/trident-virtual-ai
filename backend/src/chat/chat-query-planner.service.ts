@@ -148,6 +148,10 @@ export class ChatQueryPlannerService {
       return 'telemetry_list';
     }
 
+    if (this.isCurrentInventoryTelemetryQuery(normalized)) {
+      return 'telemetry_status';
+    }
+
     if (this.isManualSpecificationQuery(normalized)) {
       return 'manual_specification';
     }
@@ -518,9 +522,16 @@ export class ChatQueryPlannerService {
   private isMaintenanceCalculationQuery(query: string): boolean {
     return /\b(when\s+should|when\s+is\s+the\s+next|how\s+many\s+hours?\s+(?:remain|remaining|left)?\s*until|hours?\s+left|remaining\s+hours?|next\s+service\s+at\s+what\s+hour|due\s+at\s+what\s+hour|overdue\s+by)\b/i.test(
       query,
-    ) || /\bwhen\s+(?:is|will)\s+.+\b(?:maintenance|service|oil\s+change|filter(?:\s+change)?|inspection|overhaul|greasing|grease|calibration|cleaning)\b.+\bdue\b/i.test(
-      query,
-    );
+    ) ||
+      /\bwhen\s+(?:is|will)\s+.+\b(?:maintenance|service|oil\s+change|filter(?:\s+change)?|inspection|overhaul|greasing|grease|calibration|cleaning)\b.+\bdue\b/i.test(
+        query,
+      ) ||
+      /\b(?:should|do|does|is|are|what)\b[\s\S]{0,32}\b(?:perform|do|carry\s+out|schedule|plan|need|needs)\b[\s\S]{0,24}\b(?:maintenance|service)\b[\s\S]{0,24}\b(?:at|for|based\s+on|from)\b[\s\S]{0,16}\b(?:this|that|current)\b[\s\S]{0,16}\b(?:counter|reading|runtime|hour\s*meter|running\s+hours?|hours?)\b/i.test(
+        query,
+      ) ||
+      /\b(?:maintenance|service)\b[\s\S]{0,24}\b(?:at|for|based\s+on|from)\b[\s\S]{0,16}\b(?:this|that|current)\b[\s\S]{0,16}\b(?:counter|reading|runtime|hour\s*meter|running\s+hours?|hours?)\b/i.test(
+        query,
+      );
   }
 
   private isLastMaintenanceQuery(query: string): boolean {
@@ -662,6 +673,10 @@ export class ChatQueryPlannerService {
       return false;
     }
 
+    if (this.isCurrentInventoryTelemetryQuery(query)) {
+      return true;
+    }
+
     if (/[a-z0-9]+(?:[_-][a-z0-9]+)+/i.test(query)) {
       return true;
     }
@@ -687,11 +702,35 @@ export class ChatQueryPlannerService {
     }
 
     if (/^\s*(why|how)\b/i.test(query)) {
-      return false;
+      return this.isCurrentInventoryTelemetryQuery(query);
     }
 
     return /\b(current|currently|now|right now|live|actual|status|state|active|inactive|enabled|disabled|online|offline|reading|readings|value|values)\b/i.test(
       query,
+    ) || this.isCurrentInventoryTelemetryQuery(query);
+  }
+
+  private isCurrentInventoryTelemetryQuery(query: string): boolean {
+    const normalized = query.toLowerCase();
+    if (
+      /\b(next\s+month|next\s+week|forecast|budget|trend|historical|history|over\s+the\s+last|last\s+\d+\s+(?:days?|weeks?|months?)|need\s+to\s+order|order)\b/i.test(
+        normalized,
+      )
+    ) {
+      return false;
+    }
+
+    return (
+      /\b(onboard|on\s+board|in\s+(?:the\s+)?tanks?|tank\s+levels?|all\s+(?:fuel|oil|water|coolant|def)\s+tanks|remaining|available)\b/i.test(
+        normalized,
+      ) ||
+      (/\b(fuel|oil|water|coolant|def|urea)\b/i.test(normalized) &&
+        /\b(level|levels|quantity|amount|volume|contents?)\b/i.test(
+          normalized,
+        ) &&
+        /\b(tank|tanks)\b/i.test(normalized)) ||
+      (/\b(how\s+many|how\s+much|total|combined|sum)\b/i.test(normalized) &&
+        /\b(fuel|oil|water|coolant|def|urea)\b/i.test(normalized))
     );
   }
 

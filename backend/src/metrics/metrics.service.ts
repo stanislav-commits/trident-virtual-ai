@@ -1062,6 +1062,19 @@ export class MetricsService implements OnModuleInit {
     const filtered = entries.filter((entry) => scopedMetricKeySet.has(entry.key));
 
     if (filtered.length > 0 && filtered.length < entries.length) {
+      const rejectedScopeReason = this.getRejectedTagPrefilterReason(
+        entries,
+        filtered,
+        query,
+        resolvedSubjectQuery,
+      );
+      if (rejectedScopeReason) {
+        this.logger.debug(
+          `Telemetry tag prefilter bypassed ship=${shipId} query="${query.replace(/\s+/g, ' ').trim()}" reason=${rejectedScopeReason} scopedEntries=${filtered.length}/${entries.length}`,
+        );
+        return entries;
+      }
+
       this.logger.debug(
         `Telemetry tag prefilter ship=${shipId} query="${query.replace(/\s+/g, ' ').trim()}" scopedEntries=${filtered.length}/${entries.length} sample=${filtered
           .map((entry) => entry.key)
@@ -1072,6 +1085,143 @@ export class MetricsService implements OnModuleInit {
     }
 
     return entries;
+  }
+
+  private getRejectedTagPrefilterReason(
+    allEntries: ShipTelemetryEntry[],
+    filteredEntries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): string | null {
+    const allDirectMatches = this.findRelevantTelemetryEntries(
+      allEntries,
+      query,
+      resolvedSubjectQuery,
+      { limitResults: false },
+    );
+    const filteredDirectMatches = this.findRelevantTelemetryEntries(
+      filteredEntries,
+      query,
+      resolvedSubjectQuery,
+      { limitResults: false },
+    );
+
+    if (allDirectMatches.length > 0) {
+      const fullMatchMode = this.determineTelemetryMatchMode(
+        allDirectMatches,
+        query,
+        resolvedSubjectQuery,
+      );
+      const filteredMatchMode =
+        filteredDirectMatches.length > 0
+          ? this.determineTelemetryMatchMode(
+              filteredDirectMatches,
+              query,
+              resolvedSubjectQuery,
+            )
+          : 'none';
+      const fullHasDirectPath =
+        fullMatchMode === 'exact' || fullMatchMode === 'direct';
+      const filteredHasDirectPath =
+        filteredMatchMode === 'exact' || filteredMatchMode === 'direct';
+
+      if (fullHasDirectPath && !filteredHasDirectPath) {
+        return 'suppressed_direct_match';
+      }
+    }
+
+    const allBroadTankClarification = this.findBroadTankClarificationEntries(
+      allEntries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (
+      allBroadTankClarification &&
+      !this.findBroadTankClarificationEntries(
+        filteredEntries,
+        query,
+        resolvedSubjectQuery,
+      )
+    ) {
+      return 'suppressed_tank_scope';
+    }
+
+    const normalizedSearchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    const fluid = this.detectStoredFluidSubject(normalizedSearchSpace);
+    if (fluid) {
+      const allAggregateEntries = this.findAggregateTankTelemetryEntries(
+        allEntries,
+        query,
+        resolvedSubjectQuery,
+        {
+          strictDedicatedTankStorage: true,
+        },
+      );
+      const filteredAggregateEntries = this.findAggregateTankTelemetryEntries(
+        filteredEntries,
+        query,
+        resolvedSubjectQuery,
+        {
+          strictDedicatedTankStorage: true,
+        },
+      );
+
+      if (
+        allAggregateEntries.length > 0 &&
+        filteredAggregateEntries.length < allAggregateEntries.length
+      ) {
+        return 'suppressed_inventory_aggregate';
+      }
+    }
+
+    if (this.isTelemetryLocationQuery(normalizedSearchSpace)) {
+      const allLocationEntries = this.findLocationTelemetryEntries(
+        allEntries,
+        query,
+        resolvedSubjectQuery,
+      );
+      const filteredLocationEntries = this.findLocationTelemetryEntries(
+        filteredEntries,
+        query,
+        resolvedSubjectQuery,
+      );
+      if (
+        this.hasCoordinatePair(
+          allLocationEntries,
+          this.getExplicitTelemetryCoordinateKinds.bind(this),
+        ) &&
+        !this.hasCoordinatePair(
+          filteredLocationEntries,
+          this.getExplicitTelemetryCoordinateKinds.bind(this),
+        )
+      ) {
+        return 'suppressed_location_pair';
+      }
+    }
+
+    if (this.hasStrictTelemetryContext(normalizedSearchSpace)) {
+      const allFallbackEntries = this.findTelemetryFallbackEntries(
+        allEntries,
+        query,
+        resolvedSubjectQuery,
+      );
+      const filteredFallbackEntries = this.findTelemetryFallbackEntries(
+        filteredEntries,
+        query,
+        resolvedSubjectQuery,
+      );
+
+      if (
+        allFallbackEntries.length > 0 &&
+        filteredFallbackEntries.length === 0
+      ) {
+        return 'suppressed_fallback_candidates';
+      }
+    }
+
+    return null;
   }
 
   private findHistoricalTelemetryEntries(

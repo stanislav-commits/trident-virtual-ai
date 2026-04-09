@@ -4333,6 +4333,120 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
+  it('keeps telemetry context for counter-guided maintenance follow-ups', async () => {
+    const maintenanceCitation = {
+      shipManualId: 'history-1',
+      chunkId: 'chunk-history-1',
+      score: 0.89,
+      pageNumber: 12,
+      snippet:
+        'Generator 500-hour service interval. Next due at 2500 running hours.',
+      sourceTitle: 'Technical Components (Details).pdf',
+      sourceCategory: 'HISTORY_PROCEDURES',
+    };
+
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'What are the starboard generator running hours right now?',
+          ragflowContext: null,
+        },
+        {
+          role: 'assistant',
+          content:
+            'The current matched telemetry reading is [Sea Wolf X] SIEMENS-MASE-GENSET-SB.Engine Running Hours (h): 2,200 [Telemetry].',
+          ragflowContext: {
+            answerRoute: 'current_telemetry',
+            resolvedSubjectQuery:
+              'What are the starboard generator running hours right now?',
+            telemetryFollowUpQuery:
+              'What are the starboard generator running hours right now?',
+          },
+        },
+        {
+          role: 'user',
+          content: 'should i perform any maintenance at this counter?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockImplementation(
+      async ({ normalizedQuery }: { normalizedQuery: any }) => {
+        expect(normalizedQuery.followUpMode).toBe('follow_up');
+        expect(normalizedQuery.previousUserQuery).toBe(
+          'What are the starboard generator running hours right now?',
+        );
+
+        return {
+          citations: [maintenanceCitation],
+          analysisCitations: [maintenanceCitation],
+          previousUserQuery:
+            'What are the starboard generator running hours right now?',
+          retrievalQuery:
+            'What are the starboard generator running hours right now? should i perform any maintenance at this counter?',
+          resolvedSubjectQuery:
+            'What are the starboard generator running hours right now? should i perform any maintenance at this counter?',
+          answerQuery: undefined,
+        };
+      },
+    );
+    metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
+      telemetry: {
+        'SIEMENS-MASE-GENSET-SB.Engine Running Hours (h)': 2200,
+      },
+      totalActiveMetrics: 20,
+      matchedMetrics: 1,
+      prefiltered: true,
+      matchMode: 'direct',
+      clarification: null,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'At 2,200 running hours, the next generator maintenance is the 2,500-hour service [Manual: Technical Components (Details).pdf].',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'should i perform any maintenance at this counter?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(metricsService.getShipTelemetryContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'should i perform any maintenance at this counter?',
+      'What are the starboard generator running hours right now? should i perform any maintenance at this counter?',
+    );
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userQuery: 'should i perform any maintenance at this counter?',
+        telemetry: {
+          'SIEMENS-MASE-GENSET-SB.Engine Running Hours (h)': 2200,
+        },
+        telemetryPrefiltered: true,
+        telemetryMatchMode: 'direct',
+        citations: [
+          expect.objectContaining({
+            sourceTitle: 'Technical Components (Details).pdf',
+          }),
+        ],
+      }),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('2,200 running hours'),
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        usedDocumentation: true,
+        usedCurrentTelemetry: true,
+        resolvedSubjectQuery:
+          'What are the starboard generator running hours right now? should i perform any maintenance at this counter?',
+      }),
+      [maintenanceCitation],
+    );
+  });
+
   it('does not fall back to telemetry when a locked documentation source has no evidence', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

@@ -2468,6 +2468,95 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     ).not.toHaveBeenCalled();
   });
 
+  it('skips documentation retrieval entirely for telemetry-first onboard inventory queries', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const normalizationService = new ChatQueryNormalizationService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest
+        .fn()
+        .mockImplementation(
+          (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+            citations,
+            compareBySource: false,
+            sourceComparisonTitles: [],
+            mergeBySource: false,
+            sourceMergeTitles: [],
+          }),
+        ),
+      limitCitationsForLlm: jest
+        .fn()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const normalizedQuery = normalizationService.normalizeTurn({
+      userQuery: 'How many fresh water onboard right now?',
+    });
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'How many fresh water onboard right now?',
+      normalizedQuery,
+    });
+
+    expect(result.citations).toEqual([]);
+    expect(result.analysisCitations).toEqual([]);
+    expect(contextService.findContextForQuery).not.toHaveBeenCalled();
+    expect(
+      scanService.expandReferenceDocumentChunkCitations,
+    ).not.toHaveBeenCalled();
+  });
+
   it('keeps documentation clarification selections out of telemetry-first skip logic', () => {
     const service = new ChatDocumentationService(
       {} as never,

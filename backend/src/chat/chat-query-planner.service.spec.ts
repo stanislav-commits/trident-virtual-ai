@@ -260,6 +260,30 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.requiresTelemetryHistory).toBe(false);
   });
 
+  it('routes current onboard inventory questions to telemetry status', () => {
+    const plan = service.planQuery('How many fresh water onboard right now?');
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetry).toBe(true);
+    expect(plan.hardDocumentCategories).toBeUndefined();
+  });
+
+  it('routes counter-guided maintenance follow-ups to next-due calculation', () => {
+    const plan = service.planQuery(
+      'Should I perform any maintenance at this counter for the starboard generator running hours?',
+    );
+
+    expect(plan.primaryIntent).toBe('next_due_calculation');
+    expect(plan.sourcePriorities.slice(0, 3)).toEqual([
+      'HISTORY_PROCEDURES',
+      'TELEMETRY',
+      'MANUALS',
+    ]);
+    expect(plan.requiresTelemetry).toBe(true);
+    expect(plan.allowsMaintenanceCalculation).toBe(true);
+  });
+
   it('routes explicit metric inventory alarm questions to telemetry list instead of troubleshooting', () => {
     const plan = service.planQuery('Write all actual metrics of bilge alarms');
 
