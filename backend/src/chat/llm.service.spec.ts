@@ -468,6 +468,38 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toContain('If the fault remains:');
   });
 
+  it('tells the LLM to answer from a primary and secondary source when top-two merged sources are provided', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'How do I install the mini alarm?',
+      mergeBySource: true,
+      sourceMergeTitles: ['Primary Manual.pdf', 'Secondary Manual.pdf'],
+      citations: [
+        {
+          sourceTitle: 'Primary Manual.pdf',
+          snippet:
+            'Mini alarm installation: remove the cover, mount the base, connect the wiring.',
+        },
+        {
+          sourceTitle: 'Secondary Manual.pdf',
+          snippet:
+            'Mini alarm installation note: seal the mounting screws and use IP65 cable glands outside.',
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      'Use Primary Manual.pdf as the primary documented source and Secondary Manual.pdf as a secondary supporting source.',
+    );
+    expect(prompt).toContain(
+      'If the secondary source adds compatible details, fold them in briefly as additional documented guidance.',
+    );
+    expect(prompt).toContain(
+      'If the two sources differ on a material fact, keep the answer separated by source instead of blending the conflicting details.',
+    );
+  });
+
   it('tells manual specification prompts to ignore unrelated numeric ranges', () => {
     const service = new LlmService();
 

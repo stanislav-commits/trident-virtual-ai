@@ -835,7 +835,8 @@ export class ChatDocumentationService {
       citations = this.citationService.limitCitationsForLlm(
         effectiveUserQuery,
         citations,
-        preparedAnswerCitations.compareBySource,
+        preparedAnswerCitations.compareBySource ||
+          preparedAnswerCitations.mergeBySource,
       );
       citations = this.prioritizeSourceLockedEvidence({
         citations,
@@ -871,6 +872,8 @@ export class ChatDocumentationService {
         analysisCitations: finalAnalysisCitations,
         compareBySource: preparedAnswerCitations.compareBySource,
         sourceComparisonTitles: preparedAnswerCitations.sourceComparisonTitles,
+        mergeBySource: preparedAnswerCitations.mergeBySource,
+        sourceMergeTitles: preparedAnswerCitations.sourceMergeTitles,
       };
     } catch (error) {
       this.logger.warn(
@@ -1457,7 +1460,7 @@ export class ChatDocumentationService {
     const floor = Math.max(24, topScore * ratio);
     const selected = this.uniqueCandidateSources(
       candidates.filter((candidate) => candidate.score >= floor),
-    ).slice(0, 3);
+    );
 
     return (selected.length > 0 ? selected : [candidates[0]]).map(
       (candidate) => candidate.manualId,
@@ -1542,15 +1545,7 @@ export class ChatDocumentationService {
       return null;
     }
 
-    return {
-      question:
-        'I found relevant information in multiple documents. Which source should I use?',
-      reason: 'semantic_source_ambiguous',
-      actions: this.buildSourceCandidateActions(
-        closeCandidates,
-        params.retrievalQuery,
-      ),
-    };
+    return null;
   }
 
   private buildSourceCandidateActions(

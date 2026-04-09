@@ -206,12 +206,16 @@ export class ChatDocumentationCitationService {
     citations: ChatCitation[];
     compareBySource: boolean;
     sourceComparisonTitles: string[];
+    mergeBySource: boolean;
+    sourceMergeTitles: string[];
   } {
     if (citations.length === 0) {
       return {
         citations,
         compareBySource: false,
         sourceComparisonTitles: [],
+        mergeBySource: false,
+        sourceMergeTitles: [],
       };
     }
 
@@ -229,6 +233,8 @@ export class ChatDocumentationCitationService {
         citations: answerCitations,
         compareBySource: false,
         sourceComparisonTitles: [],
+        mergeBySource: false,
+        sourceMergeTitles: [],
       };
     }
 
@@ -243,6 +249,8 @@ export class ChatDocumentationCitationService {
         citations: broadCertificateSoonCitations,
         compareBySource: false,
         sourceComparisonTitles: [],
+        mergeBySource: false,
+        sourceMergeTitles: [],
       };
     }
 
@@ -252,8 +260,9 @@ export class ChatDocumentationCitationService {
       profiles,
     );
     if (comparisonProfiles.length >= 2) {
+      const selectedComparisonProfiles = comparisonProfiles.slice(0, 2);
       const sourceKeys = new Set(
-        comparisonProfiles.map((profile) => profile.sourceKey),
+        selectedComparisonProfiles.map((profile) => profile.sourceKey),
       );
       return {
         citations: this.balanceCitationsAcrossSources(
@@ -262,9 +271,11 @@ export class ChatDocumentationCitationService {
           4,
         ),
         compareBySource: true,
-        sourceComparisonTitles: comparisonProfiles.map(
+        sourceComparisonTitles: selectedComparisonProfiles.map(
           (profile) => profile.sourceTitle,
         ),
+        mergeBySource: false,
+        sourceMergeTitles: [],
       };
     }
 
@@ -281,6 +292,33 @@ export class ChatDocumentationCitationService {
         ),
         compareBySource: false,
         sourceComparisonTitles: [],
+        mergeBySource: false,
+        sourceMergeTitles: [],
+      };
+    }
+
+    const selectedAnswerProfiles = this.selectTopAnswerSourceProfiles(
+      retrievalQuery,
+      userQuery,
+      profiles,
+    );
+    if (selectedAnswerProfiles.length > 0) {
+      const sourceKeys = new Set(
+        selectedAnswerProfiles.map((profile) => profile.sourceKey),
+      );
+      return {
+        citations: this.balanceCitationsAcrossSources(
+          answerCitations,
+          sourceKeys,
+          4,
+        ),
+        compareBySource: false,
+        sourceComparisonTitles: [],
+        mergeBySource: selectedAnswerProfiles.length > 1,
+        sourceMergeTitles:
+          selectedAnswerProfiles.length > 1
+            ? selectedAnswerProfiles.map((profile) => profile.sourceTitle)
+            : [],
       };
     }
 
@@ -288,6 +326,8 @@ export class ChatDocumentationCitationService {
       citations: answerCitations,
       compareBySource: false,
       sourceComparisonTitles: [],
+      mergeBySource: false,
+      sourceMergeTitles: [],
     };
   }
 
@@ -2443,10 +2483,11 @@ export class ChatDocumentationCitationService {
     if (!top || !second) return [];
     if (top.subjectCoverage === 0) return [];
 
-    const isPreciseLookup =
+    const shouldPreferSingleBestSource =
       /\b1p\d{2,}\b/i.test(retrievalQuery) ||
       this.queryService.isNextDueLookupQuery(userQuery) ||
       this.queryService.isPersonnelDirectoryQuery(userQuery) ||
+      this.isBroadCertificateSoonQuery(userQuery) ||
       this.queryService.isPartsQuery(userQuery) ||
       /\b(?:according\s+to|in|from)\s+the\s+.+?\b(manual|operator'?s\s+manual|handbook|guide|document)\b/i.test(
         userQuery,
@@ -2457,7 +2498,7 @@ export class ChatDocumentationCitationService {
       /\b(procedure|steps?|how\s+to|instruction|instructions|checklist|what\s+should\s+i\s+do|what\s+needs?\s+to\s+be\s+done)\b/i.test(
         userQuery,
       );
-    if (!isPreciseLookup) return [];
+    if (!shouldPreferSingleBestSource) return [];
 
     const topClearlyStronger =
       (this.queryService.isPersonnelDirectoryQuery(userQuery) &&
@@ -2474,6 +2515,47 @@ export class ChatDocumentationCitationService {
         top.explicitEvidenceScore >= second.explicitEvidenceScore);
 
     return topClearlyStronger ? [top.sourceKey] : [];
+  }
+
+  private selectTopAnswerSourceProfiles(
+    retrievalQuery: string,
+    userQuery: string,
+    profiles: SourceEvidenceProfile[],
+  ): SourceEvidenceProfile[] {
+    if (!this.shouldLimitToTopManualSources(userQuery)) {
+      return [];
+    }
+
+    const subjectMatchedProfiles = profiles.filter(
+      (profile) =>
+        profile.subjectCoverage > 0 ||
+        profile.explicitEvidenceScore > 0 ||
+        profile.aggregateScore > 0,
+    );
+    const rankedProfiles =
+      subjectMatchedProfiles.length > 0 ? subjectMatchedProfiles : profiles;
+    const [topProfile, ...remainingProfiles] = rankedProfiles;
+    if (!topProfile) {
+      return [];
+    }
+
+    const selectedProfiles = [topProfile];
+    for (const candidateProfile of remainingProfiles) {
+      if (
+        selectedProfiles.length >= 2 ||
+        !this.isRelevantSecondarySourceProfile(
+          retrievalQuery,
+          topProfile,
+          candidateProfile,
+        )
+      ) {
+        continue;
+      }
+
+      selectedProfiles.push(candidateProfile);
+    }
+
+    return selectedProfiles;
   }
 
   private prepareBroadCertificateSoonAnswerCitations(
@@ -2595,6 +2677,59 @@ export class ChatDocumentationCitationService {
     sourceKeys: Set<string>,
   ): ChatCitation[] {
     return citations.filter((citation) => sourceKeys.has(this.getSourceKey(citation)));
+  }
+
+  private shouldLimitToTopManualSources(userQuery: string): boolean {
+    return (
+      !this.queryService.isPersonnelDirectoryQuery(userQuery) &&
+      !this.isBroadCertificateSoonQuery(userQuery)
+    );
+  }
+
+  private isRelevantSecondarySourceProfile(
+    retrievalQuery: string,
+    topProfile: SourceEvidenceProfile,
+    candidateProfile: SourceEvidenceProfile,
+  ): boolean {
+    if (candidateProfile.sourceKey === topProfile.sourceKey) {
+      return false;
+    }
+
+    if (
+      topProfile.subjectCoverage > 0 &&
+      !this.isSameSubjectAcrossSources(topProfile, candidateProfile)
+    ) {
+      return false;
+    }
+
+    if (
+      topProfile.subjectCoverage > 0 &&
+      candidateProfile.subjectCoverage === 0 &&
+      candidateProfile.explicitEvidenceScore < topProfile.explicitEvidenceScore
+    ) {
+      return false;
+    }
+
+    if (
+      /\b1p\d{2,}\b/i.test(retrievalQuery) &&
+      candidateProfile.subjectCoverage < topProfile.subjectCoverage
+    ) {
+      return false;
+    }
+
+    if (
+      topProfile.explicitEvidenceScore >= candidateProfile.explicitEvidenceScore + 4 &&
+      topProfile.subjectCoverage >= candidateProfile.subjectCoverage + 1 &&
+      topProfile.aggregateScore >= candidateProfile.aggregateScore * 1.75
+    ) {
+      return false;
+    }
+
+    return (
+      candidateProfile.explicitEvidenceScore > 0 ||
+      candidateProfile.subjectCoverage > 0 ||
+      candidateProfile.aggregateScore >= Math.max(topProfile.aggregateScore * 0.45, 1)
+    );
   }
 
   private isOfficialRegistryCertificateProfile(

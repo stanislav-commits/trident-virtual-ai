@@ -984,11 +984,13 @@ export class ChatService {
       }
 
       const deterministicDocumentationAnswer =
-        this.buildDeterministicDocumentationAnswer(
-          effectiveUserQuery,
-          queryPlan.primaryIntent,
-          citationsForAnswer,
-        );
+        documentationContext.compareBySource || documentationContext.mergeBySource
+          ? null
+          : this.buildDeterministicDocumentationAnswer(
+              effectiveUserQuery,
+              queryPlan.primaryIntent,
+              citationsForAnswer,
+            );
       if (deterministicDocumentationAnswer) {
         return this.addRoutedAssistantMessage({
           sessionId,
@@ -1150,6 +1152,8 @@ export class ChatService {
           this.buildStructuredConversationState(messageHistory),
         compareBySource: documentationContext.compareBySource,
         sourceComparisonTitles: documentationContext.sourceComparisonTitles,
+        mergeBySource: documentationContext.mergeBySource,
+        sourceMergeTitles: documentationContext.sourceMergeTitles,
         citations: citationsForAnswer.map((citation) => ({
           snippet: citation.snippet || '',
           sourceTitle: citation.sourceTitle || 'Unknown',

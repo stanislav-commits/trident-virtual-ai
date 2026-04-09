@@ -7,36 +7,45 @@ import { ChatReferenceExtractionService } from './chat-reference-extraction.serv
 import { ChatCitation } from './chat.types';
 
 describe('ChatDocumentationService', () => {
-  it('asks which semantic source to use when top document candidates are tied', async () => {
-    const contextService = {
-      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
-      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
-    };
-    const queryService = new ChatDocumentationQueryService();
-    const semanticQuery = {
-      schemaVersion: '2026-04-06.semantic-v2',
-      intent: 'manual_lookup' as const,
-      conceptFamily: 'maintenance_topic' as const,
-      selectedConceptIds: ['troubleshooting_guide'],
-      candidateConceptIds: ['troubleshooting_guide'],
-      equipment: [],
-      systems: [],
-      vendor: null,
-      model: null,
-      sourcePreferences: ['MANUALS' as const],
-      explicitSource: null,
-      pageHint: null,
-      sectionHint: null,
-      answerFormat: 'direct_answer' as const,
-      needsClarification: false,
-      clarificationReason: null,
-      confidence: 0.82,
-    };
-    const semanticNormalizer = {
-      normalize: jest.fn().mockResolvedValue(semanticQuery),
-    };
-    const semanticMatcher = {
-      shortlistManuals: jest.fn().mockResolvedValue([
+  it('does not ask which semantic source to use when top document candidates are tied', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const clarification = (service as any).buildSemanticSourceClarification({
+      userQuery:
+        'How should I acknowledge an engine alarm and find the corrective action?',
+      retrievalQuery:
+        'How should I acknowledge an engine alarm and find the corrective action?',
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'manual_lookup',
+        conceptFamily: 'maintenance_topic',
+        selectedConceptIds: ['troubleshooting_guide'],
+        candidateConceptIds: ['troubleshooting_guide'],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'direct_answer',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.82,
+      },
+      semanticCandidates: [
         {
           manualId: 'manual-volvo',
           documentId: 'doc-volvo',
@@ -53,55 +62,87 @@ describe('ChatDocumentationService', () => {
           score: 118,
           reasons: ['profile_text'],
         },
-      ]),
-    };
-    const sourceLockService = {
-      getFollowUpStateFromHistory: jest.fn().mockReturnValue(null),
-      resolveSourceLock: jest.fn().mockReturnValue({
+      ],
+      sourceLockDecision: {
         active: false,
         lockedManualId: null,
         lockedManualTitle: null,
         lockedDocumentId: null,
         reason: null,
-      }),
-    };
-    const service = new ChatDocumentationService(
-      contextService as never,
-      queryService,
-      {} as never,
-      {} as never,
-      {} as never,
-      undefined,
-      undefined,
-      semanticNormalizer as never,
-      semanticMatcher as never,
-      sourceLockService as never,
-    );
-
-    const result = await service.prepareDocumentationContext({
-      shipId: 'ship-1',
-      role: 'user',
-      userQuery:
-        'How should I acknowledge an engine alarm and find the corrective action?',
+      },
+      followUpState: null,
     });
 
-    expect(result.needsClarification).toBe(true);
-    expect(result.clarificationReason).toBe('semantic_source_ambiguous');
-    expect(result.clarificationActions).toEqual([
+    expect(clarification).toBeNull();
+  });
+
+  it('keeps all strong semantic manual candidates for retrieval scope', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const selectedManualIds = (service as any).selectSemanticManualIds(
+      [
+        {
+          manualId: 'manual-primary',
+          documentId: 'doc-primary',
+          filename: 'Primary Manual.pdf',
+          category: 'MANUALS',
+          score: 130,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-secondary',
+          documentId: 'doc-secondary',
+          filename: 'Secondary Manual.pdf',
+          category: 'MANUALS',
+          score: 124,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-third',
+          documentId: 'doc-third',
+          filename: 'Third Manual.pdf',
+          category: 'MANUALS',
+          score: 120,
+          reasons: ['profile_text'],
+        },
+      ],
       {
-        label: 'Volvo Penta_operators manual_47710211',
-        message:
-          'From Volvo Penta_operators manual_47710211.pdf document: How should I acknowledge an engine alarm and find the corrective action?',
-        kind: 'suggestion',
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'manual_lookup',
+        conceptFamily: 'maintenance_topic',
+        selectedConceptIds: [],
+        candidateConceptIds: [],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'direct_answer',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.82,
       },
-      {
-        label: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1)',
-        message:
-          'From MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf document: How should I acknowledge an engine alarm and find the corrective action?',
-        kind: 'suggestion',
-      },
+    );
+
+    expect(selectedManualIds).toEqual([
+      'manual-primary',
+      'manual-secondary',
+      'manual-third',
     ]);
-    expect(contextService.findContextForQuery).not.toHaveBeenCalled();
   });
 
   it('does not ask for semantic source clarification when the top candidate has stronger direct source-match evidence', () => {
@@ -888,12 +929,16 @@ Reference ID: 1P47`,
             citations: ChatCitation[];
             compareBySource: boolean;
             sourceComparisonTitles: string[];
+            mergeBySource: boolean;
+            sourceMergeTitles: string[];
           }
         >()
         .mockImplementation((_query, _userQuery, retrievedCitations) => ({
           citations: retrievedCitations,
           compareBySource: false,
           sourceComparisonTitles: [],
+          mergeBySource: false,
+          sourceMergeTitles: [],
         })),
       limitCitationsForLlm: jest
         .fn<
@@ -1012,12 +1057,16 @@ Reference ID: 1P47`,
             citations: ChatCitation[];
             compareBySource: boolean;
             sourceComparisonTitles: string[];
+            mergeBySource: boolean;
+            sourceMergeTitles: string[];
           }
         >()
         .mockImplementation((_query, _userQuery, citations) => ({
           citations,
           compareBySource: false,
           sourceComparisonTitles: [],
+          mergeBySource: false,
+          sourceMergeTitles: [],
         })),
       limitCitationsForLlm: jest
         .fn<
@@ -1215,12 +1264,16 @@ Reference ID: 1P47`,
             citations: ChatCitation[];
             compareBySource: boolean;
             sourceComparisonTitles: string[];
+            mergeBySource: boolean;
+            sourceMergeTitles: string[];
           }
         >()
         .mockImplementation((_query, _userQuery, citations) => ({
           citations,
           compareBySource: false,
           sourceComparisonTitles: [],
+          mergeBySource: false,
+          sourceMergeTitles: [],
         })),
       limitCitationsForLlm: jest
         .fn<
@@ -1335,12 +1388,16 @@ Reference ID: 1P47`,
             citations: ChatCitation[];
             compareBySource: boolean;
             sourceComparisonTitles: string[];
+            mergeBySource: boolean;
+            sourceMergeTitles: string[];
           }
         >()
         .mockImplementation((_query, _userQuery, citations) => ({
           citations,
           compareBySource: false,
           sourceComparisonTitles: [],
+          mergeBySource: false,
+          sourceMergeTitles: [],
         })),
       limitCitationsForLlm: jest
         .fn<
@@ -1473,12 +1530,16 @@ Reference ID: 1P47`,
             citations: ChatCitation[];
             compareBySource: boolean;
             sourceComparisonTitles: string[];
+            mergeBySource: boolean;
+            sourceMergeTitles: string[];
           }
         >()
         .mockImplementation((_query, _userQuery, retrievedCitations) => ({
           citations: retrievedCitations,
           compareBySource: false,
           sourceComparisonTitles: [],
+          mergeBySource: false,
+          sourceMergeTitles: [],
         })),
       limitCitationsForLlm: jest
         .fn<
@@ -1612,12 +1673,16 @@ Location: BOX 25 VOLVO PENTA SPARES`,
             citations: ChatCitation[];
             compareBySource: boolean;
             sourceComparisonTitles: string[];
+            mergeBySource: boolean;
+            sourceMergeTitles: string[];
           }
         >()
         .mockImplementation((_query, _userQuery, citations) => ({
           citations,
           compareBySource: false,
           sourceComparisonTitles: [],
+          mergeBySource: false,
+          sourceMergeTitles: [],
         })),
       limitCitationsForLlm: jest
         .fn<
@@ -1747,12 +1812,16 @@ Location: BOX 25 VOLVO PENTA SPARES`,
             citations: ChatCitation[];
             compareBySource: boolean;
             sourceComparisonTitles: string[];
+            mergeBySource: boolean;
+            sourceMergeTitles: string[];
           }
         >()
         .mockImplementation((_query, _userQuery, citations) => ({
           citations,
           compareBySource: false,
           sourceComparisonTitles: [],
+          mergeBySource: false,
+          sourceMergeTitles: [],
         })),
       limitCitationsForLlm: jest
         .fn<
@@ -1845,6 +1914,8 @@ Location: BOX 25 VOLVO PENTA SPARES`,
             citations,
             compareBySource: false,
             sourceComparisonTitles: [],
+            mergeBySource: false,
+            sourceMergeTitles: [],
           }),
         ),
       limitCitationsForLlm: jest
@@ -1942,6 +2013,8 @@ Location: BOX 25 VOLVO PENTA SPARES`,
             citations,
             compareBySource: false,
             sourceComparisonTitles: [],
+            mergeBySource: false,
+            sourceMergeTitles: [],
           }),
         ),
       limitCitationsForLlm: jest
@@ -2042,6 +2115,8 @@ Location: BOX 25 VOLVO PENTA SPARES`,
             citations,
             compareBySource: false,
             sourceComparisonTitles: [],
+            mergeBySource: false,
+            sourceMergeTitles: [],
           }),
         ),
       limitCitationsForLlm: jest
@@ -2138,6 +2213,8 @@ Location: BOX 25 VOLVO PENTA SPARES`,
             citations,
             compareBySource: false,
             sourceComparisonTitles: [],
+            mergeBySource: false,
+            sourceMergeTitles: [],
           }),
         ),
       limitCitationsForLlm: jest

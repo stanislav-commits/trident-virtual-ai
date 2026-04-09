@@ -20,6 +20,8 @@ export interface LLMContext {
   structuredConversationState?: string;
   compareBySource?: boolean;
   sourceComparisonTitles?: string[];
+  mergeBySource?: boolean;
+  sourceMergeTitles?: string[];
   citations?: Array<{
     snippet: string;
     sourceTitle: string;
@@ -284,6 +286,19 @@ export class LlmService {
         'Important: The retrieved context contains materially different documented facts for the same subject across multiple sources. ' +
         `Answer separately by source for these manuals: ${context.sourceComparisonTitles?.join(', ')}. ` +
         'For each source, state only the facts documented in that source. Do not merge conflicting values into one combined instruction.\n\n';
+    }
+
+    if (context.mergeBySource && (context.sourceMergeTitles?.length ?? 0) > 1) {
+      const [primarySourceTitle, secondarySourceTitle] =
+        context.sourceMergeTitles ?? [];
+      prompt +=
+        `Important: Use ${primarySourceTitle} as the primary documented source` +
+        (secondarySourceTitle
+          ? ` and ${secondarySourceTitle} as a secondary supporting source. `
+          : '. ') +
+        'Answer the question directly from the primary source first. ' +
+        'If the secondary source adds compatible details, fold them in briefly as additional documented guidance. ' +
+        'If the two sources differ on a material fact, keep the answer separated by source instead of blending the conflicting details.\n\n';
     }
 
     if (this.isDirectLookupSubjectQuery(context.userQuery)) {

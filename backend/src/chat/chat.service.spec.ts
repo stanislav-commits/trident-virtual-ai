@@ -468,6 +468,72 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('routes top-two merged manual answers through the LLM instead of deterministic single-source formatting', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'How do I install the mini alarm?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Primary Manual.pdf',
+          sourceCategory: 'MANUALS',
+          snippet:
+            'Mini alarm installation: remove the cover, mount the base, connect the wiring.',
+          pageNumber: 4,
+        },
+        {
+          sourceTitle: 'Secondary Manual.pdf',
+          sourceCategory: 'MANUALS',
+          snippet:
+            'Mini alarm installation note: use IP65 cable glands and seal the mounting screws outside.',
+          pageNumber: 4,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'How do I install the mini alarm?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+      mergeBySource: true,
+      sourceMergeTitles: ['Primary Manual.pdf', 'Secondary Manual.pdf'],
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'Install it according to the primary manual and supplement with the secondary mounting notes.',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'How do I install the mini alarm?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mergeBySource: true,
+        sourceMergeTitles: ['Primary Manual.pdf', 'Secondary Manual.pdf'],
+      }),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Install it according to the primary manual and supplement with the secondary mounting notes.',
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        usedDocumentation: true,
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({ sourceTitle: 'Primary Manual.pdf' }),
+        expect.objectContaining({ sourceTitle: 'Secondary Manual.pdf' }),
+      ]),
+    );
+  });
+
   it('preserves documentation context when LLM generation fails after retrieval', async () => {
     const citation = {
       shipManualId: 'manual-1',

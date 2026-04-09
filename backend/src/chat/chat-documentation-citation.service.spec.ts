@@ -30,7 +30,47 @@ describe('ChatDocumentationCitationService', () => {
     expect(prepared.compareBySource).toBe(true);
     expect(prepared.sourceComparisonTitles).toContain('Engine Manual.pdf');
     expect(prepared.sourceComparisonTitles).toContain('Service Manual.pdf');
+    expect(prepared.mergeBySource).toBe(false);
     expect(prepared.citations).toHaveLength(2);
+  });
+
+  it('keeps only the top two relevant manual sources and marks them for merged answering', () => {
+    const citations = [
+      {
+        sourceTitle: 'Primary Manual.pdf',
+        snippet:
+          'Mini alarm installation: remove the cover, mount the base, connect the wiring, and tighten the security screw.',
+        score: 0.97,
+      },
+      {
+        sourceTitle: 'Secondary Manual.pdf',
+        snippet:
+          'Mini alarm installation note: use IP65 cable glands and seal the mounting screws for exterior locations.',
+        score: 0.82,
+      },
+      {
+        sourceTitle: 'Irrelevant Manual.pdf',
+        snippet:
+          'Bilge monitoring system installation: connect the oil separator sample line and VCP driver on the PC.',
+        score: 0.78,
+      },
+    ];
+
+    const prepared = service.prepareCitationsForAnswer(
+      'how to install minialarm',
+      'How do I install the mini alarm?',
+      citations,
+    );
+
+    expect(prepared.compareBySource).toBe(false);
+    expect(prepared.mergeBySource).toBe(true);
+    expect(prepared.sourceMergeTitles).toEqual([
+      'Primary Manual.pdf',
+      'Secondary Manual.pdf',
+    ]);
+    expect(
+      prepared.citations.map((citation) => citation.sourceTitle),
+    ).toEqual(['Primary Manual.pdf', 'Secondary Manual.pdf']);
   });
 
   it('prefers the exact source when another source is only approximate', () => {
@@ -56,6 +96,7 @@ describe('ChatDocumentationCitationService', () => {
     );
 
     expect(prepared.compareBySource).toBe(false);
+    expect(prepared.mergeBySource).toBe(false);
     expect(prepared.citations).toHaveLength(1);
     expect(prepared.citations[0].sourceTitle).toBe('Engine Manual.pdf');
   });

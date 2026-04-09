@@ -67,6 +67,8 @@ export interface ChatDocumentationContext {
   clarificationActions?: ChatSuggestionAction[];
   compareBySource?: boolean;
   sourceComparisonTitles?: string[];
+  mergeBySource?: boolean;
+  sourceMergeTitles?: string[];
   semanticQuery?: DocumentationSemanticQuery;
   documentationFollowUpState?: DocumentationFollowUpState;
   retrievalTrace?: DocumentationRetrievalTrace;
