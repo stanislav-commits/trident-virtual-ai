@@ -110,6 +110,11 @@ interface TelemetryListRequest {
   limit?: number;
 }
 
+interface StoredFluidSubject {
+  fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def';
+  waterQualifiers?: Array<'fresh' | 'sea' | 'black' | 'grey' | 'bilge'>;
+}
+
 interface ShipHistoricalTelemetryResolution {
   kind: 'none' | 'clarification' | 'answer';
   content?: string;
@@ -1233,7 +1238,9 @@ export class MetricsService implements OnModuleInit {
         request.metricQuery,
       );
       const fuelTankEntries = entries
-        .filter((entry) => this.isHistoricalTankStorageEntry(entry, 'fuel'))
+        .filter((entry) =>
+          this.isHistoricalTankStorageEntry(entry, { fluid: 'fuel' }),
+        )
         .sort((left, right) => {
           const tankRank =
             this.getTelemetryTankOrder(left) -
@@ -1345,7 +1352,7 @@ export class MetricsService implements OnModuleInit {
 
     return entries
       .filter((entry) =>
-        this.isHistoricalAggregateTankStorageEntry(entry, 'fuel'),
+        this.isHistoricalAggregateTankStorageEntry(entry, { fluid: 'fuel' }),
       )
       .sort((left, right) => {
         const tankRank =
@@ -3676,16 +3683,16 @@ export class MetricsService implements OnModuleInit {
     const searchSpace = this.normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
-    const fluid = this.detectStoredFluidSubject(searchSpace);
-    if (!fluid || !this.isAggregateStoredFluidQuery(searchSpace, fluid)) {
+    const subject = this.detectStoredFluidSubject(searchSpace);
+    if (!subject || !this.isAggregateStoredFluidQuery(searchSpace, subject)) {
       return [];
     }
 
     const selected = entries
       .filter((entry) =>
         options?.strictDedicatedTankStorage
-          ? this.isHistoricalAggregateTankStorageEntry(entry, fluid)
-          : this.isDirectTankStorageEntry(entry, fluid),
+          ? this.isHistoricalAggregateTankStorageEntry(entry, subject)
+          : this.isDirectTankStorageEntry(entry, subject),
       )
       .sort((left, right) => {
         const tankRank =
@@ -3704,13 +3711,16 @@ export class MetricsService implements OnModuleInit {
     const searchSpace = this.normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
-    const fluid = this.detectStoredFluidSubject(searchSpace);
-    if (!fluid || !this.isDirectStoredFluidInventoryQuery(searchSpace, fluid)) {
+    const subject = this.detectStoredFluidSubject(searchSpace);
+    if (
+      !subject ||
+      !this.isDirectStoredFluidInventoryQuery(searchSpace, subject)
+    ) {
       return [];
     }
 
     const selected = entries
-      .filter((entry) => this.isDirectTankStorageEntry(entry, fluid))
+      .filter((entry) => this.isDirectTankStorageEntry(entry, subject))
       .sort((left, right) => {
         const tankRank =
           this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
@@ -4880,7 +4890,7 @@ export class MetricsService implements OnModuleInit {
     if (
       !kinds.has('level') &&
       (['fuel', 'oil', 'water', 'coolant', 'def'] as const).some((fluid) =>
-        this.isDedicatedTankStorageField(entry, fluid),
+        this.isDedicatedTankStorageField(entry, { fluid }),
       )
     ) {
       kinds.add('level');
@@ -5201,6 +5211,17 @@ export class MetricsService implements OnModuleInit {
       }
     }
 
+    const requiredWaterQualifiers =
+      this.detectStoredFluidSubject(normalizedQuery)?.waterQualifiers ?? [];
+    if (
+      requiredWaterQualifiers.length > 0 &&
+      !requiredWaterQualifiers.some((qualifier) =>
+        this.matchesWaterQualifier(haystack, qualifier),
+      )
+    ) {
+      return false;
+    }
+
     return true;
   }
 
@@ -5210,21 +5231,113 @@ export class MetricsService implements OnModuleInit {
     );
   }
 
+  private detectWaterQualifiers(
+    normalizedQuery: string,
+  ): StoredFluidSubject['waterQualifiers'] {
+    const qualifiers = new Set<
+      NonNullable<StoredFluidSubject['waterQualifiers']>[number]
+    >();
+
+    if (/\bfresh\s*water\b/i.test(normalizedQuery)) {
+      qualifiers.add('fresh');
+    }
+    if (/\bsea\s*water\b|\bseawater\b/i.test(normalizedQuery)) {
+      qualifiers.add('sea');
+    }
+    if (/\bblack(?:\s+and\s+grey|\s*&\s*grey)?\s+water\b/i.test(normalizedQuery)) {
+      qualifiers.add('black');
+      if (/\bgrey\b|\bgray\b/i.test(normalizedQuery)) {
+        qualifiers.add('grey');
+      }
+    } else if (/\bblack\s+water\b/i.test(normalizedQuery)) {
+      qualifiers.add('black');
+    }
+    if (/\bgrey\s+water\b|\bgray\s+water\b/i.test(normalizedQuery)) {
+      qualifiers.add('grey');
+    }
+    if (/\bbilge\s+water\b|\bbilge\b[\s\S]{0,12}\btank\b/i.test(normalizedQuery)) {
+      qualifiers.add('bilge');
+    }
+
+    return qualifiers.size > 0 ? [...qualifiers] : undefined;
+  }
+
+  private matchesWaterQualifier(
+    haystack: string,
+    qualifier: NonNullable<StoredFluidSubject['waterQualifiers']>[number],
+  ): boolean {
+    switch (qualifier) {
+      case 'fresh':
+        return /\bfresh\s*water\b/i.test(haystack);
+      case 'sea':
+        return /\bsea\s*water\b|\bseawater\b/i.test(haystack);
+      case 'black':
+        return /\bblack\b[\s\S]{0,12}\bwater\b/i.test(haystack);
+      case 'grey':
+        return /\b(grey|gray)\b[\s\S]{0,12}\bwater\b/i.test(haystack);
+      case 'bilge':
+        return /\bbilge\b[\s\S]{0,12}\bwater\b|\bbilge\b[\s\S]{0,12}\btank\b/i.test(
+          haystack,
+        );
+      default:
+        return false;
+    }
+  }
+
+  private matchesStoredFluidSubject(
+    haystack: string,
+    subject: StoredFluidSubject,
+  ): boolean {
+    if (subject.fluid === 'water') {
+      if (!/\bwater\b/i.test(haystack)) {
+        return false;
+      }
+
+      if (!subject.waterQualifiers?.length) {
+        return true;
+      }
+
+      return subject.waterQualifiers.some((qualifier) =>
+        this.matchesWaterQualifier(haystack, qualifier),
+      );
+    }
+
+    if (subject.fluid === 'def') {
+      return /\b(def|urea)\b/i.test(haystack);
+    }
+
+    return new RegExp(`\\b${subject.fluid}\\b`, 'i').test(haystack);
+  }
+
+  private entryMatchesStoredFluidSubject(
+    entry: ShipTelemetryEntry,
+    subject: StoredFluidSubject,
+  ): boolean {
+    return this.matchesStoredFluidSubject(
+      this.buildTelemetryHaystack(entry),
+      subject,
+    );
+  }
+
   private detectStoredFluidSubject(
     normalizedQuery: string,
-  ): 'fuel' | 'oil' | 'water' | 'coolant' | 'def' | null {
-    if (/\bfuel\b/i.test(normalizedQuery)) return 'fuel';
-    if (/\boil\b/i.test(normalizedQuery)) return 'oil';
-    if (/\bcoolant\b/i.test(normalizedQuery)) return 'coolant';
-    if (/\b(def|urea)\b/i.test(normalizedQuery)) return 'def';
-    if (/\b(water|fresh water|seawater)\b/i.test(normalizedQuery))
-      return 'water';
+  ): StoredFluidSubject | null {
+    if (/\bfuel\b/i.test(normalizedQuery)) return { fluid: 'fuel' };
+    if (/\boil\b/i.test(normalizedQuery)) return { fluid: 'oil' };
+    if (/\bcoolant\b/i.test(normalizedQuery)) return { fluid: 'coolant' };
+    if (/\b(def|urea)\b/i.test(normalizedQuery)) return { fluid: 'def' };
+    if (/\b(water|fresh water|seawater|sea water|black water|grey water|gray water|bilge water)\b/i.test(normalizedQuery)) {
+      const waterQualifiers = this.detectWaterQualifiers(normalizedQuery);
+      return (waterQualifiers?.length ?? 0) > 0
+        ? { fluid: 'water', waterQualifiers }
+        : { fluid: 'water' };
+    }
     return null;
   }
 
   private isAggregateStoredFluidQuery(
     normalizedQuery: string,
-    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+    subject: StoredFluidSubject,
   ): boolean {
     const asksForQuantity =
       /\b(how much|how many|total|sum|overall|combined|together|calculate)\b/i.test(
@@ -5236,21 +5349,21 @@ export class MetricsService implements OnModuleInit {
 
     const mentionsTankContext =
       /\b(tank|tanks)\b/i.test(normalizedQuery) ||
-      (fluid === 'fuel' && /\bonboard\b/i.test(normalizedQuery));
+      (subject.fluid === 'fuel' && /\bonboard\b/i.test(normalizedQuery));
 
     return mentionsTankContext;
   }
 
   private isDirectStoredFluidInventoryQuery(
     normalizedQuery: string,
-    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+    subject: StoredFluidSubject,
   ): boolean {
     const fluidPattern =
-      fluid === 'water'
-        ? /\b(water|fresh water|seawater)\b/i
-        : fluid === 'def'
+      subject.fluid === 'water'
+        ? /\bwater\b/i
+        : subject.fluid === 'def'
           ? /\b(def|urea)\b/i
-          : new RegExp(`\\b${fluid}\\b`, 'i');
+          : new RegExp(`\\b${subject.fluid}\\b`, 'i');
 
     if (!fluidPattern.test(normalizedQuery)) {
       return false;
@@ -5301,18 +5414,12 @@ export class MetricsService implements OnModuleInit {
 
   private isDirectTankStorageEntry(
     entry: ShipTelemetryEntry,
-    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+    subject: StoredFluidSubject,
   ): boolean {
     const haystack = this.buildTelemetryHaystack(entry);
     const kinds = this.extractTelemetryMeasurementKinds(haystack);
-    const fluidPattern =
-      fluid === 'water'
-        ? /\b(water|fresh water|seawater)\b/i
-        : fluid === 'def'
-          ? /\b(def|urea)\b/i
-          : new RegExp(`\\b${fluid}\\b`, 'i');
 
-    if (this.isDedicatedTankStorageField(entry, fluid)) {
+    if (this.isDedicatedTankStorageField(entry, subject)) {
       return true;
     }
 
@@ -5322,7 +5429,7 @@ export class MetricsService implements OnModuleInit {
 
     return (
       /\btank\b/i.test(haystack) &&
-      fluidPattern.test(haystack) &&
+      this.entryMatchesStoredFluidSubject(entry, subject) &&
       !/\b(used|consumed|consumption|rate|flow|pressure)\b/i.test(haystack)
     );
   }
@@ -5389,7 +5496,7 @@ export class MetricsService implements OnModuleInit {
 
   private isDedicatedTankStorageField(
     entry: ShipTelemetryEntry,
-    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+    subject: StoredFluidSubject,
   ): boolean {
     const fieldText = this.normalizeTelemetryText(
       this.getDedicatedTankFieldText(entry) ?? '',
@@ -5398,13 +5505,7 @@ export class MetricsService implements OnModuleInit {
       return false;
     }
 
-    const fluidPattern =
-      fluid === 'water'
-        ? /\b(water|fresh water|seawater)\b/i
-        : fluid === 'def'
-          ? /\b(def|urea)\b/i
-          : new RegExp(`\\b${fluid}\\b`, 'i');
-    if (!fluidPattern.test(fieldText)) {
+    if (!this.matchesStoredFluidSubject(fieldText, subject)) {
       return false;
     }
 
@@ -5416,19 +5517,19 @@ export class MetricsService implements OnModuleInit {
 
   private isHistoricalTankStorageEntry(
     entry: ShipTelemetryEntry,
-    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+    subject: StoredFluidSubject,
   ): boolean {
     return (
-      this.isDirectTankStorageEntry(entry, fluid) &&
+      this.isDirectTankStorageEntry(entry, subject) &&
       !this.isDedicatedTankTemperatureEntry(entry)
     );
   }
 
   private isHistoricalAggregateTankStorageEntry(
     entry: ShipTelemetryEntry,
-    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
+    subject: StoredFluidSubject,
   ): boolean {
-    if (!this.isDirectTankStorageEntry(entry, fluid)) {
+    if (!this.isDirectTankStorageEntry(entry, subject)) {
       return false;
     }
 
@@ -5440,7 +5541,7 @@ export class MetricsService implements OnModuleInit {
     // noisy semantic descriptions that occasionally mislabel quantity fields
     // as temperature-like.
     return (
-      this.isDedicatedTankStorageField(entry, fluid) &&
+      this.isDedicatedTankStorageField(entry, subject) &&
       this.isLikelyHistoricalTankQuantityEntry(entry)
     );
   }
@@ -5657,9 +5758,9 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isAnyDirectTankStorageEntry(entry: ShipTelemetryEntry): boolean {
-    return (['fuel', 'oil', 'water', 'coolant', 'def'] as const).some((fluid) =>
-      this.isDirectTankStorageEntry(entry, fluid),
-    );
+    return (
+      ['fuel', 'oil', 'water', 'coolant', 'def'] as const
+    ).some((fluid) => this.isDirectTankStorageEntry(entry, { fluid }));
   }
 
   private getExplicitTelemetryCoordinateKinds(

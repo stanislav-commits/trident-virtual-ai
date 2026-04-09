@@ -2129,6 +2129,19 @@ describe('MetricsService telemetry matching', () => {
           },
         },
         {
+          metricKey: 'Trending::Tanks-Temperatures::Black_and_Grey_Water_Tank_13P',
+          latestValue: 750,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'Tanks-Temperatures.BLACK AND GREY WATER TANK 13P',
+            description: 'Black and grey water tank quantity.',
+            unit: 'L',
+            bucket: 'Trending',
+            measurement: 'Tanks-Temperatures',
+            field: 'Black_and_Grey_Water_Tank_13P',
+          },
+        },
+        {
           metricKey: 'Trending::Pumps::Fresh water pressure',
           latestValue: 2.8,
           valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
@@ -2162,6 +2175,65 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(true);
     expect(
       Object.keys(result.telemetry).every((key) => !/pressure/i.test(key)),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).every((key) => !/black|grey/i.test(key)),
+    ).toBe(true);
+  });
+
+  it('keeps explicit fresh-water inventory queries scoped to fresh-water tanks only', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Tanks::Fresh_Water_Tank_1P',
+        latestValue: 620,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks.Fresh_Water_Tank_1P',
+          description: 'Fresh water tank quantity.',
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fresh_Water_Tank_1P',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks::Fresh_Water_Tank_2S',
+        latestValue: 605,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks.Fresh_Water_Tank_2S',
+          description: 'Fresh water tank quantity.',
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fresh_Water_Tank_2S',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Black_and_Grey_Water_Tank_13P',
+        latestValue: 750,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.BLACK AND GREY WATER TANK 13P',
+          description: 'Black and grey water tank quantity.',
+          unit: 'L',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Black_and_Grey_Water_Tank_13P',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'How many fresh water onboard right now?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /fresh water tank/i.test(key)),
     ).toBe(true);
   });
 });
