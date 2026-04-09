@@ -738,6 +738,110 @@ describe('ChatDocumentationService', () => {
     ]);
   });
 
+  it('does not duplicate the matcher query text when retrieval and user queries are the same', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = new ChatDocumentationCitationService(queryService);
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+    const semanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'manual_lookup' as const,
+      conceptFamily: 'asset_system' as const,
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: ['MF/HF radio', 'control unit', 'antenna coupler'],
+      systems: ['radio communication system'],
+      vendor: null,
+      model: null,
+      sourcePreferences: [
+        'MANUALS' as const,
+        'HISTORY_PROCEDURES' as const,
+        'REGULATION' as const,
+      ],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'installation',
+      answerFormat: 'step_by_step' as const,
+      needsClarification: true,
+      clarificationReason: 'semantic_low_confidence',
+      confidence: 0.31,
+    };
+    const semanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue(semanticQuery),
+    };
+    const semanticMatcher = {
+      shortlistManuals: jest.fn().mockResolvedValue([
+        {
+          manualId: 'manual-ssb',
+          documentId: 'doc-ssb',
+          filename: 'FS1575_2575_5075_IME56770R2.pdf',
+          category: 'MANUALS',
+          score: 256,
+          reasons: ['query_anchor', 'equipment_overlap'],
+        },
+      ]),
+    };
+    const sourceLockService = {
+      getFollowUpStateFromHistory: jest.fn().mockReturnValue(null),
+      resolveSourceLock: jest.fn().mockReturnValue({
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      }),
+      buildNextFollowUpState: jest.fn().mockReturnValue(null),
+    };
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+      undefined,
+      undefined,
+      semanticNormalizer as never,
+      semanticMatcher as never,
+      sourceLockService as never,
+    );
+
+    const userQuery =
+      'How do I install the control unit and antenna coupler for the MF/HF radio?';
+    await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery,
+    });
+
+    expect(semanticMatcher.shortlistManuals).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryText: userQuery,
+      }),
+    );
+  });
+
   it('attaches clarification suggestion actions for underspecified queries', async () => {
     const citations: ChatCitation[] = [
       {

@@ -203,12 +203,16 @@ export class ChatDocumentationService {
         semanticQuery,
         hardDocumentCategories,
       );
+      const semanticMatcherQueryText = this.buildSemanticMatcherQueryText(
+        effectiveUserQuery,
+        retrievalQuery,
+      );
       const semanticCandidates =
         semanticQuery && this.semanticMatcher
           ? await this.semanticMatcher.shortlistManuals({
               shipId,
               role,
-              queryText: `${effectiveUserQuery}\n${retrievalQuery}`,
+              queryText: semanticMatcherQueryText,
               semanticQuery,
               allowedDocumentCategories: effectiveDocumentCategories,
             })
@@ -1811,6 +1815,31 @@ export class ChatDocumentationService {
           );
 
     return manualIds.length > 0 ? manualIds : undefined;
+  }
+
+  private buildSemanticMatcherQueryText(
+    effectiveUserQuery: string,
+    retrievalQuery: string,
+  ): string {
+    const uniqueQueries: string[] = [];
+    const seen = new Set<string>();
+
+    for (const query of [effectiveUserQuery, retrievalQuery]) {
+      const trimmed = query.replace(/\s+/g, ' ').trim();
+      if (!trimmed) {
+        continue;
+      }
+
+      const normalized = trimmed.toLowerCase();
+      if (seen.has(normalized)) {
+        continue;
+      }
+
+      seen.add(normalized);
+      uniqueQueries.push(trimmed);
+    }
+
+    return uniqueQueries.join('\n');
   }
 
   private hasContextualSourceReference(query: string): boolean {
