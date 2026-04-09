@@ -2414,7 +2414,7 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     ).toBe('Use Selected Procedure.pdf as the source');
   });
 
-  it('prefers a narrow tag scope when semantic shortlist candidates conflict with it', () => {
+  it('prefers the semantic shortlist when a narrow tag scope conflicts with it', () => {
     const service = new ChatDocumentationService(
       {} as never,
       new ChatDocumentationQueryService(),
@@ -2433,6 +2433,30 @@ Location: BOX 25 VOLVO PENTA SPARES`,
           reason: null,
         },
         semanticManualIds: ['manual-generic-1', 'manual-generic-2'],
+        tagScopedManualIds: ['manual-tagged'],
+      }),
+    ).toEqual(['manual-generic-1', 'manual-generic-2']);
+  });
+
+  it('falls back to tag scope when no semantic shortlist is available', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(
+      (service as any).resolveRetrievalManualScope({
+        sourceLockDecision: {
+          active: false,
+          lockedManualId: null,
+          lockedManualTitle: null,
+          lockedDocumentId: null,
+          reason: null,
+        },
+        semanticManualIds: [],
         tagScopedManualIds: ['manual-tagged'],
       }),
     ).toEqual(['manual-tagged']);

@@ -1666,9 +1666,7 @@ export class ChatDocumentationService {
       if (intersection.length > 0) {
         return intersection;
       }
-      return tagScopedManualIds.length <= 3
-        ? tagScopedManualIds
-        : semanticManualIds;
+      return semanticManualIds;
     }
 
     if (semanticManualIds.length > 0) {

@@ -945,6 +945,113 @@ describe('ManualSemanticMatcherService', () => {
     );
   });
 
+  it('prefers the BilgMon manual over generic bilge alarm manuals for fresh-water flushing queries', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-bilgmon',
+            ragflowDocumentId: 'doc-bilgmon',
+            filename: 'bilgmon488_instruction_manual_vAE - 2020.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:bilge:alarm'],
+              secondaryConceptIds: [],
+              systems: ['bilge monitoring', 'fresh water flushing'],
+              equipment: ['bilge alarm monitor', '15 ppm bilge alarm'],
+              vendor: 'Brannstrom Sweden AB',
+              model: 'BilgMon488',
+              aliases: ['BilgMon 488'],
+              summary:
+                'Instruction manual for a BilgMon bilge alarm monitor with installation and fresh-water flushing procedures.',
+              sections: [
+                {
+                  title: 'Fresh water flushing valve',
+                  pageStart: 17,
+                  pageEnd: 17,
+                  conceptIds: ['tag:equipment:bilge:alarm'],
+                  sectionType: 'procedure',
+                  summary:
+                    'Install the monitor, connect the sample line, and use the fresh-water flushing valve after operation.',
+                },
+              ],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+          {
+            id: 'manual-miniboss',
+            ragflowDocumentId: 'doc-miniboss',
+            filename: 'WVREI MiniBOSS Manual_rev08.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:bilge:alarm'],
+              systems: ['bilge alarm system'],
+              equipment: ['bilge alarm controller'],
+              vendor: 'Wave International',
+              model: 'MiniBOSS',
+              aliases: ['MiniBOSS'],
+              summary:
+                'Controller manual for a bilge alarm system with alarm indications and setup options.',
+              sections: [
+                {
+                  title: 'Alarm indications',
+                  pageStart: 8,
+                  pageEnd: 10,
+                  conceptIds: [],
+                  sectionType: 'reference',
+                  summary:
+                    'Alarm conditions, indicator lights, and controller settings.',
+                },
+              ],
+              pageTopics: [],
+            },
+            tags: [],
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:bilge:alarm'],
+      candidateConceptIds: ['tag:equipment:bilge:alarm'],
+      equipment: ['bilge alarm monitor'],
+      systems: ['bilge monitoring'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'fresh water flush',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.67,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'How do I install and flush the bilge alarm monitor with fresh water?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates.map((candidate) => candidate.manualId)).toEqual([
+      'manual-bilgmon',
+    ]);
+  });
+
   it('filters out same-vendor manuals with conflicting model identifiers when an exact equipment subject exists', async () => {
     const prisma = {
       shipManual: {
@@ -1825,6 +1932,122 @@ describe('ManualSemanticMatcherService', () => {
       role: 'admin',
       queryText:
         'How do I troubleshoot a Jets vacuum toilet that is not flushing properly?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS'],
+    });
+
+    expect(candidates.map((candidate) => candidate.manualId)).toEqual([
+      'manual-jets-toilet',
+    ]);
+  });
+
+  it('prefers the vacuum-toilet troubleshooting manual even when the user does not mention the vendor', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-jets-toilet',
+            ragflowDocumentId: 'doc-jets-toilet',
+            filename: 'Jets.614213.Instruction Manual.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'troubleshooting',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['sanitary system', 'vacuum system'],
+              equipment: ['vacuum toilet'],
+              vendor: 'Jets Vacuum AS',
+              model: '614213',
+              aliases: ['vacuum toilet'],
+              summary:
+                'Instruction manual with troubleshooting steps for a vacuum toilet that does not flush correctly.',
+              sections: [
+                {
+                  title: 'Troubleshooting',
+                  pageStart: 18,
+                  pageEnd: 24,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary:
+                    'Check vacuum pressure, valves, and alarms when the toilet does not flush.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-compliance',
+            ragflowDocumentId: 'doc-compliance',
+            filename: 'FELCOM19_OME56750J1.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'general_information',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['vacuum system'],
+              equipment: ['navigation display unit'],
+              vendor: 'Furuno',
+              model: 'FELCOM19',
+              aliases: ['terminal equipment'],
+              summary:
+                'Communication terminal installation and compliance information.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-pe',
+            ragflowDocumentId: 'doc-pe',
+            filename: 'MN_PE 56-72.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'general_information',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['vacuum system'],
+              equipment: ['vacuum pump'],
+              vendor: 'Pompetravaini',
+              model: 'PE 56-72',
+              aliases: ['vacuum pump'],
+              summary: 'Vacuum pump technical manual and operating limits.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'troubleshooting',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: ['vacuum toilet'],
+      systems: ['sanitary system', 'vacuum system'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'does not flush',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.58,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'How do I troubleshoot a vacuum toilet that does not flush?',
       semanticQuery,
       allowedDocumentCategories: ['MANUALS'],
     });

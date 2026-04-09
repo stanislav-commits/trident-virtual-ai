@@ -92,9 +92,34 @@ const GENERIC_EXPLICIT_SOURCE_TOKENS = new Set([
   'user',
 ]);
 
+const GENERIC_PROCEDURE_ACTION_STOP_WORDS = new Set([
+  'acknowledge',
+  'adjust',
+  'adjustment',
+  'bleed',
+  'bleeding',
+  'calibrate',
+  'calibration',
+  'clean',
+  'cleaning',
+  'flush',
+  'flushing',
+  'preserve',
+  'preservation',
+  'reset',
+  'restart',
+  'test',
+  'testing',
+  'troubleshoot',
+  'troubleshooting',
+  'verify',
+  'verification',
+]);
+
 const QUERY_ANCHOR_STOP_WORDS = new Set([
   ...PROFILE_MATCH_STOP_WORDS,
   ...GENERIC_EXPLICIT_SOURCE_TOKENS,
+  ...GENERIC_PROCEDURE_ACTION_STOP_WORDS,
   'alarm',
   'alarms',
   'catalog',
@@ -148,6 +173,7 @@ const QUERY_ANCHOR_STOP_WORDS = new Set([
 const PROFILE_TEXT_QUERY_STOP_WORDS = new Set([
   ...PROFILE_MATCH_STOP_WORDS,
   ...GENERIC_EXPLICIT_SOURCE_TOKENS,
+  ...GENERIC_PROCEDURE_ACTION_STOP_WORDS,
   'another',
   'configure',
   'configuration',
@@ -187,6 +213,56 @@ const CONCEPT_TEXT_STOP_WORDS = new Set([
   'system',
   'systems',
   'tag',
+]);
+
+const QUERY_SUBJECT_BOUNDARY_STOP_WORDS = new Set([
+  ...PROFILE_MATCH_STOP_WORDS,
+  ...GENERIC_EXPLICIT_SOURCE_TOKENS,
+  ...GENERIC_PROCEDURE_ACTION_STOP_WORDS,
+  'after',
+  'all',
+  'any',
+  'before',
+  'can',
+  'could',
+  'describe',
+  'details',
+  'does',
+  'doing',
+  'done',
+  'during',
+  'find',
+  'has',
+  'have',
+  'if',
+  'into',
+  'need',
+  'needs',
+  'not',
+  'onto',
+  'out',
+  'properly',
+  'right',
+  'same',
+  'should',
+  'soon',
+  'than',
+  'then',
+  'there',
+  'these',
+  'this',
+  'those',
+  'through',
+  'under',
+  'until',
+  'use',
+  'used',
+  'using',
+  'when',
+  'where',
+  'while',
+  'without',
+  'would',
 ]);
 
 @Injectable()
@@ -630,6 +706,7 @@ export class ManualSemanticMatcherService {
     );
     const subjectPhrases = this.collectSpecificSubjectPhrases(
       params.semanticQuery,
+      params.queryText,
     );
     const hasHardSpecificityAnchors =
       Boolean(queryVendor || queryModel || explicitSource) ||
@@ -1148,6 +1225,10 @@ export class ManualSemanticMatcherService {
     for (const system of semanticQuery.systems) {
       addSignal(system, this.tokenizeStructuredPhrase(system).size > 1 ? 16 : 12);
     }
+    for (const phrase of this.extractQueryDerivedSubjectPhrases(queryText)) {
+      const phraseTokenCount = this.tokenizeStructuredPhrase(phrase).size;
+      addSignal(phrase, phraseTokenCount >= 3 ? 20 : 18);
+    }
     for (const anchor of this.extractDistinctiveQueryAnchors(queryText)) {
       addSignal(anchor.token, anchor.emphasized ? 18 : 14);
     }
@@ -1450,11 +1531,7 @@ export class ManualSemanticMatcherService {
     const profile = candidate.semanticProfile ?? null;
     return [
       candidate.filename,
-      profile?.vendor,
-      profile?.model,
-      ...(profile?.aliases ?? []),
-      ...(profile?.equipment ?? []),
-      ...(profile?.systems ?? []),
+      profile ? this.buildProfileAnchorText(profile) : null,
     ]
       .filter((value): value is string => Boolean(value))
       .join(' ');
@@ -1478,11 +1555,7 @@ export class ManualSemanticMatcherService {
     return this.normalizeText(
       [
         manual.filename,
-        profile?.vendor,
-        profile?.model,
-        ...(profile?.aliases ?? []),
-        ...(profile?.equipment ?? []),
-        ...(profile?.systems ?? []),
+        profile ? this.buildProfileAnchorText(profile) : null,
         tagText,
       ]
         .filter((value): value is string => Boolean(value))
@@ -1492,6 +1565,7 @@ export class ManualSemanticMatcherService {
 
   private collectSpecificSubjectPhrases(
     semanticQuery: DocumentationSemanticQuery,
+    queryText: string,
   ): SpecificSubjectPhrase[] {
     const seen = new Set<string>();
     const phrases: SpecificSubjectPhrase[] = [];
@@ -1525,8 +1599,83 @@ export class ManualSemanticMatcherService {
     for (const system of semanticQuery.systems) {
       addPhrase(system);
     }
+    for (const phrase of this.extractQueryDerivedSubjectPhrases(queryText)) {
+      addPhrase(phrase);
+    }
 
     return phrases;
+  }
+
+  private extractQueryDerivedSubjectPhrases(queryText: string): string[] {
+    const normalizedQuery = this.normalizeText(queryText);
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    const rawTokens = normalizedQuery
+      .split(' ')
+      .map((token) => this.normalizeToken(token))
+      .filter(Boolean);
+    if (rawTokens.length < 2) {
+      return [];
+    }
+
+    const phrases: string[] = [];
+    const seen = new Set<string>();
+    const flushSpan = (spanTokens: string[]) => {
+      if (spanTokens.length < 2) {
+        return;
+      }
+
+      const maxWindowLength = Math.min(4, spanTokens.length);
+      for (let windowLength = maxWindowLength; windowLength >= 2; windowLength -= 1) {
+        for (
+          let start = 0;
+          start + windowLength <= spanTokens.length;
+          start += 1
+        ) {
+          const windowTokens = spanTokens.slice(start, start + windowLength);
+          if (!this.isMeaningfulQuerySubjectPhrase(windowTokens)) {
+            continue;
+          }
+
+          const phrase = windowTokens.join(' ');
+          if (seen.has(phrase)) {
+            continue;
+          }
+
+          seen.add(phrase);
+          phrases.push(phrase);
+        }
+      }
+    };
+
+    let currentSpan: string[] = [];
+    for (const token of rawTokens) {
+      if (token.length <= 2 || QUERY_SUBJECT_BOUNDARY_STOP_WORDS.has(token)) {
+        flushSpan(currentSpan);
+        currentSpan = [];
+        continue;
+      }
+
+      currentSpan.push(token);
+    }
+
+    flushSpan(currentSpan);
+    return phrases;
+  }
+
+  private isMeaningfulQuerySubjectPhrase(tokens: string[]): boolean {
+    const meaningfulTokens = tokens.filter(
+      (token) => token.length > 2 && !CONCEPT_TEXT_STOP_WORDS.has(token),
+    );
+    if (meaningfulTokens.length < 2) {
+      return false;
+    }
+
+    return meaningfulTokens.some(
+      (token) => token.length >= 4 || /\d/.test(token),
+    );
   }
 
   private scoreSpecificSubjectPhraseMatch(
