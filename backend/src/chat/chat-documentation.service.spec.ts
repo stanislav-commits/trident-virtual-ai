@@ -775,6 +775,206 @@ describe('ChatDocumentationService', () => {
     ]);
   });
 
+  it('backfills missing shortlisted manual evidence so top-two procedure sources can merge', async () => {
+    const primaryCitations: ChatCitation[] = [
+      {
+        shipManualId: 'manual-primary',
+        chunkId: 'chunk-primary-1',
+        pageNumber: 1,
+        sourceTitle: 'Procedures - Bunkering and Transfers (3).pdf',
+        sourceCategory: 'HISTORY_PROCEDURES',
+        snippet:
+          'Before bunkering, inform the Deck Officer and Captain, agree the tank filling sequence, and establish clear communications.',
+        score: 0.92,
+      },
+      {
+        shipManualId: 'manual-primary',
+        chunkId: 'chunk-primary-2',
+        pageNumber: 2,
+        sourceTitle: 'Procedures - Bunkering and Transfers (3).pdf',
+        sourceCategory: 'HISTORY_PROCEDURES',
+        snippet:
+          'Bunkering 1. Begin bunkering after ensuring all parties are ready and in their designated position. 2. Check the flow rate with the pump operator.',
+        score: 0.89,
+      },
+    ];
+    const secondaryCitations: ChatCitation[] = [
+      {
+        shipManualId: 'manual-secondary',
+        chunkId: 'chunk-secondary-1',
+        pageNumber: 1,
+        sourceTitle: 'SOP 12.31 Bunkering v2.pdf',
+        sourceCategory: 'REGULATION',
+        snippet:
+          'Bunkering checklist: verify scuppers plugged, spill equipment ready, communications established, and manifold drip trays in place.',
+        score: 0.88,
+      },
+      {
+        shipManualId: 'manual-secondary',
+        chunkId: 'chunk-secondary-2',
+        pageNumber: 2,
+        sourceTitle: 'SOP 12.31 Bunkering v2.pdf',
+        sourceCategory: 'REGULATION',
+        snippet:
+          'Stop points during bunkering shall be agreed in advance; complete the bunker checklist before starting transfers.',
+        score: 0.86,
+      },
+    ];
+    const contextService = {
+      findContextForQuery: jest
+        .fn()
+        .mockImplementation(
+          async (
+            _shipId: string,
+            _query: string,
+            _topK: number,
+            _candidateK: number,
+            _allowedDocumentCategories?: string[],
+            allowedManualIds?: string[],
+          ) => {
+            if (
+              allowedManualIds?.length === 2 &&
+              allowedManualIds.includes('manual-primary') &&
+              allowedManualIds.includes('manual-secondary')
+            ) {
+              return { citations: primaryCitations };
+            }
+
+            if (
+              allowedManualIds?.length === 1 &&
+              allowedManualIds[0] === 'manual-secondary'
+            ) {
+              return { citations: secondaryCitations };
+            }
+
+            return { citations: [] };
+          },
+        ),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = new ChatDocumentationCitationService(queryService);
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+    const semanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'operational_procedure' as const,
+      conceptFamily: 'operational_topic' as const,
+      selectedConceptIds: ['bunkering_operation'],
+      candidateConceptIds: ['bunkering_operation'],
+      equipment: [],
+      systems: ['fuel_system'],
+      vendor: null,
+      model: null,
+      sourcePreferences: [
+        'HISTORY_PROCEDURES' as const,
+        'REGULATION' as const,
+        'MANUALS' as const,
+      ],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'step_by_step' as const,
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.98,
+    };
+    const semanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue(semanticQuery),
+    };
+    const semanticMatcher = {
+      shortlistManuals: jest.fn().mockResolvedValue([
+        {
+          manualId: 'manual-primary',
+          documentId: 'doc-primary',
+          filename: 'Procedures - Bunkering and Transfers (3).pdf',
+          category: 'HISTORY_PROCEDURES',
+          score: 188,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-secondary',
+          documentId: 'doc-secondary',
+          filename: 'SOP 12.31 Bunkering v2.pdf',
+          category: 'REGULATION',
+          score: 158,
+          reasons: ['profile_text'],
+        },
+      ]),
+    };
+    const sourceLockService = {
+      getFollowUpStateFromHistory: jest.fn().mockReturnValue(null),
+      resolveSourceLock: jest.fn().mockReturnValue({
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      }),
+      buildNextFollowUpState: jest.fn().mockReturnValue(null),
+    };
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+      undefined,
+      undefined,
+      semanticNormalizer as never,
+      semanticMatcher as never,
+      sourceLockService as never,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'i will have bunkering soon, describe me step by step procedure',
+    });
+
+    expect(
+      contextService.findContextForQuery.mock.calls.some(
+        (call) =>
+          Array.isArray(call[5]) &&
+          call[5].length === 1 &&
+          call[5][0] === 'manual-secondary',
+      ),
+    ).toBe(true);
+    expect(result.mergeBySource).toBe(true);
+    expect(result.sourceMergeTitles).toEqual([
+      'Procedures - Bunkering and Transfers (3).pdf',
+      'SOP 12.31 Bunkering v2.pdf',
+    ]);
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Procedures - Bunkering and Transfers (3).pdf',
+        }),
+        expect.objectContaining({
+          sourceTitle: 'SOP 12.31 Bunkering v2.pdf',
+        }),
+      ]),
+    );
+  });
+
   it('does not duplicate the matcher query text when retrieval and user queries are the same', async () => {
     const contextService = {
       findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),

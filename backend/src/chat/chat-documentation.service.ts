@@ -681,6 +681,14 @@ export class ChatDocumentationService {
         citations,
         auditChecklistFallbackCitations,
       );
+      citations = await this.backfillMissingShortlistedManualEvidence({
+        citations,
+        retrievalQuery: documentationRetrievalQuery,
+        shortlistedManualIds: semanticManualIds,
+        semanticCandidates,
+        sourceLockDecision,
+        searchCitationsForQuery,
+      });
       if (this.isBroadCertificateSoonQuery(effectiveUserQuery)) {
         analysisCitations = [...citations];
       }
@@ -1465,6 +1473,136 @@ export class ChatDocumentationService {
     return (selected.length > 0 ? selected : [candidates[0]])
       .slice(0, 2)
       .map((candidate) => candidate.manualId);
+  }
+
+  private async backfillMissingShortlistedManualEvidence(params: {
+    citations: ChatCitation[];
+    retrievalQuery: string;
+    shortlistedManualIds: string[];
+    semanticCandidates: DocumentationSemanticCandidate[];
+    sourceLockDecision: DocumentationSourceLockDecision;
+    searchCitationsForQuery: (
+      query: string,
+      allowedManualIds?: string[],
+    ) => Promise<ChatCitation[]>;
+  }): Promise<ChatCitation[]> {
+    const shortlistedManualIds = [
+      ...new Set(
+        params.shortlistedManualIds
+          .map((manualId) => manualId.trim())
+          .filter(Boolean),
+      ),
+    ].slice(0, 2);
+
+    if (
+      params.citations.length === 0 ||
+      params.sourceLockDecision.active ||
+      shortlistedManualIds.length < 2
+    ) {
+      return params.citations;
+    }
+
+    let citations = params.citations;
+    let coveredManualIds = new Set(
+      this.getCoveredShortlistedManualIds({
+        citations,
+        shortlistedManualIds,
+        semanticCandidates: params.semanticCandidates,
+      }),
+    );
+
+    if (coveredManualIds.size >= shortlistedManualIds.length) {
+      return citations;
+    }
+
+    for (const manualId of shortlistedManualIds) {
+      if (coveredManualIds.has(manualId)) {
+        continue;
+      }
+
+      let fallbackCitations = await params.searchCitationsForQuery(
+        params.retrievalQuery,
+        [manualId],
+      );
+
+      if (fallbackCitations.length === 0) {
+        const fallbackQuery =
+          this.queryService.buildRagFallbackQuery(params.retrievalQuery);
+        if (fallbackQuery !== params.retrievalQuery) {
+          fallbackCitations = await params.searchCitationsForQuery(
+            fallbackQuery,
+            [manualId],
+          );
+        }
+      }
+
+      if (fallbackCitations.length === 0) {
+        continue;
+      }
+
+      citations = this.citationService.mergeCitations(citations, fallbackCitations);
+      coveredManualIds = new Set(
+        this.getCoveredShortlistedManualIds({
+          citations,
+          shortlistedManualIds,
+          semanticCandidates: params.semanticCandidates,
+        }),
+      );
+
+      if (coveredManualIds.size >= shortlistedManualIds.length) {
+        break;
+      }
+    }
+
+    return citations;
+  }
+
+  private getCoveredShortlistedManualIds(params: {
+    citations: ChatCitation[];
+    shortlistedManualIds: string[];
+    semanticCandidates: DocumentationSemanticCandidate[];
+  }): string[] {
+    if (params.citations.length === 0 || params.shortlistedManualIds.length === 0) {
+      return [];
+    }
+
+    const shortlistedManualIdSet = new Set(params.shortlistedManualIds);
+    const normalizedTitleByManualId = new Map(
+      params.semanticCandidates
+        .filter((candidate) => shortlistedManualIdSet.has(candidate.manualId))
+        .map((candidate) => [
+          candidate.manualId,
+          this.queryService
+            .normalizeSourceTitleHint(candidate.filename)
+            ?.toLowerCase() ?? null,
+        ] as const),
+    );
+
+    const coveredManualIds = new Set<string>();
+    for (const citation of params.citations) {
+      const shipManualId = citation.shipManualId?.trim();
+      if (shipManualId && shortlistedManualIdSet.has(shipManualId)) {
+        coveredManualIds.add(shipManualId);
+        continue;
+      }
+
+      const normalizedSourceTitle = this.queryService
+        .normalizeSourceTitleHint(citation.sourceTitle)
+        ?.toLowerCase();
+      if (!normalizedSourceTitle) {
+        continue;
+      }
+
+      for (const manualId of params.shortlistedManualIds) {
+        const normalizedManualTitle = normalizedTitleByManualId.get(manualId);
+        if (normalizedManualTitle && normalizedManualTitle === normalizedSourceTitle) {
+          coveredManualIds.add(manualId);
+          break;
+        }
+      }
+    }
+
+    return [...coveredManualIds];
   }
 
   private buildSemanticSourceClarification(params: {
