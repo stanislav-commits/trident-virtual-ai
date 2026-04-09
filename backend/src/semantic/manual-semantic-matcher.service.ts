@@ -631,13 +631,16 @@ export class ManualSemanticMatcherService {
     const subjectPhrases = this.collectSpecificSubjectPhrases(
       params.semanticQuery,
     );
+    const hasHardSpecificityAnchors =
+      Boolean(queryVendor || queryModel || explicitSource) ||
+      queryIdentifiers.size > 0;
 
     if (
       !queryVendor &&
       !queryModel &&
       !explicitSource &&
-      !sectionHint &&
       queryIdentifiers.size === 0 &&
+      !sectionHint &&
       subjectPhrases.length === 0
     ) {
       return candidates;
@@ -661,19 +664,38 @@ export class ManualSemanticMatcherService {
         subjectPhrases,
       }),
     }));
+    if (!hasHardSpecificityAnchors) {
+      const dominantTopCandidate =
+        this.selectDominantTopSpecificCandidate(rankedCandidates);
+      if (dominantTopCandidate) {
+        return [dominantTopCandidate.candidate];
+      }
+
+      return [...rankedCandidates]
+        .sort((left, right) => right.candidate.score - left.candidate.score)
+        .map((entry) => entry.candidate);
+    }
+
     const anchoredCandidates =
       this.filterByHardSpecificityAnchors(rankedCandidates);
     const bestScore = Math.max(
       ...anchoredCandidates.map((entry) => entry.specificityScore),
     );
 
-    if (bestScore <= 0) {
-      return anchoredCandidates.map((entry) => entry.candidate);
+    const bestSpecificityCandidates =
+      bestScore <= 0
+        ? anchoredCandidates
+        : anchoredCandidates.filter(
+            (entry) => entry.specificityScore === bestScore,
+          );
+    const dominantTopCandidate = this.selectDominantTopSpecificCandidate(
+      bestSpecificityCandidates,
+    );
+    if (dominantTopCandidate) {
+      return [dominantTopCandidate.candidate];
     }
 
-    return anchoredCandidates
-      .filter((entry) => entry.specificityScore === bestScore)
-      .map((entry) => entry.candidate);
+    return bestSpecificityCandidates.map((entry) => entry.candidate);
   }
 
   private scoreProfileText(
@@ -1294,6 +1316,52 @@ export class ManualSemanticMatcherService {
     }
 
     return scopedCandidates;
+  }
+
+  private selectDominantTopSpecificCandidate(
+    rankedCandidates: SpecificSubjectCandidateRank[],
+  ): SpecificSubjectCandidateRank | null {
+    if (rankedCandidates.length === 0) {
+      return null;
+    }
+
+    const sortedCandidates = [...rankedCandidates].sort(
+      (left, right) => right.candidate.score - left.candidate.score,
+    );
+    const [topCandidate, secondCandidate] = sortedCandidates;
+    if (!topCandidate) {
+      return null;
+    }
+
+    if (!secondCandidate) {
+      return this.hasDominantSubjectEvidence(topCandidate) ? topCandidate : null;
+    }
+
+    const lead = topCandidate.candidate.score - secondCandidate.candidate.score;
+    return lead >= 18 &&
+      this.hasDominantSubjectEvidence(topCandidate)
+      ? topCandidate
+      : null;
+  }
+
+  private hasDominantSubjectEvidence(
+    rankedCandidate: SpecificSubjectCandidateRank,
+  ): boolean {
+    const strongReasons = new Set([
+      'concrete_subject',
+      'equipment_overlap',
+      'explicit_source',
+      'query_anchor',
+      'vendor',
+      'model',
+    ]);
+    return (
+      rankedCandidate.explicitSourceMatched ||
+      rankedCandidate.modelMatched ||
+      rankedCandidate.identifierMatched ||
+      rankedCandidate.vendorMatched ||
+      rankedCandidate.candidate.reasons.some((reason) => strongReasons.has(reason))
+    );
   }
 
   private matchesExplicitSourceHint(

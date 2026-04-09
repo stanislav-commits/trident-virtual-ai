@@ -1833,4 +1833,533 @@ describe('ManualSemanticMatcherService', () => {
       'manual-jets-toilet',
     ]);
   });
+
+  it('prefers a ventilation-specific battery manual over a generic lithium battery pack manual', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-akasol',
+            ragflowDocumentId: 'doc-akasol',
+            filename: '35 - 510323E - Akasol Batteries Installation Philosophy Rev E.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'general_information',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:electrical:battery_pack'],
+              secondaryConceptIds: [],
+              systems: ['battery space ventilation', 'smoke extraction'],
+              equipment: ['battery modules', 'exhaust fan', 'air damper'],
+              vendor: 'Akasol',
+              model: null,
+              aliases: ['battery installation philosophy', 'battery space'],
+              summary:
+                'Installation philosophy covering ventilation, gas evolution, and battery-space operating states.',
+              sections: [
+                {
+                  title: 'Operating states and ventilation/fire interface matrix',
+                  pageStart: 1,
+                  pageEnd: 2,
+                  conceptIds: ['tag:equipment:electrical:battery_pack'],
+                  sectionType: 'reference',
+                  summary:
+                    'Battery space operating states with ventilation modes and gas-release responses.',
+                },
+              ],
+              pageTopics: [
+                {
+                  page: 1,
+                  conceptIds: ['tag:equipment:electrical:battery_pack'],
+                  summary:
+                    'Battery space ventilation rates, gas evolution, and shutdown logic.',
+                },
+              ],
+            },
+          },
+          {
+            id: 'manual-emb',
+            ragflowDocumentId: 'doc-emb',
+            filename: 'Instruction_Manual_EMB.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:electrical:battery_pack'],
+              secondaryConceptIds: [],
+              systems: ['battery system', 'liquid cooling system'],
+              equipment: ['power battery system', 'battery box'],
+              vendor: 'Ebusco',
+              model: 'Maritime Battery',
+              aliases: ['power lithium battery system', 'battery pack'],
+              summary:
+                'Generic lithium battery pack manual covering installation, storage, and safe use.',
+              sections: [
+                {
+                  title: 'Product installation standard',
+                  pageStart: 7,
+                  pageEnd: 15,
+                  conceptIds: ['tag:equipment:electrical:battery_pack'],
+                  sectionType: 'procedure',
+                  summary:
+                    'Battery pack installation with cables, connectors, and checks.',
+                },
+              ],
+              pageTopics: [
+                {
+                  page: 16,
+                  conceptIds: ['tag:equipment:electrical:battery_pack'],
+                  summary: 'Storage requirements and fire-prevention precautions.',
+                },
+              ],
+            },
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'general_information',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: [],
+      candidateConceptIds: [
+        'tag:equipment:electrical:battery_pack',
+        'tag:equipment:hvac:er_ventilation',
+      ],
+      equipment: ['lithium battery room'],
+      systems: ['ventilation', 'lithium battery'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['REGULATION', 'MANUALS'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'direct_answer',
+      needsClarification: true,
+      clarificationReason: 'semantic_low_confidence',
+      confidence: 0.45,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText:
+        'What ventilation is required in the lithium battery room during normal operation and gas release?',
+      semanticQuery,
+      allowedDocumentCategories: ['REGULATION', 'MANUALS'],
+    });
+
+    expect(candidates.map((candidate) => candidate.manualId)).toEqual([
+      'manual-akasol',
+    ]);
+  });
+
+  it('prefers the watermaker manual over generic fresh-water documents for flushing queries', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-schenker',
+            ragflowDocumentId: 'doc-schenker',
+            filename: 'Scenker watermakersMANUAL TWIN300_REV02.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:water:watermaker'],
+              secondaryConceptIds: [],
+              systems: ['fresh water system', 'reverse osmosis'],
+              equipment: ['watermaker', 'pump group', 'membranes'],
+              vendor: 'Schenker',
+              model: 'TWIN300 ZEN',
+              aliases: ['Schenker watermaker', 'TWIN300'],
+              summary:
+                'Installation, use and maintenance manual for a Schenker watermaker with flushing and maintenance procedures.',
+              sections: [
+                {
+                  title: 'Normal operating procedures',
+                  pageStart: 43,
+                  pageEnd: 43,
+                  conceptIds: ['tag:equipment:water:watermaker'],
+                  sectionType: 'procedure',
+                  summary:
+                    'Normal operation with or without final flushing, timer cycle, and long flushing procedure.',
+                },
+              ],
+              pageTopics: [
+                {
+                  page: 43,
+                  conceptIds: ['tag:equipment:water:watermaker'],
+                  summary:
+                    'Normal operation with final flushing and long flushing procedure.',
+                },
+              ],
+            },
+            tags: [
+              {
+                tag: {
+                  key: 'tag:equipment:water:watermaker',
+                  category: 'equipment',
+                  subcategory: 'water',
+                  item: 'watermaker',
+                  description: 'Fresh-water production system.',
+                },
+              },
+            ],
+          },
+          {
+            id: 'manual-fresh-water-history',
+            ragflowDocumentId: 'doc-fresh-water-history',
+            filename: 'Technical Components (Details).pdf',
+            category: 'HISTORY_PROCEDURES',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'maintenance_procedure',
+              sourceCategory: 'HISTORY_PROCEDURES',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:water:tank'],
+              systems: ['fresh water system'],
+              equipment: ['fresh water tank'],
+              vendor: null,
+              model: null,
+              aliases: ['technical components'],
+              summary:
+                'Tank inspection history for fresh water components and sanitation tasks.',
+              sections: [
+                {
+                  title: 'Fresh water tank inspection',
+                  pageStart: 3,
+                  pageEnd: 4,
+                  conceptIds: ['tag:equipment:water:tank'],
+                  sectionType: 'checklist',
+                  summary: 'Annual sanitation and inspection tasks for fresh water tanks.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-pressure-pump',
+            ragflowDocumentId: 'doc-pressure-pump',
+            filename: 'Components Database Report.pdf',
+            category: 'HISTORY_PROCEDURES',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'general_information',
+              sourceCategory: 'HISTORY_PROCEDURES',
+              primaryConceptIds: [],
+              secondaryConceptIds: ['tag:equipment:water:pressure_pump'],
+              systems: ['fresh water system'],
+              equipment: ['water pressure pump'],
+              vendor: null,
+              model: null,
+              aliases: ['components database'],
+              summary: 'Index of fresh water system components and pumps.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'operational_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:water:watermaker'],
+      candidateConceptIds: ['tag:equipment:water:watermaker'],
+      equipment: ['watermaker'],
+      systems: ['fresh water'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'fresh-water flush after use',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.96,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'How do I fresh-water flush the watermaker after use?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+    });
+
+    expect(candidates.map((candidate) => candidate.manualId)).toEqual([
+      'manual-schenker',
+    ]);
+  });
+
+  it('prefers the emergency bilge pump manual over generic engine and generator fuel-filter manuals', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-macb',
+            ragflowDocumentId: 'doc-macb',
+            filename: 'MN_MACB531.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: ['tag:equipment:bilge:pump_emergency'],
+              secondaryConceptIds: ['spare_parts_catalog'],
+              systems: ['bilge system', 'diesel transfer'],
+              equipment: ['emergency bilge pump', 'fuel filter'],
+              vendor: 'Gianneschi Pumps and Blowers',
+              model: 'MACB531',
+              aliases: ['Emergency Bilge Pump', 'MACB 531'],
+              summary:
+                'Operating manual for the emergency bilge pump with diesel engine maintenance including fuel filter checks.',
+              sections: [
+                {
+                  title: 'Diesel Engine Maintenance',
+                  pageStart: 9,
+                  pageEnd: 9,
+                  conceptIds: ['tag:equipment:bilge:pump_emergency'],
+                  sectionType: 'checklist',
+                  summary:
+                    'Cold-engine maintenance intervals for oil level, air cleaner, oil filter, fuel filter, and cooling fins.',
+                },
+              ],
+              pageTopics: [],
+            },
+            tags: [
+              {
+                tag: {
+                  key: 'tag:equipment:bilge:pump_emergency',
+                  category: 'equipment',
+                  subcategory: 'bilge',
+                  item: 'pump_emergency',
+                  description: 'Emergency bilge pump.',
+                },
+              },
+            ],
+          },
+          {
+            id: 'manual-volvo',
+            ragflowDocumentId: 'doc-volvo',
+            filename: 'Volvo Penta_operators manual_47710211.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'operational_procedure',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['fuel system', 'engine'],
+              equipment: ['marine engine', 'fuel filter'],
+              vendor: 'Volvo Penta',
+              model: 'D13',
+              aliases: ['marine engine'],
+              summary: 'Operator manual with engine maintenance and fuel filter procedures.',
+              sections: [
+                {
+                  title: 'Maintenance',
+                  pageStart: 124,
+                  pageEnd: 153,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary: 'Engine maintenance procedures including filters and fuel system tasks.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-mase',
+            ragflowDocumentId: 'doc-mase',
+            filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'manual_lookup',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['fuel system', 'generator control panel'],
+              equipment: ['generator unit', 'fuel filter'],
+              vendor: 'MASE Generators',
+              model: 'VS 350 SV',
+              aliases: ['marine generator'],
+              summary: 'Generator manual with maintenance section covering filters and fuel system tasks.',
+              sections: [
+                {
+                  title: 'Maintenance',
+                  pageStart: 41,
+                  pageEnd: 59,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary: 'Routine maintenance including fuel-system filters.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:bilge:pump_emergency'],
+      candidateConceptIds: [
+        'tag:equipment:bilge:pump_emergency',
+        'tag:equipment:fuel:filter_primary',
+      ],
+      equipment: ['emergency bilge pump', 'fuel filter'],
+      systems: ['bilge system', 'fuel system'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: 'fuel filter replacement',
+      answerFormat: 'step_by_step',
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.92,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText: 'How do I replace the fuel filter on the emergency bilge pump?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+    });
+
+    expect(candidates.map((candidate) => candidate.manualId)).toEqual([
+      'manual-macb',
+    ]);
+  });
+
+  it('prefers the Jets instruction manual over vendor compliance declarations for troubleshooting', async () => {
+    const prisma = {
+      shipManual: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'manual-jets-instruction',
+            ragflowDocumentId: 'doc-jets-instruction',
+            filename: 'Jets.614213.Instruction Manual.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'troubleshooting',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['sanitary system', 'vacuum system'],
+              equipment: ['vacuum toilet'],
+              vendor: 'Jets Vacuum AS',
+              model: '614213',
+              aliases: ['Jets toilet'],
+              summary:
+                'Instruction manual with troubleshooting guidance for Jets vacuum toilets.',
+              sections: [
+                {
+                  title: 'Troubleshooting',
+                  pageStart: 18,
+                  pageEnd: 24,
+                  conceptIds: [],
+                  sectionType: 'procedure',
+                  summary:
+                    'Check vacuum pressure, valves, and alarms when the toilet is not flushing properly.',
+                },
+              ],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-jets-md',
+            ragflowDocumentId: 'doc-jets-md',
+            filename: 'MD 614213 Jets Vacuum AS.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'regulation_compliance',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['vacuum system'],
+              equipment: ['Jets vacuum product range'],
+              vendor: 'Jets Vacuum AS',
+              model: null,
+              aliases: ['MD 614213'],
+              summary:
+                'Material declaration listing regulated substance compliance for a Jets product range.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+          {
+            id: 'manual-jets-sd',
+            ragflowDocumentId: 'doc-jets-sd',
+            filename: 'SD 614213 Jets Vacuum AS.pdf',
+            category: 'MANUALS',
+            semanticProfile: {
+              schemaVersion: '2026-04-06.semantic-v2',
+              documentType: 'general_information',
+              sourceCategory: 'MANUALS',
+              primaryConceptIds: [],
+              secondaryConceptIds: [],
+              systems: ['vacuum system'],
+              equipment: ['Jets vacuum product range'],
+              vendor: 'Jets Vacuum AS',
+              model: null,
+              aliases: ['SD 614213'],
+              summary: 'Self-declaration for Jets product compliance and documentation.',
+              sections: [],
+              pageTopics: [],
+            },
+          },
+        ]),
+      },
+    } as any;
+    const service = new ManualSemanticMatcherService(prisma);
+    const semanticQuery: DocumentationSemanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'troubleshooting',
+      conceptFamily: 'asset_system',
+      selectedConceptIds: ['tag:equipment:deck:rope'],
+      candidateConceptIds: ['tag:equipment:deck:rope'],
+      equipment: ['vacuum toilet'],
+      systems: ['sanitary system', 'vacuum system'],
+      vendor: 'Jets',
+      model: null,
+      sourcePreferences: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'step_by_step',
+      needsClarification: true,
+      clarificationReason: 'semantic_low_confidence',
+      confidence: 0.42,
+    };
+
+    const candidates = await service.shortlistManuals({
+      shipId: null,
+      role: 'admin',
+      queryText:
+        'How do I troubleshoot a Jets vacuum toilet that is not flushing properly?',
+      semanticQuery,
+      allowedDocumentCategories: ['MANUALS', 'HISTORY_PROCEDURES', 'REGULATION'],
+    });
+
+    expect(candidates.map((candidate) => candidate.manualId)).toEqual([
+      'manual-jets-instruction',
+    ]);
+  });
 });
