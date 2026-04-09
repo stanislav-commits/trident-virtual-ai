@@ -242,6 +242,14 @@ export class ChatDocumentationService {
         semanticManualIds,
         tagScopedManualIds,
       });
+      const allowedManualIds = this.shouldRelaxMaintenanceManualScope(
+        effectiveUserQuery,
+        retrievalQuery,
+        normalizedQuery,
+        sourceLockDecision.active,
+      )
+        ? tagScopedManualIds
+        : baseAllowedManualIds;
       const documentationRetrievalQuery =
         this.resolveSourceLockedRetrievalQuery({
           userQuery,
@@ -332,20 +340,20 @@ export class ChatDocumentationService {
 
       const searchCitationsForQuery = async (
         query: string,
-        allowedManualIds: string[] | undefined = baseAllowedManualIds,
+        scopedManualIds: string[] | undefined = allowedManualIds,
       ): Promise<ChatCitation[]> => {
         const retrievalWindow = this.queryService.getRetrievalWindow(
           query,
           effectiveUserQuery,
         );
         if (role === 'admin' || !shipId) {
-          if (effectiveDocumentCategories?.length || allowedManualIds?.length) {
+          if (effectiveDocumentCategories?.length || scopedManualIds?.length) {
             return this.contextService.findContextForAdminQuery(
               query,
               retrievalWindow.topK,
               retrievalWindow.candidateK,
               effectiveDocumentCategories,
-              allowedManualIds,
+              scopedManualIds,
             );
           }
 
@@ -357,14 +365,14 @@ export class ChatDocumentationService {
         }
 
         const result =
-          effectiveDocumentCategories?.length || allowedManualIds?.length
+          effectiveDocumentCategories?.length || scopedManualIds?.length
             ? await this.contextService.findContextForQuery(
                 shipId,
                 query,
                 retrievalWindow.topK,
                 retrievalWindow.candidateK,
                 effectiveDocumentCategories,
-                allowedManualIds,
+                scopedManualIds,
               )
             : await this.contextService.findContextForQuery(
                 shipId,
@@ -580,7 +588,7 @@ export class ChatDocumentationService {
         effectiveUserQuery,
         citations,
         effectiveDocumentCategories,
-        baseAllowedManualIds,
+        allowedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -597,7 +605,7 @@ export class ChatDocumentationService {
           effectiveUserQuery,
           citations,
           effectiveDocumentCategories,
-          baseAllowedManualIds,
+          allowedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -612,7 +620,7 @@ export class ChatDocumentationService {
         effectiveUserQuery,
         citations,
         effectiveDocumentCategories,
-        baseAllowedManualIds,
+        allowedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -629,7 +637,7 @@ export class ChatDocumentationService {
           effectiveUserQuery,
           citations,
           effectiveDocumentCategories,
-          baseAllowedManualIds,
+          allowedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -645,7 +653,7 @@ export class ChatDocumentationService {
           effectiveUserQuery,
           citations,
           effectiveDocumentCategories,
-          baseAllowedManualIds,
+          allowedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -660,7 +668,7 @@ export class ChatDocumentationService {
         effectiveUserQuery,
         citations,
         effectiveDocumentCategories,
-        baseAllowedManualIds,
+        allowedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -675,7 +683,7 @@ export class ChatDocumentationService {
         effectiveUserQuery,
         citations,
         effectiveDocumentCategories,
-        baseAllowedManualIds,
+        allowedManualIds,
       );
       citations = this.citationService.mergeCitations(
         citations,
@@ -749,7 +757,7 @@ export class ChatDocumentationService {
             effectiveUserQuery,
             citations,
             effectiveDocumentCategories,
-            baseAllowedManualIds,
+            allowedManualIds,
           );
         citations = this.citationService.mergeCitations(
           citations,
@@ -766,7 +774,7 @@ export class ChatDocumentationService {
             effectiveUserQuery,
             citations,
             effectiveDocumentCategories,
-            baseAllowedManualIds,
+            allowedManualIds,
           );
         citations = this.citationService.mergeCitations(
           citations,
@@ -782,7 +790,7 @@ export class ChatDocumentationService {
             effectiveUserQuery,
             citations,
             effectiveDocumentCategories,
-            baseAllowedManualIds,
+            allowedManualIds,
           );
         citations = this.citationService.mergeCitations(
           citations,
@@ -814,7 +822,7 @@ export class ChatDocumentationService {
       const enforceManualScope = (items: ChatCitation[]) =>
         this.enforceManualScopeOnCitations({
           citations: items,
-          baseAllowedManualIds,
+          baseAllowedManualIds: allowedManualIds,
           sourceLockDecision,
         });
       const finalAnalysisCitations = enforceManualScope(
@@ -1817,6 +1825,24 @@ export class ChatDocumentationService {
     return tagScopedManualIds.length > 0 ? tagScopedManualIds : undefined;
   }
 
+  private shouldRelaxMaintenanceManualScope(
+    effectiveUserQuery: string,
+    retrievalQuery: string,
+    normalizedQuery: ChatNormalizedQuery | undefined,
+    sourceLockActive: boolean,
+  ): boolean {
+    if (sourceLockActive) {
+      return false;
+    }
+
+    const queryPlan = this.queryPlanner.planQuery(
+      normalizedQuery ?? effectiveUserQuery,
+      retrievalQuery,
+    );
+
+    return queryPlan.primaryIntent === 'next_due_calculation';
+  }
+
   private buildRetrievalTrace(params: {
     userQuery: string;
     retrievalQuery: string;
@@ -1894,7 +1920,8 @@ export class ChatDocumentationService {
 
     if (
       queryPlan.primaryIntent !== 'telemetry_status' &&
-      queryPlan.primaryIntent !== 'telemetry_list'
+      queryPlan.primaryIntent !== 'telemetry_list' &&
+      queryPlan.primaryIntent !== 'telemetry_history'
     ) {
       return false;
     }

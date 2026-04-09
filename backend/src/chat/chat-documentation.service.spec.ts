@@ -2557,6 +2557,98 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     ).not.toHaveBeenCalled();
   });
 
+  it('skips documentation retrieval entirely for telemetry-first historical position queries', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const normalizationService = new ChatQueryNormalizationService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest
+        .fn()
+        .mockImplementation(
+          (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+            citations,
+            compareBySource: false,
+            sourceComparisonTitles: [],
+            mergeBySource: false,
+            sourceMergeTitles: [],
+          }),
+        ),
+      limitCitationsForLlm: jest
+        .fn()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const normalizedQuery = normalizationService.normalizeTurn({
+      userQuery: 'What was the yacht position on 15 March 2026 at 10:00?',
+    });
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'What was the yacht position on 15 March 2026 at 10:00?',
+      normalizedQuery,
+    });
+
+    expect(result.citations).toEqual([]);
+    expect(result.analysisCitations).toEqual([]);
+    expect(contextService.findContextForQuery).not.toHaveBeenCalled();
+    expect(
+      scanService.expandReferenceDocumentChunkCitations,
+    ).not.toHaveBeenCalled();
+    expect(
+      scanService.expandMaintenanceAssetDocumentChunkCitations,
+    ).not.toHaveBeenCalled();
+  });
+
   it('keeps documentation clarification selections out of telemetry-first skip logic', () => {
     const service = new ChatDocumentationService(
       {} as never,
@@ -2968,6 +3060,137 @@ Location: BOX 25 VOLVO PENTA SPARES`,
         expect.objectContaining({
           shipManualId: 'manual-semantic',
           sourceTitle: 'Fuel Tank Sounding Table.pdf',
+        }),
+      ]),
+    );
+  });
+
+  it('relaxes semantic manual scope for counter-based maintenance follow-ups so history docs remain available', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = new ChatDocumentationCitationService(queryService);
+    const maintenanceCitation: ChatCitation = {
+      shipManualId: 'manual-history-1',
+      sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+      sourceCategory: 'HISTORY_PROCEDURES',
+      snippet:
+        'Component name: SB ENGINE Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE',
+      score: 1,
+    };
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([maintenanceCitation]),
+      expandManualIntervalMaintenanceChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+    const semanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'maintenance_procedure' as const,
+      conceptFamily: 'asset_system' as const,
+      selectedConceptIds: ['tag:equipment:electrical:generator_sb'],
+      candidateConceptIds: ['tag:equipment:electrical:generator_sb'],
+      equipment: ['generator'],
+      systems: ['electrical'],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS' as const, 'HISTORY_PROCEDURES' as const],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: '500-hour maintenance',
+      answerFormat: 'checklist' as const,
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.78,
+    };
+    const semanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue(semanticQuery),
+    };
+    const semanticMatcher = {
+      shortlistManuals: jest.fn().mockResolvedValue([
+        {
+          manualId: 'manual-wrong',
+          documentId: 'doc-wrong',
+          filename: 'Tecnical data sheet_2AF10A27_rev00.pdf',
+          category: 'MANUALS',
+          score: 171,
+          reasons: ['profile_text'],
+        },
+      ]),
+    };
+    const tagLinks = {
+      findTaggedManualIdsForShipQuery: jest
+        .fn()
+        .mockResolvedValue(['manual-history-1', 'manual-history-2']),
+      findTaggedManualIdsForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const sourceLockService = {
+      getFollowUpStateFromHistory: jest.fn().mockReturnValue(null),
+      resolveSourceLock: jest.fn().mockReturnValue({
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      }),
+      buildNextFollowUpState: jest.fn().mockReturnValue(null),
+    };
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+      undefined,
+      tagLinks as never,
+      semanticNormalizer as never,
+      semanticMatcher as never,
+      sourceLockService as never,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'should i perform any maintenance at this counter?',
+    });
+
+    expect((contextService.findContextForQuery as jest.Mock).mock.calls[0][5]).toEqual([
+      'manual-history-1',
+      'manual-history-2',
+    ]);
+    expect((contextService.findContextForQuery as jest.Mock).mock.calls[0][4]).toEqual(
+      expect.arrayContaining(['HISTORY_PROCEDURES']),
+    );
+    expect(
+      (
+        scanService.expandMaintenanceAssetDocumentChunkCitations as jest.Mock
+      ).mock.calls[0][5],
+    ).toEqual(['manual-history-1', 'manual-history-2']);
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          shipManualId: 'manual-history-1',
+          sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
         }),
       ]),
     );
