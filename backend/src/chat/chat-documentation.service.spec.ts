@@ -76,7 +76,7 @@ describe('ChatDocumentationService', () => {
     expect(clarification).toBeNull();
   });
 
-  it('keeps all strong semantic manual candidates for retrieval scope', () => {
+  it('keeps only the top two strong semantic manual candidates for retrieval scope', () => {
     const service = new ChatDocumentationService(
       {} as never,
       new ChatDocumentationQueryService(),
@@ -138,11 +138,7 @@ describe('ChatDocumentationService', () => {
       },
     );
 
-    expect(selectedManualIds).toEqual([
-      'manual-primary',
-      'manual-secondary',
-      'manual-third',
-    ]);
+    expect(selectedManualIds).toEqual(['manual-primary', 'manual-secondary']);
   });
 
   it('does not ask for semantic source clarification when the top candidate has stronger direct source-match evidence', () => {

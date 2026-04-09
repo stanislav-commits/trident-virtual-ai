@@ -1573,7 +1573,7 @@ describe('ManualSemanticMatcherService', () => {
     expect(candidates[0]).toEqual(
       expect.objectContaining({
         manualId: 'manual-fs-ime',
-        reasons: expect.arrayContaining(['section_hint']),
+        reasons: expect.arrayContaining(['equipment_overlap']),
       }),
     );
   });

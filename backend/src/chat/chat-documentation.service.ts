@@ -1462,9 +1462,9 @@ export class ChatDocumentationService {
       candidates.filter((candidate) => candidate.score >= floor),
     );
 
-    return (selected.length > 0 ? selected : [candidates[0]]).map(
-      (candidate) => candidate.manualId,
-    );
+    return (selected.length > 0 ? selected : [candidates[0]])
+      .slice(0, 2)
+      .map((candidate) => candidate.manualId);
   }
 
   private buildSemanticSourceClarification(params: {

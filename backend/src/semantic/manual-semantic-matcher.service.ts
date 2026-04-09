@@ -825,7 +825,9 @@ export class ManualSemanticMatcherService {
     }
 
     const hintTokens = [...this.tokenizeStructuredPhrase(normalizedHint)].filter(
-      (token) => token.length > 3 || /\d/.test(token),
+      (token) =>
+        (token.length > 3 || /\d/.test(token)) &&
+        !PROFILE_TEXT_QUERY_STOP_WORDS.has(token),
     );
     if (hintTokens.length === 0) {
       return 0;
