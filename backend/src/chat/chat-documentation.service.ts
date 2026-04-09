@@ -832,6 +832,9 @@ export class ChatDocumentationService {
           resolvedSubjectQuery ?? documentationRetrievalQuery,
           effectiveUserQuery,
           citations,
+          {
+            shortlistedManualIds: semanticManualIds,
+          },
         );
       citations = this.prioritizeSourceLockedEvidence({
         citations: preparedAnswerCitations.citations,

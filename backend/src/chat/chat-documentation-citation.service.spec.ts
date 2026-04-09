@@ -37,12 +37,14 @@ describe('ChatDocumentationCitationService', () => {
   it('keeps only the top two relevant manual sources and marks them for merged answering', () => {
     const citations = [
       {
+        shipManualId: 'manual-primary',
         sourceTitle: 'Primary Manual.pdf',
         snippet:
           'Mini alarm installation: remove the cover, mount the base, connect the wiring, and tighten the security screw.',
         score: 0.97,
       },
       {
+        shipManualId: 'manual-secondary',
         sourceTitle: 'Secondary Manual.pdf',
         snippet:
           'Mini alarm installation note: use IP65 cable glands and seal the mounting screws for exterior locations.',
@@ -60,6 +62,9 @@ describe('ChatDocumentationCitationService', () => {
       'how to install minialarm',
       'How do I install the mini alarm?',
       citations,
+      {
+        shortlistedManualIds: ['manual-primary', 'manual-secondary'],
+      },
     );
 
     expect(prepared.compareBySource).toBe(false);
@@ -71,6 +76,63 @@ describe('ChatDocumentationCitationService', () => {
     expect(
       prepared.citations.map((citation) => citation.sourceTitle),
     ).toEqual(['Primary Manual.pdf', 'Secondary Manual.pdf']);
+  });
+
+  it('keeps shortlisted procedure sources merged even when one source is clearly stronger', () => {
+    const citations = [
+      {
+        shipManualId: 'manual-primary',
+        sourceTitle: 'Procedures - Bunkering and Transfers (3).pdf',
+        snippet:
+          'Before bunkering inform the deck officer and captain, agree tanks and flow rate, establish communications, and complete the bunker checklist.',
+        score: 0.98,
+      },
+      {
+        shipManualId: 'manual-primary',
+        sourceTitle: 'Procedures - Bunkering and Transfers (3).pdf',
+        snippet:
+          'During bunkering monitor all tank levels, compare delivered quantity, and take a mid stream sample at the engine room sample tap.',
+        score: 0.95,
+      },
+      {
+        shipManualId: 'manual-primary',
+        sourceTitle: 'Procedures - Bunkering and Transfers (3).pdf',
+        snippet:
+          'After bunkering blow through the line, compare all tank readings, remove signage, and send samples for analysis if required.',
+        score: 0.93,
+      },
+      {
+        shipManualId: 'manual-secondary',
+        sourceTitle: 'SOP 12.31 Bunkering v2.pdf',
+        snippet:
+          'Bunkering checklist: have SOPEP kit, fire extinguisher, fresh water hoses ready, raise Bravo flag, plug scuppers, and wet the deck.',
+        score: 0.66,
+      },
+    ];
+
+    const prepared = service.prepareCitationsForAnswer(
+      'i will have bunkering soon, describe me step by step procedure',
+      'i will have bunkering soon, describe me step by step procedure',
+      citations,
+      {
+        shortlistedManualIds: ['manual-primary', 'manual-secondary'],
+      },
+    );
+
+    expect(prepared.compareBySource).toBe(false);
+    expect(prepared.mergeBySource).toBe(true);
+    expect(prepared.sourceMergeTitles).toEqual([
+      'Procedures - Bunkering and Transfers (3).pdf',
+      'SOP 12.31 Bunkering v2.pdf',
+    ]);
+    expect(
+      new Set(prepared.citations.map((citation) => citation.sourceTitle)),
+    ).toEqual(
+      new Set([
+        'Procedures - Bunkering and Transfers (3).pdf',
+        'SOP 12.31 Bunkering v2.pdf',
+      ]),
+    );
   });
 
   it('prefers the exact source when another source is only approximate', () => {

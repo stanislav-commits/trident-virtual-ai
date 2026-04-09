@@ -10,6 +10,7 @@ import {
 interface SourceEvidenceProfile {
   sourceKey: string;
   sourceTitle: string;
+  manualIds: string[];
   citations: ChatCitation[];
   combinedText: string;
   subjectCoverage: number;
@@ -202,6 +203,9 @@ export class ChatDocumentationCitationService {
     retrievalQuery: string,
     userQuery: string,
     citations: ChatCitation[],
+    options?: {
+      shortlistedManualIds?: string[];
+    },
   ): {
     citations: ChatCitation[];
     compareBySource: boolean;
@@ -276,6 +280,31 @@ export class ChatDocumentationCitationService {
         ),
         mergeBySource: false,
         sourceMergeTitles: [],
+      };
+    }
+
+    const shortlistedAnswerProfiles = this.selectShortlistedAnswerSourceProfiles(
+      retrievalQuery,
+      userQuery,
+      profiles,
+      options?.shortlistedManualIds,
+    );
+    if (shortlistedAnswerProfiles.length > 1) {
+      const sourceKeys = new Set(
+        shortlistedAnswerProfiles.map((profile) => profile.sourceKey),
+      );
+      return {
+        citations: this.balanceCitationsAcrossSources(
+          answerCitations,
+          sourceKeys,
+          4,
+        ),
+        compareBySource: false,
+        sourceComparisonTitles: [],
+        mergeBySource: true,
+        sourceMergeTitles: shortlistedAnswerProfiles.map(
+          (profile) => profile.sourceTitle,
+        ),
       };
     }
 
@@ -2371,6 +2400,13 @@ export class ChatDocumentationCitationService {
         return {
           sourceKey,
           sourceTitle: sourceCitations[0]?.sourceTitle ?? sourceKey,
+          manualIds: [
+            ...new Set(
+              sourceCitations
+                .map((citation) => citation.shipManualId?.trim())
+                .filter((manualId): manualId is string => Boolean(manualId)),
+            ),
+          ],
           citations: sourceCitations,
           combinedText: plainText,
           subjectCoverage,
@@ -2515,6 +2551,56 @@ export class ChatDocumentationCitationService {
         top.explicitEvidenceScore >= second.explicitEvidenceScore);
 
     return topClearlyStronger ? [top.sourceKey] : [];
+  }
+
+  private selectShortlistedAnswerSourceProfiles(
+    retrievalQuery: string,
+    userQuery: string,
+    profiles: SourceEvidenceProfile[],
+    shortlistedManualIds?: string[],
+  ): SourceEvidenceProfile[] {
+    if (profiles.length < 2 || this.hasExplicitSourceRequest(userQuery)) {
+      return [];
+    }
+
+    const shortlist = new Set(
+      (shortlistedManualIds ?? [])
+        .map((manualId) => manualId.trim())
+        .filter(Boolean),
+    );
+    if (shortlist.size < 2) {
+      return [];
+    }
+
+    const shortlistedProfiles = profiles.filter((profile) =>
+      profile.manualIds.some((manualId) => shortlist.has(manualId)),
+    );
+    if (shortlistedProfiles.length < 2) {
+      return [];
+    }
+
+    const [topProfile, ...remainingProfiles] = shortlistedProfiles;
+    if (!topProfile) {
+      return [];
+    }
+
+    const selectedProfiles = [topProfile];
+    for (const candidateProfile of remainingProfiles) {
+      if (
+        selectedProfiles.length >= 2 ||
+        !this.isRelevantSecondarySourceProfile(
+          retrievalQuery,
+          topProfile,
+          candidateProfile,
+        )
+      ) {
+        continue;
+      }
+
+      selectedProfiles.push(candidateProfile);
+    }
+
+    return selectedProfiles;
   }
 
   private selectTopAnswerSourceProfiles(
