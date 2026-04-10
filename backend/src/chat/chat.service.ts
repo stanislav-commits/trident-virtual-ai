@@ -21,6 +21,12 @@ import {
   ChatHistoryMessage,
   ChatNormalizedQuery,
 } from './chat.types';
+import {
+  buildConversationalReply,
+  detectChatResponseLanguage,
+  localizeApproximateDuration,
+  localizeChatText,
+} from './chat-language.utils';
 import type { DocumentationSemanticQuery } from '../semantic/semantic.types';
 import { sortChatSessions } from './chat-session-order';
 import {
@@ -485,6 +491,24 @@ export class ChatService {
         userQuery,
         messageHistory,
       });
+      const conversationalReply = buildConversationalReply(userQuery);
+      if (conversationalReply) {
+        return this.addRoutedAssistantMessage({
+          sessionId,
+          content: conversationalReply,
+          route: 'deterministic_general',
+          normalizedQuery,
+          routeTrace: ['conversation:small_talk'],
+          ragflowContext: {
+            usedLlm: false,
+            usedDocumentation: false,
+            usedCurrentTelemetry: false,
+            usedHistoricalTelemetry: false,
+            conversational: true,
+          },
+          contextReferences: [],
+        });
+      }
 
       const documentationContext =
         await this.documentationService.prepareDocumentationContext({
@@ -611,8 +635,12 @@ export class ChatService {
       if (sourceLockActive && !hasDocumentationEvidenceForLockedSource) {
         return this.addRoutedAssistantMessage({
           sessionId,
-          content:
-            "I couldn't find supporting documentation in the selected source for that question. I won't answer from unrelated telemetry or other documents unless you choose a different source or ask me to search more broadly.",
+          content: localizeChatText(userQuery, {
+            en: "I couldn't find supporting documentation in the selected source for that question. I won't answer from unrelated telemetry or other documents unless you choose a different source or ask me to search more broadly.",
+            uk: 'Я не знайшов підтверджувальної документації в обраному джерелі для цього запиту. Не відповідатиму за нерелевантною телеметрією чи іншими документами, якщо ви не виберете інше джерело або не попросите пошукати ширше.',
+            it: 'Non ho trovato documentazione di supporto nella fonte selezionata per questa domanda. Non risponderò usando telemetria non pertinente o altri documenti a meno che tu non scelga una fonte diversa o non mi chieda di cercare più ampiamente.',
+            ru: 'Я не нашёл подтверждающей документации в выбранном источнике для этого запроса. Не буду отвечать по нерелевантной телеметрии или другим документам, если ты не выберешь другой источник или не попросишь поискать шире.',
+          }),
           route: 'deterministic_document',
           normalizedQuery: effectiveNormalizedQuery,
           routeTrace: ['documentation:source_lock_no_evidence'],
@@ -728,8 +756,12 @@ export class ChatService {
           });
         return this.addRoutedAssistantMessage({
           sessionId,
-          content:
-            'I could not resolve the requested historical telemetry from the available data, so I am not substituting current values as a fallback. Please restate the metric or provide a more specific time window.',
+          content: localizeChatText(userQuery, {
+            en: 'I could not resolve the requested historical telemetry from the available data, so I am not substituting current values as a fallback. Please restate the metric or provide a more specific time window.',
+            uk: 'Я не зміг визначити запитану історичну телеметрію з наявних даних, тому не підставляю поточні значення як fallback. Будь ласка, уточніть метрику або вкажіть точніший часовий проміжок.',
+            it: 'Non sono riuscito a determinare la telemetria storica richiesta dai dati disponibili, quindi non sostituisco i valori correnti come fallback. Per favore riformula la metrica o indica un intervallo temporale più specifico.',
+            ru: 'Я не смог определить запрошенную историческую телеметрию из доступных данных, поэтому не подставляю текущие значения как fallback. Пожалуйста, уточни метрику или укажи более точный временной диапазон.',
+          }),
           route: 'clarification',
           normalizedQuery: effectiveNormalizedQuery,
           routeTrace: ['historical_telemetry:fallback_blocked'],
@@ -1074,8 +1106,12 @@ export class ChatService {
       if (telemetryOnlyQuery) {
         return this.addRoutedAssistantMessage({
           sessionId,
-          content:
-            "I couldn't determine the requested answer from direct matched telemetry data.",
+          content: localizeChatText(userQuery, {
+            en: "I couldn't determine the requested answer from direct matched telemetry data.",
+            uk: 'Я не зміг визначити потрібну відповідь за прямо зіставленими телеметричними даними.',
+            it: 'Non sono riuscito a determinare la risposta richiesta dai dati di telemetria direttamente corrispondenti.',
+            ru: 'Я не смог определить нужный ответ по напрямую сопоставленным телеметрическим данным.',
+          }),
           route: 'current_telemetry',
           normalizedQuery: effectiveNormalizedQuery,
           routeTrace: ['current_telemetry:telemetry_only_unavailable'],
@@ -1102,8 +1138,12 @@ export class ChatService {
       ) {
         return this.addRoutedAssistantMessage({
           sessionId,
-          content:
-            "I couldn't find supporting documentation for that question in the available manuals. I won't answer from general knowledge unless you ask me to search more broadly or choose a specific source.",
+          content: localizeChatText(userQuery, {
+            en: "I couldn't find supporting documentation for that question in the available manuals. I won't answer from general knowledge unless you ask me to search more broadly or choose a specific source.",
+            uk: 'Я не знайшов підтверджувальної документації для цього запиту в доступних мануалах. Не відповідатиму із загальних знань, якщо ви не попросите пошукати ширше або не виберете конкретне джерело.',
+            it: 'Non ho trovato documentazione di supporto per questa domanda nei manuali disponibili. Non risponderò con conoscenza generale a meno che tu non mi chieda di cercare più ampiamente o di scegliere una fonte specifica.',
+            ru: 'Я не нашёл подтверждающей документации для этого запроса в доступных мануалах. Не буду отвечать из общих знаний, если ты не попросишь поискать шире или не выберешь конкретный источник.',
+          }),
           route: 'deterministic_document',
           normalizedQuery: effectiveNormalizedQuery,
           routeTrace: ['documentation:no_evidence'],
@@ -1203,7 +1243,12 @@ export class ChatService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      const fallback = `I encountered an issue processing your query: ${errorMessage}. Please try again or contact support.`;
+      const fallback = localizeChatText(userQuery, {
+        en: `I encountered an issue processing your query: ${errorMessage}. Please try again or contact support.`,
+        uk: `Під час обробки вашого запиту сталася помилка: ${errorMessage}. Спробуйте ще раз або зверніться в підтримку.`,
+        it: `Si è verificato un problema durante l'elaborazione della tua richiesta: ${errorMessage}. Riprova oppure contatta il supporto.`,
+        ru: `При обработке вашего запроса возникла проблема: ${errorMessage}. Попробуйте ещё раз или обратитесь в поддержку.`,
+      });
       const fallbackNormalizedQuery =
         llmErrorFallbackContext?.normalizedQuery ??
         this.queryNormalizationService.normalizeTurn({
@@ -2650,6 +2695,7 @@ export class ChatService {
     if (!this.isBroadCertificateSoonQuery(userQuery)) {
       return null;
     }
+    const responseLanguage = detectChatResponseLanguage(userQuery);
 
     const rawCertificateEntries = citations
       .filter((citation) =>
@@ -2727,8 +2773,12 @@ export class ChatService {
           : citations.slice(0, 3);
 
       return {
-        content:
-          'I could not confirm any upcoming certificate expiries from the provided certificate documents because the retrieved certificate snippets do not include clear expiry dates.',
+        content: localizeChatText(responseLanguage, {
+          en: 'I could not confirm any upcoming certificate expiries from the provided certificate documents because the retrieved certificate snippets do not include clear expiry dates.',
+          uk: 'Я не зміг підтвердити жодних майбутніх закінчень сертифікатів за наданими документами, тому що у знайдених фрагментах немає чітких дат завершення дії.',
+          it: 'Non sono riuscito a confermare scadenze imminenti dei certificati dai documenti forniti perché i frammenti recuperati non contengono date di scadenza chiare.',
+          ru: 'Я не смог подтвердить ближайшие окончания сертификатов по предоставленным документам, потому что в найденных фрагментах нет чётких дат окончания действия.',
+        }),
         citations: fallbackCitations,
       };
     }
@@ -2743,25 +2793,52 @@ export class ChatService {
 
       if (selected.length === 1) {
         const [entry] = selected;
-        const remaining = this.formatApproximateTimeUntil(entry.timestamp, now);
-        const timingText = remaining ? ` in about ${remaining}` : '';
+        const remaining = localizeApproximateDuration(
+          this.formatApproximateTimeUntil(entry.timestamp, now),
+          responseLanguage,
+        );
+        const timingText = remaining
+          ? localizeChatText(responseLanguage, {
+              en: ` in about ${remaining}`,
+              uk: ` приблизно через ${remaining}`,
+              it: ` tra circa ${remaining}`,
+              ru: ` примерно через ${remaining}`,
+            })
+          : '';
 
         return {
-          content: `The nearest upcoming certificate expiry I found is ${entry.sourceLabel}, which expires on ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`,
+          content: localizeChatText(responseLanguage, {
+            en: `The nearest upcoming certificate expiry I found is ${entry.sourceLabel}, which expires on ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`,
+            uk: `Найближче закінчення сертифіката, яке я знайшов, це ${entry.sourceLabel}; строк дії спливає ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`,
+            it: `La scadenza più vicina del certificato che ho trovato è ${entry.sourceLabel}, che scade il ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`,
+            ru: `Ближайшее найденное окончание сертификата — ${entry.sourceLabel}; срок действия истекает ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}].`,
+          }),
           citations: [entry.citation],
         };
       }
 
       return {
         content: [
-          'The nearest upcoming certificate expiries I found are:',
+          localizeChatText(responseLanguage, {
+            en: 'The nearest upcoming certificate expiries I found are:',
+            uk: 'Найближчі закінчення сертифікатів, які я знайшов:',
+            it: 'Le scadenze certificate più vicine che ho trovato sono:',
+            ru: 'Ближайшие окончания сертификатов, которые я нашёл:',
+          }),
           '',
           ...selected.map((entry) => {
-            const remaining = this.formatApproximateTimeUntil(
-              entry.timestamp,
-              now,
+            const remaining = localizeApproximateDuration(
+              this.formatApproximateTimeUntil(entry.timestamp, now),
+              responseLanguage,
             );
-            const timingText = remaining ? ` (in about ${remaining})` : '';
+            const timingText = remaining
+              ? localizeChatText(responseLanguage, {
+                  en: ` (in about ${remaining})`,
+                  uk: ` (приблизно через ${remaining})`,
+                  it: ` (tra circa ${remaining})`,
+                  ru: ` (примерно через ${remaining})`,
+                })
+              : '';
             return `- ${entry.sourceLabel}: ${entry.displayDate}${timingText} [Certificate: ${entry.sourceLabel}]`;
           }),
         ].join('\n'),
@@ -2775,8 +2852,12 @@ export class ChatService {
       .slice(0, 3);
     if (expiredEntries.length > 0) {
       return {
-        content:
-          'I could not confirm any currently valid upcoming certificate expiries from the provided certificate documents. The certificate snippets I found with explicit expiry dates are already expired.',
+        content: localizeChatText(responseLanguage, {
+          en: 'I could not confirm any currently valid upcoming certificate expiries from the provided certificate documents. The certificate snippets I found with explicit expiry dates are already expired.',
+          uk: 'Я не зміг підтвердити жодних актуальних майбутніх закінчень сертифікатів за наданими документами. Фрагменти сертифікатів із явними датами завершення дії, які я знайшов, уже прострочені.',
+          it: 'Non sono riuscito a confermare scadenze future attualmente valide dai documenti forniti. I frammenti di certificato che ho trovato con date di scadenza esplicite risultano già scaduti.',
+          ru: 'Я не смог подтвердить ни одного актуального будущего окончания сертификатов по предоставленным документам. Найденные фрагменты сертификатов с явными датами окончания уже просрочены.',
+        }),
         citations: expiredEntries.map((entry) => entry.citation),
       };
     }

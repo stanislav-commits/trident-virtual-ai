@@ -22,6 +22,7 @@ import {
   ChatNormalizedQuery,
   ChatSuggestionAction,
 } from './chat.types';
+import { localizeChatText } from './chat-language.utils';
 import { ChatDocumentationCitationService } from './chat-documentation-citation.service';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
 import { ChatDocumentationScanService } from './chat-documentation-scan.service';
@@ -1682,8 +1683,12 @@ export class ChatDocumentationService {
     );
     if (contextualSourceReference && !params.followUpState?.lockedManualId) {
       return {
-        question:
-          'I found several possible documents for "this manual". Which one should I use?',
+        question: localizeChatText(params.userQuery, {
+          en: 'I found several possible documents for "this manual". Which one should I use?',
+          uk: 'Я знайшов кілька можливих документів для "цього мануалу". Який саме використати?',
+          it: 'Ho trovato diversi documenti possibili per "questo manuale". Quale devo usare?',
+          ru: 'Я нашёл несколько возможных документов для "этого мануала". Какой именно использовать?',
+        }),
         reason: 'semantic_context_source_ambiguous',
         actions: this.buildSourceCandidateActions(
           candidates.slice(0, 4),

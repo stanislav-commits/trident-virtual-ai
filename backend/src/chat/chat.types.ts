@@ -137,6 +137,7 @@ export type ChatAnswerRoute =
   | 'clarification'
   | 'historical_telemetry'
   | 'current_telemetry'
+  | 'deterministic_general'
   | 'deterministic_document'
   | 'deterministic_contact'
   | 'deterministic_certificate'

@@ -41,6 +41,43 @@ describe('ChatService telemetry clarification', () => {
     } as any);
   });
 
+  it('answers Ukrainian greeting turns conversationally before documentation lookup', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'привіт',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+      ],
+    });
+
+    await (service as any).generateAssistantResponse(
+      null,
+      'session-1',
+      'привіт',
+      undefined,
+      'admin',
+    );
+
+    expect(documentationService.prepareDocumentationContext).not.toHaveBeenCalled();
+    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Привіт! Чим можу допомогти?',
+      expect.objectContaining({
+        answerRoute: 'deterministic_general',
+        conversational: true,
+        usedLlm: false,
+        usedDocumentation: false,
+        usedCurrentTelemetry: false,
+        usedHistoricalTelemetry: false,
+      }),
+      [],
+    );
+  });
+
   it('returns related telemetry clarification for admin global chat sessions', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [

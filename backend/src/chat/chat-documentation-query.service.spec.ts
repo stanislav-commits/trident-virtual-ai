@@ -11,6 +11,16 @@ describe('ChatDocumentationQueryService', () => {
     jest.useRealTimers();
   });
 
+  it('skips documentation retrieval for Ukrainian greeting-only turns', () => {
+    expect(service.shouldSkipDocumentationRetrieval('привіт')).toBe(true);
+  });
+
+  it('builds clarification questions in Ukrainian for Ukrainian queries', () => {
+    expect(service.buildClarificationQuestion('Що це?')).toContain(
+      'Для чого саме це',
+    );
+  });
+
   it('asks for clarification on broad maintenance questions without a concrete subject', () => {
     const userQuery = 'How do I change oil?';
 

@@ -129,6 +129,25 @@ describe('LlmService maintenance calculation guard', () => {
     );
   });
 
+  it('reinforces the detected user language even when citations use another language', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'EC Type-Examination (module B) Certificate',
+      citations: [
+        {
+          sourceTitle:
+            'VSS065987 - VSS Fire Extinguisher EN 3 7 M I _SOLAS Certificato Mod. B.pdf',
+          sourceCategory: 'CERTIFICATES',
+          snippet: 'Il certificato CE del tipo ha scadenza 15/06/2025.',
+        },
+      ],
+    });
+
+    expect(prompt).toContain('Detected user language: English');
+    expect(prompt).toContain('Write the entire answer in English');
+  });
+
   it('uses max_output_tokens for Responses API generation', async () => {
     process.env.LLM_MODEL = 'gpt-5.4';
 

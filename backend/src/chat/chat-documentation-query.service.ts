@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
+  isGreetingOnlyQuery,
+  isThanksOnlyQuery,
+  localizeChatText,
+} from './chat-language.utils';
+import {
   ChatCitation,
   ChatClarificationDomain,
   ChatClarificationField,
@@ -40,9 +45,9 @@ export class ChatDocumentationQueryService {
 
   shouldSkipDocumentationRetrieval(userQuery: string): boolean {
     return (
-      /^\s*(hi|hello|hey|thanks|thank you|ok|okay|great)\s*[!.?]*\s*$/i.test(
-        userQuery,
-      ) ||
+      isGreetingOnlyQuery(userQuery) ||
+      isThanksOnlyQuery(userQuery) ||
+      /^\s*(ok|okay|great)\s*[!.?]*\s*$/i.test(userQuery) ||
       this.isTelemetryListQuery(userQuery) ||
       this.isExplicitTelemetrySourceQuery(userQuery)
     );
@@ -588,11 +593,21 @@ export class ChatDocumentationQueryService {
     const lowered = userQuery.toLowerCase();
 
     if (this.isNextDueLookupQuery(userQuery)) {
-      return 'Which exact asset, component, maintenance task, or reference ID do you want next-due information for? If you can, include the asset name or side so I can match the correct schedule row.';
+      return localizeChatText(userQuery, {
+        en: 'Which exact asset, component, maintenance task, or reference ID do you want next-due information for? If you can, include the asset name or side so I can match the correct schedule row.',
+        uk: 'Для якого саме обладнання, компонента, задачі з обслуговування або Reference ID потрібна інформація про наступний термін? Якщо можете, вкажіть назву вузла або сторону, щоб я зіставив правильний рядок графіка.',
+        it: 'Per quale asset, componente, attività di manutenzione o Reference ID ti serve l’informazione sulla prossima scadenza? Se puoi, indica il nome dell’asset o il lato così posso abbinare la riga corretta del programma.',
+        ru: 'Для какого именно оборудования, компонента, задачи по обслуживанию или Reference ID нужна информация о следующем сроке? Если можешь, укажи название узла или сторону, чтобы я сопоставил правильную строку графика.',
+      });
     }
 
     if (/\b(oil|coolant|fluid|fluids?)\b/i.test(lowered)) {
-      return 'Which exact component or system is this fluid-related request for? If you can, include the asset name or side, the component, task title, or reference ID.';
+      return localizeChatText(userQuery, {
+        en: 'Which exact component or system is this fluid-related request for? If you can, include the asset name or side, the component, task title, or reference ID.',
+        uk: 'Якого саме компонента або системи стосується цей запит про рідину? Якщо можете, вкажіть назву вузла або сторону, сам компонент, назву задачі або Reference ID.',
+        it: 'Per quale componente o sistema esatto è questa richiesta relativa ai fluidi? Se puoi, indica il nome dell’asset o il lato, il componente, il titolo dell’attività o il Reference ID.',
+        ru: 'Какого именно компонента или системы касается этот запрос по жидкости? Если можешь, укажи название узла или сторону, сам компонент, название задачи или Reference ID.',
+      });
     }
 
     if (
@@ -600,7 +615,12 @@ export class ChatDocumentationQueryService {
         lowered,
       )
     ) {
-      return 'Which exact component, system, or maintenance task is this parts request for? If you have it, include the asset name or side, task title, or reference ID.';
+      return localizeChatText(userQuery, {
+        en: 'Which exact component, system, or maintenance task is this parts request for? If you have it, include the asset name or side, task title, or reference ID.',
+        uk: 'Для якого саме компонента, системи або задачі з обслуговування цей запит на запчастини? Якщо маєте, вкажіть назву вузла або сторону, назву задачі чи Reference ID.',
+        it: 'Per quale componente, sistema o attività di manutenzione esatta è questa richiesta di ricambi? Se lo hai, indica il nome dell’asset o il lato, il titolo dell’attività o il Reference ID.',
+        ru: 'Для какого именно компонента, системы или задачи по обслуживанию этот запрос на запчасти? Если есть, укажи название узла или сторону, название задачи или Reference ID.',
+      });
     }
 
     if (
@@ -608,7 +628,12 @@ export class ChatDocumentationQueryService {
         lowered,
       )
     ) {
-      return 'Which exact component or system has this issue? If you can, include the asset name or side, the component, and any reference ID or alarm label.';
+      return localizeChatText(userQuery, {
+        en: 'Which exact component or system has this issue? If you can, include the asset name or side, the component, and any reference ID or alarm label.',
+        uk: 'У якого саме компонента або системи ця проблема? Якщо можете, вкажіть назву вузла або сторону, сам компонент і будь-який Reference ID чи назву аварії.',
+        it: 'Quale componente o sistema esatto ha questo problema? Se puoi, indica il nome dell’asset o il lato, il componente e qualsiasi Reference ID o etichetta dell’allarme.',
+        ru: 'У какого именно компонента или системы эта проблема? Если можешь, укажи название узла или сторону, сам компонент и любой Reference ID или название аварии.',
+      });
     }
 
     if (
@@ -616,10 +641,20 @@ export class ChatDocumentationQueryService {
         lowered,
       )
     ) {
-      return 'Which exact asset or component do you want this status for? If you can, include the asset name or side, the component, or a reference ID.';
+      return localizeChatText(userQuery, {
+        en: 'Which exact asset or component do you want this status for? If you can, include the asset name or side, the component, or a reference ID.',
+        uk: 'Для якого саме обладнання або компонента вам потрібен цей статус? Якщо можете, вкажіть назву вузла або сторону, сам компонент або Reference ID.',
+        it: 'Per quale asset o componente esatto vuoi questo stato? Se puoi, indica il nome dell’asset o il lato, il componente o un Reference ID.',
+        ru: 'Для какого именно оборудования или компонента нужен этот статус? Если можешь, укажи название узла или сторону, сам компонент или Reference ID.',
+      });
     }
 
-    return 'Which exact component, system, task, or reference ID is this for? If you can, include the asset name or side so I can look up the correct documentation.';
+    return localizeChatText(userQuery, {
+      en: 'Which exact component, system, task, or reference ID is this for? If you can, include the asset name or side so I can look up the correct documentation.',
+      uk: 'Для чого саме це: компонент, система, задача чи Reference ID? Якщо можете, вкажіть назву вузла або сторону, щоб я знайшов правильну документацію.',
+      it: 'Per quale componente, sistema, attività o Reference ID esatto è questa richiesta? Se puoi, indica il nome dell’asset o il lato così posso cercare la documentazione corretta.',
+      ru: 'Для чего именно это: компонент, система, задача или Reference ID? Если можешь, укажи название узла или сторону, чтобы я нашёл правильную документацию.',
+    });
   }
 
   extractRetrievalSubjectTerms(query: string): string[] {

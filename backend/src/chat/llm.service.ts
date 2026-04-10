@@ -8,6 +8,10 @@ import OpenAI from 'openai';
 import { SystemPromptService } from '../system-prompt/system-prompt.service';
 import { IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT } from './chat-core-system-prompt.constants';
 import {
+  describeChatResponseLanguage,
+  detectChatResponseLanguage,
+} from './chat-language.utils';
+import {
   ChatQueryPlan,
   ChatQueryPlannerService,
 } from './chat-query-planner.service';
@@ -253,10 +257,17 @@ export class LlmService {
       context.resolvedSubjectQuery,
     );
     const intent = queryPlan.primaryIntent;
+    const responseLanguage = detectChatResponseLanguage(context.userQuery);
+    const responseLanguageName =
+      describeChatResponseLanguage(responseLanguage);
     let prompt =
+      `Detected user language: ${responseLanguageName}\n` +
       `Detected intent: ${intent}\n` +
       `Question: ${context.userQuery}\n` +
       this.buildOperationalContextPrompt(queryPlan);
+    prompt +=
+      `Important language rule: Write the entire answer in ${responseLanguageName}. ` +
+      'Do not switch to the citation or source language unless the user explicitly asks for translation.\n\n';
     prompt += this.buildPlannerSpecificGuidance(queryPlan, context);
     prompt += this.buildAnswerFormattingGuidance(queryPlan);
 
