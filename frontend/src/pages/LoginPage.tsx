@@ -1,13 +1,21 @@
 import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import logoImg from "../assets/logo-home.png";
+import { appRoutes } from "../utils/routes";
 
-interface Props {
-  onOpenPrivacy: () => void;
-}
+type RedirectState = {
+  from?: {
+    pathname?: string;
+    search?: string;
+    hash?: string;
+  };
+};
 
-export function LoginPage({ onOpenPrivacy }: Props) {
+export function LoginPage() {
   const { login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -17,8 +25,14 @@ export function LoginPage({ onOpenPrivacy }: Props) {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
       await login(userId.trim(), password);
+      const redirectState = location.state as RedirectState | null;
+      const targetPath = redirectState?.from?.pathname ?? appRoutes.chats;
+      const targetSearch = redirectState?.from?.search ?? "";
+      const targetHash = redirectState?.from?.hash ?? "";
+      navigate(`${targetPath}${targetSearch}${targetHash}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -78,12 +92,12 @@ export function LoginPage({ onOpenPrivacy }: Props) {
             className="login-form__submit"
             disabled={loading}
           >
-            {loading ? "…" : "Continue"}
+            {loading ? "..." : "Continue"}
           </button>
           <button
             type="button"
             className="login-form__privacy-link"
-            onClick={onOpenPrivacy}
+            onClick={() => navigate(appRoutes.privacy)}
           >
             Privacy Policy & Terms of Use
           </button>

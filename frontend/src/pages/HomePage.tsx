@@ -1,24 +1,16 @@
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
-import type { TopBarTab } from "../components/layout/TopBar";
 import { TopBar } from "../components/layout/TopBar";
 import logoImg from "../assets/logo-home.png";
 import plusAddIcon from "../assets/plus-add.svg";
 import sendIcon from "../assets/Vector.svg";
+import { appRoutes } from "../utils/routes";
 
-interface HomePageProps {
-  activeTab: TopBarTab;
-  onTabChange: (tab: TopBarTab) => void;
-  onChatCreated: (sessionId: string) => void;
-}
-
-export function HomePage({
-  activeTab,
-  onTabChange,
-  onChatCreated,
-}: HomePageProps) {
+export function HomePage() {
   const { user, token } = useAuth();
+  const navigate = useNavigate();
   const { createSession, isLoading, error } = useChatSessions(token);
 
   const [inputValue, setInputValue] = useState("");
@@ -43,15 +35,14 @@ export function HomePage({
         );
 
         setInputValue("");
-        setIsCreating(false);
-
-        onChatCreated(newSession.id);
+        navigate(appRoutes.chatSession(newSession.id));
       } catch (err) {
         console.error("Failed to create chat:", err);
+      } finally {
         setIsCreating(false);
       }
     },
-    [inputValue, canCreateChat, user?.role, user?.shipId, createSession, onChatCreated, isCreating],
+    [inputValue, canCreateChat, user?.role, user?.shipId, createSession, navigate, isCreating],
   );
 
   const isDisabled =
@@ -64,7 +55,7 @@ export function HomePage({
 
   return (
     <div className="home-layout">
-      <TopBar activeTab={activeTab} onTabChange={onTabChange} />
+      <TopBar />
       <div className="home-content">
         <div className="home-content__logo-zone">
           <img src={logoImg} alt="Trident Intelligence Platform" className="home-logo" />

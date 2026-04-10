@@ -1,15 +1,9 @@
-import type { TopBarTab } from '../components/layout/TopBar';
 import { TopBar } from '../components/layout/TopBar';
 
-interface DatasetPageProps {
-  activeTab: TopBarTab;
-  onTabChange: (tab: TopBarTab) => void;
-}
-
-export function DatasetPage({ activeTab, onTabChange }: DatasetPageProps) {
+export function DatasetPage() {
   return (
     <div className="home-layout">
-      <TopBar activeTab={activeTab} onTabChange={onTabChange} />
+      <TopBar />
       <div className="home-content" style={{ justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 72px)' }}>
         <div className="chat-empty__card" style={{ maxWidth: 480, textAlign: 'center' }}>
           <div style={{ fontSize: '2rem', marginBottom: '16px', opacity: 0.3 }}>⚓</div>

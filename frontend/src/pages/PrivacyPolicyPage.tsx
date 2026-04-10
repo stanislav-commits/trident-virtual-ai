@@ -1,8 +1,7 @@
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { appRoutes } from "../utils/routes";
 import "./privacy-policy.css";
-
-interface Props {
-    onBack: () => void;
-}
 
 const sections = [
     {
@@ -67,13 +66,20 @@ const sections = [
     },
 ];
 
-export function PrivacyPolicyPage({ onBack }: Props) {
+export function PrivacyPolicyPage() {
+    const navigate = useNavigate();
+    const { isAuthenticated } = useAuth();
+
     return (
         <div className="pp-layout">
             <div className="pp-container">
                 {/* Header */}
                 <div className="pp-header">
-                    <button className="pp-back-btn" onClick={onBack} aria-label="Back">
+                    <button
+                        className="pp-back-btn"
+                        onClick={() => navigate(isAuthenticated ? appRoutes.chats : appRoutes.login)}
+                        aria-label="Back"
+                    >
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <line x1="18" y1="6" x2="6" y2="18" />
                             <line x1="6" y1="6" x2="18" y2="18" />

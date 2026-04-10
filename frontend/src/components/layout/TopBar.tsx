@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 import profileIcon from "../../assets/profile.svg";
-import { useAdminPanel } from "../../context/AdminPanelContext";
 import { useAuth } from "../../context/AuthContext";
+import { appRoutes } from "../../utils/routes";
 
-export type TopBarTab = "home" | "chats" | "dataset";
+const navigationItems: Array<{
+  label: string;
+  to: string;
+  end?: boolean;
+}> = [
+  { label: "Chats", to: appRoutes.chats },
+  { label: "Home", to: appRoutes.home, end: true },
+  { label: "Dataset", to: appRoutes.dataset, end: true },
+];
 
-interface TopBarProps {
-  activeTab: TopBarTab;
-  onTabChange: (tab: TopBarTab) => void;
-}
-
-export function TopBar({ onTabChange: _onTabChange }: TopBarProps) {
+export function TopBar() {
   const { user } = useAuth();
-  const { open: openAdminPanel } = useAdminPanel();
+  const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -28,7 +32,7 @@ export function TopBar({ onTabChange: _onTabChange }: TopBarProps) {
 
   const handleAdminPanel = () => {
     setDropdownOpen(false);
-    openAdminPanel();
+    navigate(appRoutes.adminSection("users"));
   };
 
   const initials =
@@ -38,6 +42,20 @@ export function TopBar({ onTabChange: _onTabChange }: TopBarProps) {
 
   return (
     <header className="chat-topbar">
+      <nav className="chat-topbar__nav" aria-label="Primary">
+        {navigationItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              `chat-topbar__nav-link${isActive ? " chat-topbar__nav-link--active" : ""}`
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
       <div className="chat-topbar__right">
         {user?.role === "admin" && (
           <div className="chat-topbar__profile-wrap" ref={wrapRef}>

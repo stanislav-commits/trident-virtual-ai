@@ -1,31 +1,25 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
 import { useChatMessages } from "../hooks/useChatMessages";
 import {
   getChatSession,
-  sendChatMessage,
   regenerateChatResponse,
+  sendChatMessage,
 } from "../api/chatApi";
-import type { TopBarTab } from "../components/layout/TopBar";
 import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
-import { MessageList } from "../components/chat/MessageList";
 import { MessageInput } from "../components/chat/MessageInput";
+import { MessageList } from "../components/chat/MessageList";
 import logoImg from "../assets/logo-home.png";
+import { appRoutes } from "../utils/routes";
 
-interface ChatPageProps {
-  activeTab: TopBarTab;
-  onTabChange: (tab: TopBarTab) => void;
-  initialSessionId?: string | null;
-}
-
-export function ChatPage({
-  activeTab,
-  onTabChange,
-  initialSessionId = null,
-}: ChatPageProps) {
+export function ChatPage() {
   const { user, token } = useAuth();
+  const navigate = useNavigate();
+  const { sessionId } = useParams<{ sessionId: string }>();
+  const activeSessionId = sessionId ?? null;
 
   const {
     sessions,
@@ -37,9 +31,6 @@ export function ChatPage({
     pinSession,
     refreshSessions,
   } = useChatSessions(token);
-
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [isNewChatMode, setIsNewChatMode] = useState(true);
 
   const {
     messages,
@@ -55,35 +46,28 @@ export function ChatPage({
   const [searchQuery, setSearchQuery] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (initialSessionId) {
-      setActiveSessionId(initialSessionId);
-      setIsNewChatMode(false);
-    }
-  }, [initialSessionId]);
-
   const filteredSessions = useMemo(() => {
-    if (!searchQuery.trim()) return sessions;
-    const q = searchQuery.toLowerCase();
-    return sessions.filter((s) => (s.title || "").toLowerCase().includes(q));
-  }, [sessions, searchQuery]);
-
-  // Auto-select the most recent session on load, but only if not explicitly in new-chat mode
-  useEffect(() => {
-    if (!initialSessionId && sessions.length > 0 && !activeSessionId && !isNewChatMode) {
-      setActiveSessionId(sessions[0].id);
+    if (!searchQuery.trim()) {
+      return sessions;
     }
-  }, [initialSessionId, sessions, activeSessionId, isNewChatMode]);
+
+    const normalizedQuery = searchQuery.toLowerCase();
+    return sessions.filter((session) =>
+      (session.title || "").toLowerCase().includes(normalizedQuery),
+    );
+  }, [searchQuery, sessions]);
 
   const pollForResponse = useCallback(
-    async (sessionId: string, userMessageId: string) => {
+    async (currentSessionId: string, userMessageId: string) => {
       const maxAttempts = 30;
       let attempts = 0;
+
       while (attempts < maxAttempts) {
         try {
-          const updatedSession = await getChatSession(sessionId, token!);
+          const updatedSession = await getChatSession(currentSessionId, token!);
           const currentMessages = updatedSession.messages || [];
           const lastMessage = currentMessages[currentMessages.length - 1];
+
           if (
             lastMessage &&
             lastMessage.role === "assistant" &&
@@ -93,92 +77,103 @@ export function ChatPage({
             refreshSessions();
             break;
           }
-        } catch {}
-        await new Promise((r) => setTimeout(r, 2000));
+        } catch {
+          // Keep polling until the assistant response is available.
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
         attempts++;
       }
+
       setIsWaitingForResponse(false);
     },
-    [token, addMessage, refreshSessions],
+    [addMessage, refreshSessions, token],
   );
 
-  const handleSend = useCallback(async (textOverride?: string) => {
-    const textToSend = textOverride || inputValue;
-    if (!textToSend.trim() || isSending || isWaitingForResponse) return;
-
-    if (!textOverride) {
-      setInputValue("");
-    }
-    
-    setIsSending(true);
-    setSendError(null);
-
-    try {
-      let currentSessionId = activeSessionId;
-
-      if (!currentSessionId) {
-        const canCreate =
-          user?.role === "admin" || (user?.role === "user" && !!user?.shipId);
-        if (!canCreate) {
-          setIsSending(false);
-          return;
-        }
-        const shipIdForSession =
-          user?.role === "admin" ? undefined : (user?.shipId ?? undefined);
-        const newSession = await createSession(shipIdForSession);
-        currentSessionId = newSession.id;
-        setActiveSessionId(currentSessionId);
-        setIsNewChatMode(false);
+  const handleSend = useCallback(
+    async (textOverride?: string) => {
+      const textToSend = textOverride || inputValue;
+      if (!textToSend.trim() || isSending || isWaitingForResponse) {
+        return;
       }
 
-      setIsWaitingForResponse(true);
-      const userMessage = await sendChatMessage(
-        currentSessionId,
-        textToSend,
-        token!,
-      );
-      addMessage(userMessage);
-      setIsSending(false);
-      pollForResponse(currentSessionId, userMessage.id);
-    } catch (err) {
-      setIsSending(false);
-      setIsWaitingForResponse(false);
-      setSendError(
-        err instanceof Error ? err.message : "Failed to send message",
-      );
-      console.error("Failed to send message:", err);
-    }
-  }, [
-    inputValue,
-    isSending,
-    isWaitingForResponse,
-    activeSessionId,
-    user,
-    createSession,
-    token,
-    addMessage,
-    pollForResponse,
-  ]);
+      if (!textOverride) {
+        setInputValue("");
+      }
+
+      setIsSending(true);
+      setSendError(null);
+
+      try {
+        let currentSessionId = activeSessionId;
+
+        if (!currentSessionId) {
+          const canCreate =
+            user?.role === "admin" ||
+            (user?.role === "user" && !!user?.shipId);
+
+          if (!canCreate) {
+            setIsSending(false);
+            return;
+          }
+
+          const shipIdForSession =
+            user?.role === "admin" ? undefined : (user?.shipId ?? undefined);
+          const newSession = await createSession(shipIdForSession);
+          currentSessionId = newSession.id;
+          navigate(appRoutes.chatSession(currentSessionId), { replace: true });
+        }
+
+        setIsWaitingForResponse(true);
+        const userMessage = await sendChatMessage(
+          currentSessionId,
+          textToSend,
+          token!,
+        );
+        addMessage(userMessage);
+        setIsSending(false);
+        pollForResponse(currentSessionId, userMessage.id);
+      } catch (err) {
+        setIsSending(false);
+        setIsWaitingForResponse(false);
+        setSendError(
+          err instanceof Error ? err.message : "Failed to send message",
+        );
+        console.error("Failed to send message:", err);
+      }
+    },
+    [
+      activeSessionId,
+      addMessage,
+      createSession,
+      inputValue,
+      isSending,
+      isWaitingForResponse,
+      navigate,
+      pollForResponse,
+      token,
+      user,
+    ],
+  );
 
   const handleDeleteSession = useCallback(
-    async (sessionId: string) => {
+    async (targetSessionId: string) => {
       try {
-        await deleteSession(sessionId);
-        if (activeSessionId === sessionId) {
-          setActiveSessionId(null);
-          setIsNewChatMode(true);
+        await deleteSession(targetSessionId);
+        if (activeSessionId === targetSessionId) {
+          navigate(appRoutes.chats, { replace: true });
         }
       } catch (err) {
         console.error("Failed to delete session:", err);
       }
     },
-    [deleteSession, activeSessionId],
+    [activeSessionId, deleteSession, navigate],
   );
 
   const handleRenameSession = useCallback(
-    async (sessionId: string, title: string) => {
+    async (targetSessionId: string, title: string) => {
       try {
-        await renameSession(sessionId, title);
+        await renameSession(targetSessionId, title);
       } catch (err) {
         console.error("Failed to rename session:", err);
       }
@@ -187,9 +182,9 @@ export function ChatPage({
   );
 
   const handleTogglePin = useCallback(
-    async (sessionId: string, isPinned: boolean) => {
+    async (targetSessionId: string, isPinned: boolean) => {
       try {
-        await pinSession(sessionId, isPinned);
+        await pinSession(targetSessionId, isPinned);
       } catch (err) {
         console.error("Failed to update pin state:", err);
       }
@@ -198,15 +193,17 @@ export function ChatPage({
   );
 
   const handleNewChat = useCallback(() => {
-    setActiveSessionId(null);
-    setIsNewChatMode(true);
+    navigate(appRoutes.chats);
     setInputValue("");
     setSendError(null);
-  }, []);
+  }, [navigate]);
 
   const handleRegenerate = useCallback(
-    async (_messageId: string) => {
-      if (!activeSessionId || !token) return;
+    async () => {
+      if (!activeSessionId || !token) {
+        return;
+      }
+
       try {
         setIsWaitingForResponse(true);
         await regenerateChatResponse(activeSessionId, token);
@@ -218,13 +215,15 @@ export function ChatPage({
         setIsWaitingForResponse(false);
       }
     },
-    [activeSessionId, token, refetchMessages, refreshSessions],
+    [activeSessionId, refetchMessages, refreshSessions, token],
   );
 
-  const handleSelectSession = useCallback((sessionId: string) => {
-    setActiveSessionId(sessionId);
-    setIsNewChatMode(false);
-  }, []);
+  const handleSelectSession = useCallback(
+    (targetSessionId: string) => {
+      navigate(appRoutes.chatSession(targetSessionId));
+    },
+    [navigate],
+  );
 
   const hasError = sessionsError || messagesError || sendError;
   const isDisabled = isSending || isWaitingForResponse || isLoadingSessions;
@@ -233,13 +232,13 @@ export function ChatPage({
     <AppLayout
       sidebar={
         <ChatList
-          sessions={filteredSessions.map((s) => ({
-            id: s.id,
-            title: s.title || "New Chat",
-            messageCount: s.messageCount || 0,
-            pinnedAt: s.pinnedAt ?? null,
-            isPinned: s.isPinned ?? Boolean(s.pinnedAt),
-            updatedAt: s.updatedAt,
+          sessions={filteredSessions.map((session) => ({
+            id: session.id,
+            title: session.title || "New Chat",
+            messageCount: session.messageCount || 0,
+            pinnedAt: session.pinnedAt ?? null,
+            isPinned: session.isPinned ?? Boolean(session.pinnedAt),
+            updatedAt: session.updatedAt,
           }))}
           activeId={activeSessionId}
           onSelect={handleSelectSession}
@@ -250,8 +249,6 @@ export function ChatPage({
       }
       onNewChat={handleNewChat}
       onSearch={setSearchQuery}
-      activeTab={activeTab}
-      onTabChange={onTabChange}
     >
       <>
         {hasError && activeSessionId && (
@@ -289,7 +286,9 @@ export function ChatPage({
                   aria-hidden
                 />
               </div>
-              <h1 className="chat-welcome__title">Trident Intelligence Platform</h1>
+              <h1 className="chat-welcome__title">
+                Trident Intelligence Platform
+              </h1>
               <p className="chat-welcome__sub">What would you like to know?</p>
             </div>
             <MessageInput

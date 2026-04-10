@@ -331,6 +331,51 @@
   animation: fadeInLeft 0.4s ease 0.15s both;
 }
 
+.chat-topbar__nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-topbar__nav::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-topbar__nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--chat-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.chat-topbar__nav-link:hover {
+  color: var(--chat-text);
+  background: var(--chat-surface);
+  border-color: var(--chat-border);
+}
+
+.chat-topbar__nav-link--active {
+  color: var(--chat-text);
+  background: var(--chat-surface-2);
+  border-color: var(--chat-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
 .chat-topbar__right {
   flex-shrink: 0;
   margin-left: auto;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   getUsers,
   getShips,
@@ -8,7 +9,6 @@ import {
   type ShipListItem,
   type MetricDefinitionItem,
 } from "../api/client";
-import { useAdminPanel } from "../context/AdminPanelContext";
 import { useAuth } from "../context/AuthContext";
 import logoImg from "../assets/logo-home.png";
 import {
@@ -27,10 +27,13 @@ import { TagsSection } from "../components/admin/TagsSection";
 import { ManualsPromptModal } from "../components/admin/ManualsPromptModal";
 import { MetricsModal } from "../components/admin/MetricsModal";
 import { Toast } from "../components/layout/Toast";
+import {
+  appRoutes,
+  isAdminSectionRoute,
+  type AdminSectionRoute,
+} from "../utils/routes";
 
-type AdminSection = "users" | "ships" | "prompt" | "tags";
-
-const SECTION_TITLES: Record<AdminSection, string> = {
+const SECTION_TITLES: Record<AdminSectionRoute, string> = {
   users: "Users",
   ships: "Ships",
   prompt: "System Prompt",
@@ -38,11 +41,14 @@ const SECTION_TITLES: Record<AdminSection, string> = {
 };
 
 export function AdminPanelPage() {
-  const { close } = useAdminPanel();
   const { token } = useAuth();
+  const navigate = useNavigate();
+  const { section } = useParams<{ section: string }>();
+  const activeSection: AdminSectionRoute = isAdminSectionRoute(section)
+    ? section
+    : "users";
 
   // Navigation state
-  const [activeSection, setActiveSection] = useState<AdminSection>("users");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Common state
@@ -150,6 +156,12 @@ export function AdminPanelPage() {
   }, [activeSection, loadShips]);
 
   useEffect(() => {
+    if (!isAdminSectionRoute(section)) {
+      navigate(appRoutes.adminSection("users"), { replace: true });
+    }
+  }, [navigate, section]);
+
+  useEffect(() => {
     if (!metricsModalShip) {
       return;
     }
@@ -208,8 +220,8 @@ export function AdminPanelPage() {
     token,
   ]);
 
-  const handleNavClick = (section: AdminSection) => {
-    setActiveSection(section);
+  const handleNavClick = (targetSection: AdminSectionRoute) => {
+    navigate(appRoutes.adminSection(targetSection));
     setIsSidebarOpen(false);
   };
 
@@ -288,7 +300,11 @@ export function AdminPanelPage() {
         </nav>
 
         <div className="admin-panel__sidebar-footer">
-          <button type="button" className="admin-panel__back" onClick={close}>
+          <button
+            type="button"
+            className="admin-panel__back"
+            onClick={() => navigate(appRoutes.chats)}
+          >
             <ChevronLeftIcon />
             Back to app
           </button>
