@@ -1128,7 +1128,7 @@ export class ChatDocumentationQueryService {
   ): string[] {
     const referenceIds = [
       ...new Set(
-        (retrievalQuery.match(/\b1p\d{2,}\b/gi) ?? []).map((match) =>
+        (retrievalQuery.match(/\b1[a-z]\d{2,}\b/gi) ?? []).map((match) =>
           match.toUpperCase(),
         ),
       ),
@@ -1143,8 +1143,13 @@ export class ChatDocumentationQueryService {
     const wantsParts = this.isPartsQuery(userQuery);
     const wantsNextDue = this.isNextDueLookupQuery(userQuery);
 
+    const hintedSourceCitations = citations.filter((citation) =>
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`
+        .toLowerCase()
+        .includes(referenceIds[0].toLowerCase()),
+    );
     const hintedSources = new Set(
-      citations
+      (hintedSourceCitations.length > 0 ? hintedSourceCitations : citations)
         .map((citation) => this.normalizeSourceTitleHint(citation.sourceTitle))
         .filter((value): value is string => Boolean(value)),
     );

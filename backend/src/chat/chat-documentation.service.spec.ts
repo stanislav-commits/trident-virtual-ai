@@ -1978,6 +1978,16 @@ Reference ID: 1S47
 Interval: 1 Years / 500 MAIN GENSET SB
 Next due: 07.07.2026 / 2250`,
     };
+    const conflictingMaintenanceScanCitation: ChatCitation = {
+      sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+      score: 0.89,
+      snippet: `Reference row:
+Component name: PS ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1P47
+Interval: 1 Years / 500 MAIN GENSET PS
+Next due: 07.07.2026 / 2034`,
+    };
 
     const contextService = {
       findContextForQuery: jest.fn().mockImplementation((_shipId, query) => {
@@ -2003,10 +2013,10 @@ Next due: 07.07.2026 / 2250`,
       expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
       expandMaintenanceAssetDocumentChunkCitations: jest
         .fn()
-        .mockResolvedValue([]),
+        .mockResolvedValue([conflictingMaintenanceScanCitation]),
       expandManualIntervalMaintenanceChunkCitations: jest
         .fn()
-        .mockResolvedValue([]),
+        .mockResolvedValue([conflictingMaintenanceScanCitation]),
       expandCertificateExpiryDocumentChunkCitations: jest
         .fn()
         .mockResolvedValue([]),

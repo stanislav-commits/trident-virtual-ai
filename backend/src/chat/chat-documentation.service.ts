@@ -725,8 +725,37 @@ export class ChatDocumentationService {
         resolvedSubjectQuery.trim().toLowerCase() !==
           documentationRetrievalQuery.trim().toLowerCase()
       ) {
+        const resolvedSubjectExactQuery = resolvedSubjectQuery;
+        const resolvedMaintenanceReferenceId =
+          resolvedSubjectExactQuery
+            .match(/\b1[a-z]\d{2,}\b/i)?.[0]
+            ?.toLowerCase() ??
+          null;
+        const constrainResolvedReferenceCitations = (
+          items: ChatCitation[],
+        ): ChatCitation[] => {
+          if (!resolvedMaintenanceReferenceId || items.length === 0) {
+            return items;
+          }
+
+          const hasExactReferenceAnchor = items.some((citation) =>
+            `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`
+              .toLowerCase()
+              .includes(resolvedMaintenanceReferenceId),
+          );
+          if (!hasExactReferenceAnchor) {
+            return [];
+          }
+
+          return this.citationService.focusCitationsForQuery(
+            resolvedSubjectExactQuery,
+            items,
+          );
+        };
         const resolvedSubjectFallbackCitations =
-          await searchCitationsForQuery(resolvedSubjectQuery);
+          constrainResolvedReferenceCitations(
+            await searchCitationsForQuery(resolvedSubjectExactQuery),
+          );
         citations = this.citationService.mergeCitations(
           citations,
           resolvedSubjectFallbackCitations,
@@ -734,13 +763,14 @@ export class ChatDocumentationService {
 
         const resolvedReferenceContinuationFallbackQueries =
           this.queryService.buildReferenceContinuationFallbackQueries(
-            resolvedSubjectQuery,
+            resolvedSubjectExactQuery,
             effectiveUserQuery,
             citations,
           );
         for (const continuationQuery of resolvedReferenceContinuationFallbackQueries) {
-          const fallbackCitations =
-            await searchCitationsForQuery(continuationQuery);
+          const fallbackCitations = constrainResolvedReferenceCitations(
+            await searchCitationsForQuery(continuationQuery),
+          );
           citations = this.citationService.mergeCitations(
             citations,
             fallbackCitations,
@@ -748,16 +778,18 @@ export class ChatDocumentationService {
         }
 
         const resolvedReferenceDocumentFallbackCitations =
-          await this.expandScanCitations(
-            this.scanService.expandReferenceDocumentChunkCitations.bind(
-              this.scanService,
+          constrainResolvedReferenceCitations(
+            await this.expandScanCitations(
+              this.scanService.expandReferenceDocumentChunkCitations.bind(
+                this.scanService,
+              ),
+              shipId,
+              resolvedSubjectExactQuery,
+              effectiveUserQuery,
+              citations,
+              effectiveDocumentCategories,
+              allowedManualIds,
             ),
-            shipId,
-            resolvedSubjectQuery,
-            effectiveUserQuery,
-            citations,
-            effectiveDocumentCategories,
-            allowedManualIds,
           );
         citations = this.citationService.mergeCitations(
           citations,
@@ -765,32 +797,36 @@ export class ChatDocumentationService {
         );
 
         const resolvedMaintenanceDocumentFallbackCitations =
-          await this.expandScanCitations(
-            this.scanService.expandMaintenanceAssetDocumentChunkCitations.bind(
-              this.scanService,
+          constrainResolvedReferenceCitations(
+            await this.expandScanCitations(
+              this.scanService.expandMaintenanceAssetDocumentChunkCitations.bind(
+                this.scanService,
+              ),
+              shipId,
+              resolvedSubjectExactQuery,
+              effectiveUserQuery,
+              citations,
+              effectiveDocumentCategories,
+              allowedManualIds,
             ),
-            shipId,
-            resolvedSubjectQuery,
-            effectiveUserQuery,
-            citations,
-            effectiveDocumentCategories,
-            allowedManualIds,
           );
         citations = this.citationService.mergeCitations(
           citations,
           resolvedMaintenanceDocumentFallbackCitations,
         );
         const resolvedManualIntervalFallbackCitations =
-          await this.expandScanCitations(
-            this.scanService.expandManualIntervalMaintenanceChunkCitations?.bind(
-              this.scanService,
+          constrainResolvedReferenceCitations(
+            await this.expandScanCitations(
+              this.scanService.expandManualIntervalMaintenanceChunkCitations?.bind(
+                this.scanService,
+              ),
+              shipId,
+              resolvedSubjectExactQuery,
+              effectiveUserQuery,
+              citations,
+              effectiveDocumentCategories,
+              allowedManualIds,
             ),
-            shipId,
-            resolvedSubjectQuery,
-            effectiveUserQuery,
-            citations,
-            effectiveDocumentCategories,
-            allowedManualIds,
           );
         citations = this.citationService.mergeCitations(
           citations,

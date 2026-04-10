@@ -82,6 +82,34 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(false);
   });
 
+  it('builds reference continuation fallback queries only from source hints that already contain the exact reference', () => {
+    const queries = service.buildReferenceContinuationFallbackQueries(
+      'M Y Seawolf X Maintenance Tasks Reference ID 1S47 SB ENGINE A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE',
+      'should i perform any maintenance at this counter?',
+      [
+        {
+          sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+          snippet:
+            'Reference row: Component name: SB ENGINE Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE Reference ID: 1S47',
+        },
+        {
+          sourceTitle: 'MEPC.1-Circ.684.pdf',
+          snippet:
+            'Environmental efficiency guidance for ships and operators.',
+        },
+      ],
+    );
+
+    expect(
+      queries.some((query) =>
+        /M Y Seawolf X - Maintenance Tasks Reference ID 1S47/i.test(query),
+      ),
+    ).toBe(true);
+    expect(
+      queries.some((query) => /MEPC\.1-Circ\.684 Reference ID 1S47/i.test(query)),
+    ).toBe(false);
+  });
+
   it('recognizes generic due-date maintenance phrasing as a next-due lookup', () => {
     expect(
       service.isNextDueLookupQuery(
