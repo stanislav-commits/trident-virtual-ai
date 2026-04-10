@@ -36,6 +36,8 @@ const SPECIFICATION_QUERY_PATTERN =
 const SPECIFICATION_SECTION_HEADING_PATTERN =
   /^\s*(?:\d+(?:\.\d+)*\s*)?(?:technical\s*data|technical\s*specifications?|specifications?|data\s*sheet|spec\s*sheet|operating\s+data|process\s+data|parameters?)(?:\b|\d)/i;
 
+const MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN = /\b1[a-z]\d{2,}\b/gi;
+
 @Injectable()
 export class ChatDocumentationCitationService {
   private readonly queryPlanner: ChatQueryPlannerService;
@@ -95,7 +97,9 @@ export class ChatDocumentationCitationService {
 
     const referenceIds = [
       ...new Set(
-        (queryContext.match(/\b1p\d{2,}\b/gi) ?? []).map((value) =>
+        (
+          queryContext.match(MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN) ?? []
+        ).map((value) =>
           value.toLowerCase(),
         ),
       ),
@@ -365,8 +369,8 @@ export class ChatDocumentationCitationService {
 
     const referenceIds = [
       ...new Set(
-        (query.match(/\b1p\d{2,}\b/gi) ?? []).map((match) =>
-          match.toLowerCase(),
+        (query.match(MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN) ?? []).map(
+          (match) => match.toLowerCase(),
         ),
       ),
     ];
@@ -406,9 +410,7 @@ export class ChatDocumentationCitationService {
 
       const haystack =
         `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
-      const mentionedReferenceIds = [
-        ...haystack.matchAll(/\b1p\d{2,}\b/g),
-      ].map((match) => match[0].toLowerCase());
+      const mentionedReferenceIds = this.extractMaintenanceReferenceIds(haystack);
 
       if (
         mentionedReferenceIds.some(
@@ -2259,7 +2261,13 @@ export class ChatDocumentationCitationService {
       : wantsParts || wantsProcedure
         ? 3000
         : 2200;
-    const start = Math.max(0, anchorIndex - charsBefore);
+    let start = Math.max(0, anchorIndex - charsBefore);
+    start = this.trimLeadingForeignReferenceContext(
+      snippet,
+      anchor,
+      start,
+      anchorIndex,
+    );
     let end = Math.min(
       snippet.length,
       anchorIndex + anchor.length + charsAfter,
@@ -2289,6 +2297,65 @@ export class ChatDocumentationCitationService {
       ...citation,
       snippet: focusedSnippet,
     };
+  }
+
+  private extractMaintenanceReferenceIds(text: string): string[] {
+    return [
+      ...new Set(
+        (text.match(MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN) ?? []).map(
+          (match) => match.toLowerCase(),
+        ),
+      ),
+    ];
+  }
+
+  private trimLeadingForeignReferenceContext(
+    snippet: string,
+    anchor: string,
+    start: number,
+    anchorIndex: number,
+  ): number {
+    const normalizedAnchor = anchor.toLowerCase();
+    const leadingSlice = snippet.slice(start, anchorIndex);
+    const leadingReferenceMatches = [
+      ...leadingSlice.matchAll(MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN),
+    ].filter(
+      (match) => match[0].toLowerCase() !== normalizedAnchor,
+    );
+
+    const previousForeignReference =
+      leadingReferenceMatches[leadingReferenceMatches.length - 1];
+    if (
+      !previousForeignReference ||
+      typeof previousForeignReference.index !== 'number'
+    ) {
+      return start;
+    }
+
+    const foreignReferenceIndex = start + previousForeignReference.index;
+    const lowerSnippet = snippet.toLowerCase();
+    const boundaryMarkers = ['<tr', 'reference row:', 'component name:'];
+    let boundaryIndex = -1;
+
+    for (const marker of boundaryMarkers) {
+      const candidateIndex = lowerSnippet.lastIndexOf(marker, anchorIndex);
+      if (
+        candidateIndex > foreignReferenceIndex &&
+        candidateIndex < anchorIndex &&
+        candidateIndex > boundaryIndex
+      ) {
+        boundaryIndex = candidateIndex;
+      }
+    }
+
+    if (boundaryIndex >= 0) {
+      return Math.max(start, boundaryIndex);
+    }
+
+    return Math.max(
+      start,
+      foreignReferenceIndex + previousForeignReference[0].length,
+    );
   }
 
   private buildSourceEvidenceProfiles(

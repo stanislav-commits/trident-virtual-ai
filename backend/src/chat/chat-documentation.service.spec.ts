@@ -1948,6 +1948,126 @@ Location: BOX 25 VOLVO PENTA SPARES`,
     expect(result.resolvedSubjectQuery).toBe(resolvedSubjectQuery);
   });
 
+  it('preserves the exact starboard maintenance row during second-pass narrowing when fallback citations include a preceding foreign row', async () => {
+    const initialRetrievalQuery =
+      'What are the starboard generator running hours right now? should i perform any maintenance at this counter?';
+    const resolvedSubjectQuery =
+      'M Y Seawolf X Maintenance Tasks Reference ID 1S47 SB ENGINE A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE';
+    const initialCitation: ChatCitation = {
+      sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+      score: 0.91,
+      snippet: `<table><caption> M/Y Seawolf X - Maintenance Tasks</caption>
+<tr><td>0212 ENGINES</td><td>PS ENGINE</td><td>A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE</td><td>1P47</td><td>Chief Engineer</td><td>1 Years / 500 MAIN GENSET PS</td><td>07.07.2025 / 1534</td><td>07.07.2026 / 2034</td><td>EUR</td></tr>
+<tr><td>0212 ENGINES</td><td>SB ENGINE</td><td>A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE</td><td>1S47</td><td>Chief Engineer</td><td>1 Years / 500 MAIN GENSET SB</td><td>07.07.2025 / 1750</td><td>07.07.2026 / 2250</td><td>EUR</td></tr>
+</table>`,
+    };
+    const resolvedCitation: ChatCitation = {
+      sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+      score: 0.96,
+      snippet: `Reference row:
+Component name: PS ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1P47
+Interval: 1 Years / 500 MAIN GENSET PS
+Next due: 07.07.2026 / 2034
+
+Reference row:
+Component name: SB ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1S47
+Interval: 1 Years / 500 MAIN GENSET SB
+Next due: 07.07.2026 / 2250`,
+    };
+
+    const contextService = {
+      findContextForQuery: jest.fn().mockImplementation((_shipId, query) => {
+        if (query === resolvedSubjectQuery) {
+          return Promise.resolve({ citations: [resolvedCitation] });
+        }
+
+        return Promise.resolve({ citations: [initialCitation] });
+      }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    jest
+      .spyOn(queryService, 'buildGeneratorAssetFallbackQueries')
+      .mockReturnValue([]);
+    jest.spyOn(queryService, 'buildPartsFallbackQueries').mockReturnValue([]);
+    jest
+      .spyOn(queryService, 'buildReferenceContinuationFallbackQueries')
+      .mockReturnValue([]);
+
+    const citationService = new ChatDocumentationCitationService(queryService);
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandManualIntervalMaintenanceChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = new ChatReferenceExtractionService(
+      queryService,
+    );
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'should i perform any maintenance at this counter?',
+      normalizedQuery: {
+        rawQuery: 'should i perform any maintenance at this counter?',
+        normalizedQuery: initialRetrievalQuery.toLowerCase(),
+        followUpMode: 'follow_up',
+        previousUserQuery: 'What are the starboard generator running hours right now?',
+        retrievalQuery: initialRetrievalQuery,
+        effectiveQuery: initialRetrievalQuery,
+        subject: 'starboard generator maintenance counter follow-up',
+        operation: 'lookup',
+        timeIntent: { kind: 'none' },
+        sourceHints: ['TELEMETRY', 'DOCUMENTATION'],
+        isClarificationReply: false,
+        ambiguityFlags: [],
+      } as any,
+    });
+
+    expect(result.resolvedSubjectQuery).toContain('Reference ID 1S47');
+    expect(result.resolvedSubjectQuery).toContain('SB ENGINE');
+    expect(result.resolvedSubjectQuery).not.toContain('Reference ID 1P47');
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+          snippet: expect.stringContaining('1S47'),
+        }),
+      ]),
+    );
+    expect(
+      result.citations.some((citation) =>
+        /Reference ID:\s*1P47/i.test(citation.snippet ?? ''),
+      ),
+    ).toBe(false);
+  });
+
   it('preserves broad certificate analysis citations before later intent narrowing', async () => {
     const initialCitations: ChatCitation[] = [
       {

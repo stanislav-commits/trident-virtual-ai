@@ -326,6 +326,39 @@ describe('ChatDocumentationCitationService', () => {
     ).toBe(false);
   });
 
+  it('trims preceding foreign maintenance rows when focusing an exact reference id', () => {
+    const citations = [
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        snippet: `Reference row:
+Component name: PS ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1P47
+Interval: 1 Years / 500 MAIN GENSET PS
+Next due: 07.07.2026 / 2034
+
+Reference row:
+Component name: SB ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1S47
+Interval: 1 Years / 500 MAIN GENSET SB
+Next due: 07.07.2026 / 2250`,
+        score: 0.96,
+      },
+    ];
+
+    const focused = service.focusCitationsForQuery(
+      'M Y Seawolf X Maintenance Tasks Reference ID 1S47 SB ENGINE A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE',
+      citations,
+    );
+
+    expect(focused).toHaveLength(1);
+    expect(focused[0].snippet).toContain('Reference ID: 1S47');
+    expect(focused[0].snippet).toContain('SB ENGINE');
+    expect(focused[0].snippet).not.toContain('Reference ID: 1P47');
+    expect(focused[0].snippet).not.toContain('PS ENGINE');
+  });
+
   it('prioritizes manual interval-maintenance table evidence over incidental numeric installation data', () => {
     const citations = [
       {
