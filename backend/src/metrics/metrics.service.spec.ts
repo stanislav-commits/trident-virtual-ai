@@ -675,6 +675,66 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(true);
   });
 
+  it('returns the full bilge alarm family for broad live alarm status queries', async () => {
+    const service = buildService([
+      ...Array.from({ length: 24 }, (_, index) => ({
+        metricKey:
+          index < 16
+            ? `Trending::Bilge-Alarms::BILGE ALARM ${index + 1}`
+            : `Trending::Bilge-Alarms2::BILGE ALARM ${index + 1}`,
+        latestValue: index === 6 ? 1 : 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label:
+            index < 16
+              ? `Bilge-Alarms.BILGE ALARM ${index + 1}`
+              : `Bilge-Alarms2.BILGE ALARM ${index + 1}`,
+          description: `Status indicator for bilge alarm ${index + 1}.`,
+          unit: null,
+          bucket: 'Trending',
+          measurement: index < 16 ? 'Bilge-Alarms' : 'Bilge-Alarms2',
+          field: `BILGE ALARM ${index + 1}`,
+        },
+      })),
+      {
+        metricKey: 'Trending::Bilge-Alarms2::PORT MAIN BILGE PUMP SPY',
+        latestValue: 0,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Bilge-Alarms2.PORT MAIN BILGE PUMP SPY',
+          description: 'Spy feedback for the port main bilge pump.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'Bilge-Alarms2',
+          field: 'PORT MAIN BILGE PUMP SPY',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'Are any bilge alarms active right now?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.matchedMetrics).toBe(24);
+    expect(Object.keys(result.telemetry)).toHaveLength(24);
+    expect(
+      Object.keys(result.telemetry).some((key) =>
+        key.includes('Bilge-Alarms2.BILGE ALARM 24'),
+      ),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).some((key) => /PUMP SPY/i.test(key)),
+    ).toBe(false);
+    expect(
+      Object.entries(result.telemetry).find(([key]) =>
+        key.includes('Bilge-Alarms.BILGE ALARM 7'),
+      )?.[1],
+    ).toBe(1);
+  });
+
   it('still surfaces pump spy metrics as related candidates for direct bilge pump status questions', async () => {
     const service = buildService([
       {
@@ -2393,6 +2453,87 @@ describe('MetricsService historical telemetry', () => {
     expect(result.content).toContain('average');
     expect(result.content).toContain('42.5 kW');
     expect(influxdb.queryHistoricalAggregate).toHaveBeenCalled();
+  });
+
+  it('returns the full bilge alarm family for historical point-in-time status queries', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue(
+          Array.from({ length: 24 }, (_, index) => ({
+            metricKey:
+              index < 16
+                ? `Trending::Bilge-Alarms::BILGE ALARM ${index + 1}`
+                : `Trending::Bilge-Alarms2::BILGE ALARM ${index + 1}`,
+            latestValue: 0,
+            valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+            metric: {
+              label:
+                index < 16
+                  ? `Bilge-Alarms.BILGE ALARM ${index + 1}`
+                  : `Bilge-Alarms2.BILGE ALARM ${index + 1}`,
+              description: `Status indicator for bilge alarm ${index + 1}.`,
+              unit: null,
+              bucket: 'Trending',
+              measurement: index < 16 ? 'Bilge-Alarms' : 'Bilge-Alarms2',
+              field: `BILGE ALARM ${index + 1}`,
+              dataType: 'boolean',
+            },
+          })),
+        ),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalNearestValues: jest.fn().mockResolvedValue(
+        Array.from({ length: 24 }, (_, index) => ({
+          key:
+            index < 16
+              ? `Trending::Bilge-Alarms::BILGE ALARM ${index + 1}`
+              : `Trending::Bilge-Alarms2::BILGE ALARM ${index + 1}`,
+          bucket: 'Trending',
+          measurement: index < 16 ? 'Bilge-Alarms' : 'Bilge-Alarms2',
+          field: `BILGE ALARM ${index + 1}`,
+          value: index === 18 ? 1 : 0,
+          time: '2026-03-21T12:00:00.000Z',
+        })),
+      ),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'Which bilge alarms were active on 21 March 2026 at 12:00?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain(
+      'matched historical telemetry readings were [Telemetry History]',
+    );
+    expect(result.content).toContain('Bilge-Alarms.BILGE ALARM 1');
+    expect(result.content).toContain('Bilge-Alarms2.BILGE ALARM 24');
+    expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        'Trending::Bilge-Alarms::BILGE ALARM 1',
+        'Trending::Bilge-Alarms2::BILGE ALARM 24',
+      ]),
+      new Date('2026-03-21T12:00:00.000Z'),
+      'SeaWolfX',
+    );
   });
 
   it('answers historical trend questions with start/end change semantics instead of raw sums', async () => {

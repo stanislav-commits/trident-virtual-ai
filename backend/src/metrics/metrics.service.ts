@@ -3651,9 +3651,58 @@ export class MetricsService implements OnModuleInit {
       (candidate) => candidate.entry,
     );
 
-    return options?.limitResults === false
+    return options?.limitResults === false ||
+      this.shouldExpandFullAlarmTelemetryMatches(
+        filteredEntries,
+        query,
+        resolvedSubjectQuery,
+      )
       ? filteredEntries
       : filteredEntries.slice(0, 12);
+  }
+
+  private shouldExpandFullAlarmTelemetryMatches(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): boolean {
+    if (entries.length <= 12 || entries.length > 64) {
+      return false;
+    }
+
+    const searchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    if (!/\balarm|alarms\b/i.test(searchSpace)) {
+      return false;
+    }
+
+    const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
+    const telemetryListRequest = this.parseTelemetryListRequest(
+      query,
+      resolvedSubjectQuery,
+    );
+    const asksForAlarmInventory =
+      telemetryListRequest?.mode === 'full' ||
+      queryKinds.has('status') ||
+      /\b(active|inactive|enabled|disabled|online|offline|show|list|which|what|any|all|available|complete|entire|every|historical|history|now|right now|current|currently)\b/i.test(
+        searchSpace,
+      );
+    if (!asksForAlarmInventory) {
+      return false;
+    }
+
+    return entries.every((entry) => this.isAlarmStatusTelemetryEntry(entry));
+  }
+
+  private isAlarmStatusTelemetryEntry(entry: ShipTelemetryEntry): boolean {
+    const haystack = this.buildTelemetryHaystack(entry);
+    return (
+      /\balarm\b/i.test(haystack) &&
+      (entry.dataType === 'boolean' ||
+        this.extractTelemetryEntryMeasurementKinds(entry).has('status') ||
+        /\b(status|state)\b/i.test(haystack))
+    );
   }
 
   private shouldUseLocationTelemetryShortcut(

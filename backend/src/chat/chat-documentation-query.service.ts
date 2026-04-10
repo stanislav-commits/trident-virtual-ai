@@ -359,8 +359,10 @@ export class ChatDocumentationQueryService {
     }
 
     const sourceScopeFollowUp = this.isSourceScopeFollowUpQuery(trimmed);
-    const completenessFollowUp =
-      this.isCompletenessVerificationFollowUpQuery(trimmed);
+    const completenessFollowUp = this.isCompletenessVerificationFollowUpQuery(
+      trimmed,
+      normalizedPreviousUserQuery,
+    );
     const shouldCarryPreviousSubject =
       Boolean(normalizedPreviousUserQuery) &&
       (!this.isSelfContainedSubjectQuery(trimmed) ||
@@ -379,7 +381,10 @@ export class ChatDocumentationQueryService {
       return trimmed;
     }
 
-    const normalizedFollowUp = this.normalizeInheritedFollowUpQuery(trimmed);
+    const normalizedFollowUp = this.normalizeInheritedFollowUpQuery(
+      trimmed,
+      normalizedPreviousUserQuery,
+    );
     const followUpSubject = this.resolveInheritedFollowUpSubject({
       previousUserQuery: normalizedPreviousUserQuery,
       currentUserQuery: trimmed,
@@ -412,7 +417,10 @@ export class ChatDocumentationQueryService {
       (this.isTemporalRangeFollowUpQuery(trimmed) &&
         this.isAnalyticalContinuationContext(previousUserQuery)) ||
       this.isSubjectDetailFollowUpQuery(trimmed) ||
-      this.isCompletenessVerificationFollowUpQuery(trimmed) ||
+      this.isCompletenessVerificationFollowUpQuery(
+        trimmed,
+        previousUserQuery,
+      ) ||
       this.isSourceScopeFollowUpQuery(trimmed)
     );
   }
@@ -447,7 +455,10 @@ export class ChatDocumentationQueryService {
     return (
       this.isContextualFollowUpQuery(trimmed) ||
       this.isSubjectDetailFollowUpQuery(trimmed) ||
-      this.isCompletenessVerificationFollowUpQuery(trimmed) ||
+      this.isCompletenessVerificationFollowUpQuery(
+        trimmed,
+        normalizedQuery?.previousUserQuery ?? null,
+      ) ||
       this.isSummaryFollowUpQuery(trimmed) ||
       this.isBroadContinuationQuery(trimmed)
     );
@@ -475,7 +486,7 @@ export class ChatDocumentationQueryService {
       .trim()
       .replace(/[?!.]+$/g, '');
     const normalizedReply =
-      this.normalizeInheritedFollowUpQuery(clarificationReply) ||
+      this.normalizeInheritedFollowUpQuery(clarificationReply, base) ||
       clarificationReply;
     const reply = normalizedReply.trim().replace(/\s+/g, ' ');
     if (!base) return reply;
@@ -546,7 +557,10 @@ export class ChatDocumentationQueryService {
       previousUserQuery &&
       (this.isContextualFollowUpQuery(trimmed) ||
         this.isSubjectDetailFollowUpQuery(trimmed) ||
-        this.isCompletenessVerificationFollowUpQuery(trimmed)) &&
+        this.isCompletenessVerificationFollowUpQuery(
+          trimmed,
+          previousUserQuery,
+        )) &&
       (this.isSelfContainedSubjectQuery(previousUserQuery) ||
         this.hasStrongSpecificAnchor(previousUserQuery))
     ) {
@@ -1599,13 +1613,71 @@ export class ChatDocumentationQueryService {
     );
   }
 
-  private isCompletenessVerificationFollowUpQuery(query: string): boolean {
+  private isCompletenessVerificationFollowUpQuery(
+    query: string,
+    previousUserQuery?: string | null,
+  ): boolean {
+    return (
+      this.isPhraseBasedCompletenessVerificationFollowUpQuery(query) ||
+      this.isSemanticCountCorrectionFollowUpQuery(query, previousUserQuery)
+    );
+  }
+
+  private isPhraseBasedCompletenessVerificationFollowUpQuery(
+    query: string,
+  ): boolean {
     return /\b(are you sure|is that all|is this all|complete list|full list|did you miss|missing any|missing some|any more|anything else|any others|all of them|all certificates|you missed|write all|show all|list all|all available|full inventory|complete inventory)\b/i.test(
       query,
     );
   }
 
-  private normalizeInheritedFollowUpQuery(query: string): string {
+  private isSemanticCountCorrectionFollowUpQuery(
+    query: string,
+    previousUserQuery?: string | null,
+  ): boolean {
+    if (!previousUserQuery?.trim()) {
+      return false;
+    }
+
+    const normalized = query.trim().replace(/\s+/g, ' ');
+    if (!normalized) {
+      return false;
+    }
+
+    if (
+      this.isPhraseBasedCompletenessVerificationFollowUpQuery(normalized) ||
+      !/\b\d+\b/.test(normalized)
+    ) {
+      return false;
+    }
+
+    const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 12) {
+      return false;
+    }
+
+    if (
+      !/^(?:there\s+(?:is|are|were)|there\s+should\s+be|should\s+be|only\b|just\b|looks\s+like|i\s+(?:count|see|have|got)|it(?:'s| is)\b)/i.test(
+        normalized,
+      )
+    ) {
+      return false;
+    }
+
+    const previousTerms =
+      this.extractCompletenessSubjectTerms(previousUserQuery);
+    const currentTerms = this.extractCompletenessSubjectTerms(normalized);
+    if (currentTerms.length === 0) {
+      return false;
+    }
+
+    return this.hasCompletenessSubjectRelation(currentTerms, previousTerms);
+  }
+
+  private normalizeInheritedFollowUpQuery(
+    query: string,
+    previousUserQuery?: string | null,
+  ): string {
     const trimmed = query.trim().replace(/\s+/g, ' ');
     if (!trimmed) {
       return trimmed;
@@ -1620,8 +1692,10 @@ export class ChatDocumentationQueryService {
     if (sourceScopeOverride) {
       return sourceScopeOverride;
     }
-    const completenessFollowUp =
-      this.normalizeCompletenessFollowUp(withoutAffirmation);
+    const completenessFollowUp = this.normalizeCompletenessFollowUp(
+      withoutAffirmation,
+      previousUserQuery,
+    );
     if (completenessFollowUp) {
       return completenessFollowUp;
     }
@@ -1969,12 +2043,23 @@ export class ChatDocumentationQueryService {
     );
   }
 
-  private normalizeCompletenessFollowUp(query: string): string | null {
-    if (!this.isCompletenessVerificationFollowUpQuery(query)) {
+  private normalizeCompletenessFollowUp(
+    query: string,
+    previousUserQuery?: string | null,
+  ): string | null {
+    if (
+      this.isPhraseBasedCompletenessVerificationFollowUpQuery(query)
+    ) {
+      return 'show all available';
+    }
+
+    if (!this.isSemanticCountCorrectionFollowUpQuery(query, previousUserQuery)) {
       return null;
     }
 
-    return 'show all available';
+    return this.isTelemetryCompletenessFollowUpContext(previousUserQuery)
+      ? 'show all available telemetry readings'
+      : 'show all available';
   }
 
   private resolveInheritedFollowUpSubject(params: {
@@ -1993,6 +2078,23 @@ export class ChatDocumentationQueryService {
       )
     ) {
       return this.normalizeInheritedFollowUpSubjectBase(previousUserQuery);
+    }
+
+    if (
+      completenessFollowUp &&
+      this.isSemanticCountCorrectionFollowUpQuery(
+        currentUserQuery,
+        previousUserQuery,
+      )
+    ) {
+      const semanticCorrectionSubject =
+        this.buildSemanticCompletenessFollowUpSubject(
+          previousUserQuery,
+          currentUserQuery,
+        );
+      if (semanticCorrectionSubject) {
+        return semanticCorrectionSubject;
+      }
     }
 
     return this.extractFollowUpSubject(previousUserQuery);
@@ -2541,6 +2643,177 @@ export class ChatDocumentationQueryService {
     const subjectTerms = this.extractRetrievalSubjectTerms(previousUserQuery);
     if (subjectTerms.length === 0) return null;
     return subjectTerms.join(' ');
+  }
+
+  private buildSemanticCompletenessFollowUpSubject(
+    previousUserQuery: string,
+    currentUserQuery: string,
+  ): string | null {
+    const previousTerms =
+      this.extractCompletenessSubjectTerms(previousUserQuery);
+    const currentTerms = this.extractCompletenessSubjectTerms(currentUserQuery);
+    if (currentTerms.length === 0) {
+      return previousTerms.length > 0 ? previousTerms.join(' ') : null;
+    }
+
+    if (!this.hasCompletenessSubjectRelation(currentTerms, previousTerms)) {
+      return null;
+    }
+
+    const normalizedPrevious = new Set(
+      previousTerms.map((term) =>
+        this.normalizeCompletenessSubjectTerm(term),
+      ),
+    );
+    const normalizedCurrent = new Set(
+      currentTerms.map((term) =>
+        this.normalizeCompletenessSubjectTerm(term),
+      ),
+    );
+    const currentAddsSpecificity = currentTerms.some(
+      (term) =>
+        !normalizedPrevious.has(this.normalizeCompletenessSubjectTerm(term)),
+    );
+
+    if (!currentAddsSpecificity) {
+      return previousTerms.length > 0 ? previousTerms.join(' ') : null;
+    }
+
+    return [
+      ...currentTerms,
+      ...previousTerms.filter(
+        (term) =>
+          !normalizedCurrent.has(this.normalizeCompletenessSubjectTerm(term)),
+      ),
+    ].join(' ');
+  }
+
+  private extractCompletenessSubjectTerms(query: string): string[] {
+    const genericTerms = new Set([
+      'active',
+      'actually',
+      'all',
+      'already',
+      'any',
+      'available',
+      'complete',
+      'count',
+      'counts',
+      'current',
+      'currently',
+      'exact',
+      'exactly',
+      'full',
+      'got',
+      'have',
+      'just',
+      'left',
+      'list',
+      'lot',
+      'lots',
+      'many',
+      'miss',
+      'missed',
+      'missing',
+      'more',
+      'now',
+      'number',
+      'numbers',
+      'only',
+      'other',
+      'others',
+      'remaining',
+      'rest',
+      'right',
+      'see',
+      'should',
+      'show',
+      'still',
+      'sure',
+      'that',
+      'there',
+      'these',
+      'they',
+      'those',
+      'total',
+      'was',
+      'were',
+      'write',
+    ]);
+
+    return this.extractRetrievalSubjectTerms(query).filter(
+      (term) => !genericTerms.has(this.normalizeCompletenessSubjectTerm(term)),
+    );
+  }
+
+  private normalizeCompletenessSubjectTerm(term: string): string {
+    const normalized = term.trim().toLowerCase();
+    if (!normalized) {
+      return normalized;
+    }
+    if (normalized.endsWith('ies') && normalized.length > 4) {
+      return `${normalized.slice(0, -3)}y`;
+    }
+    if (normalized.endsWith('es') && normalized.length > 4) {
+      return normalized.slice(0, -2);
+    }
+    if (normalized.endsWith('s') && normalized.length > 3) {
+      return normalized.slice(0, -1);
+    }
+    return normalized;
+  }
+
+  private hasCompletenessSubjectRelation(
+    currentTerms: string[],
+    previousTerms: string[],
+  ): boolean {
+    if (currentTerms.length === 0 || previousTerms.length === 0) {
+      return false;
+    }
+
+    const normalizedPrevious = previousTerms.map((term) =>
+      this.normalizeCompletenessSubjectTerm(term),
+    );
+
+    return currentTerms.some((term) => {
+      const normalizedCurrent = this.normalizeCompletenessSubjectTerm(term);
+      return normalizedPrevious.some(
+        (previousTerm) =>
+          previousTerm === normalizedCurrent ||
+          previousTerm.includes(normalizedCurrent) ||
+          normalizedCurrent.includes(previousTerm),
+      );
+    });
+  }
+
+  private isTelemetryCompletenessFollowUpContext(
+    query?: string | null,
+  ): boolean {
+    if (!query?.trim()) {
+      return false;
+    }
+
+    if (
+      this.hasExplicitSourceRequest(query) ||
+      this.isSourceScopeFollowUpQuery(query) ||
+      this.isPersonnelDirectoryQuery(query) ||
+      this.isRoleDescriptionQuery(query) ||
+      this.isProcedureQuery(query) ||
+      this.isPartsQuery(query)
+    ) {
+      return false;
+    }
+
+    if (this.isTelemetryListQuery(query)) {
+      return true;
+    }
+
+    return (
+      this.isAggregateContinuationContext(query) ||
+      /\b(telemetry|metric|metrics|reading|readings|value|values|signal|signals|sensor|sensors|current|currently|now|right now|historical|history|today|yesterday|active|inactive|enabled|disabled|onboard)\b/i.test(
+        query,
+      )
+    );
   }
 
   private isSelfContainedSubjectQuery(query: string): boolean {

@@ -529,6 +529,26 @@ describe('ChatDocumentationQueryService', () => {
     expect(retrievalQuery).toContain('show all available');
   });
 
+  it('treats semantic count corrections as telemetry completeness follow-ups', () => {
+    const retrievalQuery = service.buildRetrievalQuery(
+      'there are 24 bilge alarms',
+      'Are any alarms active right now?',
+    );
+
+    expect(retrievalQuery).toBe(
+      'bilge alarms show all available telemetry readings',
+    );
+    expect(
+      service.shouldPromoteRetrievalQueryToAnswerQuery(
+        'there are 24 bilge alarms',
+        'Are any alarms active right now?',
+        retrievalQuery,
+      ),
+    ).toBe(true);
+    expect(service.isTelemetryListQuery(retrievalQuery)).toBe(true);
+    expect(service.shouldSkipDocumentationRetrieval(retrievalQuery)).toBe(true);
+  });
+
   it('skips documentation retrieval for explicit telemetry-source override follow-ups', () => {
     expect(service.shouldSkipDocumentationRetrieval('based on telemetry')).toBe(
       true,
