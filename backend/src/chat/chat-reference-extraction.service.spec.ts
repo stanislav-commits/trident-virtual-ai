@@ -247,6 +247,42 @@ Next due: 07.07.2026 / 2250`,
     expect(resolved).not.toContain('Reference ID 1P47');
   });
 
+  it('extracts the starboard maintenance row from a mixed-side citation before resolving the exact subject', () => {
+    const citations: ChatCitation[] = [
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        score: 0.92,
+        snippet: `<table><caption> M/Y Seawolf X - Maintenance Tasks</caption>
+<tr><td>0212 ENGINES</td><td>PS ENGINE</td><td>A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE</td><td>1P47</td><td>Chief Engineer</td><td>1 Years / 500 MAIN GENSET PS</td><td>07.07.2025 / 1534</td><td>07.07.2026 / 2034</td><td>EUR</td></tr>
+<tr><td>0212 ENGINES</td><td>SB ENGINE</td><td>A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE</td><td>1P54</td><td>Chief Engineer</td><td>1 Years / 500 MAIN GENSET SB</td><td>07.07.2025 / 1750</td><td>07.07.2026 / 2250</td><td>EUR</td></tr>
+</table>`,
+      },
+    ];
+
+    const resolved = service.buildResolvedMaintenanceSubjectQuery(
+      'starboard generator right now should i perform any maintenance at this counter?',
+      'should i perform any maintenance at this counter?',
+      citations,
+    );
+
+    const focusedSnippet = service.extractGeneratorScheduleSnippet(
+      citations[0].snippet ?? '',
+      'starboard',
+      'starboard generator right now should i perform any maintenance at this counter?',
+    );
+    const focusedContext = service.extractMaintenanceRowContext(
+      focusedSnippet ?? '',
+    );
+
+    expect(focusedSnippet).toContain('Reference ID: 1P54');
+    expect(focusedSnippet).not.toContain('Reference ID: 1P47');
+    expect(focusedContext?.referenceId).toBe('1P54');
+    expect(focusedContext?.componentName).toContain('SB ENGINE');
+    expect(resolved).toContain('Reference ID 1P54');
+    expect(resolved).toContain('SB ENGINE');
+    expect(resolved).not.toContain('Reference ID 1P47');
+  });
+
   it('keeps long maintenance task and spare-parts continuations for an exact reference row', () => {
     const snippet = `<table><caption> M/Y Seawolf X - Maintenance Tasks</caption>
 <tr><td>0212 ENGINES</td><td>PS ENGINE</td><td>A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE</td><td>1P47</td><td>Chief Engineer</td><td>1 Years / 500 MAIN GENSET PS</td><td>07.07.2025 / 1534</td><td>07.07.2026 / 2034</td><td>EUR</td></tr>

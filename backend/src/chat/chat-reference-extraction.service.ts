@@ -73,11 +73,10 @@ export class ChatReferenceExtractionService {
     userQuery: string,
     citations: ChatCitation[],
   ): string | null {
+    const queryContext = `${retrievalQuery}\n${userQuery}`;
     if (
       citations.length === 0 ||
-      !this.shouldResolveToExactMaintenanceRow(
-        `${retrievalQuery}\n${userQuery}`,
-      )
+      !this.shouldResolveToExactMaintenanceRow(queryContext)
     ) {
       return null;
     }
@@ -85,9 +84,30 @@ export class ChatReferenceExtractionService {
     const subjectTerms = this.queryService.extractRetrievalSubjectTerms(
       `${retrievalQuery} ${userQuery}`.trim(),
     );
+    const requestedSide = this.queryService.detectDirectionalSide(queryContext);
+    const shouldFocusGeneratorRows =
+      Boolean(requestedSide) &&
+      /\b(generator|genset|main\s+generator)\b/i.test(queryContext);
     const candidates = citations.reduce<MaintenanceRowCandidate[]>(
       (accumulator, citation, citationIndex) => {
-        const context = this.extractMaintenanceRowContext(citation.snippet ?? '');
+        const focusedSnippet =
+          shouldFocusGeneratorRows && requestedSide
+            ? this.extractGeneratorScheduleSnippet(
+                citation.snippet ?? '',
+                requestedSide,
+                queryContext,
+              ) ??
+              citation.snippet ??
+              ''
+            : citation.snippet ?? '';
+        const scoringCitation =
+          focusedSnippet === (citation.snippet ?? '')
+            ? citation
+            : {
+                ...citation,
+                snippet: focusedSnippet,
+              };
+        const context = this.extractMaintenanceRowContext(focusedSnippet);
         if (!context?.referenceId) {
           return accumulator;
         }
@@ -97,12 +117,12 @@ export class ChatReferenceExtractionService {
           sourceTitle: citation.sourceTitle,
           citationIndex,
           explicitRowEvidence: this.hasExplicitMaintenanceRowEvidence(
-            citation.snippet ?? '',
+            focusedSnippet,
           ),
           score: this.scoreMaintenanceRowCandidate(
             context,
-            citation,
-            `${retrievalQuery}\n${userQuery}`,
+            scoringCitation,
+            queryContext,
             subjectTerms,
           ),
         });
@@ -706,7 +726,13 @@ export class ChatReferenceExtractionService {
     );
     if (lineIndex < 0) return null;
 
-    return lines.slice(Math.max(0, lineIndex - 1), lineIndex + 1).join('\n');
+    const previousLine = lines[lineIndex - 1] ?? '';
+    const startIndex =
+      previousLine && this.hasMaintenanceReferenceId(previousLine)
+        ? lineIndex
+        : Math.max(0, lineIndex - 1);
+
+    return lines.slice(startIndex, lineIndex + 1).join('\n');
   }
 
   private buildGeneratorScheduleCandidateSnippet(
