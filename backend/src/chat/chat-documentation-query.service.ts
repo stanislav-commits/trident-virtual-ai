@@ -793,7 +793,10 @@ export class ChatDocumentationQueryService {
   }
 
   isRoleInventoryQuery(query: string): boolean {
-    if (this.isRoleDescriptionQuery(query)) {
+    if (
+      this.isRoleDescriptionQuery(query) ||
+      this.isNavigationPositionQuery(query)
+    ) {
       return false;
     }
 
@@ -810,6 +813,30 @@ export class ChatDocumentationQueryService {
       /\b(list|show|what|which|other|else|available|mentioned|listed|there)\b/i.test(
         query,
       )
+    );
+  }
+
+  private isNavigationPositionQuery(query: string): boolean {
+    if (
+      !/\b(position|positions|coordinates?|latitude|longitude|gps|location)\b/i.test(
+        query,
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      /\b(role|roles|title|titles|job|responsibilit(?:y|ies)|manager|director|officer|engineer|captain|master|crew|staff|personnel|contact|contacts|email|emails|phone|telephone|mobile|number|numbers|address|dpa|cso)\b/i.test(
+        query,
+      )
+    ) {
+      return false;
+    }
+
+    return (
+      /\b(yacht|vessel|ship|boat|navigation|navigational|where|located|current|currently|right\s+now|now|today|yesterday|our|we|us)\b/i.test(
+        query,
+      ) || this.hasHistoricalTimeAnchor(query)
     );
   }
 

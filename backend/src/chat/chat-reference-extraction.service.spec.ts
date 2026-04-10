@@ -210,6 +210,43 @@ Next due: 07.07.2029 / 3534`,
     expect(resolved).not.toContain('Reference ID 1P49');
   });
 
+  it('prefers the matching starboard maintenance row over an earlier port row for counter follow-ups', () => {
+    const citations: ChatCitation[] = [
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        score: 0.96,
+        snippet: `Component name: PS ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1P47
+Responsible: Chief Engineer
+Interval: 1 Years /500 MAIN GENSET PS
+Last due: 07.07.2025 / 1534
+Next due: 07.07.2026 / 2034`,
+      },
+      {
+        sourceTitle: 'M_Y Seawolf X - Maintenance Tasks.pdf',
+        score: 0.84,
+        snippet: `Component name: SB ENGINE
+Task name: A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE
+Reference ID: 1S47
+Responsible: Chief Engineer
+Interval: 1 Years /500 MAIN GENSET SB
+Last due: 07.07.2025 / 1750
+Next due: 07.07.2026 / 2250`,
+      },
+    ];
+
+    const resolved = service.buildResolvedMaintenanceSubjectQuery(
+      'What are the starboard generator running hours right now? should i perform any maintenance at this counter?',
+      'should i perform any maintenance at this counter?',
+      citations,
+    );
+
+    expect(resolved).toContain('Reference ID 1S47');
+    expect(resolved).toContain('SB ENGINE');
+    expect(resolved).not.toContain('Reference ID 1P47');
+  });
+
   it('keeps long maintenance task and spare-parts continuations for an exact reference row', () => {
     const snippet = `<table><caption> M/Y Seawolf X - Maintenance Tasks</caption>
 <tr><td>0212 ENGINES</td><td>PS ENGINE</td><td>A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE</td><td>1P47</td><td>Chief Engineer</td><td>1 Years / 500 MAIN GENSET PS</td><td>07.07.2025 / 1534</td><td>07.07.2026 / 2034</td><td>EUR</td></tr>
@@ -287,6 +324,25 @@ Next due: 07.07.2029 / 3534`,
     expect(extracted).not.toContain('Spare Name: INSPECT / REPLACE ANODES');
     expect(extracted).not.toContain('Manufacturer Part#: ENGINE');
     expect(extracted).not.toContain('Supplier Part#: EXHAUST');
+  });
+
+  it('extracts the matching starboard generator schedule row when the reference id is not port-prefixed', () => {
+    const snippet = `<table><caption> M/Y Seawolf X - Maintenance Tasks</caption>
+<tr><td>0212 ENGINES</td><td>PS ENGINE</td><td>A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE</td><td>1P47</td><td>Chief Engineer</td><td>1 Years / 500 MAIN GENSET PS</td><td>07.07.2025 / 1534</td><td>07.07.2026 / 2034</td><td>EUR</td></tr>
+<tr><td>CHECK SOFTWARE STATUS</td></tr>
+<tr><td>0212 ENGINES</td><td>SB ENGINE</td><td>A MAIN GENERATOR 500 HOURS/ANNUAL SERVICE</td><td>1S47</td><td>Chief Engineer</td><td>1 Years / 500 MAIN GENSET SB</td><td>07.07.2025 / 1750</td><td>07.07.2026 / 2250</td><td>EUR</td></tr>
+<tr><td>REPLACE OIL AND FILTERS</td></tr>
+</table>`;
+
+    const extracted = service.extractGeneratorScheduleSnippet(
+      snippet,
+      'starboard',
+      'Should I perform any maintenance at this counter for the starboard generator?',
+    );
+
+    expect(extracted).toContain('Reference ID: 1S47');
+    expect(extracted).toContain('REPLACE OIL AND FILTERS');
+    expect(extracted).not.toContain('Reference ID: 1P47');
   });
 
   it('prefers the oil-related generator service row when a chunk contains multiple port-generator maintenance rows', () => {

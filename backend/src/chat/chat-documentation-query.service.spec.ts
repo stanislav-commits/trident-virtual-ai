@@ -332,6 +332,21 @@ describe('ChatDocumentationQueryService', () => {
     );
   });
 
+  it('does not rewrite navigation position telemetry queries into personnel directory lookups', () => {
+    const historicalQuery = 'what was the yacht position on 15 March 2026 at 10:00?';
+    const currentQuery = 'what is the yacht position right now?';
+
+    expect(service.isRoleInventoryQuery(historicalQuery)).toBe(false);
+    expect(service.isPersonnelDirectoryQuery(historicalQuery)).toBe(false);
+    expect(service.buildRetrievalQuery(historicalQuery, null)).toBe(
+      historicalQuery,
+    );
+
+    expect(service.isRoleInventoryQuery(currentQuery)).toBe(false);
+    expect(service.isPersonnelDirectoryQuery(currentQuery)).toBe(false);
+    expect(service.buildRetrievalQuery(currentQuery, null)).toBe(currentQuery);
+  });
+
   it('treats explicit role-description questions as self-contained even after a personnel lookup', () => {
     expect(
       service.buildRetrievalQuery(

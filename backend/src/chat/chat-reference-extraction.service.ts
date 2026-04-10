@@ -26,6 +26,9 @@ interface ClarificationSuggestionCandidate {
   score: number;
 }
 
+const MAINTENANCE_REFERENCE_ID_PATTERN = /\b1[a-z]\d{2,}\b/i;
+const MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN = /\b1[a-z]\d{2,}\b/g;
+
 @Injectable()
 export class ChatReferenceExtractionService {
   constructor(
@@ -113,10 +116,13 @@ export class ChatReferenceExtractionService {
     const leadingExplicitCandidate = [...candidates]
       .filter((candidate) => candidate.explicitRowEvidence)
       .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
         if (left.citationIndex !== right.citationIndex) {
           return left.citationIndex - right.citationIndex;
         }
-        return right.score - left.score;
+        return (right.taskName ?? '').length - (left.taskName ?? '').length;
       })[0];
     if (leadingExplicitCandidate) {
       return this.buildMaintenanceSubjectQuery(leadingExplicitCandidate);
@@ -507,6 +513,14 @@ export class ChatReferenceExtractionService {
     return left.includes(right);
   }
 
+  private hasMaintenanceReferenceId(text: string): boolean {
+    return MAINTENANCE_REFERENCE_ID_PATTERN.test(text);
+  }
+
+  private extractMaintenanceReferenceId(text?: string | null): string | null {
+    return text?.match(MAINTENANCE_REFERENCE_ID_PATTERN)?.[0]?.toUpperCase() ?? null;
+  }
+
   extractMaintenanceRowContext(snippet: string): MaintenanceRowContext | null {
     if (!snippet.trim()) return null;
 
@@ -517,7 +531,7 @@ export class ChatReferenceExtractionService {
 
     const rows = snippet.match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
     for (const row of rows) {
-      if (!/\b1p\d{2,}\b/i.test(this.stripHtmlLikeMarkup(row))) {
+      if (!this.hasMaintenanceReferenceId(this.stripHtmlLikeMarkup(row))) {
         continue;
       }
 
@@ -564,7 +578,7 @@ export class ChatReferenceExtractionService {
         const candidateTable = tables[index];
         const candidateHaystack = this.stripHtmlLikeMarkup(candidateTable).toLowerCase();
         const mentionedReferenceIds = [
-          ...candidateHaystack.matchAll(/\b1p\d{2,}\b/g),
+          ...candidateHaystack.matchAll(MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN),
         ].map((match) => match[0].toLowerCase());
         if (
           mentionedReferenceIds.some(
@@ -612,7 +626,7 @@ export class ChatReferenceExtractionService {
         const row = rows[index];
         if (
           index > referenceRowIndex &&
-          /\b1p\d{2,}\b/i.test(row) &&
+          this.hasMaintenanceReferenceId(row) &&
           !row.toLowerCase().includes(normalizedReference)
         ) {
           break;
@@ -646,14 +660,15 @@ export class ChatReferenceExtractionService {
         (entry) =>
           /\b(generator|genset|main\s+generator)\b/i.test(entry.plain) &&
           this.queryService.matchesDirectionalSide(entry.plain, side) &&
-          /\b1p\d{2,}\b/i.test(entry.plain),
+          this.hasMaintenanceReferenceId(entry.plain),
       );
 
     if (rowMatches.length > 0) {
       const bestMatch = [...rowMatches]
         .map((target) => {
           const referenceId =
-            target.plain.match(/\b1p\d{2,}\b/i)?.[0]?.toLowerCase() ?? null;
+            this.extractMaintenanceReferenceId(target.plain)?.toLowerCase() ??
+            null;
           const extracted =
             this.buildGeneratorScheduleCandidateSnippet(
               snippet,
@@ -687,7 +702,7 @@ export class ChatReferenceExtractionService {
       (line) =>
         /\b(generator|genset|main\s+generator)\b/i.test(line) &&
         this.queryService.matchesDirectionalSide(line, side) &&
-        /\b1p\d{2,}\b/i.test(line),
+        this.hasMaintenanceReferenceId(line),
     );
     if (lineIndex < 0) return null;
 
@@ -761,7 +776,7 @@ export class ChatReferenceExtractionService {
       const row = rows[index];
       if (
         index > referenceRowIndex &&
-        /\b1p\d{2,}\b/i.test(row) &&
+        this.hasMaintenanceReferenceId(row) &&
         !row.toLowerCase().includes(normalizedReference)
       ) {
         break;
@@ -1021,7 +1036,7 @@ export class ChatReferenceExtractionService {
           continue;
         }
 
-        if (/\b1p\d{2,}\b/i.test(normalizedLine)) {
+        if (this.hasMaintenanceReferenceId(normalizedLine)) {
           continue;
         }
 
@@ -1086,7 +1101,7 @@ export class ChatReferenceExtractionService {
             break;
           }
           if (
-            /\b1p\d{2,}\b/i.test(flattenedRow) ||
+            this.hasMaintenanceReferenceId(flattenedRow) ||
             /\b(component\s*name|task\s*name|reference\s*id|responsible|interval|last\s*due|next\s*due|costs?)\b/i.test(
               flattenedRow,
             )
@@ -1364,7 +1379,7 @@ export class ChatReferenceExtractionService {
     }
 
     if (
-      /\b1p\d{2,}\b/i.test(flattened) ||
+      this.hasMaintenanceReferenceId(flattened) ||
       /\b(reference\s*id|responsible|interval|last\s*due|next\s*due|costs?)\b/i.test(
         flattened,
       )
@@ -1599,7 +1614,8 @@ export class ChatReferenceExtractionService {
     }
 
     if (
-      /\b(reference\s*id|responsible|interval|last\s*due|next\s*due|costs?|1p\d{2,})\b/i.test(
+      this.hasMaintenanceReferenceId(next) ||
+      /\b(reference\s*id|responsible|interval|last\s*due|next\s*due|costs?)\b/i.test(
         next,
       )
     ) {
@@ -2120,7 +2136,7 @@ export class ChatReferenceExtractionService {
       /\bmain\s+generator\b/i,
       /\bgenset\b/i,
       /\beur\b/i,
-      /\b1p\d{2,}\b/i,
+      MAINTENANCE_REFERENCE_ID_PATTERN,
     ];
 
     return patterns.reduce(
@@ -2282,6 +2298,18 @@ export class ChatReferenceExtractionService {
       score += 2;
     }
 
+    const requestedSide = this.queryService.detectDirectionalSide(queryText);
+    if (requestedSide) {
+      const oppositeSide = requestedSide === 'port' ? 'starboard' : 'port';
+      if (this.queryService.matchesDirectionalSide(haystack, requestedSide)) {
+        score += 12;
+      } else if (
+        this.queryService.matchesDirectionalSide(haystack, oppositeSide)
+      ) {
+        score -= 16;
+      }
+    }
+
     return score;
   }
 
@@ -2349,7 +2377,7 @@ export class ChatReferenceExtractionService {
     const nextDue = this.extractMaintenanceField(text, 'Next due', ['Costs']);
 
     const normalizedReferenceId =
-      referenceId?.match(/\b1p\d{2,}\b/i)?.[0]?.toUpperCase() ?? null;
+      this.extractMaintenanceReferenceId(referenceId);
     if (!normalizedReferenceId) {
       return null;
     }
@@ -2484,7 +2512,9 @@ export class ChatReferenceExtractionService {
     const cells = this.extractTableCells(rowHtml);
     if (cells.length === 0) return null;
 
-    const referenceIndex = cells.findIndex((cell) => /\b1p\d{2,}\b/i.test(cell));
+    const referenceIndex = cells.findIndex((cell) =>
+      this.hasMaintenanceReferenceId(cell),
+    );
     if (referenceIndex < 0) {
       return null;
     }
@@ -2524,7 +2554,9 @@ export class ChatReferenceExtractionService {
     const normalizedReference = referenceId.toLowerCase();
     const normalizedBlock = block.toLowerCase();
     const anchorIndex = normalizedBlock.indexOf(normalizedReference);
-    const referenceMatches = [...normalizedBlock.matchAll(/\b1p\d{2,}\b/g)];
+    const referenceMatches = [
+      ...normalizedBlock.matchAll(MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN),
+    ];
     const foreignRefsBefore = referenceMatches.filter((match) => {
       if (match[0] === normalizedReference) {
         return false;
