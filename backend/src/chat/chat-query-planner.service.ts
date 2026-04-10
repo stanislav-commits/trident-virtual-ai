@@ -601,21 +601,35 @@ export class ChatQueryPlannerService {
   }
 
   private isTelemetryListQuery(query: string): boolean {
+    if (
+      this.isManualSpecificationQuery(query) ||
+      this.isMaintenanceProcedureQuery(query) ||
+      this.isPartsQuery(query)
+    ) {
+      return false;
+    }
+
+    const asksForInventory =
+      /\b(show|display|give|return|output|write|provide|enumerate)\b/i.test(
+        query,
+      ) ||
+      /^\s*list\b/i.test(query) ||
+      /\b(?:can|could|would|will|please)\s+(?:you\s+)?list\b/i.test(query) ||
+      /\blist\s+of\b/i.test(query) ||
+      /\b(all|available|full|complete|entire|every|random|\d{1,2})\b/i.test(
+        query,
+      );
     const mentionsTelemetryInventory =
       /\b(metrics?|telemetry|readings?|values?|signals?|sensor(?:s)?)\b/i.test(
         query,
-      );
+      ) ||
+      (/\b(alarms?|warnings?|faults?|trips?)\b/i.test(query) &&
+        asksForInventory);
     if (!mentionsTelemetryInventory) {
       return false;
     }
 
-    return (
-      /\b(show|list|display|give|return|output|write|provide|enumerate)\b/i.test(
-        query,
-      ) ||
-      /\blist\s+of\b/i.test(query) ||
-      /\b(all|available|full|complete|entire|every)\b/i.test(query)
-    );
+    return asksForInventory;
   }
 
   private isMaintenanceProcedureQuery(query: string): boolean {

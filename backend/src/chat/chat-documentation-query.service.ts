@@ -1051,23 +1051,35 @@ export class ChatDocumentationQueryService {
   }
 
   isTelemetryListQuery(query: string): boolean {
+    if (
+      this.isManualSpecificationQuery(query) ||
+      this.isProcedureQuery(query) ||
+      this.isPartsQuery(query)
+    ) {
+      return false;
+    }
+
+    const asksForInventory =
+      /\b(show|display|give|return|output|write|provide|enumerate)\b/i.test(
+        query,
+      ) ||
+      /^\s*list\b/i.test(query) ||
+      /\b(?:can|could|would|will|please)\s+(?:you\s+)?list\b/i.test(query) ||
+      /\blist\s+of\b/i.test(query) ||
+      /\b(random|available|all|full|complete|entire|every|\d{1,2})\b/i.test(
+        query,
+      );
     const mentionsTelemetryInventory =
       /\b(metrics?|telemetry|readings?|values?|signals?|sensors?)\b/i.test(
         query,
-      );
+      ) ||
+      (/\b(alarms?|warnings?|faults?|trips?)\b/i.test(query) &&
+        asksForInventory);
     if (!mentionsTelemetryInventory) {
       return false;
     }
 
-    return (
-      /\b(show|list|display|give|return|output|write|provide|enumerate)\b/i.test(
-        query,
-      ) ||
-      /\blist\s+of\b/i.test(query) ||
-      /\b(active|connected|enabled|current|random|available|all|full|complete|entire|every|\d{1,2})\b/i.test(
-        query,
-      )
-    );
+    return asksForInventory;
   }
 
   hasDetailedPartsEvidence(citations: ChatCitation[]): boolean {

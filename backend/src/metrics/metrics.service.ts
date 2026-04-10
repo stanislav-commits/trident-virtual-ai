@@ -3650,6 +3650,16 @@ export class MetricsService implements OnModuleInit {
     const filteredEntries = this.filterScoredTelemetryEntries(narrowed).map(
       (candidate) => candidate.entry,
     );
+    const expandedAlarmFamilyEntries =
+      this.expandDominantAlarmTelemetryFamilyEntries(
+        narrowed.map((candidate) => candidate.entry),
+        filteredEntries,
+        query,
+        resolvedSubjectQuery,
+      );
+    if (expandedAlarmFamilyEntries.length > 0) {
+      return expandedAlarmFamilyEntries;
+    }
 
     return options?.limitResults === false ||
       this.shouldExpandFullAlarmTelemetryMatches(
@@ -3661,6 +3671,69 @@ export class MetricsService implements OnModuleInit {
       : filteredEntries.slice(0, 12);
   }
 
+  private expandDominantAlarmTelemetryFamilyEntries(
+    candidateEntries: ShipTelemetryEntry[],
+    selectedEntries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryEntry[] {
+    if (!this.isAlarmInventoryTelemetryQuery(query, resolvedSubjectQuery)) {
+      return [];
+    }
+
+    const selectedAlarmEntries = selectedEntries.filter((entry) =>
+      this.isAlarmStatusTelemetryEntry(entry),
+    );
+    if (selectedAlarmEntries.length < 2) {
+      return [];
+    }
+
+    const familyCounts = new Map<string, number>();
+    for (const entry of selectedAlarmEntries) {
+      const familyKey = this.getAlarmTelemetryFamilyKey(entry);
+      if (!familyKey) {
+        continue;
+      }
+      familyCounts.set(familyKey, (familyCounts.get(familyKey) ?? 0) + 1);
+    }
+
+    const dominantFamily = [...familyCounts.entries()].sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    )[0];
+    if (!dominantFamily) {
+      return [];
+    }
+
+    const [dominantFamilyKey, dominantCount] = dominantFamily;
+    if (dominantCount < Math.max(2, Math.ceil(selectedAlarmEntries.length * 0.6))) {
+      return [];
+    }
+
+    const expandedFamilyEntries = candidateEntries.filter((entry) => {
+      if (!this.isAlarmStatusTelemetryEntry(entry)) {
+        return false;
+      }
+      return this.getAlarmTelemetryFamilyKey(entry) === dominantFamilyKey;
+    });
+
+    const expandsSelectedAlarmFamily =
+      expandedFamilyEntries.length > selectedAlarmEntries.length;
+    const trimsNonAlarmNoise = expandedFamilyEntries.length < selectedEntries.length;
+    if (
+      (!expandsSelectedAlarmFamily && !trimsNonAlarmNoise) ||
+      expandedFamilyEntries.length > 64
+    ) {
+      return [];
+    }
+
+    return [...expandedFamilyEntries].sort(
+      (left, right) =>
+        this.getAlarmTelemetrySequence(left) -
+          this.getAlarmTelemetrySequence(right) ||
+        left.key.localeCompare(right.key),
+    );
+  }
+
   private shouldExpandFullAlarmTelemetryMatches(
     entries: ShipTelemetryEntry[],
     query: string,
@@ -3670,6 +3743,15 @@ export class MetricsService implements OnModuleInit {
       return false;
     }
 
+    return this.isAlarmInventoryTelemetryQuery(query, resolvedSubjectQuery)
+      ? entries.every((entry) => this.isAlarmStatusTelemetryEntry(entry))
+      : false;
+  }
+
+  private isAlarmInventoryTelemetryQuery(
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): boolean {
     const searchSpace = this.normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
@@ -3692,7 +3774,7 @@ export class MetricsService implements OnModuleInit {
       return false;
     }
 
-    return entries.every((entry) => this.isAlarmStatusTelemetryEntry(entry));
+    return true;
   }
 
   private isAlarmStatusTelemetryEntry(entry: ShipTelemetryEntry): boolean {
@@ -3703,6 +3785,50 @@ export class MetricsService implements OnModuleInit {
         this.extractTelemetryEntryMeasurementKinds(entry).has('status') ||
         /\b(status|state)\b/i.test(haystack))
     );
+  }
+
+  private getAlarmTelemetryFamilyKey(entry: ShipTelemetryEntry): string | null {
+    const measurementRoot = this.normalizeAlarmTelemetryFamilySegment(
+      entry.measurement ?? entry.label ?? '',
+    );
+    const fieldRoot = this.normalizeAlarmTelemetryFieldSegment(
+      entry.field ?? entry.label ?? '',
+    );
+
+    if (!fieldRoot || !/\balarm\b/i.test(fieldRoot)) {
+      return null;
+    }
+
+    return `${measurementRoot || 'alarm'}|${fieldRoot}`;
+  }
+
+  private normalizeAlarmTelemetryFamilySegment(value: string): string {
+    return this.normalizeTelemetryText(value)
+      .replace(/\b([a-z]+)\d+\b/g, '$1')
+      .replace(/\b\d+\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private normalizeAlarmTelemetryFieldSegment(value: string): string {
+    return this.normalizeTelemetryText(value)
+      .replace(/\b\d+\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private getAlarmTelemetrySequence(entry: ShipTelemetryEntry): number {
+    const rawValue = [
+      entry.field,
+      entry.label,
+      entry.key,
+      entry.measurement,
+      entry.description,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const match = rawValue.match(/\b(?:alarm|warning|fault|trip)\D{0,6}(\d{1,3})\b/i);
+    return match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
   }
 
   private shouldUseLocationTelemetryShortcut(
@@ -3928,18 +4054,28 @@ export class MetricsService implements OnModuleInit {
     const normalized = this.normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
-
-    if (
-      !/\b(metrics?|telemetry|readings?|values?|signals?|sensor(?:s)?)\b/i.test(
+    const asksForInventory =
+      /\b(show|display|give|return|output|write|provide|enumerate)\b/i.test(
         normalized,
       ) ||
-      !(
-        /\b(show|list|display|give|return|output|write|provide|enumerate)\b/i.test(
-          normalized,
-        ) ||
-        /\blist\s+of\b/i.test(normalized) ||
-        /\b(all|available|full|complete|entire|every)\b/i.test(normalized)
-      )
+      /^\s*list\b/i.test(normalized) ||
+      /\b(?:can|could|would|will|please)\s+(?:you\s+)?list\b/i.test(
+        normalized,
+      ) ||
+      /\blist\s+of\b/i.test(normalized) ||
+      /\b(all|available|full|complete|entire|every|random|\d{1,2})\b/i.test(
+        normalized,
+      );
+    const mentionsTelemetryInventory =
+      /\b(metrics?|telemetry|readings?|values?|signals?|sensor(?:s)?)\b/i.test(
+        normalized,
+      ) ||
+      (/\b(alarms?|warnings?|faults?|trips?)\b/i.test(normalized) &&
+        asksForInventory);
+
+    if (
+      !mentionsTelemetryInventory ||
+      !asksForInventory
     ) {
       return null;
     }

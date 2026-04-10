@@ -734,6 +734,21 @@ describe('ChatDocumentationQueryService', () => {
     expect(service.shouldSkipDocumentationRetrieval(query)).toBe(true);
   });
 
+  it('skips documentation retrieval for explicit alarm inventory list requests without metric wording', () => {
+    const query = 'Show all bilge alarms right now';
+
+    expect(service.isTelemetryListQuery(query)).toBe(true);
+    expect(service.shouldSkipDocumentationRetrieval(query)).toBe(true);
+  });
+
+  it('keeps alarm-list troubleshooting phrasing on the documentation path', () => {
+    const query =
+      'What does the generator alarm list say about low oil pressure or high coolant temperature?';
+
+    expect(service.isTelemetryListQuery(query)).toBe(false);
+    expect(service.shouldSkipDocumentationRetrieval(query)).toBe(false);
+  });
+
   it('skips documentation retrieval for normalized telemetry completeness follow-ups', () => {
     const retrievalQuery = service.buildRetrievalQuery(
       'you missed a lot of bilge alarms, write all',

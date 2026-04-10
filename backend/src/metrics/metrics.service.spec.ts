@@ -675,7 +675,7 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(true);
   });
 
-  it('returns the full bilge alarm family for broad live alarm status queries', async () => {
+  it('returns the full bilge alarm family for broad live and explicit list alarm queries', async () => {
     const service = buildService([
       ...Array.from({ length: 24 }, (_, index) => ({
         metricKey:
@@ -711,28 +711,48 @@ describe('MetricsService telemetry matching', () => {
       },
     ]);
 
-    const result = await service.getShipTelemetryContextForQuery(
+    const broadResult = await service.getShipTelemetryContextForQuery(
       'ship-1',
-      'Are any bilge alarms active right now?',
+      'Are any alarms active right now?',
     );
 
-    expect(result.prefiltered).toBe(true);
-    expect(result.matchMode).toBe('direct');
-    expect(result.matchedMetrics).toBe(24);
-    expect(Object.keys(result.telemetry)).toHaveLength(24);
+    expect(broadResult.prefiltered).toBe(true);
+    expect(broadResult.matchMode).toBe('direct');
+    expect(broadResult.matchedMetrics).toBe(24);
+    expect(Object.keys(broadResult.telemetry)).toHaveLength(24);
     expect(
-      Object.keys(result.telemetry).some((key) =>
+      Object.keys(broadResult.telemetry).some((key) =>
         key.includes('Bilge-Alarms2.BILGE ALARM 24'),
       ),
     ).toBe(true);
     expect(
-      Object.keys(result.telemetry).some((key) => /PUMP SPY/i.test(key)),
+      Object.keys(broadResult.telemetry).some((key) => /PUMP SPY/i.test(key)),
     ).toBe(false);
     expect(
-      Object.entries(result.telemetry).find(([key]) =>
+      Object.entries(broadResult.telemetry).find(([key]) =>
         key.includes('Bilge-Alarms.BILGE ALARM 7'),
       )?.[1],
     ).toBe(1);
+
+    const explicitListResult = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'Show all bilge alarms right now',
+    );
+
+    expect(explicitListResult.prefiltered).toBe(true);
+    expect(explicitListResult.matchMode).toBe('direct');
+    expect(explicitListResult.matchedMetrics).toBe(24);
+    expect(Object.keys(explicitListResult.telemetry)).toHaveLength(24);
+    expect(
+      Object.keys(explicitListResult.telemetry).some((key) =>
+        key.includes('Bilge-Alarms2.BILGE ALARM 24'),
+      ),
+    ).toBe(true);
+    expect(
+      Object.keys(explicitListResult.telemetry).some((key) =>
+        /PUMP SPY/i.test(key),
+      ),
+    ).toBe(false);
   });
 
   it('still surfaces pump spy metrics as related candidates for direct bilge pump status questions', async () => {

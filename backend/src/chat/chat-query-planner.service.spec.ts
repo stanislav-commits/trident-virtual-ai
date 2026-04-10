@@ -292,6 +292,24 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.requiresTelemetry).toBe(true);
   });
 
+  it('routes explicit alarm inventory requests without the word metrics to telemetry list', () => {
+    const plan = service.planQuery('Show all bilge alarms right now');
+
+    expect(plan.primaryIntent).toBe('telemetry_list');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetry).toBe(true);
+  });
+
+  it('does not treat alarm-list troubleshooting phrasing as a telemetry inventory request', () => {
+    const plan = service.planQuery(
+      'What does the generator alarm list say about low oil pressure or high coolant temperature?',
+    );
+
+    expect(plan.primaryIntent).toBe('troubleshooting');
+    expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.requiresTelemetry).toBe(true);
+  });
+
   it('routes live alarm-state lookups to telemetry status instead of troubleshooting', () => {
     const plan = service.planQuery('Are any bilge alarms active right now?');
 
