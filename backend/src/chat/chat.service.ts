@@ -1297,10 +1297,11 @@ export class ChatService {
       contextReferences,
     });
     const sourceDiagnostics = this.buildSourceDiagnostics(contextReferences);
+    const sanitizedContent = this.sanitizeAssistantResponseContent(content);
 
     return this.addAssistantMessage(
       sessionId,
-      content,
+      sanitizedContent,
       {
         ...(ragflowContext ?? {}),
         ...provenance,
@@ -1311,6 +1312,28 @@ export class ChatService {
       },
       contextReferences,
     );
+  }
+
+  private sanitizeAssistantResponseContent(content: string): string {
+    if (!content.trim()) {
+      return content;
+    }
+
+    return content
+      .replace(
+        /\[([^\]:\r\n]{1,80})\]\s+(?=[A-Za-z0-9][^:\r\n]{0,120}:\s)/g,
+        (_match, label: string) => `${label}: `,
+      )
+      .replace(/\s*\[(?:Telemetry(?: History)?|PMS|Web)\]/g, '')
+      .replace(
+        /\s*\[(?:Manual|History|Certificate|Regulation|Contact):[^\]\r\n]+\]/g,
+        '',
+      )
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/\s+([,.;!?])/g, '$1')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
   }
 
   private buildAnswerProvenance(params: {

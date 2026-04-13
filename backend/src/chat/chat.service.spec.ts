@@ -241,7 +241,7 @@ describe('ChatService telemetry clarification', () => {
 
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      'Based on historical telemetry from 2026-02-25 23:10 UTC to 2026-03-27 23:10 UTC, the total across the matched metrics was 4,384 liters [Telemetry History].',
+      'Based on historical telemetry from 2026-02-25 23:10 UTC to 2026-03-27 23:10 UTC, the total across the matched metrics was 4,384 liters.',
       expect.objectContaining({
         answerRoute: 'historical_telemetry',
         historicalTelemetry: true,
@@ -359,7 +359,7 @@ describe('ChatService telemetry clarification', () => {
     );
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      'Based on historical telemetry from 2026-03-20 23:12 UTC to 2026-03-27 23:12 UTC, the average across the matched metrics was 4.52 % [Telemetry History].',
+      'Based on historical telemetry from 2026-03-20 23:12 UTC to 2026-03-27 23:12 UTC, the average across the matched metrics was 4.52 %.',
       expect.objectContaining({
         answerRoute: 'historical_telemetry',
         historicalTelemetry: true,
@@ -1919,7 +1919,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      'The current matched telemetry reading is Tanks.Fuel_Level: 63 % [Telemetry].',
+      'The current matched telemetry reading is Tanks.Fuel_Level: 63 %.',
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         resolvedSubjectQuery: 'What is the current fuel level?',
@@ -2040,7 +2040,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('[Sea Wolf X] navigation.position.lat'),
+      expect.stringContaining('Sea Wolf X: navigation.position.lat'),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         usedLlm: false,
@@ -2096,7 +2096,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('The matched telemetry metrics are [Telemetry]:'),
+      expect.stringContaining('The matched telemetry metrics are:'),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         usedLlm: false,
@@ -2152,9 +2152,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining(
-        'The current matched telemetry readings are [Telemetry]:',
-      ),
+      expect.stringContaining('The current matched telemetry readings are:'),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         usedLlm: false,
@@ -2213,9 +2211,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining(
-        'The current matched telemetry readings are [Telemetry]:',
-      ),
+      expect.stringContaining('The current matched telemetry readings are:'),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         usedLlm: false,
@@ -2267,7 +2263,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('The matched telemetry metrics are [Telemetry]:'),
+      expect.stringContaining('The matched telemetry metrics are:'),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         usedLlm: false,
@@ -2320,7 +2316,7 @@ describe('ChatService telemetry clarification', () => {
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
       expect.stringContaining(
-        'I found 30 matched telemetry metrics. Showing 10 sample metrics [Telemetry]:',
+        'I found 30 matched telemetry metrics. Showing 10 sample metrics:',
       ),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
@@ -2373,9 +2369,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining(
-        'The current matched telemetry readings are [Telemetry]:',
-      ),
+      expect.stringContaining('The current matched telemetry readings are:'),
       expect.objectContaining({
         resolvedSubjectQuery: 'What is the current water depth?',
       }),
@@ -2446,7 +2440,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      'The documented interval is 500 hours [Manual: Volvo Penta_operators manual_47710211.pdf].',
+      'The documented interval is 500 hours.',
       expect.objectContaining({
         resolvedSubjectQuery:
           'What is the oil change interval in the Volvo manual?',
@@ -2557,7 +2551,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      'The documented normal coolant temperature range is 75-95 °C [Manual: Volvo Penta_operators manual_47710211.pdf].',
+      'The documented normal coolant temperature range is 75-95 °C.',
       expect.objectContaining({
         resolvedSubjectQuery:
           'What is the normal coolant temperature range for this Volvo engine?',
@@ -2624,7 +2618,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      'The documented normal coolant temperature range is 75-95 °C [Manual: Volvo Penta_operators manual_47710211.pdf].',
+      'The documented normal coolant temperature range is 75-95 °C.',
       expect.objectContaining({
         resolvedSubjectQuery:
           'What is the normal coolant temperature range for this Volvo engine?',
@@ -2688,7 +2682,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      "I couldn't confirm the current starboard engine coolant temperature from a direct matched telemetry reading. The available manual evidence only confirms the documented normal coolant temperature range of 75-95 °C [Manual: Volvo Penta_operators manual_47710211.pdf], not the current live reading.",
+      "I couldn't confirm the current starboard engine coolant temperature from a direct matched telemetry reading. The available manual evidence only confirms the documented normal coolant temperature range of 75-95 °C, not the current live reading.",
       expect.objectContaining({
         resolvedSubjectQuery:
           'What is the current starboard engine coolant temperature?',
@@ -4233,7 +4227,7 @@ describe('ChatService telemetry clarification', () => {
         {
           role: 'assistant',
           content:
-            'The current matched telemetry readings are [Telemetry]: ...',
+            'The current matched telemetry readings are: ...',
           ragflowContext: {
             answerRoute: 'current_telemetry',
             resolvedSubjectQuery: 'Show fuel tank levels for Sea Wolf X',
@@ -4355,9 +4349,7 @@ describe('ChatService telemetry clarification', () => {
 
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining(
-        'The current matched telemetry readings are [Telemetry]:',
-      ),
+      expect.stringContaining('The current matched telemetry readings are:'),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         telemetryFollowUpQuery: 'what is the fuel level in the tanks right now',
@@ -4392,7 +4384,7 @@ describe('ChatService telemetry clarification', () => {
         {
           role: 'assistant',
           content:
-            'The current matched telemetry reading is [Sea Wolf X] SIEMENS-MASE-GENSET-SB.Engine Running Hours (h): 2,200 [Telemetry].',
+            'The current matched telemetry reading is Sea Wolf X: SIEMENS-MASE-GENSET-SB.Engine Running Hours (h): 2,200.',
           ragflowContext: {
             answerRoute: 'current_telemetry',
             resolvedSubjectQuery:
@@ -4439,7 +4431,7 @@ describe('ChatService telemetry clarification', () => {
       clarification: null,
     });
     llmService.generateResponse.mockResolvedValue(
-      'At 2,200 running hours, the next generator maintenance is the 2,500-hour service [Manual: Technical Components (Details).pdf].',
+      'At 2,200 running hours, the next generator maintenance is the 2,500-hour service.',
     );
 
     await (service as any).generateAssistantResponse(

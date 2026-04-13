@@ -14,7 +14,6 @@ import logoImg from "../assets/logo-home.png";
 import {
   UsersIcon,
   ShipIcon,
-  PromptIcon,
   TagIcon,
   ChevronLeftIcon,
   MenuIcon,
@@ -22,7 +21,6 @@ import {
 } from "../components/admin/AdminPanelIcons";
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
-import { SystemPromptSection } from "../components/admin/SystemPromptSection";
 import { TagsSection } from "../components/admin/TagsSection";
 import { ManualsPromptModal } from "../components/admin/ManualsPromptModal";
 import { MetricsModal } from "../components/admin/MetricsModal";
@@ -36,7 +34,6 @@ import {
 const SECTION_TITLES: Record<AdminSectionRoute, string> = {
   users: "Users",
   ships: "Ships",
-  prompt: "System Prompt",
   tags: "Tags",
 };
 
@@ -279,16 +276,6 @@ export function AdminPanelPage() {
           </button>
           <button
             type="button"
-            className={`admin-panel__nav-item ${activeSection === "prompt" ? "admin-panel__nav-item--active" : ""}`}
-            onClick={() => handleNavClick("prompt")}
-          >
-            <span className="admin-panel__nav-icon">
-              <PromptIcon />
-            </span>
-            <span className="admin-panel__nav-label">System Prompt</span>
-          </button>
-          <button
-            type="button"
             className={`admin-panel__nav-item ${activeSection === "tags" ? "admin-panel__nav-item--active" : ""}`}
             onClick={() => handleNavClick("tags")}
           >
@@ -359,14 +346,6 @@ export function AdminPanelPage() {
                   setManualsPromptShip({ id: shipId, name: shipName });
                 }}
                 onOpenMetrics={(ship) => setMetricsModalShip(ship)}
-              />
-            )}
-
-            {activeSection === "prompt" && (
-              <SystemPromptSection
-                token={token}
-                error={error}
-                onError={setError}
               />
             )}
 
