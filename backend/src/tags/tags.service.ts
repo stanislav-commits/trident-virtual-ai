@@ -165,7 +165,9 @@ export class TagsService {
       pagination: meta,
       filters: {
         categoryOptions: categoryRows.map((row) => row.category),
-        subcategoryOptions: subcategoryRows.map((row) => row.subcategory),
+        subcategoryOptions: subcategoryRows
+          .map((row) => row.subcategory)
+          .filter(Boolean),
       },
       summary: {
         totalTags,
@@ -540,18 +542,28 @@ export class TagsService {
   }
 
   private normalizeTagInput(input: {
+    tag?: unknown;
     category?: unknown;
     subcategory?: unknown;
     item?: unknown;
     description?: unknown;
   }): NormalizedTagInput {
-    const category = this.normalizeSegment(input.category, 'category', 100);
-    const subcategory = this.normalizeSegment(
-      input.subcategory,
+    const sourceTag = this.parseSourceTag(input.tag);
+    const category = this.normalizeSegment(
+      input.category ?? sourceTag?.category,
+      'category',
+      100,
+    );
+    const subcategory = this.normalizeOptionalSegment(
+      input.subcategory ?? sourceTag?.subcategory,
       'subcategory',
       100,
     );
-    const item = this.normalizeSegment(input.item, 'item', 150);
+    const item = this.normalizeSegment(
+      input.item ?? sourceTag?.item,
+      'item',
+      150,
+    );
     const description = this.normalizeDescription(input.description);
 
     return {
@@ -602,6 +614,27 @@ export class TagsService {
     return normalized;
   }
 
+  private normalizeOptionalSegment(
+    value: unknown,
+    fieldName: string,
+    maxLength: number,
+  ): string {
+    if (value === undefined || value === null) {
+      return '';
+    }
+
+    if (typeof value === 'object') {
+      throw new BadRequestException(`${fieldName} must be a string`);
+    }
+
+    const raw = String(value).trim();
+    if (!raw) {
+      return '';
+    }
+
+    return this.normalizeSegment(raw, fieldName, maxLength);
+  }
+
   private normalizeDescription(value: unknown): string | null {
     if (value === undefined || value === null) {
       return null;
@@ -635,12 +668,60 @@ export class TagsService {
     return normalized || null;
   }
 
+  private parseSourceTag(
+    value: unknown,
+  ): Pick<NormalizedTagInput, 'category' | 'subcategory' | 'item'> | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    if (typeof value === 'object') {
+      throw new BadRequestException('tag must be a string');
+    }
+
+    const raw = String(value).trim();
+    if (!raw) {
+      return null;
+    }
+
+    const rawSegments = raw.split(':').map((segment) => segment.trim());
+    if (rawSegments.some((segment) => !segment)) {
+      throw new BadRequestException(
+        'tag must not contain empty ":" segments',
+      );
+    }
+
+    if (rawSegments.length !== 2 && rawSegments.length !== 3) {
+      throw new BadRequestException(
+        'tag must use "category:item" or "category:subcategory:item" format',
+      );
+    }
+
+    if (rawSegments.length === 2) {
+      return {
+        category: this.normalizeSegment(rawSegments[0], 'category', 100),
+        subcategory: '',
+        item: this.normalizeSegment(rawSegments[1], 'item', 150),
+      };
+    }
+
+    return {
+      category: this.normalizeSegment(rawSegments[0], 'category', 100),
+      subcategory: this.normalizeOptionalSegment(
+        rawSegments[1],
+        'subcategory',
+        100,
+      ),
+      item: this.normalizeSegment(rawSegments[2], 'item', 150),
+    };
+  }
+
   private buildCanonicalKey(
     category: string,
     subcategory: string,
     item: string,
   ) {
-    return `${category}:${subcategory}:${item}`;
+    return [category, subcategory, item].filter(Boolean).join(':');
   }
 
   private assertJsonFile(file: ImportTaxonomyFile) {

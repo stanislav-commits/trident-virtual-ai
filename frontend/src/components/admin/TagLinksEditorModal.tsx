@@ -74,7 +74,7 @@ export function TagLinksEditorModal({
     const scoped = categoryFilter
       ? tagOptions.filter((tag) => tag.category === categoryFilter)
       : tagOptions;
-    return [...new Set(scoped.map((tag) => tag.subcategory))].sort();
+    return [...new Set(scoped.map((tag) => tag.subcategory).filter(Boolean))].sort();
   }, [categoryFilter, tagOptions]);
 
   useEffect(() => {
@@ -294,7 +294,9 @@ export function TagLinksEditorModal({
                           {tag.key}
                         </span>
                         <span className="admin-panel__tag-links-row-meta">
-                          {tag.category} / {tag.subcategory} / {tag.item}
+                          {[tag.category, tag.subcategory, tag.item]
+                            .filter(Boolean)
+                            .join(" / ")}
                         </span>
                         {tag.description && (
                           <span className="admin-panel__tag-links-row-desc">

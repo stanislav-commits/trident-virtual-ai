@@ -168,7 +168,7 @@ export async function getTagOptions(token: string): Promise<TagOption[]> {
 export async function createTag(
   body: {
     category: string;
-    subcategory: string;
+    subcategory?: string;
     item: string;
     description?: string | null;
   },

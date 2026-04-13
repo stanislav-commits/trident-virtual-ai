@@ -123,17 +123,15 @@ function normalizeTagSegment(value: string) {
 }
 
 function buildCanonicalTagKey(form: TagForm) {
-  const parts = [
-    normalizeTagSegment(form.category),
-    normalizeTagSegment(form.subcategory),
-    normalizeTagSegment(form.item),
-  ];
+  const category = normalizeTagSegment(form.category);
+  const subcategory = normalizeTagSegment(form.subcategory);
+  const item = normalizeTagSegment(form.item);
 
-  if (parts.some((part) => !part)) {
+  if (!category || !item) {
     return "";
   }
 
-  return parts.join(":");
+  return [category, subcategory, item].filter(Boolean).join(":");
 }
 
 function formatUpdatedAt(value: string) {
@@ -607,9 +605,13 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
               Manage the global taxonomy used for knowledge routing. Tags are
               stored as{" "}
               <code className="admin-panel__code-inline">
-                category:subcategory:item
+                category:item
               </code>{" "}
-              and repeated JSON imports update matching records instead of
+              or{" "}
+              <code className="admin-panel__code-inline">
+                category:subcategory:item
+              </code>
+              . Repeated JSON imports update matching records instead of
               creating duplicates.
             </p>
           </div>
@@ -955,9 +957,11 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
                             <span className="admin-panel__tag-chip">
                               {tag.category}
                             </span>
-                            <span className="admin-panel__tag-chip">
-                              {tag.subcategory}
-                            </span>
+                            {tag.subcategory ? (
+                              <span className="admin-panel__tag-chip">
+                                {tag.subcategory}
+                              </span>
+                            ) : null}
                             <span className="admin-panel__tag-chip">
                               {tag.item}
                             </span>
@@ -1046,7 +1050,8 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
                   {editingTag ? "Edit tag" : "Create new tag"}
                 </h2>
                 <p className="admin-panel__modal-desc">
-                  Define the taxonomy segments below. The canonical key is
+                  Define the taxonomy segments below. Category and item are
+                  required, while subcategory is optional. The canonical key is
                   generated automatically and stored in the database.
                 </p>
               </div>
@@ -1093,8 +1098,10 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
                         }
                         placeholder="e.g. propulsion"
                         disabled={saving}
-                        required
                       />
+                      <span className="admin-panel__muted">
+                        Optional. Leave empty for a two-part key.
+                      </span>
                     </div>
                   </div>
 
@@ -1145,7 +1152,8 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
                       </code>
                     ) : (
                       <span className="admin-panel__muted">
-                        Fill category, subcategory and item to generate the key.
+                        Fill category and item to generate the key. Add
+                        subcategory only when you need the middle segment.
                       </span>
                     )}
                     <p className="admin-panel__tags-preview-note">
@@ -1353,7 +1361,8 @@ export function TagsSection({ token, error, onError }: TagsSectionProps) {
                         {importFile ? importFile.name : "No file selected"}
                       </span>
                       <span className="admin-panel__tags-import-note">
-                        Canonical key format: category:subcategory:item
+                        Canonical key format: category:item or
+                        category:subcategory:item
                       </span>
                     </div>
                   </div>

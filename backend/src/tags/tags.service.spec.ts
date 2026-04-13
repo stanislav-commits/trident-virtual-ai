@@ -80,6 +80,43 @@ describe('TagsService', () => {
     expect(result.key).toBe('equipment:propulsion:main_engine_ps');
   });
 
+  it('creates a tag without subcategory using a two-part canonical key', async () => {
+    prisma.tag.findUnique.mockResolvedValueOnce(null);
+    prisma.tag.create.mockResolvedValueOnce({
+      id: 'tag_2',
+      key: 'equipment:multiplexer',
+      category: 'equipment',
+      subcategory: '',
+      item: 'multiplexer',
+      description: 'Bridge multiplexer',
+      createdAt: new Date('2026-04-02T10:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T10:00:00.000Z'),
+      _count: {
+        metricLinks: 0,
+        manualLinks: 0,
+      },
+    });
+
+    const result = await service.create({
+      category: 'Equipment',
+      item: 'Multiplexer',
+      description: 'Bridge multiplexer',
+    });
+
+    expect(prisma.tag.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          key: 'equipment:multiplexer',
+          category: 'equipment',
+          subcategory: '',
+          item: 'multiplexer',
+        }),
+      }),
+    );
+    expect(result.key).toBe('equipment:multiplexer');
+    expect(result.subcategory).toBe('');
+  });
+
   it('prevents updating a tag into an already used canonical key', async () => {
     prisma.tag.findUnique
       .mockResolvedValueOnce({
@@ -146,6 +183,45 @@ describe('TagsService', () => {
     expect(result.summary.metricLinks).toBe(7);
     expect(result.filters.categoryOptions).toEqual(['equipment', 'safety']);
     expect(result.filters.subcategoryOptions).toEqual(['propulsion']);
+  });
+
+  it('imports a two-segment taxonomy tag without requiring subcategory', async () => {
+    prisma.tag.findMany.mockResolvedValueOnce([]);
+    prisma.tag.upsert.mockResolvedValue(null);
+
+    const result = await service.importTaxonomy({
+      originalname: 'tags.json',
+      mimetype: 'application/json',
+      buffer: Buffer.from(
+        JSON.stringify({
+          tags: [
+            {
+              tag: 'equipment:multiplexer',
+              description: 'Bridge multiplexer',
+            },
+          ],
+        }),
+      ),
+    });
+
+    expect(prisma.tag.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: 'equipment:multiplexer' },
+        create: expect.objectContaining({
+          key: 'equipment:multiplexer',
+          category: 'equipment',
+          subcategory: '',
+          item: 'multiplexer',
+        }),
+        update: expect.objectContaining({
+          category: 'equipment',
+          subcategory: '',
+          item: 'multiplexer',
+        }),
+      }),
+    );
+    expect(result.created).toBe(1);
+    expect(result.updated).toBe(0);
   });
 
   it('imports taxonomy entries idempotently and warns about mismatched source tags', async () => {
