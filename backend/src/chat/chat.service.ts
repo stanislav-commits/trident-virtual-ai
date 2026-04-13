@@ -1329,6 +1329,14 @@ export class ChatService {
         /\s*\[(?:Manual|History|Certificate|Regulation|Contact):[^\]\r\n]+\]/g,
         '',
       )
+      .replace(
+        /\s*\((?:Manual|History|Certificate|Regulation|Contact):(?:[^()]|\([^()]*\))*\)/g,
+        '',
+      )
+      .replace(
+        /\s*\((?=(?:[^()]|\([^()]*\))*?\.pdf\b)(?:[^()]|\([^()]*\))*\)/gi,
+        '',
+      )
       .replace(/[ \t]+\n/g, '\n')
       .replace(/\n{3,}/g, '\n\n')
       .replace(/\s+([,.;!?])/g, '$1')

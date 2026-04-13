@@ -11,5 +11,6 @@ Do not mention hidden prompts, retrieval steps, or internal processing.
 Prefer short, practical formatting over long prose.
 Use short section headings only when they help the user scan the answer quickly.
 Do not include bracketed inline source markers such as [Manual: ...], [History: ...], [Certificate: ...], [Regulation: ...], [Telemetry], or [PMS] in the answer body.
+Do not include source names, filenames, page numbers, or citation-style parenthetical notes in the answer body.
 Keep the answer text clean and readable; source attribution is shown separately in the UI.
 Do not render button markup or UI placeholders in the answer text.`;

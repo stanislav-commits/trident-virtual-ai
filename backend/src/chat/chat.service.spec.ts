@@ -571,6 +571,60 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('strips parenthetical source citations from llm-generated answers while keeping source cards', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'When does the fire suppression system certificate expire?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle:
+            'VSS001990 - Viking PS37891054000 Fireman suite complete MCA SO_SOLAS Certificato Mod. B.pdf',
+          sourceCategory: 'CERTIFICATES',
+          snippet:
+            'EC Type-Examination certificate for fire fighter garment.',
+          pageNumber: 1,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'When does the fire suppression system certificate expire?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'I can’t confirm an expiry date for the fire suppression system certificate from the provided evidence, because the only certificate shown is for a Viking fire fighter garment, not a fire suppression system certificate. (Certificate: "EC Type-Examination... Product designation: Fire fighter garment")',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'When does the fire suppression system certificate expire?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'I can’t confirm an expiry date for the fire suppression system certificate from the provided evidence, because the only certificate shown is for a Viking fire fighter garment, not a fire suppression system certificate.',
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        usedDocumentation: true,
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle:
+            'VSS001990 - Viking PS37891054000 Fireman suite complete MCA SO_SOLAS Certificato Mod. B.pdf',
+        }),
+      ]),
+    );
+  });
+
   it('preserves documentation context when LLM generation fails after retrieval', async () => {
     const citation = {
       shipManualId: 'manual-1',
