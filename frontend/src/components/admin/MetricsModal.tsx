@@ -902,17 +902,6 @@ export function MetricsModal({
                                       {row.tag.key}
                                     </span>
                                   </span>
-                                  <div className="admin-panel__tag-meta admin-panel__metric-tag-meta">
-                                    <span className="admin-panel__tag-chip">
-                                      {row.tag.category}
-                                    </span>
-                                    <span className="admin-panel__tag-chip">
-                                      {row.tag.subcategory}
-                                    </span>
-                                    <span className="admin-panel__tag-chip">
-                                      {row.tag.item}
-                                    </span>
-                                  </div>
                                 </div>
                               ) : (
                                 <span className="admin-panel__metric-tag-empty">
