@@ -457,6 +457,19 @@
   font-size: 0.85rem;
 }
 
+.admin-panel__code-inline--metric {
+  min-width: 0;
+}
+
+.admin-panel__metric-name-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .admin-panel__td--desc {
   max-width: 260px;
   font-size: 0.85rem;

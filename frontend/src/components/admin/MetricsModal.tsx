@@ -887,10 +887,12 @@ export function MetricsModal({
                             </td>
                             <td className="admin-panel__td">
                               <code
-                                className="admin-panel__code-inline"
+                                className="admin-panel__code-inline admin-panel__code-inline--metric"
                                 title={row.measurement}
                               >
-                                {row.measurement}
+                                <span className="admin-panel__metric-name-text">
+                                  {row.measurement}
+                                </span>
                               </code>
                             </td>
                             <td className="admin-panel__td">{row.field}</td>
