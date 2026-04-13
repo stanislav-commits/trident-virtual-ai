@@ -2270,7 +2270,7 @@
 }
 
 .admin-panel__metrics-col--action {
-  width: 124px;
+  width: 156px;
 }
 
 .admin-panel__metrics-group-table-wrap
@@ -3700,7 +3700,7 @@
 .admin-panel__actions--metric-row {
   justify-content: flex-start;
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 [data-theme="light"] .admin-panel__tags-stat-card,
