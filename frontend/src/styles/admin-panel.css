@@ -2245,6 +2245,35 @@
   border-radius: 14px;
 }
 
+.admin-panel__metrics-group-table-wrap .admin-panel__table {
+  min-width: 1080px;
+  table-layout: fixed;
+}
+
+.admin-panel__metrics-col--toggle {
+  width: 76px;
+}
+
+.admin-panel__metrics-col--measurement {
+  width: 24%;
+}
+
+.admin-panel__metrics-col--field {
+  width: 12%;
+}
+
+.admin-panel__metrics-col--tag {
+  width: 24%;
+}
+
+.admin-panel__metrics-col--description {
+  width: 30%;
+}
+
+.admin-panel__metrics-col--action {
+  width: 124px;
+}
+
 .admin-panel__metrics-group-table-wrap
   .admin-panel__td:first-child
   .admin-panel__code-inline,
@@ -3353,6 +3382,67 @@
   display: block;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.admin-panel__td--metric-tag {
+  min-width: 0;
+}
+
+.admin-panel__metric-tag-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-panel__tag-link-pill--metric {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 12px;
+}
+
+.admin-panel__metric-tag-key {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+.admin-panel__metric-tag-meta {
+  gap: 6px;
+}
+
+.admin-panel__metric-tag-meta .admin-panel__tag-chip {
+  max-width: 100%;
+  min-height: 26px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.admin-panel__metric-tag-empty {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text-subtle);
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .admin-panel__tag-links {

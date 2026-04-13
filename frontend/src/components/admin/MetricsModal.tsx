@@ -847,6 +847,14 @@ export function MetricsModal({
 
                   <div className="admin-panel__metrics-group-table-wrap">
                     <table className="admin-panel__table">
+                      <colgroup>
+                        <col className="admin-panel__metrics-col admin-panel__metrics-col--toggle" />
+                        <col className="admin-panel__metrics-col admin-panel__metrics-col--measurement" />
+                        <col className="admin-panel__metrics-col admin-panel__metrics-col--field" />
+                        <col className="admin-panel__metrics-col admin-panel__metrics-col--tag" />
+                        <col className="admin-panel__metrics-col admin-panel__metrics-col--description" />
+                        <col className="admin-panel__metrics-col admin-panel__metrics-col--action" />
+                      </colgroup>
                       <thead>
                         <tr>
                           <th className="admin-panel__th admin-panel__th--toggle">
@@ -883,18 +891,33 @@ export function MetricsModal({
                               </code>
                             </td>
                             <td className="admin-panel__td">{row.field}</td>
-                            <td className="admin-panel__td admin-panel__td--muted">
+                            <td className="admin-panel__td admin-panel__td--muted admin-panel__td--metric-tag">
                               {row.tag ? (
-                                <span
-                                  className="admin-panel__tag-link-pill"
-                                  title={row.tag.key}
-                                >
-                                  <span className="admin-panel__tag-key">
-                                    {row.tag.key}
+                                <div className="admin-panel__metric-tag-cell">
+                                  <span
+                                    className="admin-panel__tag-link-pill admin-panel__tag-link-pill--metric"
+                                    title={row.tag.key}
+                                  >
+                                    <span className="admin-panel__metric-tag-key">
+                                      {row.tag.key}
+                                    </span>
                                   </span>
-                                </span>
+                                  <div className="admin-panel__tag-meta admin-panel__metric-tag-meta">
+                                    <span className="admin-panel__tag-chip">
+                                      {row.tag.category}
+                                    </span>
+                                    <span className="admin-panel__tag-chip">
+                                      {row.tag.subcategory}
+                                    </span>
+                                    <span className="admin-panel__tag-chip">
+                                      {row.tag.item}
+                                    </span>
+                                  </div>
+                                </div>
                               ) : (
-                                "No tag"
+                                <span className="admin-panel__metric-tag-empty">
+                                  No tag
+                                </span>
                               )}
                             </td>
                             <td className="admin-panel__td admin-panel__td--muted">
