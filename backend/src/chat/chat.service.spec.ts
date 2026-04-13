@@ -625,6 +625,57 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
+  it('strips generic square-bracket source labels from llm-generated answers', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'How do I install the mini alarm?',
+          ragflowContext: null,
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [
+        {
+          sourceTitle: 'Mini Alarm Instruction Manual Atex.pdf',
+          sourceCategory: 'MANUALS',
+          snippet: 'Mini alarm installation procedure.',
+          pageNumber: 4,
+        },
+      ],
+      previousUserQuery: undefined,
+      retrievalQuery: 'How do I install the mini alarm?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+    });
+    llmService.generateResponse.mockResolvedValue(
+      'Install the mini alarm on a flat surface and refit the sounder section when complete. [Mini Alarm Instruction Manual Atex]',
+    );
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'How do I install the mini alarm?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Install the mini alarm on a flat surface and refit the sounder section when complete.',
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        usedDocumentation: true,
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Mini Alarm Instruction Manual Atex.pdf',
+        }),
+      ]),
+    );
+  });
+
   it('preserves documentation context when LLM generation fails after retrieval', async () => {
     const citation = {
       shipManualId: 'manual-1',

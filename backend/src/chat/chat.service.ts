@@ -1324,6 +1324,7 @@ export class ChatService {
         /\[([^\]:\r\n]{1,80})\]\s+(?=[A-Za-z0-9][^:\r\n]{0,120}:\s)/g,
         (_match, label: string) => `${label}: `,
       )
+      .replace(/\s*\[[^\]\r\n]{1,140}\](?!\()/g, '')
       .replace(/\s*\[(?:Telemetry(?: History)?|PMS|Web)\]/g, '')
       .replace(
         /\s*\[(?:Manual|History|Certificate|Regulation|Contact):[^\]\r\n]+\]/g,
