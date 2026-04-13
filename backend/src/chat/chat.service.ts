@@ -825,6 +825,10 @@ export class ChatService {
             select: { id: true, name: true },
             orderBy: { name: 'asc' },
           });
+          const adminTelemetryMatches: Array<{
+            shipName: string;
+            telemetry: Record<string, unknown>;
+          }> = [];
 
           for (const ship of shipsWithMetrics) {
             const telemetryContext =
@@ -842,10 +846,11 @@ export class ChatService {
               if (telemetryMatchMode === 'none') {
                 telemetryMatchMode = telemetryContext.matchMode;
               }
+              adminTelemetryMatches.push({
+                shipName: ship.name,
+                telemetry: shipTelemetry,
+              });
             }
-            Object.entries(shipTelemetry).forEach(([label, value]) => {
-              telemetry[`[${ship.name}] ${label}`] = value;
-            });
 
             if (telemetryContext.clarification?.actions.length) {
               telemetryClarification =
@@ -855,6 +860,17 @@ export class ChatService {
                   telemetryContext.clarification,
                 );
             }
+          }
+
+          const shouldPrefixShipLabels = adminTelemetryMatches.length > 1;
+          for (const match of adminTelemetryMatches) {
+            Object.entries(match.telemetry).forEach(([label, value]) => {
+              telemetry[
+                shouldPrefixShipLabels
+                  ? `[${match.shipName}] ${label}`
+                  : label
+              ] = value;
+            });
           }
         }
       } catch (error) {

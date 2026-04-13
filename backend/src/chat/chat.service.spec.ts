@@ -2145,13 +2145,19 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('Sea Wolf X: navigation.position.lat'),
+      expect.stringContaining('navigation.position.lat'),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         usedLlm: false,
         usedDocumentation: false,
         usedCurrentTelemetry: true,
       }),
+      [],
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.not.stringContaining('Sea Wolf X:'),
+      expect.anything(),
       [],
     );
   });
