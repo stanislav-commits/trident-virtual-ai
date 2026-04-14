@@ -135,6 +135,7 @@ describe('DocumentationSourceLockService', () => {
         clarificationReason: null,
         confidence: 0.92,
       },
+      retrievalQuery: 'Describe the bunkering procedure step by step.',
       citations: [
         {
           shipManualId: 'manual-2',
@@ -164,6 +165,7 @@ describe('DocumentationSourceLockService', () => {
     expect(state).toMatchObject({
       intent: 'operational_procedure',
       conceptIds: ['bunkering_operation'],
+      retrievalQuery: 'Describe the bunkering procedure step by step.',
       sourceLock: true,
       lockedManualId: 'manual-2',
       lockedDocumentId: 'doc-2',

@@ -68,6 +68,39 @@ describe('ChatQueryNormalizationService', () => {
     expect(abrupt.sourceHints).toContain('TELEMETRY');
   });
 
+  it('treats usage wording as a delta-style telemetry operation', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'What is the daily usage of fresh water?',
+    });
+
+    expect(normalized.operation).toBe('delta');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+  });
+
+  it('treats stored-fluid onboard questions as telemetry intent even for water systems', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'How many fresh water onboard right now?',
+    });
+
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).not.toContain('DOCUMENTATION');
+    expect(normalized.timeIntent.kind).toBe('current');
+  });
+
+  it('treats generic equipment procedures and maintenance asks as documentation intent', () => {
+    const procedure = service.normalizeTurn({
+      userQuery: 'How to start manual fuel pump?',
+    });
+    const maintenance = service.normalizeTurn({
+      userQuery: 'Weekly maintenance for air compressor',
+    });
+
+    expect(procedure.sourceHints).toContain('DOCUMENTATION');
+    expect(procedure.sourceHints).not.toContain('TELEMETRY');
+    expect(maintenance.sourceHints).toContain('DOCUMENTATION');
+    expect(maintenance.sourceHints).not.toContain('TELEMETRY');
+  });
+
   it('recognizes natural-language kit contents as documentation intent', () => {
     const normalized = service.normalizeTurn({
       userQuery:

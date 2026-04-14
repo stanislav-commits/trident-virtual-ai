@@ -3125,6 +3125,133 @@ describe('MetricsService historical telemetry', () => {
     );
   });
 
+  it('infers daily fresh-water usage from tank levels when no explicit history window is provided', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::Tanks::Fresh_Water_Tank_1P',
+            latestValue: 780,
+            valueUpdatedAt: new Date('2026-04-14T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks.Fresh_Water_Tank_1P',
+              description: 'Fresh water tank quantity.',
+              unit: 'L',
+              bucket: 'Trending',
+              measurement: 'Tanks',
+              field: 'Fresh_Water_Tank_1P',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks::Fresh_Water_Tank_2S',
+            latestValue: 720,
+            valueUpdatedAt: new Date('2026-04-14T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks.Fresh_Water_Tank_2S',
+              description: 'Fresh water tank quantity.',
+              unit: 'L',
+              bucket: 'Trending',
+              measurement: 'Tanks',
+              field: 'Fresh_Water_Tank_2S',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Pumps::Fresh water pressure',
+            latestValue: 2.8,
+            valueUpdatedAt: new Date('2026-04-14T12:00:00.000Z'),
+            metric: {
+              label: 'Pumps.Fresh water pressure',
+              description: 'Fresh water pressure at the service pump.',
+              unit: 'bar',
+              bucket: 'Trending',
+              measurement: 'Pumps',
+              field: 'Fresh water pressure',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalFirstLast: jest.fn().mockResolvedValue({
+        first: [
+          {
+            key: 'Trending::Tanks::Fresh_Water_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fresh_Water_Tank_1P',
+            value: 900,
+            time: '2026-04-13T12:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks::Fresh_Water_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fresh_Water_Tank_2S',
+            value: 780,
+            time: '2026-04-13T12:00:00.000Z',
+          },
+        ],
+        last: [
+          {
+            key: 'Trending::Tanks::Fresh_Water_Tank_1P',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fresh_Water_Tank_1P',
+            value: 780,
+            time: '2026-04-14T12:00:00.000Z',
+          },
+          {
+            key: 'Trending::Tanks::Fresh_Water_Tank_2S',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fresh_Water_Tank_2S',
+            value: 720,
+            time: '2026-04-14T12:00:00.000Z',
+          },
+        ],
+      }),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      'What is the daily usage of fresh water?',
+    );
+
+    expect(result.kind).toBe('answer');
+    expect(result.content).toContain('the last 24 hours');
+    expect(result.content).toContain('fresh water');
+    expect(result.content).toContain('180 liters used');
+    expect(result.content).toContain('Average daily fresh water usage');
+    expect(influxdb.queryHistoricalFirstLast).toHaveBeenCalledWith(
+      [
+        'Trending::Tanks::Fresh_Water_Tank_1P',
+        'Trending::Tanks::Fresh_Water_Tank_2S',
+      ],
+      expect.any(Object),
+      'SeaWolfX',
+    );
+  });
+
   it('keeps dedicated fuel tanks in historical totals even when descriptions look temperature-like', async () => {
     const prisma = {
       ship: {

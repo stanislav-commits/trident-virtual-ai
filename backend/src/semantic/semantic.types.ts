@@ -94,6 +94,7 @@ export interface DocumentationFollowUpState {
   schemaVersion: string;
   intent: SemanticIntent;
   conceptIds: string[];
+  retrievalQuery?: string | null;
   sourcePreferences: SemanticSourceCategory[];
   sourceLock: boolean;
   lockedManualId: string | null;

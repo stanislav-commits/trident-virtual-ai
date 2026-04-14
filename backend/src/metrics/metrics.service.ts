@@ -1328,8 +1328,18 @@ export class MetricsService implements OnModuleInit {
     request: ParsedHistoricalTelemetryRequest,
     normalizedQuery?: string,
   ): ShipTelemetryEntry[] {
-    if (request.operation === 'delta') {
-      return [];
+    const searchSpace =
+      normalizedQuery ?? this.normalizeTelemetryText(request.metricQuery);
+    const subject = this.detectStoredFluidSubject(searchSpace);
+    if (
+      subject &&
+      this.shouldUseHistoricalTankStorageAnalysis(
+        request,
+        searchSpace,
+        subject,
+      )
+    ) {
+      return this.findHistoricalStoredFluidTankEntries(entries, subject);
     }
 
     const explicitAggregateEntries = this.findAggregateTankTelemetryEntries(
@@ -1344,22 +1354,11 @@ export class MetricsService implements OnModuleInit {
       return explicitAggregateEntries;
     }
 
-    const searchSpace =
-      normalizedQuery ?? this.normalizeTelemetryText(request.metricQuery);
     if (!this.isImplicitHistoricalFuelInventoryQuery(searchSpace)) {
       return [];
     }
 
-    return entries
-      .filter((entry) =>
-        this.isHistoricalAggregateTankStorageEntry(entry, { fluid: 'fuel' }),
-      )
-      .sort((left, right) => {
-        const tankRank =
-          this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
-        return tankRank || left.key.localeCompare(right.key);
-      })
-      .slice(0, 16);
+    return this.findHistoricalStoredFluidTankEntries(entries, { fluid: 'fuel' });
   }
 
   private sortHistoricalTelemetryEntries(
@@ -1389,12 +1388,30 @@ export class MetricsService implements OnModuleInit {
     request: ParsedHistoricalTelemetryRequest;
   }): Promise<string | null> {
     const { matchedEntries, organizationName, request } = params;
+    const normalizedMetricQuery = this.normalizeTelemetryText(request.metricQuery);
+    const storedFluidSubject = this.detectStoredFluidSubject(normalizedMetricQuery);
+    const usesStoredFluidTankLevels =
+      Boolean(storedFluidSubject) &&
+      matchedEntries.every((entry) =>
+        this.isHistoricalAggregateTankStorageEntry(
+          entry,
+          storedFluidSubject as StoredFluidSubject,
+        ),
+      );
     const effectiveOperation =
       request.operation === 'sum' &&
       matchedEntries.every(
         (entry) => this.getHistoricalMetricSemanticKind(entry) === 'counter',
       )
         ? 'delta'
+        : request.operation === 'trend' &&
+            usesStoredFluidTankLevels &&
+            storedFluidSubject &&
+            this.isHistoricalStoredFluidUsageQuery(
+              normalizedMetricQuery,
+              storedFluidSubject,
+            )
+          ? 'delta'
         : request.operation;
 
     if (effectiveOperation === 'position') {
@@ -2021,6 +2038,8 @@ export class MetricsService implements OnModuleInit {
 
         return {
           entry,
+          fromValue: first,
+          toValue: last,
           delta: last - first,
         };
       })
@@ -2029,12 +2048,29 @@ export class MetricsService implements OnModuleInit {
           value,
         ): value is {
           entry: ShipTelemetryEntry;
+          fromValue: number;
+          toValue: number;
           delta: number;
         } => Boolean(value),
       );
 
     if (deltas.length === 0) {
       return null;
+    }
+
+    const normalizedMetricQuery = this.normalizeTelemetryText(request.metricQuery);
+    const storedFluidSubject = this.detectStoredFluidSubject(normalizedMetricQuery);
+    if (
+      storedFluidSubject &&
+      deltas.every((item) =>
+        this.isHistoricalAggregateTankStorageEntry(item.entry, storedFluidSubject),
+      )
+    ) {
+      return this.buildHistoricalStoredFluidTankDeltaAnswer({
+        deltas,
+        request,
+        subject: storedFluidSubject,
+      });
     }
 
     const total = deltas.reduce((sum, item) => sum + item.delta, 0);
@@ -2056,6 +2092,85 @@ export class MetricsService implements OnModuleInit {
       '',
       ...lines,
     ].join('\n');
+  }
+
+  private buildHistoricalStoredFluidTankDeltaAnswer(params: {
+    deltas: Array<{
+      entry: ShipTelemetryEntry;
+      fromValue: number;
+      toValue: number;
+      delta: number;
+    }>;
+    request: ParsedHistoricalTelemetryRequest;
+    subject: StoredFluidSubject;
+  }): string {
+    const { deltas, request, subject } = params;
+    const totalStart = deltas.reduce((sum, item) => sum + item.fromValue, 0);
+    const totalEnd = deltas.reduce((sum, item) => sum + item.toValue, 0);
+    const netDelta = totalEnd - totalStart;
+    const unit = this.getConsistentHistoricalUnit(
+      deltas.map((item) => item.entry),
+    );
+    const unitSuffix = unit ? ` ${unit}` : '';
+    const fluidLabel = this.describeStoredFluidSubject(subject);
+    const lines = deltas.map(
+      (item) =>
+        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.fromValue)}${unitSuffix} -> ${this.formatAggregateNumber(item.toValue)}${unitSuffix} (${this.formatSignedAggregateNumber(item.delta)}${unitSuffix})`,
+    );
+    const normalizedMetricQuery = this.normalizeTelemetryText(request.metricQuery);
+    const usageQuery = this.isHistoricalStoredFluidUsageQuery(
+      normalizedMetricQuery,
+      subject,
+    );
+
+    if (usageQuery) {
+      if (netDelta < 0) {
+        const usedAmount = Math.abs(netDelta);
+        const durationMs = this.getHistoricalRangeDurationMs(request.range);
+        const dailyAverage =
+          durationMs != null && durationMs > 0
+            ? usedAmount / (durationMs / (24 * 60 * 60 * 1000))
+            : null;
+        const output = [
+          `Based on tank-level telemetry from ${request.rangeLabel}, total ${fluidLabel} across the matched tanks fell from ${this.formatAggregateNumber(totalStart)}${unitSuffix} to ${this.formatAggregateNumber(totalEnd)}${unitSuffix}, which implies ${this.formatAggregateNumber(usedAmount)}${unitSuffix} used over that period [Telemetry History].`,
+        ];
+
+        if (dailyAverage != null && Number.isFinite(dailyAverage)) {
+          output.push(
+            '',
+            `Average daily ${fluidLabel} usage over that period was approximately ${this.formatAggregateNumber(dailyAverage)}${unitSuffix} per day.`,
+          );
+        }
+
+        if (lines.length > 1) {
+          output.push('', 'Net change by matched tank:', ...lines);
+        }
+
+        return output.join('\n');
+      }
+
+      const output = [
+        `Based on tank-level telemetry from ${request.rangeLabel}, total ${fluidLabel} across the matched tanks moved from ${this.formatAggregateNumber(totalStart)}${unitSuffix} to ${this.formatAggregateNumber(totalEnd)}${unitSuffix} (${this.formatSignedAggregateNumber(netDelta)}${unitSuffix}) [Telemetry History].`,
+        '',
+        `A pure ${fluidLabel} usage figure cannot be inferred from net tank levels for that period because the onboard total did not decrease overall.`,
+      ];
+
+      if (lines.length > 1) {
+        output.push('', 'Net change by matched tank:', ...lines);
+      }
+
+      return output.join('\n');
+    }
+
+    const output = [
+      `Based on tank-level telemetry from ${request.rangeLabel}, total ${fluidLabel} across the matched tanks moved from ${this.formatAggregateNumber(totalStart)}${unitSuffix} to ${this.formatAggregateNumber(totalEnd)}${unitSuffix} (${this.formatSignedAggregateNumber(netDelta)}${unitSuffix}) [Telemetry History].`,
+    ];
+
+    if (lines.length > 1) {
+      output.push('', 'Net change by matched tank:', ...lines);
+    }
+
+    return output.join('\n');
   }
 
   private async buildHistoricalTrendAnswer(
@@ -2656,6 +2771,10 @@ export class MetricsService implements OnModuleInit {
       searchSpace,
       normalizedQuery,
     );
+    const implicitRange = this.buildImplicitHistoricalRange(
+      searchSpace,
+      operation,
+    );
     const metricQuery = this.sanitizeHistoricalMetricQuery(
       normalizedQuery?.subject?.trim()
         ? normalizedQuery.subject
@@ -2680,7 +2799,7 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
-    if (!relativeRange && !explicitDate && !relativePointInTime) {
+    if (!relativeRange && !explicitDate && !relativePointInTime && !implicitRange) {
       return null;
     }
 
@@ -2788,12 +2907,17 @@ export class MetricsService implements OnModuleInit {
     }
 
     const range =
-      relativeRange ?? this.buildFullDayHistoricalRange(explicitDate!);
+      relativeRange ??
+      implicitRange ??
+      this.buildFullDayHistoricalRange(explicitDate!);
     return {
       metricQuery,
       operation,
       range,
-      rangeLabel: this.formatHistoricalRange(range),
+      rangeLabel:
+        implicitRange && !relativeRange && !explicitDate
+          ? 'the last 24 hours'
+          : this.formatHistoricalRange(range),
       ...(trendFocus ? { trendFocus } : {}),
     };
   }
@@ -2853,7 +2977,7 @@ export class MetricsService implements OnModuleInit {
       return 'trend';
     }
     if (
-      /\b(used|consumed|consumption|difference|delta|increase|decrease)\b/i.test(
+      /\b(used|usage|consumed|consumption|difference|delta|increase|decrease)\b/i.test(
         normalized,
       )
     ) {
@@ -2891,6 +3015,23 @@ export class MetricsService implements OnModuleInit {
     }
 
     return 'general';
+  }
+
+  private buildImplicitHistoricalRange(
+    query: string,
+    operation: ParsedHistoricalTelemetryRequest['operation'],
+  ): InfluxHistoricalQueryRange | null {
+    const normalized = this.normalizeTelemetryText(query);
+    if (
+      (operation !== 'delta' && operation !== 'trend') ||
+      !this.isImplicitDailyStoredFluidUsageQuery(normalized)
+    ) {
+      return null;
+    }
+
+    const stop = new Date();
+    const start = new Date(stop.getTime() - 24 * 60 * 60 * 1000);
+    return { start, stop };
   }
 
   private parseRelativeHistoricalRange(
@@ -5520,6 +5661,61 @@ export class MetricsService implements OnModuleInit {
     return null;
   }
 
+  private describeStoredFluidSubject(subject: StoredFluidSubject): string {
+    if (subject.fluid !== 'water') {
+      return subject.fluid === 'def' ? 'DEF' : subject.fluid;
+    }
+
+    const qualifiers = subject.waterQualifiers ?? [];
+    if (qualifiers.includes('fresh')) return 'fresh water';
+    if (qualifiers.includes('sea')) return 'sea water';
+    if (qualifiers.includes('black')) return 'black water';
+    if (qualifiers.includes('grey')) return 'grey water';
+    if (qualifiers.includes('bilge')) return 'bilge water';
+    return 'water';
+  }
+
+  private isImplicitDailyStoredFluidUsageQuery(normalizedQuery: string): boolean {
+    const subject = this.detectStoredFluidSubject(normalizedQuery);
+    if (!subject) {
+      return false;
+    }
+
+    return (
+      /\b(daily|per\s+day|per-day)\b/i.test(normalizedQuery) &&
+      !/\b(current|currently|now|right now|latest)\b/i.test(normalizedQuery) &&
+      this.isHistoricalStoredFluidUsageQuery(normalizedQuery, subject)
+    );
+  }
+
+  private isHistoricalStoredFluidUsageQuery(
+    normalizedQuery: string,
+    subject: StoredFluidSubject,
+  ): boolean {
+    const hasUsageIntent =
+      /\b(used|usage|consumed|consumption|difference|delta|change|changed|trend|trending|history|historical|daily|per\s+day|per-day)\b/i.test(
+        normalizedQuery,
+      );
+    if (!hasUsageIntent) {
+      return false;
+    }
+
+    if (
+      /\b(rate|flow|pressure|temp(?:erature)?|voltage|power|energy|frequency)\b/i.test(
+        normalizedQuery,
+      )
+    ) {
+      return false;
+    }
+
+    const hasInventoryAnchor =
+      /\b(tank|tanks|level|levels|onboard|remaining|left|available|storage)\b/i.test(
+        normalizedQuery,
+      );
+
+    return subject.fluid === 'fuel' ? hasInventoryAnchor : true;
+  }
+
   private isAggregateStoredFluidQuery(
     normalizedQuery: string,
     subject: StoredFluidSubject,
@@ -5595,6 +5791,62 @@ export class MetricsService implements OnModuleInit {
         normalizedQuery,
       )
     );
+  }
+
+  private isImplicitHistoricalStoredFluidInventoryQuery(
+    normalizedQuery: string,
+    subject: StoredFluidSubject,
+  ): boolean {
+    if (subject.fluid === 'fuel') {
+      return this.isImplicitHistoricalFuelInventoryQuery(normalizedQuery);
+    }
+
+    return (
+      this.matchesStoredFluidSubject(normalizedQuery, subject) &&
+      /\b(how much|how many|total|sum|overall|combined|together|left|remaining|available|onboard)\b/i.test(
+        normalizedQuery,
+      ) &&
+      !/\b(used|consumed|consumption|usage|rate|flow|pressure|burn(?:ed|t|ing)?|spent|generator|genset)\b/i.test(
+        normalizedQuery,
+      )
+    );
+  }
+
+  private shouldUseHistoricalTankStorageAnalysis(
+    request: ParsedHistoricalTelemetryRequest,
+    normalizedQuery: string,
+    subject: StoredFluidSubject,
+  ): boolean {
+    if (
+      this.isAggregateStoredFluidQuery(normalizedQuery, subject) ||
+      this.isImplicitHistoricalStoredFluidInventoryQuery(
+        normalizedQuery,
+        subject,
+      )
+    ) {
+      return true;
+    }
+
+    return (
+      (request.operation === 'delta' || request.operation === 'trend') &&
+      this.isHistoricalStoredFluidUsageQuery(normalizedQuery, subject)
+    );
+  }
+
+  private findHistoricalStoredFluidTankEntries(
+    entries: ShipTelemetryEntry[],
+    subject: StoredFluidSubject,
+  ): ShipTelemetryEntry[] {
+    return entries
+      .filter((entry) =>
+        this.isHistoricalAggregateTankStorageEntry(entry, subject),
+      )
+      .sort((left, right) => {
+        const tankRank =
+          this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
+        return tankRank || left.key.localeCompare(right.key);
+      })
+      .slice(0, 16);
   }
 
   private isDirectTankStorageEntry(

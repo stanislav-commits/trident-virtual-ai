@@ -136,11 +136,18 @@ export class DocumentationSourceLockService {
 
   buildNextFollowUpState(params: {
     semanticQuery: DocumentationSemanticQuery;
+    retrievalQuery?: string | null;
     citations: ChatCitation[];
     candidates: DocumentationSemanticCandidate[];
     sourceLockDecision: DocumentationSourceLockDecision;
   }): DocumentationFollowUpState | null {
-    const { semanticQuery, citations, candidates, sourceLockDecision } = params;
+    const {
+      semanticQuery,
+      retrievalQuery,
+      citations,
+      candidates,
+      sourceLockDecision,
+    } = params;
     const dominantManual = this.resolveDominantManual(
       citations,
       candidates,
@@ -155,6 +162,7 @@ export class DocumentationSourceLockService {
       schemaVersion: SEMANTIC_PROFILE_SCHEMA_VERSION,
       intent: semanticQuery.intent,
       conceptIds: semanticQuery.selectedConceptIds,
+      retrievalQuery: retrievalQuery?.trim() || null,
       sourcePreferences: semanticQuery.sourcePreferences,
       sourceLock:
         sourceLockDecision.active ||
@@ -194,6 +202,11 @@ export class DocumentationSourceLockService {
       schemaVersion: SEMANTIC_PROFILE_SCHEMA_VERSION,
       intent: 'general_information',
       conceptIds: [],
+      retrievalQuery:
+        typeof context?.resolvedSubjectQuery === 'string' &&
+        context.resolvedSubjectQuery.trim()
+          ? context.resolvedSubjectQuery.trim()
+          : null,
       sourcePreferences: [],
       sourceLock: true,
       lockedManualId: manualIds[0],

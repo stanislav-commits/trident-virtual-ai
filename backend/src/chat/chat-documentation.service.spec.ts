@@ -2895,6 +2895,84 @@ Next due: 07.07.2026 / 2034`,
     );
   });
 
+  it('reuses the stored retrieval intent for generic source-locked detail follow-ups', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const retrievalQuery = (service as any).resolveSourceLockedRetrievalQuery({
+      userQuery: 'Can you provide the full parts list?',
+      effectiveUserQuery: 'Can you provide the full parts list?',
+      retrievalQuery: 'Can you provide the full parts list?',
+      normalizedQuery: {
+        rawQuery: 'Can you provide the full parts list?',
+        normalizedQuery: 'can you provide the full parts list?',
+        retrievalQuery: 'Can you provide the full parts list?',
+        effectiveQuery: 'Can you provide the full parts list?',
+        previousUserQuery:
+          'What spare parts does the sound and light signal controller have?',
+        followUpMode: 'standalone',
+        subject: 'parts list',
+        operation: 'lookup',
+        timeIntent: { kind: 'none' },
+        sourceHints: [],
+        isClarificationReply: false,
+        ambiguityFlags: [],
+      },
+      sourceLockDecision: {
+        active: true,
+        lockedManualId: 'manual-1',
+        lockedManualTitle: 'M-512 Instructions.pdf',
+        lockedDocumentId: 'doc-1',
+        reason: 'follow_up_source_lock',
+      },
+      followUpState: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'manual_lookup',
+        conceptIds: [],
+        retrievalQuery:
+          'What spare parts does the sound and light signal controller have?',
+        sourcePreferences: ['MANUALS'],
+        sourceLock: true,
+        lockedManualId: 'manual-1',
+        lockedManualTitle: 'M-512 Instructions.pdf',
+        lockedDocumentId: 'doc-1',
+        pageHint: null,
+        sectionHint: null,
+        vendor: null,
+        model: null,
+        systems: [],
+        equipment: [],
+      },
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'manual_lookup',
+        conceptFamily: 'asset_system',
+        selectedConceptIds: [],
+        candidateConceptIds: [],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'direct_answer',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.6,
+      },
+    });
+
+    expect(retrievalQuery).toContain('sound and light signal controller');
+    expect(retrievalQuery.toLowerCase()).toContain('parts');
+  });
+
   it('keeps explicit source queries intact when there is no generated source-selection question', () => {
     const service = new ChatDocumentationService(
       {} as never,

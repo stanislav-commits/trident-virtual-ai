@@ -249,6 +249,7 @@ export function parseDocumentationFollowUpState(
       'general_information',
     ),
     conceptIds: normalizeStringArray(value.conceptIds, 8),
+    retrievalQuery: normalizeString(value.retrievalQuery),
     sourcePreferences: normalizeSourceCategories(value.sourcePreferences),
     sourceLock: value.sourceLock === true,
     lockedManualId: normalizeString(value.lockedManualId),

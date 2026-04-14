@@ -346,8 +346,25 @@ export class ChatDocumentationQueryService {
       return normalizedPersonnelQuery;
     }
 
+    if (
+      normalizedPreviousUserQuery &&
+      this.isLowInformationContinuationQuery(trimmed)
+    ) {
+      return normalizedPreviousUserQuery;
+    }
+
     if (normalizedPreviousUserQuery && this.isSummaryFollowUpQuery(trimmed)) {
       return normalizedPreviousUserQuery;
+    }
+
+    if (
+      normalizedPreviousUserQuery &&
+      this.isContinuationRefinementFragment(trimmed) &&
+      this.isAnalyticalContinuationContext(normalizedPreviousUserQuery)
+    ) {
+      return `${normalizedPreviousUserQuery.replace(/[?!.]+$/g, '')} ${trimmed}`
+        .replace(/\s+/g, ' ')
+        .trim();
     }
 
     if (
@@ -414,7 +431,10 @@ export class ChatDocumentationQueryService {
     }
 
     return (
+      this.isLowInformationContinuationQuery(trimmed) ||
       (this.isTemporalRangeFollowUpQuery(trimmed) &&
+        this.isAnalyticalContinuationContext(previousUserQuery)) ||
+      (this.isContinuationRefinementFragment(trimmed) &&
         this.isAnalyticalContinuationContext(previousUserQuery)) ||
       this.isSubjectDetailFollowUpQuery(trimmed) ||
       this.isCompletenessVerificationFollowUpQuery(
@@ -442,6 +462,10 @@ export class ChatDocumentationQueryService {
     }
 
     if (this.isGenericDocumentationDetailFollowUp(trimmed)) {
+      return true;
+    }
+
+    if (this.isLowInformationContinuationQuery(trimmed)) {
       return true;
     }
 
@@ -1980,6 +2004,41 @@ export class ChatDocumentationQueryService {
     );
   }
 
+  private isLowInformationContinuationQuery(query: string): boolean {
+    const trimmed = query.trim();
+    if (!trimmed || this.looksLikeFreshQuestion(trimmed)) {
+      return false;
+    }
+
+    const subjectTerms = this.extractRetrievalSubjectTerms(trimmed);
+    if (subjectTerms.length === 0) {
+      return true;
+    }
+
+    const genericContinuationTerms = new Set([
+      'yes',
+      'yeah',
+      'yep',
+      'ok',
+      'okay',
+      'sure',
+      'please',
+      'continue',
+      'show',
+      'want',
+      'go',
+      'ahead',
+      'more',
+      'do',
+      'it',
+      'that',
+    ]);
+
+    return subjectTerms.every((term) =>
+      genericContinuationTerms.has(term.toLowerCase()),
+    );
+  }
+
   private isGenericDocumentationDetailFollowUp(query: string): boolean {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -2039,6 +2098,23 @@ export class ChatDocumentationQueryService {
     }
 
     return null;
+  }
+
+  private isContinuationRefinementFragment(query: string): boolean {
+    const trimmed = query.trim();
+    if (
+      !trimmed ||
+      this.looksLikeFreshQuestion(trimmed) ||
+      this.isSourceScopeFollowUpQuery(trimmed)
+    ) {
+      return false;
+    }
+
+    if (!/^(?:based on|using|via|according to|from)\b/i.test(trimmed)) {
+      return false;
+    }
+
+    return this.extractRetrievalSubjectTerms(trimmed).length > 0;
   }
 
   private isPureSourceScopeOverride(query: string): boolean {

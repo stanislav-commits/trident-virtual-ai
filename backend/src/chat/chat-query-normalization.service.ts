@@ -136,7 +136,7 @@ export class ChatQueryNormalizationService {
     }
 
     if (
-      /\b(used|consumed|consumption|difference|delta|increase|decrease)\b/i.test(
+      /\b(used|usage|consumed|consumption|difference|delta|increase|decrease)\b/i.test(
         normalized,
       )
     ) {
@@ -244,11 +244,33 @@ export class ChatQueryNormalizationService {
         hints.push(value);
       }
     };
+    const proceduralDocumentationIntent =
+      /\b(how\s+to|how\s+do\s+i|step[-\s]*by[-\s]*step|maintenance|service|servicing|inspection|overhaul|replacement)\b/i.test(
+        normalized,
+      ) &&
+      !/\b(current|currently|now|right now|historical|history|trend|trending|difference|delta|usage|consumption|remaining|onboard|level|levels|pressure|temperature|voltages?|currents?|loads?|rpm|runtime|hours?|position|latitude|longitude|coordinates?|gps|lat|lon)\b/i.test(
+        normalized,
+      );
+    const fluidInventoryTelemetryIntent =
+      /\b(?:(?:fresh|sea|black|grey|gray|bilge)\s+water|def|urea)\b/i.test(
+        normalized,
+      ) &&
+      /\b(tank|tanks|level|levels|usage|used|consumed|consumption|remaining|left|available|onboard|pressure|flow|pump|pumps)\b/i.test(
+        normalized,
+      );
+    const telemetryMeasurementIntent =
+      /\b(telemetry|metric|metrics|tank|tanks|temperature|temperatures|pressure|pressures|voltage|voltages|current|currents|amperage|amperages|load|loads|level|levels|alarm|alarms|rpm|runtime|hours?|position|latitude|longitude|location|coordinates?|gps|lat|lon)\b/i.test(
+        normalized,
+      );
+    const telemetryDomainIntent =
+      /\b(fuel|oil|coolant|bilge|generator|generators|genset|gensets|engine|engines|battery|batteries|charger|chargers)\b/i.test(
+        normalized,
+      );
 
     if (
-      /\b(telemetry|metric|metrics|tank|tanks|fuel|oil|coolant|temperature|temperatures|pressure|pressures|voltage|voltages|current|currents|amperage|amperages|load|loads|level|levels|bilge|alarm|alarms|rpm|runtime|hours?|position|latitude|longitude|location|coordinates?|gps|lat|lon|generator|generators|genset|gensets|engine|engines|battery|batteries|charger|chargers)\b/i.test(
-        normalized,
-      )
+      telemetryMeasurementIntent ||
+      fluidInventoryTelemetryIntent ||
+      (telemetryDomainIntent && !proceduralDocumentationIntent)
     ) {
       add('TELEMETRY');
     }
@@ -256,7 +278,8 @@ export class ChatQueryNormalizationService {
     if (
       /\b(manual|documentation|docs?|procedure|spec(?:ification)?|guide|handbook|parts?|spares?|kits?|assembl(?:y|ies)|o-?rings?|seals?|gaskets?)\b/i.test(
         normalized,
-      )
+      ) ||
+      proceduralDocumentationIntent
     ) {
       add('DOCUMENTATION');
     }

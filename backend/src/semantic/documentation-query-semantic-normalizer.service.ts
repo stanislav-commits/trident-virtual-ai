@@ -110,6 +110,7 @@ export class DocumentationQuerySemanticNormalizerService {
     return [
       params.userQuery,
       params.retrievalQuery,
+      params.followUpState?.retrievalQuery ?? '',
       params.followUpState?.lockedManualTitle ?? '',
       ...(params.followUpState?.conceptIds ?? []),
       ...(params.followUpState?.systems ?? []),

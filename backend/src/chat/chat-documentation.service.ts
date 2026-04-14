@@ -256,8 +256,18 @@ export class ChatDocumentationService {
           userQuery,
           effectiveUserQuery,
           retrievalQuery,
+          normalizedQuery,
           semanticQuery,
           sourceLockDecision,
+          followUpState: previousDocumentationFollowUpState,
+        });
+      const persistedDocumentationRetrievalQuery =
+        this.resolvePersistedDocumentationRetrievalQuery({
+          userQuery,
+          effectiveUserQuery,
+          retrievalQuery: documentationRetrievalQuery,
+          normalizedQuery,
+          followUpState: previousDocumentationFollowUpState,
         });
       const semanticScopeActive = semanticManualIds.length > 0;
       const retrievalTrace = this.buildRetrievalTrace({
@@ -905,6 +915,7 @@ export class ChatDocumentationService {
         semanticQuery && this.sourceLockService
           ? this.sourceLockService.buildNextFollowUpState({
               semanticQuery,
+              retrievalQuery: persistedDocumentationRetrievalQuery,
               citations,
               candidates: semanticCandidates,
               sourceLockDecision,
@@ -1278,15 +1289,19 @@ export class ChatDocumentationService {
     userQuery: string;
     effectiveUserQuery: string;
     retrievalQuery: string;
+    normalizedQuery?: ChatNormalizedQuery;
     semanticQuery?: DocumentationSemanticQuery;
     sourceLockDecision: DocumentationSourceLockDecision;
+    followUpState?: DocumentationFollowUpState | null;
   }): string {
     const {
       userQuery,
       effectiveUserQuery,
       retrievalQuery,
+      normalizedQuery,
       semanticQuery,
       sourceLockDecision,
+      followUpState,
     } = params;
     if (!sourceLockDecision.active) {
       return retrievalQuery;
@@ -1311,11 +1326,74 @@ export class ChatDocumentationService {
     const hasContextualSourceReference =
       this.hasContextualSourceReference(userQuery);
     if (!hasPageOrSectionHint && !hasContextualSourceReference) {
+      const storedRetrievalQuery = followUpState?.retrievalQuery?.trim();
+      if (
+        storedRetrievalQuery &&
+        this.queryService.shouldUseDocumentationFollowUpState(
+          userQuery,
+          normalizedQuery,
+        )
+      ) {
+        return this.buildStoredDocumentationFollowUpRetrievalQuery(
+          userQuery.trim() || effectiveUserQuery.trim(),
+          storedRetrievalQuery,
+        );
+      }
+
       return retrievalQuery;
     }
 
     const currentTurnQuery = userQuery.trim() || effectiveUserQuery.trim();
     return currentTurnQuery || retrievalQuery;
+  }
+
+  private resolvePersistedDocumentationRetrievalQuery(params: {
+    userQuery: string;
+    effectiveUserQuery: string;
+    retrievalQuery: string;
+    normalizedQuery?: ChatNormalizedQuery;
+    followUpState?: DocumentationFollowUpState | null;
+  }): string {
+    const {
+      userQuery,
+      effectiveUserQuery,
+      retrievalQuery,
+      normalizedQuery,
+      followUpState,
+    } = params;
+    const storedRetrievalQuery = followUpState?.retrievalQuery?.trim();
+    if (
+      !storedRetrievalQuery ||
+      !this.queryService.shouldUseDocumentationFollowUpState(
+        userQuery,
+        normalizedQuery,
+      )
+    ) {
+      return retrievalQuery;
+    }
+
+    return this.queryService.buildRetrievalQuery(
+      userQuery.trim() || effectiveUserQuery.trim(),
+      storedRetrievalQuery,
+    );
+  }
+
+  private buildStoredDocumentationFollowUpRetrievalQuery(
+    currentTurnQuery: string,
+    storedRetrievalQuery: string,
+  ): string {
+    const builtQuery = this.queryService.buildRetrievalQuery(
+      currentTurnQuery,
+      storedRetrievalQuery,
+    );
+    if (
+      builtQuery.trim() &&
+      builtQuery.trim().toLowerCase() !== currentTurnQuery.trim().toLowerCase()
+    ) {
+      return builtQuery;
+    }
+
+    return storedRetrievalQuery;
   }
 
   private extractQuestionFromExplicitSourceSelection(
