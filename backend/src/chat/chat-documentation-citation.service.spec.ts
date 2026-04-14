@@ -288,6 +288,43 @@ describe('ChatDocumentationCitationService', () => {
     );
   });
 
+  it('filters out generic manager mentions when direct manager contact details are available', () => {
+    const citations = [
+      {
+        sourceTitle: 'BR500_OME44610J2.pdf',
+        pageNumber: 91,
+        snippet:
+          'Akihiko Kanechika - Department General Manager, Quality Assurance Department. Furuno Electric Co., Ltd. Website: www.furuno.com.',
+        score: 0.99,
+      },
+      {
+        sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+        pageNumber: 1,
+        snippet:
+          'Nick Gray - Fort Lauderdale President of JMS USA & Yacht Manager (M) +1 954 298 8385 nick@jmsyachting.com Toby Jakeman - Fort Lauderdale Yacht Manager (M) +1 954 670 6737 toby@jmsyachting.com',
+        score: 0.61,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'manager contact details personnel directory company contact list',
+      'list all managers with their contact details',
+      citations,
+    );
+    const prepared = service.prepareCitationsForAnswer(
+      'manager contact details personnel directory company contact list',
+      'list all managers with their contact details',
+      refined,
+    );
+
+    expect(
+      prepared.citations.every(
+        (citation) =>
+          citation.sourceTitle === 'JMS Company Contact Details Jan 26.pdf',
+      ),
+    ).toBe(true);
+  });
+
   it('prioritizes oil-relevant generator maintenance citations over unrelated generator rows', () => {
     const citations = [
       {

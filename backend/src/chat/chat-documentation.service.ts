@@ -2077,6 +2077,15 @@ export class ChatDocumentationService {
       return false;
     }
 
+    if (
+      this.queryService.isProcedureQuery(effectiveUserQuery) ||
+      /\b(install|installation|mounted|mounting|wire|wiring|connect|connection|configure|configuration|setup|set\s+up|flush|start|stop|restart)\b/i.test(
+        effectiveUserQuery,
+      )
+    ) {
+      return false;
+    }
+
     return !/\b(according\s+to|manual|documentation|docs?|handbook|guide|procedure|steps?|spec(?:ification)?|recommended|normal\s+range|operating\s+range|limit|limits|specified)\b/i.test(
       effectiveUserQuery,
     );

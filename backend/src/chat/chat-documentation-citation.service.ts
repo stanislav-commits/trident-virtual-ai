@@ -459,7 +459,13 @@ export class ChatDocumentationCitationService {
           (right.citation.score ?? 0) - (left.citation.score ?? 0),
       );
 
-    const bestScore = scored[0]?.score ?? 0;
+    const scoredPool =
+      this.queryService.isContactLookupQuery(query) &&
+      scored.some((entry) => this.hasDirectContactEvidence(entry.citation))
+        ? scored.filter((entry) => this.hasDirectContactEvidence(entry.citation))
+        : scored;
+
+    const bestScore = scoredPool[0]?.score ?? 0;
     if (bestScore <= 0) {
       return citations;
     }
@@ -468,11 +474,21 @@ export class ChatDocumentationCitationService {
       bestScore >= 20
         ? Math.max(12, bestScore - 8)
         : Math.max(8, Math.ceil(bestScore * 0.7));
-    const matched = scored
+    const matched = scoredPool
       .filter((entry) => entry.score >= cutoff)
       .map((entry) => entry.citation);
 
     return matched.length > 0 ? matched : citations;
+  }
+
+  private hasDirectContactEvidence(citation: ChatCitation): boolean {
+    const haystack =
+      `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+
+    return (
+      /\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/i.test(haystack) ||
+      /\+\s*\d[\d\s()./-]{5,}\d\b/.test(haystack)
+    );
   }
 
   private refineRoleDescriptionCitations(

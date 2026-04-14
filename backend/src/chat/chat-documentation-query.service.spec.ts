@@ -171,6 +171,19 @@ describe('ChatDocumentationQueryService', () => {
     );
   });
 
+  it('treats installation and connection wording as procedure queries', () => {
+    expect(
+      service.isProcedureQuery(
+        'How should the 15 ppm bilge alarm be installed and connected?',
+      ),
+    ).toBe(true);
+    expect(
+      service.isProcedureQuery(
+        'How do I connect an SDI source to an HDMI monitor?',
+      ),
+    ).toBe(true);
+  });
+
   it('treats maintenance-as-needed generator questions as interval-maintenance queries', () => {
     const query =
       'what maintenance is listed as needed for the diesel generator?';

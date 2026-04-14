@@ -2958,6 +2958,27 @@ Next due: 07.07.2026 / 2034`,
     ).toBe(false);
   });
 
+  it('does not skip documentation retrieval for install-and-connect procedure wording', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const normalizedQuery = new ChatQueryNormalizationService().normalizeTurn({
+      userQuery: 'How should the 15 ppm bilge alarm be installed and connected?',
+    });
+
+    expect(
+      (service as any).shouldSkipDocumentationForTelemetryFirstQuery(
+        'How should the 15 ppm bilge alarm be installed and connected?',
+        'How should the 15 ppm bilge alarm be installed and connected?',
+        normalizedQuery,
+      ),
+    ).toBe(false);
+  });
+
   it('does not category-filter explicit source selections by guessed source preferences', () => {
     const service = new ChatDocumentationService(
       {} as never,

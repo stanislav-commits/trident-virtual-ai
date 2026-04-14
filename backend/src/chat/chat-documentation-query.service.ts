@@ -1037,7 +1037,7 @@ export class ChatDocumentationQueryService {
 
   isProcedureQuery(query: string): boolean {
     return (
-      /\b(procedure|steps?|how\s+to|how\s+do\s+i|instruction|instructions|checklist|perform|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)\b/i.test(
+      /\b(procedure|steps?|how\s+to|how\s+do\s+i|how\s+can\s+i|how\s+should(?:\s+i|\s+the|\s+it)?|instruction|instructions|checklist|perform|carry\s+out|install|installation|mounted|mounting|wire|wiring|connect|connection|configure|configuration|setup|set\s+up|start|stop|restart|flush|create\s+(?:a\s+)?route|make\s+(?:a\s+)?route|enter\s+(?:a\s+)?route|add\s+(?:a\s+)?waypoint|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done)\b/i.test(
         query,
       ) || this.isIntervalMaintenanceQuery(query)
     );
