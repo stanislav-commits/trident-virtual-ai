@@ -4278,6 +4278,26 @@ describe('ChatService telemetry clarification', () => {
       retrievalQuery: 'how much total fuel is in the tanks right now',
       resolvedSubjectQuery: 'how much total fuel is in the tanks right now',
       answerQuery: undefined,
+      sourceLockActive: false,
+      semanticQuery: {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'general_information',
+        conceptFamily: 'asset_system',
+        selectedConceptIds: ['tag:system:fuel_tanks'],
+        candidateConceptIds: ['tag:system:fuel_tanks'],
+        equipment: [],
+        systems: ['fuel_system'],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'direct_answer',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.82,
+      },
     });
     metricsService.getShipTelemetryContextForQuery.mockResolvedValue({
       telemetry: {

@@ -100,6 +100,10 @@ export class ChatQueryNormalizationService {
       return 'event';
     }
 
+    if (this.isProceduralDocumentationIntent(normalized)) {
+      return 'lookup';
+    }
+
     if (
       /\b(latitude|longitude|position|coordinates?|gps|location|lat|lon)\b/i.test(
         normalized,
@@ -245,12 +249,7 @@ export class ChatQueryNormalizationService {
       }
     };
     const proceduralDocumentationIntent =
-      /\b(how\s+to|how\s+do\s+i|step[-\s]*by[-\s]*step|maintenance|service|servicing|inspection|overhaul|replacement)\b/i.test(
-        normalized,
-      ) &&
-      !/\b(current|currently|now|right now|historical|history|trend|trending|difference|delta|usage|consumption|remaining|onboard|level|levels|pressure|temperature|voltages?|currents?|loads?|rpm|runtime|hours?|position|latitude|longitude|coordinates?|gps|lat|lon)\b/i.test(
-        normalized,
-      );
+      this.isProceduralDocumentationIntent(normalized);
     const fluidInventoryTelemetryIntent =
       /\b(?:(?:fresh|sea|black|grey|gray|bilge)\s+water|def|urea)\b/i.test(
         normalized,
@@ -262,13 +261,16 @@ export class ChatQueryNormalizationService {
       /\b(telemetry|metric|metrics|tank|tanks|temperature|temperatures|pressure|pressures|voltage|voltages|current|currents|amperage|amperages|load|loads|level|levels|alarm|alarms|rpm|runtime|hours?|position|latitude|longitude|location|coordinates?|gps|lat|lon)\b/i.test(
         normalized,
       );
+    const protectedProceduralDocumentationIntent =
+      proceduralDocumentationIntent &&
+      !this.isExplicitTelemetryReadingIntent(normalized, timeIntent);
     const telemetryDomainIntent =
       /\b(fuel|oil|coolant|bilge|generator|generators|genset|gensets|engine|engines|battery|batteries|charger|chargers)\b/i.test(
         normalized,
       );
 
     if (
-      telemetryMeasurementIntent ||
+      (telemetryMeasurementIntent && !protectedProceduralDocumentationIntent) ||
       fluidInventoryTelemetryIntent ||
       (telemetryDomainIntent && !proceduralDocumentationIntent)
     ) {
@@ -316,6 +318,42 @@ export class ChatQueryNormalizationService {
     }
 
     return hints;
+  }
+
+  private isProceduralDocumentationIntent(normalized: string): boolean {
+    const hasProcedureWording =
+      /\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+should\s+be\s+done|how\s+to|how\s+do\s+i|how\s+should(?:\s+i|\s+the|\s+it)?|step[-\s]*by[-\s]*step|procedure|procedures|instructions?|guide|check\s*list|checklist|maintenance|service|servicing|inspection|overhaul|replacement|replace|install|installation|mounted|mounting|wire|wiring|connect|connection|configure|configuration|setup|set\s+up|start|stop|restart|flush|troubleshoot|fault[-\s]*find|create\s+(?:a\s+)?route|make\s+(?:a\s+)?route|enter\s+(?:a\s+)?route|add\s+(?:a\s+)?waypoint)\b/i.test(
+        normalized,
+      );
+    if (!hasProcedureWording) {
+      return false;
+    }
+
+    if (/\b(how\s+many|how\s+much)\b/i.test(normalized)) {
+      return false;
+    }
+
+    return !/\b(from\s+telemetry|from\s+metrics|telemetry\s+only|metric\s+value|current\s+reading|live\s+reading)\b/i.test(
+      normalized,
+    );
+  }
+
+  private isExplicitTelemetryReadingIntent(
+    normalized: string,
+    timeIntent: ChatTimeIntent,
+  ): boolean {
+    if (
+      timeIntent.kind === 'current' ||
+      timeIntent.kind === 'historical_point' ||
+      timeIntent.kind === 'historical_range' ||
+      timeIntent.kind === 'historical_event'
+    ) {
+      return true;
+    }
+
+    return /\b(from\s+telemetry|from\s+metrics|telemetry\s+only|current\s+reading|live\s+reading|status|state|active|inactive|enabled|disabled|onboard|remaining|left|available|usage|used|consumed|consumption|difference|delta|trend|trending|average|avg|mean|minimum|maximum|total|sum|combined)\b/i.test(
+      normalized,
+    );
   }
 
   private buildSubject(query: string): string | undefined {

@@ -179,6 +179,21 @@ describe('ChatDocumentationQueryService', () => {
     );
   });
 
+  it('extracts natural-language interval phrases for narrative maintenance sections', () => {
+    expect(
+      service.extractMaintenanceIntervalSearchPhrases(
+        'weekly maintenance for air compressor',
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'weekly',
+        'weekly operations',
+        'weekly maintenance',
+        'once per week',
+      ]),
+    );
+  });
+
   it('does not ask for clarification for broader asset lookups that already name one concrete subject', () => {
     const userQuery = 'What spare parts do I need for the compressor?';
 
@@ -342,20 +357,38 @@ describe('ChatDocumentationQueryService', () => {
     ]);
   });
 
+  it('expands role-holder and role-description lookups without making expansion words anchors', () => {
+    const holderQuery = service.buildRetrievalQuery("who is vessel's dpa?", null);
+    const roleQuery = service.buildRetrievalQuery('what is the role of dpa?', null);
+
+    expect(holderQuery).toContain('dpa designated person ashore');
+    expect(holderQuery).toContain('contact details personnel directory');
+    expect(service.extractContactAnchorTerms(holderQuery)).toEqual(['dpa']);
+    expect(roleQuery).toBe(
+      'dpa designated person ashore role responsibilities safety management',
+    );
+  });
+
   it('keeps explicit personnel role lookups self-contained instead of inheriting the previous subject', () => {
     expect(
       service.buildRetrievalQuery(
         'list all managers with their contact details',
         "who is vessel's dpa?",
       ),
-    ).toBe('manager contact details');
+    ).toContain('manager contact details personnel directory');
 
     expect(
       service.buildRetrievalQuery(
         'who else has the dpa role?',
         "who is vessel's dpa?",
       ),
-    ).toBe('dpa contact details');
+    ).toContain('dpa designated person ashore');
+    expect(
+      service.buildRetrievalQuery(
+        'who else has the dpa role?',
+        "who is vessel's dpa?",
+      ),
+    ).toContain('contact details personnel directory');
   });
 
   it('does not confuse role-holder lookup with role inventory or role description intents', () => {
@@ -391,7 +424,9 @@ describe('ChatDocumentationQueryService', () => {
         'what is the role of dpa?',
         'list all managers with their contact details',
       ),
-    ).toBe('what is the role of dpa?');
+    ).toBe(
+      'dpa designated person ashore role responsibilities safety management',
+    );
   });
 
   it('drops document scaffolding from director-list personnel queries', () => {
@@ -405,7 +440,7 @@ describe('ChatDocumentationQueryService', () => {
         'show all directors from the company contact details document',
         null,
       ),
-    ).toBe('director contact details');
+    ).toContain('director contact details personnel directory');
   });
 
   it('inherits the previous subject for role-inventory follow-up questions', () => {

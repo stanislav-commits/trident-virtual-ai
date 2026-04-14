@@ -797,6 +797,7 @@ export class ChatService {
           effectiveUserQuery,
           semanticQuery,
           sourceLockActive,
+          effectiveNormalizedQuery,
         );
       const shouldLookupCurrentTelemetry =
         !preferDocumentationOverCurrentTelemetry &&
@@ -1150,6 +1151,7 @@ export class ChatService {
           citationsForAnswer,
           telemetryOnlyQuery,
           llmTelemetryContext,
+          normalizedQuery: effectiveNormalizedQuery,
         })
       ) {
         return this.addRoutedAssistantMessage({
@@ -5093,8 +5095,18 @@ export class ChatService {
     userQuery: string,
     semanticQuery?: DocumentationSemanticQuery,
     sourceLockActive = false,
+    normalizedQuery?: ChatNormalizedQuery,
   ): boolean {
     if (!semanticQuery || this.isExplicitTelemetrySourceQuery(userQuery)) {
+      return false;
+    }
+
+    if (
+      normalizedQuery?.sourceHints.includes('TELEMETRY') &&
+      (normalizedQuery.timeIntent.kind === 'current' ||
+        this.isCurrentInventoryTelemetryQuery(userQuery) ||
+        this.isCurrentTelemetryGuidedQuery(userQuery))
+    ) {
       return false;
     }
 
@@ -5197,6 +5209,7 @@ export class ChatService {
     llmTelemetryContext: {
       telemetry: Record<string, unknown>;
     };
+    normalizedQuery?: ChatNormalizedQuery;
   }): boolean {
     const {
       queryPlan,
@@ -5205,6 +5218,7 @@ export class ChatService {
       citationsForAnswer,
       telemetryOnlyQuery,
       llmTelemetryContext,
+      normalizedQuery,
     } = params;
 
     if (
@@ -5221,12 +5235,13 @@ export class ChatService {
       userQuery,
       semanticQuery,
       false,
+      normalizedQuery,
     );
   }
 
   private isProcedureOrDocumentationQuestion(userQuery: string): boolean {
     return (
-      /\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|how\s+should|how\s+do\s+i|procedure|steps?|check\s*list|checklist|instructions?|before|after|prepare|preparation|safely|safe\s+procedure|manual|documentation|according\s+to|list\s+all|all\s+items?|included\s+items?)\b/i.test(
+      /\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|how\s+to|how\s+should|how\s+do\s+i|procedure|steps?|check\s*list|checklist|instructions?|before|after|prepare|preparation|safely|safe\s+procedure|manual|documentation|according\s+to|install|installation|connect|connection|wire|wiring|configure|configuration|setup|set\s+up|start|stop|restart|flush|troubleshoot|create\s+(?:a\s+)?route|enter\s+(?:a\s+)?route|add\s+(?:a\s+)?waypoint|list\s+all|all\s+items?|included\s+items?)\b/i.test(
         userQuery,
       ) ||
       this.documentationQueryService.isIntervalMaintenanceQuery(userQuery)

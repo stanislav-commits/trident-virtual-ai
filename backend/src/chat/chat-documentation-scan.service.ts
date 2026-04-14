@@ -514,8 +514,15 @@ export class ChatDocumentationScanService {
               queryContext,
               intervalPhrases,
             );
+          const narrativeSnippet =
+            this.buildNarrativeIntervalMaintenanceSnippetFromChunks(
+              selectedChunks.map((entry) => entry.chunk.content ?? ''),
+              queryContext,
+              intervalPhrases,
+            );
           const combinedSnippet =
             structuredSnippet ??
+            narrativeSnippet ??
             this.buildCombinedChunkSnippet(
               selectedChunks.map((entry) => entry.chunk.content ?? ''),
             );
@@ -523,6 +530,10 @@ export class ChatDocumentationScanService {
           if (structuredSnippet) {
             this.logger.debug(
               `Manual interval maintenance snippet reconstructed from PDF page ${citationPageNumber} for ${manual.filename}`,
+            );
+          } else if (narrativeSnippet) {
+            this.logger.debug(
+              `Manual interval maintenance narrative snippet selected from chunks for ${manual.filename}`,
             );
           }
 
@@ -1772,7 +1783,7 @@ export class ChatDocumentationScanService {
         haystack,
       );
     const hasIntervalTerms =
-      /\b(before\s+starting|first\s+check\s+after|every\s+\d{2,6}|hours?|hrs?|monthly|annual|annually|maintenance\s+as\s+needed)\b/i.test(
+      /\b(before\s+starting|first\s+check\s+after|every\s+\d{2,6}|hours?|hrs?|daily|weekly|monthly|annual|annually|yearly|once\s+per\s+(?:day|week|month|year)|maintenance\s+as\s+needed)\b/i.test(
         haystack,
       );
 
@@ -1857,6 +1868,197 @@ export class ChatDocumentationScanService {
     }
 
     return unique.join('\n').slice(0, 3600);
+  }
+
+  private buildNarrativeIntervalMaintenanceSnippetFromChunks(
+    snippets: string[],
+    query: string,
+    intervalPhrases: string[],
+  ): string | null {
+    const combined = snippets.join('\n');
+    const extracted = this.extractNarrativeIntervalMaintenanceSnippet(
+      combined,
+      query,
+      intervalPhrases,
+    );
+    return extracted ? this.renderIntervalMaintenanceSnippet(extracted) : null;
+  }
+
+  private extractNarrativeIntervalMaintenanceSnippet(
+    text: string,
+    query: string,
+    intervalPhrases: string[],
+  ): IntervalMaintenanceSnippet | null {
+    const normalizedText = this.prepareNarrativeIntervalMaintenanceText(text);
+    if (!normalizedText) {
+      return null;
+    }
+
+    const headingPattern =
+      /(?:^|\n)\s*((?:\d+(?:\.\d+)+\s*)?(?:(?:daily|weekly|monthly|annual|annually|yearly)\s+(?:operations?|maintenance|checks?|service|inspection)?|once\s+per\s+(?:day|week|month|year)(?:\s*\([^)]*\))?|every\s+\d{1,6}\s*(?:h(?:ours?|rs?)?|hours?|months?|years?)[^:\n]{0,80}|(?:operations?\s+to\s+be\s+carried\s+out\s+after|after)\s+the\s+first\s+\d{1,6}[^:\n]{0,80}|first\s+check\s+after\s+\d{1,6}[^:\n]{0,80}|maintenance\s+as\s+needed|as\s+needed)[^:\n]{0,80}:?)/gi;
+    const matches = [...normalizedText.matchAll(headingPattern)];
+    if (matches.length === 0) {
+      return null;
+    }
+
+    const sections = matches
+      .map((match, index) => {
+        const heading = this.normalizeNarrativeIntervalHeading(match[1] ?? '');
+        const start = (match.index ?? 0) + match[0].length;
+        const end =
+          index + 1 < matches.length
+            ? matches[index + 1].index ?? normalizedText.length
+            : normalizedText.length;
+        return {
+          heading,
+          body: normalizedText.slice(start, end),
+          score: this.scoreNarrativeIntervalHeading(
+            heading,
+            query,
+            intervalPhrases,
+          ),
+        };
+      })
+      .filter((section) => section.heading && section.score > 0)
+      .sort((left, right) => right.score - left.score);
+    const selected = sections[0];
+    if (!selected) {
+      return null;
+    }
+
+    const items = this.extractNarrativeIntervalMaintenanceItems(selected.body);
+    if (items.length === 0) {
+      return null;
+    }
+
+    return {
+      heading: selected.heading,
+      intervalLabel: selected.heading,
+      items,
+    };
+  }
+
+  private prepareNarrativeIntervalMaintenanceText(text: string): string {
+    return text
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/(\d+(?:\.\d+)+)([A-Za-z])/g, '$1 $2')
+      .replace(/[\u2022\u00b7]\s*/g, '\n- ')
+      .replace(
+        /\s+(?=(?:\d+(?:\.\d+)+\s*)?(?:Daily|Weekly|Monthly|Annual|Annually|Yearly|Once\s+per|Every\s+\d|After\s+the\s+first|Operations?\s+to\s+be\s+carried\s+out\s+after|First\s+check\s+after|Maintenance\s+as\s+needed|As\s+needed)\b)/g,
+        '\n',
+      )
+      .replace(/\r/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s+/g, '\n')
+      .trim();
+  }
+
+  private normalizeNarrativeIntervalHeading(text: string): string {
+    return text
+      .replace(/\s+/g, ' ')
+      .replace(/\s+:/g, ':')
+      .trim();
+  }
+
+  private scoreNarrativeIntervalHeading(
+    heading: string,
+    query: string,
+    intervalPhrases: string[],
+  ): number {
+    const normalizedHeading = heading.toLowerCase();
+    const normalizedQuery = query.toLowerCase();
+    let score = 0;
+
+    for (const phrase of intervalPhrases) {
+      if (normalizedHeading.includes(phrase.toLowerCase())) {
+        score += phrase.length > 8 ? 24 : 18;
+      }
+    }
+
+    if (/\bweekly\b/i.test(normalizedQuery) && /\bweekly\b/i.test(heading)) {
+      score += 30;
+    }
+    if (/\bdaily\b/i.test(normalizedQuery) && /\bdaily\b/i.test(heading)) {
+      score += 30;
+    }
+    if (/\bmonthly\b/i.test(normalizedQuery) && /\bmonthly\b/i.test(heading)) {
+      score += 30;
+    }
+    if (
+      /\bannual|annually|yearly\b/i.test(normalizedQuery) &&
+      /\b(annual|annually|yearly|once\s+per\s+year)\b/i.test(heading)
+    ) {
+      score += 30;
+    }
+    if (
+      /\bas\s+needed\b/i.test(normalizedQuery) &&
+      /\bas\s+needed\b/i.test(heading)
+    ) {
+      score += 30;
+    }
+
+    for (const target of this.extractIntervalTargets(query)) {
+      if (!normalizedHeading.includes(String(target.value))) {
+        continue;
+      }
+      if (
+        target.unit === 'hour' &&
+        /\b(h(?:ours?|rs?)?|hourly)\b/i.test(normalizedHeading)
+      ) {
+        score += 24;
+      } else if (
+        target.unit === 'month' &&
+        /\bmonths?\b/i.test(normalizedHeading)
+      ) {
+        score += 24;
+      } else if (
+        target.unit === 'year' &&
+        /\byears?\b/i.test(normalizedHeading)
+      ) {
+        score += 24;
+      }
+    }
+
+    return score;
+  }
+
+  private extractNarrativeIntervalMaintenanceItems(body: string): string[] {
+    const unique = new Set<string>();
+    const lines = body
+      .replace(/\s+(?=-\s+)/g, '\n')
+      .split(/\n+/)
+      .map((line) =>
+        this.normalizeIntervalMaintenanceItemDescription(
+          line
+            .replace(/^[-*]\s*/, '')
+            .replace(/\s+/g, ' ')
+            .replace(/\s+([,.;:!?])/g, '$1')
+            .trim(),
+        ),
+      )
+      .filter(Boolean);
+
+    for (const line of lines) {
+      if (this.isLikelyNarrativeIntervalHeading(line)) {
+        continue;
+      }
+      if (!/\b(check|replace|drain|clean|inspect|verify|test|adjust|top\s+up|carry\s+out|rotate|run|fill|reset|remove)\b/i.test(line)) {
+        continue;
+      }
+      unique.add(line.replace(/[.;]\s*$/g, '').trim());
+      if (unique.size >= 12) {
+        break;
+      }
+    }
+
+    return [...unique];
+  }
+
+  private isLikelyNarrativeIntervalHeading(text: string): boolean {
+    return /^(?:\d+(?:\.\d+)+\s*)?(?:daily|weekly|monthly|annual|annually|yearly|every\s+\d|once\s+per|after\s+the\s+first|operations?\s+to\s+be\s+carried\s+out|maintenance\s+as\s+needed|as\s+needed)\b/i.test(
+      text,
+    );
   }
 
   private async buildStructuredIntervalMaintenanceSnippetFromPdfPage(

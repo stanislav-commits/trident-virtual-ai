@@ -759,6 +759,32 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
+    const broadTankClarificationEntries =
+      this.findBroadTankClarificationEntries(
+        scopedEntries,
+        query,
+        resolvedSubjectQuery,
+      ) ??
+      (scopedEntries.length < entries.length
+        ? this.findBroadTankClarificationEntries(
+            entries,
+            query,
+            resolvedSubjectQuery,
+          )
+        : null);
+    if (broadTankClarificationEntries) {
+      return {
+        kind: 'clarification',
+        clarificationQuestion:
+          'I found multiple historical tank readings that could match this question. Which tank do you want to inspect?',
+        pendingQuery: query.trim(),
+        clarificationActions: this.buildHistoricalClarificationActions(
+          broadTankClarificationEntries,
+          parsedRequest,
+        ),
+      };
+    }
+
     const matchedEntries = this.findHistoricalTelemetryEntries(
       scopedEntries,
       parsedRequest,

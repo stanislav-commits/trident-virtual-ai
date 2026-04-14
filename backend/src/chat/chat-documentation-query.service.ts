@@ -346,6 +346,12 @@ export class ChatDocumentationQueryService {
       return normalizedPersonnelQuery;
     }
 
+    const normalizedRoleDescriptionQuery =
+      this.buildRoleDescriptionRetrievalQuery(trimmed);
+    if (normalizedRoleDescriptionQuery) {
+      return normalizedRoleDescriptionQuery;
+    }
+
     if (
       normalizedPreviousUserQuery &&
       this.isLowInformationContinuationQuery(trimmed)
@@ -953,6 +959,12 @@ export class ChatDocumentationQueryService {
       'staff',
       'person',
       'people',
+      'personnel',
+      'directory',
+      'designated',
+      'ashore',
+      'holder',
+      'name',
       'only',
       'same',
       'another',
@@ -1569,6 +1581,36 @@ export class ChatDocumentationQueryService {
     if (/\bannual|annually\b/i.test(query)) {
       phrases.add('annual');
       phrases.add('annually');
+      phrases.add('once per year');
+      phrases.add('yearly');
+    }
+
+    if (/\byearly\b/i.test(query)) {
+      phrases.add('annual');
+      phrases.add('annually');
+      phrases.add('once per year');
+      phrases.add('yearly');
+    }
+
+    if (/\bweekly\b/i.test(query)) {
+      phrases.add('weekly');
+      phrases.add('weekly operations');
+      phrases.add('weekly maintenance');
+      phrases.add('once per week');
+    }
+
+    if (/\bmonthly\b/i.test(query)) {
+      phrases.add('monthly');
+      phrases.add('monthly operations');
+      phrases.add('monthly maintenance');
+      phrases.add('once per month');
+    }
+
+    if (/\bdaily\b/i.test(query)) {
+      phrases.add('daily');
+      phrases.add('daily operations');
+      phrases.add('daily maintenance');
+      phrases.add('once per day');
     }
 
     if (/\bperiodic\b/i.test(query)) {
@@ -2926,6 +2968,11 @@ export class ChatDocumentationQueryService {
     }
 
     const normalizedAnchors = [...new Set(anchorTerms)].join(' ');
+    const expandedAnchors = /\bdpa\b/i.test(query)
+      ? `${normalizedAnchors} designated person ashore`
+      : normalizedAnchors;
+    const directoryContext =
+      'contact details personnel directory company contact list';
 
     if (
       this.isContactLookupQuery(query) ||
@@ -2933,14 +2980,37 @@ export class ChatDocumentationQueryService {
       /\b(list|show)\b/i.test(query) ||
       /\ball\b/i.test(query)
     ) {
-      return `${normalizedAnchors} contact details`;
+      return `${expandedAnchors} ${directoryContext}`;
     }
 
     if (this.isRoleInventoryQuery(query)) {
-      return `${normalizedAnchors} contact details roles`;
+      return `${expandedAnchors} roles ${directoryContext}`;
+    }
+
+    if (this.isRoleHolderLookupQuery(query)) {
+      return `${expandedAnchors} role holder name ${directoryContext}`;
     }
 
     return null;
+  }
+
+  private buildRoleDescriptionRetrievalQuery(query: string): string | null {
+    if (!this.isRoleDescriptionQuery(query)) {
+      return null;
+    }
+
+    const anchorTerms = this.extractContactAnchorTerms(query);
+    const normalizedAnchors = [...new Set(anchorTerms)].join(' ');
+    if (/\bdpa\b/i.test(query)) {
+      return 'dpa designated person ashore role responsibilities safety management';
+    }
+    if (/\bcso\b/i.test(query)) {
+      return 'cso company security officer role responsibilities security management';
+    }
+
+    return normalizedAnchors
+      ? `${normalizedAnchors} role responsibilities`
+      : null;
   }
 
   private isRoleDescriptionQuery(query: string): boolean {

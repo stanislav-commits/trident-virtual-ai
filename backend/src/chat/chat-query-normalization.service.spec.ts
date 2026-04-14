@@ -101,6 +101,38 @@ describe('ChatQueryNormalizationService', () => {
     expect(maintenance.sourceHints).not.toContain('TELEMETRY');
   });
 
+  it('does not let telemetry vocabulary override procedural documentation intent', () => {
+    const gpsProcedure = service.normalizeTurn({
+      userQuery: 'How to create route in gps navigator?',
+    });
+    const alarmInstallation = service.normalizeTurn({
+      userQuery:
+        'How should the 15 ppm bilge alarm be installed and connected?',
+    });
+
+    expect(gpsProcedure.operation).toBe('lookup');
+    expect(gpsProcedure.sourceHints).toContain('DOCUMENTATION');
+    expect(gpsProcedure.sourceHints).not.toContain('TELEMETRY');
+    expect(alarmInstallation.operation).toBe('lookup');
+    expect(alarmInstallation.sourceHints).toContain('DOCUMENTATION');
+    expect(alarmInstallation.sourceHints).not.toContain('TELEMETRY');
+  });
+
+  it('keeps live navigation and alarm readings as telemetry intent', () => {
+    const position = service.normalizeTurn({
+      userQuery: 'What is the current GPS position?',
+    });
+    const alarmStatus = service.normalizeTurn({
+      userQuery: 'Are any bilge alarms active right now?',
+    });
+
+    expect(position.operation).toBe('position');
+    expect(position.sourceHints).toContain('TELEMETRY');
+    expect(position.timeIntent.kind).toBe('current');
+    expect(alarmStatus.sourceHints).toContain('TELEMETRY');
+    expect(alarmStatus.timeIntent.kind).toBe('current');
+  });
+
   it('recognizes natural-language kit contents as documentation intent', () => {
     const normalized = service.normalizeTurn({
       userQuery:

@@ -3768,6 +3768,100 @@ describe('MetricsService historical telemetry', () => {
     );
   });
 
+  it('asks for clarification before answering generic historical tank-level replies with multiple tank families', async () => {
+    const prisma = {
+      ship: {
+        findUnique: jest.fn().mockResolvedValue({
+          organizationName: 'SeaWolfX',
+        }),
+      },
+      shipMetricsConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            metricKey: 'Trending::Tanks::Fuel Tank 1P',
+            latestValue: 3155,
+            valueUpdatedAt: new Date('2026-03-25T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks.Fuel Tank 1P',
+              description: 'Fuel tank level reading.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks',
+              field: 'Fuel Tank 1P',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Tanks::Fresh Water Tank 10S',
+            latestValue: 870,
+            valueUpdatedAt: new Date('2026-03-25T12:00:00.000Z'),
+            metric: {
+              label: 'Tanks.Fresh Water Tank 10S',
+              description: 'Fresh water tank level reading.',
+              unit: 'liters',
+              bucket: 'Trending',
+              measurement: 'Tanks',
+              field: 'Fresh Water Tank 10S',
+              dataType: 'numeric',
+            },
+          },
+          {
+            metricKey: 'Trending::Genset::DEF Tank level (%)',
+            latestValue: 99,
+            valueUpdatedAt: new Date('2026-03-25T12:00:00.000Z'),
+            metric: {
+              label: 'Genset.DEF Tank level (%)',
+              description: 'Displays the DEF tank level percentage.',
+              unit: '%',
+              bucket: 'Trending',
+              measurement: 'Genset',
+              field: 'DEF Tank level (%)',
+              dataType: 'numeric',
+            },
+          },
+        ]),
+      },
+    };
+
+    const influxdb = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      queryHistoricalNearestValues: jest.fn(),
+    };
+
+    const metricDescriptions = {
+      isConfigured: jest.fn().mockReturnValue(false),
+    };
+
+    const service = new MetricsService(
+      prisma as never,
+      influxdb as never,
+      metricDescriptions as never,
+    );
+
+    const result = await service.resolveHistoricalTelemetryQuery(
+      'ship-1',
+      '12:00 UTC',
+      'what was the tank level 2026-03-25?',
+    );
+
+    expect(result.kind).toBe('clarification');
+    expect(result.clarificationQuestion).toContain(
+      'multiple historical tank readings',
+    );
+    expect(
+      (result as any).clarificationActions?.map(
+        (action: { label: string }) => action.label,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Fuel Tank 1P'),
+        expect.stringContaining('Fresh Water Tank 10S'),
+        expect.stringContaining('DEF Tank level'),
+      ]),
+    );
+    expect(influxdb.queryHistoricalNearestValues).not.toHaveBeenCalled();
+  });
+
   it('answers bare relative fuel-onboard questions from historical point-in-time telemetry', async () => {
     const prisma = {
       ship: {

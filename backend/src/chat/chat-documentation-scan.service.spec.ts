@@ -673,6 +673,49 @@ describe('ChatDocumentationScanService', () => {
     expect(citations[0]?.snippet).not.toContain('SCR System maintenance note');
   });
 
+  it('extracts the requested narrative maintenance interval instead of a nearby first-service section', () => {
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      {} as never,
+      queryService,
+      {} as never,
+    );
+
+    const extracted = (
+      service as unknown as {
+        extractNarrativeIntervalMaintenanceSnippet: (
+          text: string,
+          query: string,
+          intervalPhrases: string[],
+        ) => {
+          heading?: string;
+          intervalLabel: string;
+          items: string[];
+        } | null;
+      }
+    ).extractNarrativeIntervalMaintenanceSnippet(
+      [
+        '4.2 Operations to be carried out after the first 50 working hours:',
+        '· Check that all screws are properly tight, paying special care to the head and crank case.',
+        '· Replace the lubricant with one of the recommended oils.',
+        '4.3Weekly operations:',
+        '· Check the oil level and if necessary, top up. Do not exceed the mark corresponding to the max. level.',
+        '·Drain condensation by opening the cock located under the tank; as soon as air flows out, turn off the cock.',
+      ].join(' '),
+      'weekly maintenance for air compressor',
+      ['weekly', 'weekly operations', 'weekly maintenance', 'once per week'],
+    );
+
+    expect(extracted?.intervalLabel).toContain('Weekly operations');
+    expect(extracted?.items).toEqual(
+      expect.arrayContaining([
+        'Check the oil level and if necessary, top up. Do not exceed the mark corresponding to the max. level',
+        'Drain condensation by opening the cock located under the tank; as soon as air flows out, turn off the cock',
+      ]),
+    );
+    expect(extracted?.items.join('\n')).not.toContain('Replace the lubricant');
+  });
+
   it('extracts all due items from interval-maintenance table text positions for the requested interval', () => {
     const service = new ChatDocumentationScanService(
       {} as never,
