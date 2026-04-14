@@ -133,6 +133,17 @@ describe('ChatQueryNormalizationService', () => {
     expect(alarmStatus.timeIntent.kind).toBe('current');
   });
 
+  it('treats conversational own-ship motion questions as current telemetry', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'where are we and how fast are we moving?',
+    });
+
+    expect(normalized.operation).toBe('position');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).not.toContain('DOCUMENTATION');
+  });
+
   it('recognizes natural-language kit contents as documentation intent', () => {
     const normalized = service.normalizeTurn({
       userQuery:

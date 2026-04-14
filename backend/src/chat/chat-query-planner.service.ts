@@ -634,7 +634,7 @@ export class ChatQueryPlannerService {
 
   private isMaintenanceProcedureQuery(query: string): boolean {
     return (
-      /\b(procedure|steps?|how\s+to|how\s+do\s+i|how\s+can\s+i|instruction|instructions|checklist|perform|replace|clean|inspect|test|grease|carry\s+out|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+does\s+.*include)\b/i.test(
+      /\b(procedure|steps?|how\s+to|how\s+do\s+i|how\s+can\s+i|how\s+should(?:\s+i|\s+the|\s+it)?|instruction|instructions|checklist|perform|replace|clean|inspect|test|grease|carry\s+out|install|installation|mounted|mounting|wire|wiring|connect|connection|configure|configuration|setup|set\s+up|start|stop|restart|flush|create\s+(?:a\s+)?route|make\s+(?:a\s+)?route|enter\s+(?:a\s+)?route|add\s+(?:a\s+)?waypoint|what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+needs?\s+to\s+be\s+done|what\s+does\s+.*include)\b/i.test(
         query,
       ) || this.isIntervalMaintenanceProcedureQuery(query)
     );
@@ -704,6 +704,7 @@ export class ChatQueryPlannerService {
           query,
         )) ||
       /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(query) ||
+      this.isConversationalCurrentNavigationQuery(query) ||
       /\b(?:actual|current|live)\s+(?:coordinates?|position|location)\b/i.test(
         query,
       )
@@ -715,6 +716,10 @@ export class ChatQueryPlannerService {
       return false;
     }
 
+    if (this.isConversationalCurrentNavigationQuery(query)) {
+      return true;
+    }
+
     if (/^\s*(why|how)\b/i.test(query)) {
       return this.isCurrentInventoryTelemetryQuery(query);
     }
@@ -722,6 +727,29 @@ export class ChatQueryPlannerService {
     return /\b(current|currently|now|right now|live|actual|status|state|active|inactive|enabled|disabled|online|offline|reading|readings|value|values)\b/i.test(
       query,
     ) || this.isCurrentInventoryTelemetryQuery(query);
+  }
+
+  private isConversationalCurrentNavigationQuery(query: string): boolean {
+    const normalized = query.toLowerCase();
+    const asksWhereWeAre =
+      /\bwhere\s+(?:are|r)\s+(?:we|i)\b/i.test(normalized) ||
+      /\bwhere\s+am\s+i\b/i.test(normalized) ||
+      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
+        normalized,
+      );
+    const asksOwnSpeed =
+      /\bhow\s+fast\s+(?:are\s+)?(?:we|i|the\s+(?:yacht|vessel|ship|boat))\b/i.test(
+        normalized,
+      ) ||
+      /\b(?:yacht|vessel|ship|boat)\s+speed\b/i.test(normalized) ||
+      /\bspeed\s+over\s+ground\b/i.test(normalized) ||
+      /\b(?:sog|stw|knots?)\b/i.test(normalized);
+    const hasNavigationSubject =
+      /\b(?:we|i|yacht|vessel|ship|boat|navigation|gps|position|location)\b/i.test(
+        normalized,
+      );
+
+    return asksWhereWeAre || (asksOwnSpeed && hasNavigationSubject);
   }
 
   private isCurrentInventoryTelemetryQuery(query: string): boolean {

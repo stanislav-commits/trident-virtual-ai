@@ -261,6 +261,12 @@ export class ChatDocumentationService {
           sourceLockDecision,
           followUpState: previousDocumentationFollowUpState,
         });
+      const shouldRelaxPersonnelDirectoryScope =
+        this.shouldRelaxPersonnelDirectoryScanScope(
+          documentationRetrievalQuery,
+          effectiveUserQuery,
+          sourceLockDecision.active,
+        );
       const persistedDocumentationRetrievalQuery =
         this.resolvePersistedDocumentationRetrievalQuery({
           userQuery,
@@ -664,7 +670,9 @@ export class ChatDocumentationService {
           effectiveUserQuery,
           citations,
           effectiveDocumentCategories,
-          allowedManualIds,
+          shouldRelaxPersonnelDirectoryScope
+            ? undefined
+            : allowedManualIds,
         );
       citations = this.citationService.mergeCitations(
         citations,
@@ -869,7 +877,9 @@ export class ChatDocumentationService {
       const enforceManualScope = (items: ChatCitation[]) =>
         this.enforceManualScopeOnCitations({
           citations: items,
-          baseAllowedManualIds: allowedManualIds,
+          baseAllowedManualIds: shouldRelaxPersonnelDirectoryScope
+            ? undefined
+            : allowedManualIds,
           sourceLockDecision,
         });
       const finalAnalysisCitations = enforceManualScope(
@@ -1206,6 +1216,20 @@ export class ChatDocumentationService {
           allowedManualIds,
         )
       : expand(shipId, retrievalQuery, userQuery, citations);
+  }
+
+  private shouldRelaxPersonnelDirectoryScanScope(
+    retrievalQuery: string,
+    userQuery: string,
+    sourceLockActive: boolean,
+  ): boolean {
+    if (sourceLockActive) {
+      return false;
+    }
+
+    return this.queryService.isPersonnelDirectoryQuery(
+      `${retrievalQuery}\n${userQuery}`,
+    );
   }
 
   private getHardDocumentCategories(

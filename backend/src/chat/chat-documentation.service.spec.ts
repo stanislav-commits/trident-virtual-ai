@@ -2294,9 +2294,141 @@ Next due: 07.07.2026 / 2034`,
         .mock.calls[0],
     ).toEqual([
       'ship-1',
-      'manager contact details',
+      'manager contact details personnel directory company contact list',
       'list all managers with their contact details',
       [],
+    ]);
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+        }),
+      ]),
+    );
+  });
+
+  it('relaxes semantic manual scope for personnel-directory scans so contact sheets can recover from noisy contact manuals', async () => {
+    const noisyCitation: ChatCitation = {
+      shipManualId: 'manual-hatteland',
+      sourceTitle: 'Hatteland_usermanual_mmd_seriesx_g2_rev26.pdf',
+      snippet:
+        'For service contact the technical support centre using the company website.',
+      score: 0.94,
+    };
+    const scanCitation: ChatCitation = {
+      shipManualId: 'manual-contact',
+      sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+      snippet:
+        'James Kirby - Fleet Manager (M) +34 680 664 753 jamesk@jmsyachting.com',
+      score: 1.01,
+    };
+    const contextService = {
+      findContextForQuery: jest
+        .fn()
+        .mockResolvedValue({ citations: [noisyCitation] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const citationService = new ChatDocumentationCitationService(queryService);
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([scanCitation]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+    const semanticQuery = {
+      schemaVersion: '2026-04-06.semantic-v2',
+      intent: 'general_information' as const,
+      conceptFamily: 'general_reference' as const,
+      selectedConceptIds: [],
+      candidateConceptIds: [],
+      equipment: [],
+      systems: [],
+      vendor: null,
+      model: null,
+      sourcePreferences: ['MANUALS' as const],
+      explicitSource: null,
+      pageHint: null,
+      sectionHint: null,
+      answerFormat: 'table' as const,
+      needsClarification: false,
+      clarificationReason: null,
+      confidence: 0.78,
+    };
+    const semanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue(semanticQuery),
+    };
+    const semanticMatcher = {
+      shortlistManuals: jest.fn().mockResolvedValue([
+        {
+          manualId: 'manual-hatteland',
+          documentId: 'doc-hatteland',
+          filename: 'Hatteland_usermanual_mmd_seriesx_g2_rev26.pdf',
+          category: 'MANUALS',
+          score: 166,
+          reasons: ['profile_text'],
+        },
+      ]),
+    };
+    const sourceLockService = {
+      getFollowUpStateFromHistory: jest.fn().mockReturnValue(null),
+      resolveSourceLock: jest.fn().mockReturnValue({
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      }),
+      buildNextFollowUpState: jest.fn().mockReturnValue(null),
+    };
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+      undefined,
+      undefined,
+      semanticNormalizer as never,
+      semanticMatcher as never,
+      sourceLockService as never,
+    );
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'list all managers with their contact details',
+    });
+
+    expect(
+      (scanService.expandPersonnelDirectoryDocumentChunkCitations as jest.Mock)
+        .mock.calls[0],
+    ).toEqual([
+      'ship-1',
+      'manager contact details personnel directory company contact list',
+      'list all managers with their contact details',
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceTitle: 'Hatteland_usermanual_mmd_seriesx_g2_rev26.pdf',
+        }),
+      ]),
+      ['MANUALS'],
+      undefined,
     ]);
     expect(result.citations).toEqual(
       expect.arrayContaining([

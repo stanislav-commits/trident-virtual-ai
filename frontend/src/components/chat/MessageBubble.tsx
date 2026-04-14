@@ -52,6 +52,10 @@ function stripLegacyInteractiveMarkup(text: string): string {
     .replace(/<\/?high-light>/gi, "");
 }
 
+function normalizeEscapedMarkdown(text: string): string {
+  return text.replace(/\\([*_`~])/g, "$1");
+}
+
 function extractInlineButtonActions(text: string): {
   cleanedText: string;
   actions: ChatSuggestionActionDto[];
@@ -162,7 +166,6 @@ export function MessageBubble({
         )
         .map((v) => v.trim())
     : [];
-  const noDocumentation = ragflowContext?.noDocumentation === true;
   const clarificationActions = Array.isArray(ragflowContext?.clarificationActions)
     ? ragflowContext.clarificationActions.filter(
         (action): action is ChatSuggestionActionDto =>
@@ -176,7 +179,11 @@ export function MessageBubble({
     : [];
   const normalizedAssistantContent =
     role === "assistant"
-      ? stripLegacyInteractiveMarkup(normalizeMathLikeFormatting(content.trim()))
+      ? normalizeEscapedMarkdown(
+          stripLegacyInteractiveMarkup(
+            normalizeMathLikeFormatting(content.trim()),
+          ),
+        )
       : content.trim();
   const {
     cleanedText: renderedAssistantContent,
@@ -279,7 +286,7 @@ export function MessageBubble({
           </div>
         )}
 
-      {role === "assistant" && noDocumentation && refs.length === 0 && (
+      {false && (
         <div className="chat-message__no-docs">
           <svg
             width="12"

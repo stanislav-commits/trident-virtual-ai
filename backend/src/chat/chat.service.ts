@@ -491,6 +491,29 @@ export class ChatService {
         userQuery,
         messageHistory,
       });
+      const previousQuestionReply = this.buildPreviousQuestionReply(
+        userQuery,
+        messageHistory,
+      );
+      if (previousQuestionReply) {
+        return this.addRoutedAssistantMessage({
+          sessionId,
+          content: previousQuestionReply,
+          route: 'deterministic_general',
+          normalizedQuery,
+          routeTrace: ['conversation:previous_question'],
+          ragflowContext: {
+            usedLlm: false,
+            usedDocumentation: false,
+            usedCurrentTelemetry: false,
+            usedHistoricalTelemetry: false,
+            conversational: true,
+            conversationMemory: true,
+          },
+          contextReferences: [],
+        });
+      }
+
       const conversationalReply = buildConversationalReply(userQuery);
       if (conversationalReply) {
         return this.addRoutedAssistantMessage({
@@ -933,6 +956,14 @@ export class ChatService {
           telemetryMatchMode,
           documentationIntentPattern,
         ) && !preferDocumentationOverCurrentTelemetry;
+      const telemetryOnlyLlmSummary =
+        this.shouldPreferTelemetryOnlyLlmSummary({
+          queryPlan,
+          userQuery: telemetryIntentQuery,
+          normalizedQuery: effectiveNormalizedQuery,
+          telemetry,
+          telemetryMatchMode,
+        });
 
       const citationsForAnswer = telemetryOnlyQuery
         ? []
@@ -1093,7 +1124,7 @@ export class ChatService {
       }
 
       const deterministicTelemetryAnswer =
-        preferDocumentationOverCurrentTelemetry
+        preferDocumentationOverCurrentTelemetry || telemetryOnlyLlmSummary
           ? null
           : this.buildDeterministicTelemetryAnswer(
               queryPlan,
@@ -1123,7 +1154,7 @@ export class ChatService {
         });
       }
 
-      if (telemetryOnlyQuery) {
+      if (telemetryOnlyQuery && !telemetryOnlyLlmSummary) {
         return this.addRoutedAssistantMessage({
           sessionId,
           content: localizeChatText(userQuery, {
@@ -1195,6 +1226,9 @@ export class ChatService {
           usedDocumentation: citationsForAnswer.length > 0,
           usedCurrentTelemetry:
             Object.keys(llmTelemetryContext.telemetry).length > 0,
+          ...(Object.keys(llmTelemetryContext.telemetry).length > 0
+            ? { telemetryFollowUpQuery: telemetryIntentQuery }
+            : {}),
           ...(previousLlmResponseId
             ? { llmPreviousResponseId: previousLlmResponseId }
             : {}),
@@ -1252,6 +1286,9 @@ export class ChatService {
           usedDocumentation: citationsForAnswer.length > 0,
           usedCurrentTelemetry:
             Object.keys(llmTelemetryContext.telemetry).length > 0,
+          ...(Object.keys(llmTelemetryContext.telemetry).length > 0
+            ? { telemetryFollowUpQuery: telemetryIntentQuery }
+            : {}),
           ...(llmResult.responseId
             ? { llmResponseId: llmResult.responseId }
             : {}),
@@ -5058,13 +5095,33 @@ export class ChatService {
     userQuery: string,
     normalizedQuery?: ChatNormalizedQuery,
   ): boolean {
+    const currentTelemetryGuided = this.isCurrentTelemetryGuidedTurn(
+      userQuery,
+      normalizedQuery,
+    );
+
+    if (
+      currentTelemetryGuided &&
+      normalizedQuery?.followUpMode === 'follow_up'
+    ) {
+      return true;
+    }
+
     if (this.isExplicitTelemetrySourceQuery(userQuery)) {
       return true;
     }
 
     if (
       this.isDocumentationOnlyNormalizedQuery(normalizedQuery) &&
-      !this.isCurrentTelemetryGuidedQuery(userQuery)
+      !currentTelemetryGuided
+    ) {
+      return false;
+    }
+
+    if (
+      this.isProcedureOrDocumentationQuestion(userQuery) &&
+      !normalizedQuery?.sourceHints.includes('TELEMETRY') &&
+      !currentTelemetryGuided
     ) {
       return false;
     }
@@ -5087,14 +5144,14 @@ export class ChatService {
         return true;
       case 'maintenance_procedure':
       case 'troubleshooting':
-        return this.isCurrentTelemetryGuidedQuery(userQuery);
+        return currentTelemetryGuided;
       case 'parts_fluids_consumables':
         return this.isCurrentInventoryTelemetryQuery(userQuery);
       case 'general':
         return (
           /\b(from\s+telemetry|telemetry\s+only|from\s+metrics)\b/i.test(
             userQuery,
-          ) || this.isCurrentTelemetryGuidedQuery(userQuery)
+          ) || currentTelemetryGuided
         );
       default:
         return false;
@@ -5117,15 +5174,36 @@ export class ChatService {
     sourceLockActive = false,
     normalizedQuery?: ChatNormalizedQuery,
   ): boolean {
-    if (!semanticQuery || this.isExplicitTelemetrySourceQuery(userQuery)) {
+    if (this.isExplicitTelemetrySourceQuery(userQuery)) {
       return false;
+    }
+
+    const currentTelemetryGuided = this.isCurrentTelemetryGuidedTurn(
+      userQuery,
+      normalizedQuery,
+    );
+
+    if (
+      currentTelemetryGuided &&
+      normalizedQuery?.followUpMode === 'follow_up'
+    ) {
+      return false;
+    }
+
+    if (!semanticQuery) {
+      return (
+        this.isDocumentationOnlyNormalizedQuery(normalizedQuery) ||
+        (this.isProcedureOrDocumentationQuestion(userQuery) &&
+          !normalizedQuery?.sourceHints.includes('TELEMETRY') &&
+          !currentTelemetryGuided)
+      );
     }
 
     if (
       normalizedQuery?.sourceHints.includes('TELEMETRY') &&
       (normalizedQuery.timeIntent.kind === 'current' ||
         this.isCurrentInventoryTelemetryQuery(userQuery) ||
-        this.isCurrentTelemetryGuidedQuery(userQuery))
+        currentTelemetryGuided)
     ) {
       return false;
     }
@@ -5512,5 +5590,123 @@ export class ChatService {
       /\b(current|currently|now|right now|actual|live)\b/i.test(normalized) ||
       /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(normalized)
     );
+  }
+
+  private isCurrentTelemetryGuidedTurn(
+    userQuery: string,
+    normalizedQuery?: ChatNormalizedQuery,
+  ): boolean {
+    return this.isCurrentTelemetryGuidedQuery(
+      [
+        userQuery,
+        normalizedQuery?.retrievalQuery ?? '',
+        normalizedQuery?.effectiveQuery ?? '',
+        normalizedQuery?.previousUserQuery ?? '',
+        normalizedQuery?.subject ?? '',
+        normalizedQuery?.asset ?? '',
+      ].join(' '),
+    );
+  }
+
+  private shouldPreferTelemetryOnlyLlmSummary(params: {
+    queryPlan: ChatQueryPlan;
+    userQuery: string;
+    normalizedQuery?: ChatNormalizedQuery;
+    telemetry: Record<string, unknown>;
+    telemetryMatchMode: TelemetryMatchMode;
+  }): boolean {
+    const {
+      queryPlan,
+      userQuery,
+      normalizedQuery,
+      telemetry,
+      telemetryMatchMode,
+    } = params;
+    if (queryPlan.primaryIntent !== 'telemetry_status') {
+      return false;
+    }
+    if (
+      telemetryMatchMode !== 'exact' &&
+      telemetryMatchMode !== 'direct'
+    ) {
+      return false;
+    }
+    if (
+      normalizedQuery?.timeIntent.kind !== 'current' &&
+      !this.isCurrentPositionTelemetryQuery(userQuery)
+    ) {
+      return false;
+    }
+    if (!this.hasCoordinateTelemetryPair(telemetry)) {
+      return false;
+    }
+    if (this.isSingleCoordinateTelemetryQuery(userQuery)) {
+      return false;
+    }
+
+    return (
+      normalizedQuery?.operation === 'position' ||
+      this.isCurrentPositionTelemetryQuery(userQuery)
+    );
+  }
+
+  private hasCoordinateTelemetryPair(
+    telemetry: Record<string, unknown>,
+  ): boolean {
+    const labels = Object.keys(telemetry);
+    const hasLatitude = labels.some((label) =>
+      /\b(latitude|lat)\b/i.test(label),
+    );
+    const hasLongitude = labels.some((label) =>
+      /\b(longitude|lon)\b/i.test(label),
+    );
+
+    return hasLatitude && hasLongitude;
+  }
+
+  private isSingleCoordinateTelemetryQuery(userQuery: string): boolean {
+    const normalized = userQuery.toLowerCase();
+    const asksLatitude = /\b(latitude|lat)\b/i.test(normalized);
+    const asksLongitude = /\b(longitude|lon)\b/i.test(normalized);
+    const asksLocationSummary =
+      /\b(location|position|coordinates?|gps)\b/i.test(normalized) ||
+      /\bwhere\s+(?:is|are|am)\b/i.test(normalized);
+
+    return asksLatitude !== asksLongitude && !asksLocationSummary;
+  }
+
+  private buildPreviousQuestionReply(
+    userQuery: string,
+    messageHistory: Array<{ role: string; content: string }>,
+  ): string | null {
+    if (!this.isPreviousQuestionQuery(userQuery)) {
+      return null;
+    }
+
+    const normalizedCurrentQuery = this.normalizeConversationMemoryText(userQuery);
+    const previousUserMessage = [...messageHistory]
+      .reverse()
+      .filter((message) => message.role === 'user')
+      .find(
+        (message) =>
+          this.normalizeConversationMemoryText(message.content) !==
+          normalizedCurrentQuery,
+      );
+
+    if (!previousUserMessage?.content?.trim()) {
+      return "I don't have a previous user question in this chat yet.";
+    }
+
+    return `Your previous question was: "${previousUserMessage.content.trim()}".`;
+  }
+
+  private isPreviousQuestionQuery(userQuery: string): boolean {
+    return /\b(?:what|which)\s+was\s+(?:the\s+)?(?:previous|last)\s+(?:question|query|thing\s+i\s+asked)\b/i.test(
+      userQuery.trim(),
+    );
+  }
+
+  private normalizeConversationMemoryText(value: string): string {
+    return value.replace(/\s+/g, ' ').trim().toLowerCase();
   }
 }

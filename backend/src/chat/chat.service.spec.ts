@@ -95,6 +95,105 @@ describe('ChatService telemetry clarification', () => {
     expect(shouldLookup).toBe(false);
   });
 
+  it('answers previous-question meta turns from chat history without document lookup', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'what was the previous question',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+        {
+          role: 'assistant',
+          content: 'The current matched telemetry readings are...',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+        {
+          role: 'user',
+          content: "what's current yacht speed and location",
+          ragflowContext: null,
+          contextReferences: [],
+        },
+      ],
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'what was the previous question',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(
+      documentationService.prepareDocumentationContext,
+    ).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'Your previous question was: "what\'s current yacht speed and location".',
+      expect.objectContaining({
+        answerRoute: 'deterministic_general',
+        conversationMemory: true,
+        usedDocumentation: false,
+        usedCurrentTelemetry: false,
+      }),
+      [],
+    );
+  });
+
+  it('fails closed to documentation for procedural alarm installation queries instead of telemetry', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content:
+            'How should the 15 ppm bilge alarm be installed and connected?',
+          ragflowContext: null,
+          contextReferences: [],
+        },
+      ],
+    });
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery:
+        'How should the 15 ppm bilge alarm be installed and connected?',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+      semanticQuery: undefined,
+    });
+
+    await (service as any).generateAssistantResponse(
+      'ship-1',
+      'session-1',
+      'How should the 15 ppm bilge alarm be installed and connected?',
+      'Sea Wolf X',
+      'user',
+    );
+
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining(
+        "I couldn't find supporting documentation for that question",
+      ),
+      expect.objectContaining({
+        answerRoute: 'deterministic_document',
+        noDocumentation: true,
+        usedCurrentTelemetry: false,
+      }),
+      [],
+    );
+  });
+
   it('returns related telemetry clarification for admin global chat sessions', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
@@ -2054,7 +2153,7 @@ describe('ChatService telemetry clarification', () => {
     );
   });
 
-  it('answers current vessel location questions from telemetry without falling back to documentation', async () => {
+  it('answers current vessel location questions through telemetry-only LLM synthesis without attaching manuals', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
         {
@@ -2065,7 +2164,12 @@ describe('ChatService telemetry clarification', () => {
       ],
     });
     documentationService.prepareDocumentationContext.mockResolvedValue({
-      citations: [],
+      citations: [
+        {
+          sourceTitle: 'M300 series_installation & operation manual.pdf',
+          snippet: 'Joystick installation note.',
+        },
+      ],
       previousUserQuery: undefined,
       retrievalQuery: 'Where is the yacht now?',
       resolvedSubjectQuery: undefined,
@@ -2082,6 +2186,11 @@ describe('ChatService telemetry clarification', () => {
       matchMode: 'direct',
       clarification: null,
     });
+    llmService.generateResponse.mockResolvedValue({
+      content:
+        'The vessel is currently at latitude 43.55 and longitude 7.02, off the French Riviera near the Nice / Monaco area.',
+      responseId: 'resp-location-1',
+    });
 
     await (service as any).generateAssistantResponse(
       'ship-1',
@@ -2096,21 +2205,32 @@ describe('ChatService telemetry clarification', () => {
       'Where is the yacht now?',
       undefined,
     );
-    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userQuery: 'Where is the yacht now?',
+        telemetry: {
+          'navigation.position.lat': 43.55,
+          'navigation.position.lon': 7.02,
+        },
+        citations: [],
+        noDocumentation: true,
+      }),
+    );
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('navigation.position.lat'),
+      'The vessel is currently at latitude 43.55 and longitude 7.02, off the French Riviera near the Nice / Monaco area.',
       expect.objectContaining({
-        answerRoute: 'current_telemetry',
-        usedLlm: false,
+        answerRoute: 'llm_generation',
+        usedLlm: true,
         usedDocumentation: false,
         usedCurrentTelemetry: true,
+        telemetryFollowUpQuery: 'Where is the yacht now?',
       }),
       [],
     );
   });
 
-  it('answers admin global current location questions through telemetry lookup', async () => {
+  it('answers admin global current location questions through telemetry-only LLM synthesis', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
         {
@@ -2144,6 +2264,10 @@ describe('ChatService telemetry clarification', () => {
       matchMode: 'direct',
       clarification: null,
     });
+    llmService.generateResponse.mockResolvedValue({
+      content: 'The current vessel position is latitude 43.55 and longitude 7.02.',
+      responseId: 'resp-location-2',
+    });
 
     await (service as any).generateAssistantResponse(
       null,
@@ -2159,13 +2283,21 @@ describe('ChatService telemetry clarification', () => {
       'what lon and lat is now?',
       undefined,
     );
-    expect(llmService.generateResponse).not.toHaveBeenCalled();
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        citations: [],
+        telemetry: {
+          'navigation.position.lat': 43.55,
+          'navigation.position.lon': 7.02,
+        },
+      }),
+    );
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      expect.stringContaining('navigation.position.lat'),
+      'The current vessel position is latitude 43.55 and longitude 7.02.',
       expect.objectContaining({
-        answerRoute: 'current_telemetry',
-        usedLlm: false,
+        answerRoute: 'llm_generation',
+        usedLlm: true,
         usedDocumentation: false,
         usedCurrentTelemetry: true,
       }),

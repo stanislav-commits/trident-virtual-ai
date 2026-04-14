@@ -605,6 +605,27 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toContain(
       'Do not say the location is unavailable when those coordinates are present.',
     );
+    expect(prompt).toContain(
+      'Do not dump raw telemetry keys as the whole answer.',
+    );
+    expect(prompt).toContain(
+      'If direct speed telemetry is also present, include the current speed in the same answer',
+    );
+  });
+
+  it('tells answer formatting to use plain lines instead of decorative bold markers', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildAnswerFormattingGuidance({
+      primaryIntent: 'maintenance_procedure',
+    });
+
+    expect(prompt).toContain(
+      'Use simple plain lines or "-" bullets when listing items; do not decorate ordinary list items with bold markers.',
+    );
+    expect(prompt).toContain(
+      'put each item on its own separate line.',
+    );
   });
 
   it('warns when only related telemetry is available for a requested metric', () => {

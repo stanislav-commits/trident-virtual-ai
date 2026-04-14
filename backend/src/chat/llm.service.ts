@@ -350,6 +350,19 @@ export class LlmService {
         'Use documentation only as supporting context, not as a replacement for the current reading.\n\n';
     }
 
+    if (
+      this.isLocationTelemetryQuery(context.userQuery) &&
+      this.hasCoordinateTelemetryPair(context.telemetry)
+    ) {
+      prompt +=
+        'Important: This telemetry includes the vessel\'s current coordinate pair. ' +
+        'Do not dump raw telemetry keys as the whole answer. ' +
+        'Answer in plain language with the latitude and longitude first. ' +
+        'If you can infer the approximate geographic area with reasonable confidence, add one short human-readable location description after the coordinates. ' +
+        'If direct speed telemetry is also present, include the current speed in the same answer instead of making the user ask again. ' +
+        'When no documentation citations are provided, do not mention manuals, documents, or missing documentation.\n\n';
+    }
+
     if (context.telemetryMatchMode === 'exact') {
       prompt +=
         'Important: The telemetry below contains an exact metric match for the question. ' +
@@ -652,6 +665,8 @@ export class LlmService {
       '- First sentence: answer the exact question directly.\n' +
       '- Keep the answer concise, practical, and easy to scan.\n' +
       '- Add short inline source tags after confirmed factual statements whenever the evidence clearly supports them.\n' +
+      '- Use simple plain lines or "-" bullets when listing items; do not decorate ordinary list items with bold markers.\n' +
+      '- When naming multiple forms, checklist items, tasks, roles, or contacts, put each item on its own separate line.\n' +
       '- Do not add a separate "Sources" section unless the user asks for sources explicitly.\n';
 
     switch (queryPlan.primaryIntent) {
@@ -951,6 +966,24 @@ export class LlmService {
     }
 
     return 'general';
+  }
+
+  private hasCoordinateTelemetryPair(
+    telemetry?: Record<string, unknown>,
+  ): boolean {
+    if (!telemetry) {
+      return false;
+    }
+
+    const labels = Object.keys(telemetry);
+    const hasLatitude = labels.some((label) =>
+      /\b(latitude|lat)\b/i.test(label),
+    );
+    const hasLongitude = labels.some((label) =>
+      /\b(longitude|lon)\b/i.test(label),
+    );
+
+    return hasLatitude && hasLongitude;
   }
 
   private isDirectLookupSubjectQuery(query: string): boolean {

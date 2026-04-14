@@ -57,6 +57,17 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.prefersExactDocumentRows).toBe(true);
   });
 
+  it('routes alarm installation and connection procedures to manuals first', () => {
+    const plan = service.planQuery(
+      'How should the 15 ppm bilge alarm be installed and connected?',
+    );
+
+    expect(plan.primaryIntent).toBe('maintenance_procedure');
+    expect(plan.sourcePriorities[0]).toBe('MANUALS');
+    expect(plan.hardDocumentCategories).toEqual(['MANUALS']);
+    expect(plan.requiresTelemetry).toBe(false);
+  });
+
   it('routes hyphenated interval maintenance list questions to manuals with exact-row preference', () => {
     const plan = service.planQuery(
       'list all 500-hour maintenance items for the diesel generator',
@@ -257,6 +268,15 @@ describe('ChatQueryPlannerService', () => {
 
     expect(plan.primaryIntent).toBe('telemetry_status');
     expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetryHistory).toBe(false);
+  });
+
+  it('routes conversational own-ship motion questions to telemetry status', () => {
+    const plan = service.planQuery('where are we and how fast are we moving?');
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetry).toBe(true);
     expect(plan.requiresTelemetryHistory).toBe(false);
   });
 
