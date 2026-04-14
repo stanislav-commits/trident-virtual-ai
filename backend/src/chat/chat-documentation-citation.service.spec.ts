@@ -73,9 +73,10 @@ describe('ChatDocumentationCitationService', () => {
       'Primary Manual.pdf',
       'Secondary Manual.pdf',
     ]);
-    expect(
-      prepared.citations.map((citation) => citation.sourceTitle),
-    ).toEqual(['Primary Manual.pdf', 'Secondary Manual.pdf']);
+    expect(prepared.citations.map((citation) => citation.sourceTitle)).toEqual([
+      'Primary Manual.pdf',
+      'Secondary Manual.pdf',
+    ]);
   });
 
   it('keeps shortlisted procedure sources merged even when one source is clearly stronger', () => {
@@ -139,8 +140,7 @@ describe('ChatDocumentationCitationService', () => {
     const citations = [
       {
         sourceTitle: 'Engine Manual.pdf',
-        snippet:
-          'Port generator engine oil: SAE 15W-40. Capacity 10 L.',
+        snippet: 'Port generator engine oil: SAE 15W-40. Capacity 10 L.',
         score: 0.95,
       },
       {
@@ -166,7 +166,8 @@ describe('ChatDocumentationCitationService', () => {
   it('prioritizes explicit DPA contact sheets over generic contact mentions for contact lookups', () => {
     const citations = [
       {
-        sourceTitle: 'SEAWOLF X COMPLAINTS AND GRIEVANCE PROCEDURE 1.2 - Final.pdf',
+        sourceTitle:
+          'SEAWOLF X COMPLAINTS AND GRIEVANCE PROCEDURE 1.2 - Final.pdf',
         snippet:
           'The facts are to be forwarded to the Employer by email. The Employer may delegate further investigations to the Yacht Manager.',
         score: 0.3678,
@@ -202,7 +203,9 @@ describe('ChatDocumentationCitationService', () => {
       refined,
     );
 
-    expect(refined[0].sourceTitle).toBe('JMS Company Contact Details Jan 26.pdf');
+    expect(refined[0].sourceTitle).toBe(
+      'JMS Company Contact Details Jan 26.pdf',
+    );
     expect(prepared.compareBySource).toBe(false);
     expect(prepared.citations[0].sourceTitle).toBe(
       'JMS Company Contact Details Jan 26.pdf',
@@ -229,6 +232,35 @@ describe('ChatDocumentationCitationService', () => {
     ).toHaveLength(16);
   });
 
+  it('filters role-description citations to sources that actually mention the requested role', () => {
+    const citations = [
+      {
+        sourceTitle: 'Garbage Management Plan.pdf',
+        snippet:
+          'Designated garbage management personnel collect or arrange garbage collection and keep records for the Master.',
+        score: 0.99,
+      },
+      {
+        sourceTitle: 'JMS 01 SMS ADMINISTRATION 2 March 26.pdf',
+        snippet:
+          'Responsibility It is the responsibility of the Designated Person Ashore to approve amendments and ensure current texts are kept in all locations.',
+        score: 0.72,
+      },
+    ];
+
+    const refined = service.refineCitationsForIntent(
+      'dpa designated person ashore role responsibility responsibilities sms company safety management system administration',
+      'what is the role of dpa?',
+      citations,
+    );
+
+    expect(refined).toEqual([
+      expect.objectContaining({
+        sourceTitle: 'JMS 01 SMS ADMINISTRATION 2 March 26.pdf',
+      }),
+    ]);
+  });
+
   it('prioritizes company contact sheets for role-based personnel directory queries', () => {
     const citations = [
       {
@@ -251,7 +283,9 @@ describe('ChatDocumentationCitationService', () => {
       citations,
     );
 
-    expect(refined[0].sourceTitle).toBe('JMS Company Contact Details Jan 26.pdf');
+    expect(refined[0].sourceTitle).toBe(
+      'JMS Company Contact Details Jan 26.pdf',
+    );
   });
 
   it('prioritizes oil-relevant generator maintenance citations over unrelated generator rows', () => {
@@ -322,7 +356,9 @@ describe('ChatDocumentationCitationService', () => {
       ),
     ).toBe(true);
     expect(
-      refined.some((citation) => citation.snippet?.includes('Reference ID: 1S47')),
+      refined.some((citation) =>
+        citation.snippet?.includes('Reference ID: 1S47'),
+      ),
     ).toBe(false);
   });
 
@@ -447,9 +483,12 @@ Next due: 07.07.2026 / 2250`,
     expect(refined[0].sourceTitle).toBe(
       'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
     );
-    expect(refined.some((citation) => citation.sourceTitle === 'M_Y Seawolf X - Maintenance Tasks.pdf')).toBe(
-      false,
-    );
+    expect(
+      refined.some(
+        (citation) =>
+          citation.sourceTitle === 'M_Y Seawolf X - Maintenance Tasks.pdf',
+      ),
+    ).toBe(false);
   });
 
   it('prioritizes history procedures over manuals for next-due questions', () => {
@@ -528,7 +567,9 @@ Next due: 07.07.2026 / 2250`,
     expect(refined[0].sourceTitle).toBe('Recommended Mase Parts.pdf');
     expect(refined[0].snippet).toContain('impeller');
     expect(
-      refined.some((citation) => /Oil Filter Element|Engine Oil/i.test(citation.snippet ?? '')),
+      refined.some((citation) =>
+        /Oil Filter Element|Engine Oil/i.test(citation.snippet ?? ''),
+      ),
     ).toBe(false);
   });
 
@@ -566,7 +607,9 @@ Next due: 07.07.2026 / 2250`,
 
     expect(refined[0].sourceTitle).toBe('Fire Suppression Survey.pdf');
     expect(
-      refined.some((citation) => /Fire Extinguisher/i.test(citation.sourceTitle ?? '')),
+      refined.some((citation) =>
+        /Fire Extinguisher/i.test(citation.sourceTitle ?? ''),
+      ),
     ).toBe(false);
   });
 
@@ -635,7 +678,7 @@ Next due: 07.07.2026 / 2250`,
         score: 0.99,
       },
       {
-        sourceTitle: "Selmar Type Approval Certificate.pdf",
+        sourceTitle: 'Selmar Type Approval Certificate.pdf',
         sourceCategory: 'CERTIFICATES',
         snippet:
           'THIS CERTIFICATE IS ISSUED IN COMPLIANCE WITH MODULE D. ISSUE DATE: 10-feb-2022 EXPIRATION DATE: 22-dec-2026.',
@@ -673,10 +716,10 @@ Next due: 07.07.2026 / 2250`,
         score: 0.98,
       },
       {
-        sourceTitle: 'MLC 2006 - Inspection report - for vessel under 500 GT Seawolf X.pdf',
+        sourceTitle:
+          'MLC 2006 - Inspection report - for vessel under 500 GT Seawolf X.pdf',
         sourceCategory: 'CERTIFICATES',
-        snippet:
-          'Statement of Compliance. Valid until: 26th October 2025.',
+        snippet: 'Statement of Compliance. Valid until: 26th October 2025.',
         score: 0.97,
       },
       {
@@ -717,8 +760,7 @@ Next due: 07.07.2026 / 2250`,
         score: 0.99,
       },
       {
-        sourceTitle:
-          "Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf",
+        sourceTitle: "Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf",
         sourceCategory: 'MANUALS',
         snippet:
           'Product Design Assessment (PDA) Expiry Date 27-OCT-2025. Manufacturing Assessment (MA) Expiry Date 28-OCT-2025.',
@@ -735,8 +777,7 @@ Next due: 07.07.2026 / 2250`,
 
       expect(prepared.citations).toEqual([
         expect.objectContaining({
-          sourceTitle:
-            "Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf",
+          sourceTitle: "Selmar_2023F29001_Blue Sea 4000 Plus_User's Guide.pdf",
         }),
       ]);
     } finally {

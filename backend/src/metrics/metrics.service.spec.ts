@@ -1585,6 +1585,341 @@ describe('MetricsService telemetry matching', () => {
     ).toBe(false);
   });
 
+  it('returns current vessel speed and coordinates without unrelated speed or position metrics', async () => {
+    const service = buildService([
+      {
+        metricKey:
+          'NMEA::navigation.courseGreatCircle.nextPoint.position::value',
+        latestValue: {
+          longitude: 7.319683333333334,
+          latitude: 43.69638333333333,
+        },
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.courseGreatCircle.nextPoint.position.value',
+          description:
+            'Next route point position with latitude and longitude values.',
+          unit: null,
+          bucket: 'NMEA',
+          measurement: 'navigation.courseGreatCircle.nextPoint.position',
+          field: 'value',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Throttle position (%)',
+        latestValue: 42,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Throttle position (%)',
+          description: 'Current generator throttle position.',
+          unit: '%',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Throttle position (%)',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.5,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lon',
+        latestValue: 7.08,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lon',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.speedOverGround::value',
+        latestValue: 0.01,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.speedOverGround.value',
+          description: 'Current vessel speed over ground.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'navigation.speedOverGround',
+          field: 'value',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Captain::Fan Speed',
+        latestValue: 7,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Captain.Fan Speed',
+          description: 'Current fan speed in the captain cabin.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Captain',
+          field: 'Fan Speed',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      "what's current yacht speed and location",
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(labels).toHaveLength(3);
+    expect(labels.some((key) => /speedOverGround/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lat\b|latitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lon\b|longitude/i.test(key))).toBe(true);
+    expect(
+      labels.every((key) => !/courseGreatCircle|Throttle|Fan Speed/i.test(key)),
+    ).toBe(true);
+  });
+
+  it('understands conversational vessel motion wording as speed and location', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.5,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lon',
+        latestValue: 7.08,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lon',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.speedOverGround::value',
+        latestValue: 0.01,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.speedOverGround.value',
+          description: 'Current vessel speed over ground.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'navigation.speedOverGround',
+          field: 'value',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Crew::Fan Speed',
+        latestValue: 4,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Crew.Fan Speed',
+          description: 'Current crew area fan speed.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Crew',
+          field: 'Fan Speed',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'where are we and how fast are we moving?',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels).toHaveLength(3);
+    expect(labels.some((key) => /speedOverGround/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lat\b|latitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lon\b|longitude/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/Fan Speed/i.test(key))).toBe(true);
+  });
+
+  it('keeps equipment speed queries scoped to the equipment subject', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation.speedOverGround::value',
+        latestValue: 0.01,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.speedOverGround.value',
+          description: 'Current vessel speed over ground.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'navigation.speedOverGround',
+          field: 'value',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Captain::Fan Speed',
+        latestValue: 7,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Captain.Fan Speed',
+          description: 'Current fan speed in the captain cabin.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Captain',
+          field: 'Fan Speed',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Crew::Fan Speed',
+        latestValue: 2,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Crew.Fan Speed',
+          description: 'Current crew area fan speed.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Crew',
+          field: 'Fan Speed',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what is the fan speed in the captain cabin?',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toContain('HVAC-Captain');
+    expect(labels[0]).not.toContain('speedOverGround');
+  });
+
+  it('does not treat equipment position fields as vessel location', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.5,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lon',
+        latestValue: 7.08,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lon',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Throttle position (%)',
+        latestValue: 42,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Throttle position (%)',
+          description: 'Current generator throttle position.',
+          unit: '%',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Throttle position (%)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what is the throttle position?',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toContain('Throttle position');
+  });
+
+  it('continues to support unrelated multi-metric electrical requests', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::Battery::Voltage',
+        latestValue: 26.4,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Battery.Voltage',
+          description: 'Current battery voltage.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'Battery',
+          field: 'Voltage',
+        },
+      },
+      {
+        metricKey: 'Trending::Battery::Current',
+        latestValue: 12.1,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Battery.Current',
+          description: 'Battery charge current.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'Battery',
+          field: 'Current',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.speedOverGround::value',
+        latestValue: 0.01,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.speedOverGround.value',
+          description: 'Current vessel speed over ground.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'navigation.speedOverGround',
+          field: 'value',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'show current battery voltage and current',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels).toHaveLength(2);
+    expect(labels.some((key) => /Voltage/i.test(key))).toBe(true);
+    expect(labels.some((key) => /Current/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/speedOverGround/i.test(key))).toBe(true);
+  });
+
   it.each([
     {
       query: 'What is the current fuel status?',
@@ -2020,8 +2355,7 @@ describe('MetricsService telemetry matching', () => {
         latestValue: 0,
         valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
         metric: {
-          label:
-            'PORT-FUEL-OIL-TRANSFER-PUMP.RMS phase to neutral Voltage B-N',
+          label: 'PORT-FUEL-OIL-TRANSFER-PUMP.RMS phase to neutral Voltage B-N',
           description:
             'Displays the electrical voltage level on phase B for the port fuel oil transfer pump.',
           unit: 'V',
@@ -2209,7 +2543,8 @@ describe('MetricsService telemetry matching', () => {
           },
         },
         {
-          metricKey: 'Trending::Tanks-Temperatures::Black_and_Grey_Water_Tank_13P',
+          metricKey:
+            'Trending::Tanks-Temperatures::Black_and_Grey_Water_Tank_13P',
           latestValue: 750,
           valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
           metric: {
@@ -2290,7 +2625,8 @@ describe('MetricsService telemetry matching', () => {
         },
       },
       {
-        metricKey: 'Trending::Tanks-Temperatures::Black_and_Grey_Water_Tank_13P',
+        metricKey:
+          'Trending::Tanks-Temperatures::Black_and_Grey_Water_Tank_13P',
         latestValue: 750,
         valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
         metric: {
@@ -2313,7 +2649,9 @@ describe('MetricsService telemetry matching', () => {
     expect(result.matchMode).toBe('direct');
     expect(Object.keys(result.telemetry)).toHaveLength(2);
     expect(
-      Object.keys(result.telemetry).every((key) => /fresh water tank/i.test(key)),
+      Object.keys(result.telemetry).every((key) =>
+        /fresh water tank/i.test(key),
+      ),
     ).toBe(true);
   });
 });
@@ -2571,7 +2909,8 @@ describe('MetricsService historical telemetry', () => {
             valueUpdatedAt: new Date('2026-04-02T20:00:00.000Z'),
             metric: {
               label: 'Tanks-Temperatures.Fuel_Tank_1P',
-              description: 'Displays the volume of Fuel Tank 1P in trending data.',
+              description:
+                'Displays the volume of Fuel Tank 1P in trending data.',
               unit: 'liters',
               bucket: 'Trending',
               measurement: 'Tanks-Temperatures',
@@ -2585,7 +2924,8 @@ describe('MetricsService historical telemetry', () => {
             valueUpdatedAt: new Date('2026-04-02T20:00:00.000Z'),
             metric: {
               label: 'Tanks-Temperatures.Fuel_Tank_2S',
-              description: 'Displays the volume of Fuel Tank 2S in trending data.',
+              description:
+                'Displays the volume of Fuel Tank 2S in trending data.',
               unit: 'liters',
               bucket: 'Trending',
               measurement: 'Tanks-Temperatures',
@@ -2705,7 +3045,8 @@ describe('MetricsService historical telemetry', () => {
             valueUpdatedAt: new Date('2026-04-02T20:00:00.000Z'),
             metric: {
               label: 'Tanks-Temperatures.Fuel_Tank_1P',
-              description: 'Displays the volume of Fuel Tank 1P in trending data.',
+              description:
+                'Displays the volume of Fuel Tank 1P in trending data.',
               unit: 'liters',
               bucket: 'Trending',
               measurement: 'Tanks-Temperatures',
@@ -2719,7 +3060,8 @@ describe('MetricsService historical telemetry', () => {
             valueUpdatedAt: new Date('2026-04-02T20:00:00.000Z'),
             metric: {
               label: 'Tanks-Temperatures.Fuel_Tank_2S',
-              description: 'Displays the volume of Fuel Tank 2S in trending data.',
+              description:
+                'Displays the volume of Fuel Tank 2S in trending data.',
               unit: 'liters',
               bucket: 'Trending',
               measurement: 'Tanks-Temperatures',
@@ -2821,7 +3163,9 @@ describe('MetricsService historical telemetry', () => {
     );
 
     expect(result.kind).toBe('answer');
-    expect(result.content).toContain('standout sampled interval change was observed');
+    expect(result.content).toContain(
+      'standout sampled interval change was observed',
+    );
     expect(influxdb.queryHistoricalFirstLast).not.toHaveBeenCalled();
     expect(influxdb.queryHistoricalSeries).toHaveBeenNthCalledWith(
       1,
@@ -3304,7 +3648,8 @@ describe('MetricsService historical telemetry', () => {
             latestValue: 0,
             valueUpdatedAt: new Date('2026-04-02T09:00:00.000Z'),
             metric: {
-              label: 'PORT-FUEL-OIL-TRANSFER-PUMP.RMS phase to neutral Voltage B-N',
+              label:
+                'PORT-FUEL-OIL-TRANSFER-PUMP.RMS phase to neutral Voltage B-N',
               description: 'Pump voltage reading.',
               unit: null,
               bucket: 'Trending',
@@ -3319,23 +3664,25 @@ describe('MetricsService historical telemetry', () => {
 
     const influxdb = {
       isConfigured: jest.fn().mockReturnValue(true),
-      queryHistoricalNearestValues: jest.fn().mockResolvedValue([
-        ['1P', 3950],
-        ['2S', 3896],
-        ['3P', 452],
-        ['4S', 370],
-        ['5P', 799],
-        ['6S', 932],
-        ['7P', 1295],
-        ['8S', 1297],
-      ].map(([suffix, value]) => ({
-        key: `Trending::Tanks-Temperatures::Fuel_Tank_${suffix}`,
-        bucket: 'Trending',
-        measurement: 'Tanks-Temperatures',
-        field: `Fuel_Tank_${suffix}`,
-        value,
-        time: '2026-03-28T09:47:00.000Z',
-      }))),
+      queryHistoricalNearestValues: jest.fn().mockResolvedValue(
+        [
+          ['1P', 3950],
+          ['2S', 3896],
+          ['3P', 452],
+          ['4S', 370],
+          ['5P', 799],
+          ['6S', 932],
+          ['7P', 1295],
+          ['8S', 1297],
+        ].map(([suffix, value]) => ({
+          key: `Trending::Tanks-Temperatures::Fuel_Tank_${suffix}`,
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: `Fuel_Tank_${suffix}`,
+          value,
+          time: '2026-03-28T09:47:00.000Z',
+        })),
+      ),
     };
 
     const metricDescriptions = {
@@ -4600,7 +4947,11 @@ describe('MetricsService historical telemetry', () => {
 
     expect(result.kind).toBe('answer');
     expect(result.content).toContain(expectedTimestamp);
-    expect(influxdb.queryHistoricalSeries.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(influxdb.queryHistoricalSeries.mock.calls[0]?.[3]?.windowMs).toBeDefined();
+    expect(
+      influxdb.queryHistoricalSeries.mock.calls.length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      influxdb.queryHistoricalSeries.mock.calls[0]?.[3]?.windowMs,
+    ).toBeDefined();
   });
 });

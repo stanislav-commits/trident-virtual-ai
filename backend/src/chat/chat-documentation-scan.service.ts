@@ -148,10 +148,11 @@ export class ChatDocumentationScanService {
               chunk.content ?? '',
               referenceId,
             );
-            const content = this.referenceExtractionService.focusReferenceSnippet(
-              rawContent,
-              referenceId,
-            );
+            const content =
+              this.referenceExtractionService.focusReferenceSnippet(
+                rawContent,
+                referenceId,
+              );
             return {
               chunk,
               rawContent,
@@ -277,14 +278,16 @@ export class ChatDocumentationScanService {
           }
 
           collected.push(
-            ...sortedRelevantChunks.slice(0, 10).map((entry) =>
-              this.mapDocumentChunkToCitation(
-                manual,
-                entry.chunk,
-                entry.haystack.includes(referenceId) ? 1 : 0.95,
-                entry.content,
+            ...sortedRelevantChunks
+              .slice(0, 10)
+              .map((entry) =>
+                this.mapDocumentChunkToCitation(
+                  manual,
+                  entry.chunk,
+                  entry.haystack.includes(referenceId) ? 1 : 0.95,
+                  entry.content,
+                ),
               ),
-            ),
           );
         } catch (error) {
           this.logger.warn(
@@ -548,13 +551,15 @@ export class ChatDocumentationScanService {
           });
 
           collected.push(
-            ...selectedChunks.slice(0, 3).map((entry) =>
-              this.mapDocumentChunkToCitation(
-                manual,
-                entry.chunk,
-                Math.max(0.92, entry.score / 100),
+            ...selectedChunks
+              .slice(0, 3)
+              .map((entry) =>
+                this.mapDocumentChunkToCitation(
+                  manual,
+                  entry.chunk,
+                  Math.max(0.92, entry.score / 100),
+                ),
               ),
-            ),
           );
         } catch (error) {
           this.logger.warn(
@@ -606,9 +611,10 @@ export class ChatDocumentationScanService {
     let scannedManualCount = 0;
 
     for (const scanContext of scanContexts) {
-      const candidateManuals = this
-        .selectCandidateManualsForCertificateScan(scanContext.manuals, citations)
-        .slice(0, 16);
+      const candidateManuals = this.selectCandidateManualsForCertificateScan(
+        scanContext.manuals,
+        citations,
+      ).slice(0, 16);
       scannedManualCount += candidateManuals.length;
 
       for (const manual of candidateManuals) {
@@ -623,9 +629,8 @@ export class ChatDocumentationScanService {
             .map((chunk) => {
               const content = chunk.content ?? '';
               const haystack = `${manual.filename}\n${content}`.toLowerCase();
-              const expiries = this.extractExplicitCertificateExpiryTimestamps(
-                content,
-              );
+              const expiries =
+                this.extractExplicitCertificateExpiryTimestamps(content);
               return {
                 chunk,
                 content,
@@ -642,10 +647,16 @@ export class ChatDocumentationScanService {
                   this.hasStrongCertificateSnippetSignals(entry.haystack)),
             )
             .sort((left, right) => {
-              const leftFuture =
-                left.expiries.some((expiry) => expiry >= Date.now()) ? 1 : 0;
-              const rightFuture =
-                right.expiries.some((expiry) => expiry >= Date.now()) ? 1 : 0;
+              const leftFuture = left.expiries.some(
+                (expiry) => expiry >= Date.now(),
+              )
+                ? 1
+                : 0;
+              const rightFuture = right.expiries.some(
+                (expiry) => expiry >= Date.now(),
+              )
+                ? 1
+                : 0;
               if (rightFuture !== leftFuture) {
                 return rightFuture - leftFuture;
               }
@@ -662,7 +673,9 @@ export class ChatDocumentationScanService {
                 return leftSoonest - rightSoonest;
               }
 
-              return (right.chunk.similarity ?? 0) - (left.chunk.similarity ?? 0);
+              return (
+                (right.chunk.similarity ?? 0) - (left.chunk.similarity ?? 0)
+              );
             })
             .slice(0, 3);
 
@@ -684,9 +697,9 @@ export class ChatDocumentationScanService {
         }
 
         const futureCollectedCount = collected.filter((citation) =>
-          this.extractExplicitCertificateExpiryTimestamps(citation.snippet ?? '').some(
-            (expiry) => expiry >= Date.now(),
-          ),
+          this.extractExplicitCertificateExpiryTimestamps(
+            citation.snippet ?? '',
+          ).some((expiry) => expiry >= Date.now()),
         ).length;
         if (futureCollectedCount >= 5) {
           break;
@@ -732,8 +745,10 @@ export class ChatDocumentationScanService {
       return [];
     }
 
-    const anchorTerms = this.queryService.extractContactAnchorTerms(queryContext);
-    const wantsRoleInventory = this.queryService.isRoleInventoryQuery(queryContext);
+    const anchorTerms =
+      this.queryService.extractContactAnchorTerms(queryContext);
+    const wantsRoleInventory =
+      this.queryService.isRoleInventoryQuery(queryContext);
     const collected: ChatCitation[] = [];
     let scannedManualCount = 0;
 
@@ -743,6 +758,7 @@ export class ChatDocumentationScanService {
         citations,
       ).slice(0, 6);
       scannedManualCount += candidateManuals.length;
+      const collectedBeforeContext = collected.length;
 
       for (const manual of candidateManuals) {
         try {
@@ -777,6 +793,17 @@ export class ChatDocumentationScanService {
             `Personnel directory document chunk scan skipped for ${manual.filename}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
+      }
+
+      if (collected.length === collectedBeforeContext) {
+        collected.push(
+          ...(await this.collectPersonnelDirectorySearchFallbackCitations(
+            scanContext,
+            queryContext,
+            anchorTerms,
+            wantsRoleInventory,
+          )),
+        );
       }
     }
 
@@ -938,10 +965,14 @@ export class ChatDocumentationScanService {
               }
 
               const haystack = `${manual.filename}\n${content}`.toLowerCase();
-              if (!/\b(audit|compliance|inspection|survey|checklist)\b/i.test(haystack)) {
+              if (
+                !/\b(audit|compliance|inspection|survey|checklist)\b/i.test(
+                  haystack,
+                )
+              ) {
                 return false;
               }
-              
+
               if (
                 !/\b(pass|fail|finding|status|ok|yes|no|defect|corrective\s+action|signature|date|checked)\b/i.test(
                   haystack,
@@ -1132,9 +1163,7 @@ export class ChatDocumentationScanService {
   private normalizeDocumentCategory(
     category?: string | null,
   ): ShipManualCategory {
-    return (
-      parseShipManualCategory(category) ?? DEFAULT_SHIP_MANUAL_CATEGORY
-    );
+    return parseShipManualCategory(category) ?? DEFAULT_SHIP_MANUAL_CATEGORY;
   }
 
   private scoreDocumentScanContext(
@@ -1317,6 +1346,112 @@ export class ChatDocumentationScanService {
     });
   }
 
+  private async collectPersonnelDirectorySearchFallbackCitations(
+    scanContext: DocumentScanContext,
+    queryContext: string,
+    anchorTerms: string[],
+    wantsRoleInventory: boolean,
+  ): Promise<ChatCitation[]> {
+    const manualByDocumentId = new Map(
+      scanContext.manuals.map((manual) => [manual.ragflowDocumentId, manual]),
+    );
+    const hasDedicatedContactManual = scanContext.manuals.some((manual) =>
+      this.isContactScanCandidateManual(manual.filename),
+    );
+
+    for (const query of this.buildPersonnelDirectoryFallbackQueries(
+      queryContext,
+      anchorTerms,
+    )) {
+      try {
+        const results = await this.ragflowService.searchDataset(
+          scanContext.ragflowDatasetId,
+          query,
+          24,
+        );
+        const matched = results
+          .map((result) => {
+            const manual = manualByDocumentId.get(result.doc_id);
+            if (!manual) {
+              return null;
+            }
+            if (
+              hasDedicatedContactManual &&
+              !this.isContactScanCandidateManual(manual.filename)
+            ) {
+              return null;
+            }
+
+            const content = (result.content ?? '').replace(/\s+/g, ' ').trim();
+            if (
+              !this.isLikelyPersonnelDirectoryChunk(
+                manual.filename,
+                content,
+                anchorTerms,
+                wantsRoleInventory,
+              )
+            ) {
+              return null;
+            }
+
+            return this.mapDocumentChunkToCitation(
+              manual,
+              {
+                id: result.id,
+                content: result.content,
+                similarity: result.similarity,
+                meta: result.meta,
+                positions: result.positions,
+              },
+              1.01,
+            );
+          })
+          .filter((citation): citation is ChatCitation => Boolean(citation));
+
+        if (matched.length > 0) {
+          this.logger.debug(
+            `Personnel directory search fallback matched ${matched.length} chunk(s) for query="${query}"`,
+          );
+          return matched;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Personnel directory search fallback failed for query="${query}": ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return [];
+  }
+
+  private buildPersonnelDirectoryFallbackQueries(
+    queryContext: string,
+    anchorTerms: string[],
+  ): string[] {
+    const queries = new Set<string>();
+    const normalizedQuery = queryContext.replace(/\s+/g, ' ').trim();
+    const anchors = anchorTerms.join(' ').trim();
+    const subject = anchors || normalizedQuery;
+
+    if (normalizedQuery) {
+      queries.add(normalizedQuery);
+    }
+    if (subject) {
+      queries.add(`${subject} contact details email phone mobile`);
+      queries.add(`${subject} company contact details`);
+      queries.add(`${subject} personnel directory contact list`);
+    }
+
+    if (anchorTerms.includes('dpa')) {
+      queries.add('dpa designated person ashore contact details email phone');
+    }
+    if (anchorTerms.includes('cso')) {
+      queries.add('cso company security officer contact details email phone');
+    }
+
+    return [...queries];
+  }
+
   private selectCandidateManualsForTankCapacityScan(
     manuals: DocumentScanManual[],
     citations: ChatCitation[],
@@ -1326,7 +1461,9 @@ export class ChatDocumentationScanService {
       citations,
     );
     const tankLike = baseOrdered
-      .filter((manual) => this.isTankCapacityScanCandidateManual(manual.filename))
+      .filter((manual) =>
+        this.isTankCapacityScanCandidateManual(manual.filename),
+      )
       .sort((left, right) => {
         const leftScore = this.scoreTankCapacityScanManual(left.filename);
         const rightScore = this.scoreTankCapacityScanManual(right.filename);
@@ -1486,7 +1623,9 @@ export class ChatDocumentationScanService {
     if (/\bcontact\s+details\b/.test(normalized)) {
       score += 60;
     }
-    if (/\b(company\s+contact|contact|directory|phone|email)\b/.test(normalized)) {
+    if (
+      /\b(company\s+contact|contact|directory|phone|email)\b/.test(normalized)
+    ) {
       score += 30;
     }
     if (/\b(crew\s+list|emergency\s+contact)\b/.test(normalized)) {
@@ -1515,10 +1654,10 @@ export class ChatDocumentationScanService {
   ): boolean {
     const haystack = `${filename}\n${content}`.toLowerCase();
     const emailMatches =
-      content.match(/\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/gi) ??
-      [];
-    const phoneMatches =
-      content.match(/\+\s*\d[\d\s()./-]{5,}\d\b/g) ?? [];
+      content.match(
+        /\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/gi,
+      ) ?? [];
+    const phoneMatches = content.match(/\+\s*\d[\d\s()./-]{5,}\d\b/g) ?? [];
     const personLikeMatches =
       content.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/g) ?? [];
     const hasDirectoryTitle =
@@ -1539,11 +1678,16 @@ export class ChatDocumentationScanService {
         haystack,
       );
 
-    if (!(hasDirectoryTitle || hasDenseDirectoryStructure || hasStrongRoleSignals)) {
+    if (
+      !(hasDirectoryTitle || hasDenseDirectoryStructure || hasStrongRoleSignals)
+    ) {
       return false;
     }
 
-    if (hasOperationalNoise && !(hasDirectoryTitle || hasDenseDirectoryStructure)) {
+    if (
+      hasOperationalNoise &&
+      !(hasDirectoryTitle || hasDenseDirectoryStructure)
+    ) {
       return false;
     }
 
@@ -1661,7 +1805,9 @@ export class ChatDocumentationScanService {
   }
 
   private isAuditScanCandidateManual(filename: string): boolean {
-    return /\b(audit|audits|compliance|survey|surveys|inspection|inspections|checklist|checklists)\b/i.test(filename);
+    return /\b(audit|audits|compliance|survey|surveys|inspection|inspections|checklist|checklists)\b/i.test(
+      filename,
+    );
   }
 
   private scoreCertificateScanManual(filename: string): number {
@@ -1756,10 +1902,7 @@ export class ChatDocumentationScanService {
       snippet: snippetOverride ?? chunk.content ?? '',
       sourceTitle: manual.filename,
       sourceCategory: sourceCategory ?? manual.category,
-      sourceMetadataCategory: this.extractChunkMetadataValue(
-        chunk,
-        'category',
-      ),
+      sourceMetadataCategory: this.extractChunkMetadataValue(chunk, 'category'),
       sourceMetadataCategoryLabel: this.extractChunkMetadataValue(
         chunk,
         'category_label',
@@ -1907,7 +2050,7 @@ export class ChatDocumentationScanService {
         const start = (match.index ?? 0) + match[0].length;
         const end =
           index + 1 < matches.length
-            ? matches[index + 1].index ?? normalizedText.length
+            ? (matches[index + 1].index ?? normalizedText.length)
             : normalizedText.length;
         return {
           heading,
@@ -1955,10 +2098,7 @@ export class ChatDocumentationScanService {
   }
 
   private normalizeNarrativeIntervalHeading(text: string): string {
-    return text
-      .replace(/\s+/g, ' ')
-      .replace(/\s+:/g, ':')
-      .trim();
+    return text.replace(/\s+/g, ' ').replace(/\s+:/g, ':').trim();
   }
 
   private scoreNarrativeIntervalHeading(
@@ -2043,7 +2183,11 @@ export class ChatDocumentationScanService {
       if (this.isLikelyNarrativeIntervalHeading(line)) {
         continue;
       }
-      if (!/\b(check|replace|drain|clean|inspect|verify|test|adjust|top\s+up|carry\s+out|rotate|run|fill|reset|remove)\b/i.test(line)) {
+      if (
+        !/\b(check|replace|drain|clean|inspect|verify|test|adjust|top\s+up|carry\s+out|rotate|run|fill|reset|remove)\b/i.test(
+          line,
+        )
+      ) {
         continue;
       }
       unique.add(line.replace(/[.;]\s*$/g, '').trim());
@@ -2139,8 +2283,7 @@ export class ChatDocumentationScanService {
             transform: number[];
             width?: number;
             height?: number;
-          } =>
-            typeof item?.str === 'string' && Array.isArray(item.transform),
+          } => typeof item?.str === 'string' && Array.isArray(item.transform),
         )
         .map((item) => ({
           text: item.str,
@@ -2199,9 +2342,12 @@ export class ChatDocumentationScanService {
       return null;
     }
 
-    const sortedColumns = [...headerColumns].sort((left, right) => left.x - right.x);
+    const sortedColumns = [...headerColumns].sort(
+      (left, right) => left.x - right.x,
+    );
     const targetIndex = sortedColumns.findIndex(
-      (column) => column.x === targetColumn.x && column.label === targetColumn.label,
+      (column) =>
+        column.x === targetColumn.x && column.label === targetColumn.label,
     );
     if (targetIndex < 0) {
       return null;
@@ -2223,7 +2369,9 @@ export class ChatDocumentationScanService {
     );
     const rawRows = rowClusters
       .map((rowItems) => {
-        const sortedRowItems = [...rowItems].sort((left, right) => left.x - right.x);
+        const sortedRowItems = [...rowItems].sort(
+          (left, right) => left.x - right.x,
+        );
         const description = this.normalizeIntervalMaintenanceItemDescription(
           this.normalizePdfExtractedText(
             sortedRowItems
@@ -2300,12 +2448,14 @@ export class ChatDocumentationScanService {
       logicalRows.push({ ...row });
     }
 
-    const items = [...new Set(
-      logicalRows
-        .filter((row) => row.hasTargetMarker && !row.isSectionHeading)
-        .map((row) => row.description)
-        .filter((value) => value.length > 0),
-    )];
+    const items = [
+      ...new Set(
+        logicalRows
+          .filter((row) => row.hasTargetMarker && !row.isSectionHeading)
+          .map((row) => row.description)
+          .filter((value) => value.length > 0),
+      ),
+    ];
     if (items.length === 0) {
       return null;
     }
@@ -2328,7 +2478,9 @@ export class ChatDocumentationScanService {
       }
     >();
 
-    const sortedItems = [...headerItems].sort((left, right) => left.x - right.x);
+    const sortedItems = [...headerItems].sort(
+      (left, right) => left.x - right.x,
+    );
     for (const item of sortedItems) {
       const clusterKey = [...clusters.keys()].find(
         (existingX) => Math.abs(existingX - item.x) <= 18,
@@ -2348,7 +2500,9 @@ export class ChatDocumentationScanService {
           }
           return left.x - right.x;
         });
-        const label = this.normalizePdfExtractedText(items.map((item) => item.text));
+        const label = this.normalizePdfExtractedText(
+          items.map((item) => item.text),
+        );
         return {
           label,
           x:
@@ -2375,9 +2529,16 @@ export class ChatDocumentationScanService {
     const scored = headerColumns
       .map((column) => ({
         column,
-        score: this.scoreIntervalHeaderColumn(column.label, targets, intervalPhrases),
+        score: this.scoreIntervalHeaderColumn(
+          column.label,
+          targets,
+          intervalPhrases,
+        ),
       }))
-      .sort((left, right) => right.score - left.score || left.column.x - right.column.x);
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.column.x - right.column.x,
+      );
 
     return (scored[0]?.score ?? 0) > 0 ? scored[0].column : null;
   }
@@ -2429,9 +2590,15 @@ export class ChatDocumentationScanService {
         /\b(h(?:ours?|rs?)?|hourly)\b/i.test(normalizedLabel)
       ) {
         score += 18;
-      } else if (target.unit === 'month' && /\bmonths?\b/i.test(normalizedLabel)) {
+      } else if (
+        target.unit === 'month' &&
+        /\bmonths?\b/i.test(normalizedLabel)
+      ) {
         score += 18;
-      } else if (target.unit === 'year' && /\byears?\b/i.test(normalizedLabel)) {
+      } else if (
+        target.unit === 'year' &&
+        /\byears?\b/i.test(normalizedLabel)
+      ) {
         score += 18;
       } else {
         score += 6;
@@ -2468,19 +2635,21 @@ export class ChatDocumentationScanService {
     });
 
     for (const item of sorted) {
-      const existingRow = rows.find((row) => Math.abs(row.y - item.y) <= tolerance);
+      const existingRow = rows.find(
+        (row) => Math.abs(row.y - item.y) <= tolerance,
+      );
       if (existingRow) {
         existingRow.items.push(item);
-        existingRow.y = (existingRow.y * (existingRow.items.length - 1) + item.y) / existingRow.items.length;
+        existingRow.y =
+          (existingRow.y * (existingRow.items.length - 1) + item.y) /
+          existingRow.items.length;
         continue;
       }
 
       rows.push({ y: item.y, items: [item] });
     }
 
-    return rows
-      .sort((left, right) => right.y - left.y)
-      .map((row) => row.items);
+    return rows.sort((left, right) => right.y - left.y).map((row) => row.items);
   }
 
   private isIntervalTableMarker(text: string): boolean {
@@ -2560,7 +2729,9 @@ export class ChatDocumentationScanService {
     return !/[.;:]$/.test(previousDescription.trim());
   }
 
-  private extractIntervalTableHeading(textItems: PdfPageTextItem[]): string | undefined {
+  private extractIntervalTableHeading(
+    textItems: PdfPageTextItem[],
+  ): string | undefined {
     const headingItems = textItems.filter((item) =>
       /\b(periodic\s+checks?\s+and\s+maintenance|perform\s+service\s+at\s+intervals\s+indicated)\b/i.test(
         item.text,
@@ -2777,7 +2948,9 @@ export class ChatDocumentationScanService {
     );
   }
 
-  private extractExplicitCertificateExpiryTimestamp(text: string): number | null {
+  private extractExplicitCertificateExpiryTimestamp(
+    text: string,
+  ): number | null {
     return this.extractExplicitCertificateExpiryTimestamps(text)[0] ?? null;
   }
 
@@ -2896,7 +3069,10 @@ export class ChatDocumentationScanService {
     }
 
     if (anchorIndex >= 0) {
-      const startIndex = this.findReferenceSnippetStartIndex(snippet, anchorIndex);
+      const startIndex = this.findReferenceSnippetStartIndex(
+        snippet,
+        anchorIndex,
+      );
       return snippet.slice(startIndex, firstForeignMatch.index).trim();
     }
 
@@ -3267,11 +3443,10 @@ export class ChatDocumentationScanService {
       counts.set(page, (counts.get(page) ?? 0) + 1);
     }
 
-    return [...counts.entries()]
-      .sort((a, b) => {
-        if (a[1] !== b[1]) return b[1] - a[1];
-        return a[0] - b[0];
-      })[0]?.[0];
+    return [...counts.entries()].sort((a, b) => {
+      if (a[1] !== b[1]) return b[1] - a[1];
+      return a[0] - b[0];
+    })[0]?.[0];
   }
 
   private extractChunkMinY(positions: unknown): number | undefined {
@@ -3293,7 +3468,9 @@ export class ChatDocumentationScanService {
         return [positions as number[]];
       }
 
-      return positions.flatMap((entry) => this.collectChunkPositionValues(entry));
+      return positions.flatMap((entry) =>
+        this.collectChunkPositionValues(entry),
+      );
     }
 
     if (typeof positions === 'object') {

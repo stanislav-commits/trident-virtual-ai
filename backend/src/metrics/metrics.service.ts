@@ -110,6 +110,12 @@ interface TelemetryListRequest {
   limit?: number;
 }
 
+interface NavigationMotionTelemetryIntent {
+  wantsLocation: boolean;
+  wantsSpeed: boolean;
+  preferredSpeedKind?: 'sog' | 'stw' | 'vmg';
+}
+
 interface StoredFluidSubject {
   fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def';
   waterQualifiers?: Array<'fresh' | 'sea' | 'black' | 'grey' | 'bilge'>;
@@ -553,11 +559,12 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
-    const broadTankClarificationEntries = this.findBroadTankClarificationEntries(
-      scopedEntries,
-      query,
-      resolvedSubjectQuery,
-    );
+    const broadTankClarificationEntries =
+      this.findBroadTankClarificationEntries(
+        scopedEntries,
+        query,
+        resolvedSubjectQuery,
+      );
     if (broadTankClarificationEntries) {
       return {
         telemetry: this.toTelemetryMap(broadTankClarificationEntries),
@@ -1078,10 +1085,8 @@ export class MetricsService implements OnModuleInit {
       return entries;
     }
 
-    const scopedMetricKeys = await this.tagLinks.findTaggedMetricKeysForShipQuery(
-      shipId,
-      intentQuery,
-    );
+    const scopedMetricKeys =
+      await this.tagLinks.findTaggedMetricKeysForShipQuery(shipId, intentQuery);
     if (
       scopedMetricKeys.length === 0 ||
       scopedMetricKeys.length >= entries.length
@@ -1090,7 +1095,9 @@ export class MetricsService implements OnModuleInit {
     }
 
     const scopedMetricKeySet = new Set(scopedMetricKeys);
-    const filtered = entries.filter((entry) => scopedMetricKeySet.has(entry.key));
+    const filtered = entries.filter((entry) =>
+      scopedMetricKeySet.has(entry.key),
+    );
 
     if (filtered.length > 0 && filtered.length < entries.length) {
       const rejectedScopeReason = this.getRejectedTagPrefilterReason(
@@ -1359,11 +1366,7 @@ export class MetricsService implements OnModuleInit {
     const subject = this.detectStoredFluidSubject(searchSpace);
     if (
       subject &&
-      this.shouldUseHistoricalTankStorageAnalysis(
-        request,
-        searchSpace,
-        subject,
-      )
+      this.shouldUseHistoricalTankStorageAnalysis(request, searchSpace, subject)
     ) {
       return this.findHistoricalStoredFluidTankEntries(entries, subject);
     }
@@ -1384,7 +1387,9 @@ export class MetricsService implements OnModuleInit {
       return [];
     }
 
-    return this.findHistoricalStoredFluidTankEntries(entries, { fluid: 'fuel' });
+    return this.findHistoricalStoredFluidTankEntries(entries, {
+      fluid: 'fuel',
+    });
   }
 
   private sortHistoricalTelemetryEntries(
@@ -1414,8 +1419,12 @@ export class MetricsService implements OnModuleInit {
     request: ParsedHistoricalTelemetryRequest;
   }): Promise<string | null> {
     const { matchedEntries, organizationName, request } = params;
-    const normalizedMetricQuery = this.normalizeTelemetryText(request.metricQuery);
-    const storedFluidSubject = this.detectStoredFluidSubject(normalizedMetricQuery);
+    const normalizedMetricQuery = this.normalizeTelemetryText(
+      request.metricQuery,
+    );
+    const storedFluidSubject = this.detectStoredFluidSubject(
+      normalizedMetricQuery,
+    );
     const usesStoredFluidTankLevels =
       Boolean(storedFluidSubject) &&
       matchedEntries.every((entry) =>
@@ -1438,7 +1447,7 @@ export class MetricsService implements OnModuleInit {
               storedFluidSubject,
             )
           ? 'delta'
-        : request.operation;
+          : request.operation;
 
     if (effectiveOperation === 'position') {
       return this.buildHistoricalPositionAnswer(
@@ -2084,12 +2093,19 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
-    const normalizedMetricQuery = this.normalizeTelemetryText(request.metricQuery);
-    const storedFluidSubject = this.detectStoredFluidSubject(normalizedMetricQuery);
+    const normalizedMetricQuery = this.normalizeTelemetryText(
+      request.metricQuery,
+    );
+    const storedFluidSubject = this.detectStoredFluidSubject(
+      normalizedMetricQuery,
+    );
     if (
       storedFluidSubject &&
       deltas.every((item) =>
-        this.isHistoricalAggregateTankStorageEntry(item.entry, storedFluidSubject),
+        this.isHistoricalAggregateTankStorageEntry(
+          item.entry,
+          storedFluidSubject,
+        ),
       )
     ) {
       return this.buildHistoricalStoredFluidTankDeltaAnswer({
@@ -2143,7 +2159,9 @@ export class MetricsService implements OnModuleInit {
       (item) =>
         `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.fromValue)}${unitSuffix} -> ${this.formatAggregateNumber(item.toValue)}${unitSuffix} (${this.formatSignedAggregateNumber(item.delta)}${unitSuffix})`,
     );
-    const normalizedMetricQuery = this.normalizeTelemetryText(request.metricQuery);
+    const normalizedMetricQuery = this.normalizeTelemetryText(
+      request.metricQuery,
+    );
     const usageQuery = this.isHistoricalStoredFluidUsageQuery(
       normalizedMetricQuery,
       subject,
@@ -2251,7 +2269,8 @@ export class MetricsService implements OnModuleInit {
     ];
 
     if (seriesSummary.lowest && seriesSummary.highest) {
-      const rangeDelta = seriesSummary.highest.value - seriesSummary.lowest.value;
+      const rangeDelta =
+        seriesSummary.highest.value - seriesSummary.lowest.value;
       if (
         !this.isNegligibleHistoricalChange(
           rangeDelta,
@@ -2316,7 +2335,10 @@ export class MetricsService implements OnModuleInit {
         organizationName,
       );
     const deltas = this.buildHistoricalTrendSampledDeltas(rows, matchedEntries);
-    const points = this.buildHistoricalTrendSeriesPoints(rows, matchedEntries.length);
+    const points = this.buildHistoricalTrendSeriesPoints(
+      rows,
+      matchedEntries.length,
+    );
     if (
       points.length < 2 &&
       (matchedEntries.length > 1 || deltas.length === 0)
@@ -2358,7 +2380,9 @@ export class MetricsService implements OnModuleInit {
       lowest,
       highest,
       largestJump:
-        points.length >= 2 ? this.buildHistoricalTrendJumpSummary(points) : null,
+        points.length >= 2
+          ? this.buildHistoricalTrendJumpSummary(points)
+          : null,
     };
   }
 
@@ -2531,7 +2555,9 @@ export class MetricsService implements OnModuleInit {
           return null;
         }
 
-        series.sort((left, right) => left.time.getTime() - right.time.getTime());
+        series.sort(
+          (left, right) => left.time.getTime() - right.time.getTime(),
+        );
         const first = series[0];
         const last = series[series.length - 1];
         return {
@@ -2541,11 +2567,7 @@ export class MetricsService implements OnModuleInit {
           delta: last.value - first.value,
         };
       })
-      .filter(
-        (
-          value,
-        ): value is HistoricalTrendDeltaEntry => Boolean(value),
-      );
+      .filter((value): value is HistoricalTrendDeltaEntry => Boolean(value));
   }
 
   private buildHistoricalTrendJumpSummary(
@@ -2579,7 +2601,10 @@ export class MetricsService implements OnModuleInit {
     const medianJumpSize = this.getMedianValue(absoluteJumpSizes);
     const values = points.map((point) => point.value);
     const observedRange = Math.max(...values) - Math.min(...values);
-    const standoutThreshold = Math.max(medianJumpSize * 3, observedRange * 0.35);
+    const standoutThreshold = Math.max(
+      medianJumpSize * 3,
+      observedRange * 0.35,
+    );
 
     return {
       ...largestJump,
@@ -2825,7 +2850,12 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
-    if (!relativeRange && !explicitDate && !relativePointInTime && !implicitRange) {
+    if (
+      !relativeRange &&
+      !explicitDate &&
+      !relativePointInTime &&
+      !implicitRange
+    ) {
       return null;
     }
 
@@ -3021,7 +3051,9 @@ export class MetricsService implements OnModuleInit {
       /\b(trend|trending|evolution|evolve|evolving|rise|rising|fall|falling|spike|spikes|jump|jumps|abrupt|abnormal|sudden|difference|different|diff|movement|moving)\b/i.test(
         normalizedQuery,
       ) ||
-      (/\b(change|changed|changes|changing|difference|different|diff|movement|moving)\b/i.test(normalizedQuery) &&
+      (/\b(change|changed|changes|changing|difference|different|diff|movement|moving)\b/i.test(
+        normalizedQuery,
+      ) &&
         /\b(last|past|previous|over the last|history|historical)\b/i.test(
           normalizedQuery,
         ))
@@ -3781,6 +3813,15 @@ export class MetricsService implements OnModuleInit {
       return tankInventoryEntries;
     }
 
+    const navigationMotionEntries = this.findNavigationMotionTelemetryEntries(
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (navigationMotionEntries.length > 0) {
+      return navigationMotionEntries;
+    }
+
     if (this.shouldUseLocationTelemetryShortcut(query, resolvedSubjectQuery)) {
       const locationEntries = this.findLocationTelemetryEntries(
         entries,
@@ -3814,9 +3855,11 @@ export class MetricsService implements OnModuleInit {
       return [];
     }
 
-    const filteredEntries = this.filterScoredTelemetryEntries(narrowed).map(
-      (candidate) => candidate.entry,
-    );
+    const filteredEntries = this.ensureBestTelemetryKindCoverage(
+      this.filterScoredTelemetryEntries(narrowed),
+      narrowed,
+      querySignals.normalizedQuery,
+    ).map((candidate) => candidate.entry);
     const expandedAlarmFamilyEntries =
       this.expandDominantAlarmTelemetryFamilyEntries(
         narrowed.map((candidate) => candidate.entry),
@@ -3872,7 +3915,9 @@ export class MetricsService implements OnModuleInit {
     }
 
     const [dominantFamilyKey, dominantCount] = dominantFamily;
-    if (dominantCount < Math.max(2, Math.ceil(selectedAlarmEntries.length * 0.6))) {
+    if (
+      dominantCount < Math.max(2, Math.ceil(selectedAlarmEntries.length * 0.6))
+    ) {
       return [];
     }
 
@@ -3885,7 +3930,8 @@ export class MetricsService implements OnModuleInit {
 
     const expandsSelectedAlarmFamily =
       expandedFamilyEntries.length > selectedAlarmEntries.length;
-    const trimsNonAlarmNoise = expandedFamilyEntries.length < selectedEntries.length;
+    const trimsNonAlarmNoise =
+      expandedFamilyEntries.length < selectedEntries.length;
     if (
       (!expandsSelectedAlarmFamily && !trimsNonAlarmNoise) ||
       expandedFamilyEntries.length > 64
@@ -3994,7 +4040,9 @@ export class MetricsService implements OnModuleInit {
     ]
       .filter(Boolean)
       .join(' ');
-    const match = rawValue.match(/\b(?:alarm|warning|fault|trip)\D{0,6}(\d{1,3})\b/i);
+    const match = rawValue.match(
+      /\b(?:alarm|warning|fault|trip)\D{0,6}(\d{1,3})\b/i,
+    );
     return match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
   }
 
@@ -4009,9 +4057,338 @@ export class MetricsService implements OnModuleInit {
       return false;
     }
 
-      const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
+    const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
     queryKinds.delete('location');
     return queryKinds.size === 0;
+  }
+
+  private findNavigationMotionTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryEntry[] {
+    const intent = this.detectNavigationMotionTelemetryIntent(
+      query,
+      resolvedSubjectQuery,
+    );
+    if (!intent) {
+      return [];
+    }
+
+    const searchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    const speedIndex = this.getNavigationSpeedIntentIndex(searchSpace);
+    const locationIndex = this.getNavigationLocationIntentIndex(searchSpace);
+    const speedFirst =
+      intent.wantsSpeed &&
+      (!intent.wantsLocation ||
+        (speedIndex >= 0 &&
+          (locationIndex < 0 || speedIndex <= locationIndex)));
+    const speedEntries = intent.wantsSpeed
+      ? this.findVesselNavigationSpeedEntries(
+          entries,
+          intent.preferredSpeedKind,
+        )
+      : [];
+    const locationEntries = intent.wantsLocation
+      ? this.findCurrentVesselCoordinateEntries(entries)
+      : [];
+    const selected = speedFirst
+      ? [...speedEntries, ...locationEntries]
+      : [...locationEntries, ...speedEntries];
+
+    return this.uniqueTelemetryEntries(selected);
+  }
+
+  private detectNavigationMotionTelemetryIntent(
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): NavigationMotionTelemetryIntent | null {
+    const searchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
+    const requestedKinds = [...queryKinds].filter(
+      (kind) => kind !== 'location' && kind !== 'speed',
+    );
+    if (requestedKinds.length > 0) {
+      return null;
+    }
+
+    const wantsLocation = this.isNavigationLocationIntent(searchSpace);
+    const wantsSpeed = this.isNavigationSpeedIntent(searchSpace);
+    if (!wantsLocation && !wantsSpeed) {
+      return null;
+    }
+
+    if (wantsSpeed && this.hasNonNavigationPrimarySpeedSubject(searchSpace)) {
+      return null;
+    }
+
+    if (
+      !wantsLocation &&
+      !this.hasVesselNavigationContext(searchSpace) &&
+      !/\b(we|our)\b/i.test(searchSpace)
+    ) {
+      return null;
+    }
+
+    return {
+      wantsLocation,
+      wantsSpeed,
+      preferredSpeedKind: this.getPreferredNavigationSpeedKind(searchSpace),
+    };
+  }
+
+  private isNavigationLocationIntent(normalizedQuery: string): boolean {
+    return (
+      this.isTelemetryLocationQuery(normalizedQuery) ||
+      /\bwhere\s+(?:are\s+we|am\s+i)\b/i.test(normalizedQuery)
+    );
+  }
+
+  private isNavigationSpeedIntent(normalizedQuery: string): boolean {
+    return (
+      /\b(speed|sog|stw|vmg|knots?|kts?)\b/i.test(normalizedQuery) ||
+      /\bhow\s+fast\b/i.test(normalizedQuery) ||
+      /\b(?:are\s+we|we\s+are|vessel\s+is|yacht\s+is|ship\s+is|boat\s+is)\s+(?:moving|sailing|underway)\b/i.test(
+        normalizedQuery,
+      )
+    );
+  }
+
+  private hasVesselNavigationContext(normalizedQuery: string): boolean {
+    return /\b(yacht|vessel|ship|boat|navigation|nav|gps|position|location|coordinates?|latitude|longitude|lat|lon|sog|stw|vmg)\b/i.test(
+      normalizedQuery,
+    );
+  }
+
+  private hasNonNavigationPrimarySpeedSubject(
+    normalizedQuery: string,
+  ): boolean {
+    return (
+      /\b(wind|fan|blower|hvac|pump|compressor|engine|genset|generator|motor|throttle|shaft|propeller|rudder)\s+(?:speed|rpm|position)\b/i.test(
+        normalizedQuery,
+      ) ||
+      /\b(?:speed|rpm|position)\s+(?:of|for|in|on)\s+(?:the\s+)?(?:wind|fan|blower|hvac|pump|compressor|engine|genset|generator|motor|throttle|shaft|propeller|rudder)\b/i.test(
+        normalizedQuery,
+      )
+    );
+  }
+
+  private getPreferredNavigationSpeedKind(
+    normalizedQuery: string,
+  ): 'sog' | 'stw' | 'vmg' | undefined {
+    if (/\b(?:speed\s+over\s+ground|sog)\b/i.test(normalizedQuery)) {
+      return 'sog';
+    }
+    if (
+      /\b(?:speed\s+through\s+water|stw|water\s+speed)\b/i.test(normalizedQuery)
+    ) {
+      return 'stw';
+    }
+    if (/\b(?:velocity\s+made\s+good|vmg)\b/i.test(normalizedQuery)) {
+      return 'vmg';
+    }
+    return undefined;
+  }
+
+  private getNavigationSpeedIntentIndex(normalizedQuery: string): number {
+    const match = normalizedQuery.match(
+      /\b(speed|sog|stw|vmg|how\s+fast|moving|sailing|underway)\b/i,
+    );
+    return match?.index ?? -1;
+  }
+
+  private getNavigationLocationIntentIndex(normalizedQuery: string): number {
+    const match = normalizedQuery.match(
+      /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location|where\s+(?:is|are))\b/i,
+    );
+    return match?.index ?? -1;
+  }
+
+  private findCurrentVesselCoordinateEntries(
+    entries: ShipTelemetryEntry[],
+  ): ShipTelemetryEntry[] {
+    const candidates = entries
+      .filter((entry) => this.isCurrentVesselCoordinateEntry(entry))
+      .map((entry) => ({
+        entry,
+        score: this.scoreCurrentVesselCoordinateEntry(entry),
+      }))
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          left.entry.key.localeCompare(right.entry.key),
+      );
+
+    const selected: ShipTelemetryEntry[] = [];
+    const seen = new Set<'latitude' | 'longitude'>();
+
+    for (const candidate of candidates) {
+      const kinds = this.getExplicitTelemetryCoordinateKinds(candidate.entry);
+      if (kinds.has('latitude') && !seen.has('latitude')) {
+        selected.push(candidate.entry);
+        seen.add('latitude');
+      }
+      if (kinds.has('longitude') && !seen.has('longitude')) {
+        selected.push(candidate.entry);
+        seen.add('longitude');
+      }
+      if (seen.has('latitude') && seen.has('longitude')) {
+        break;
+      }
+    }
+
+    return selected;
+  }
+
+  private isCurrentVesselCoordinateEntry(entry: ShipTelemetryEntry): boolean {
+    const exactText = this.normalizeTelemetryText(
+      [entry.key, entry.label, entry.measurement, entry.field]
+        .filter(Boolean)
+        .join(' '),
+    );
+    const kinds = this.getExplicitTelemetryCoordinateKinds(entry);
+
+    return (
+      kinds.size > 0 &&
+      /\b(navigation|gps|nmea|position)\b/i.test(exactText) &&
+      !this.isRouteWaypointPositionEntry(entry)
+    );
+  }
+
+  private isRouteWaypointPositionEntry(entry: ShipTelemetryEntry): boolean {
+    const haystack = this.buildTelemetryHaystack(entry);
+    return /\b(course\s+great\s+circle|course\s+rhumbline|next\s+point|previous\s+point|waypoint|route|destination|origin)\b/i.test(
+      haystack,
+    );
+  }
+
+  private scoreCurrentVesselCoordinateEntry(entry: ShipTelemetryEntry): number {
+    const exactText = this.normalizeTelemetryText(
+      [entry.key, entry.label, entry.measurement, entry.field]
+        .filter(Boolean)
+        .join(' '),
+    );
+    let score = 0;
+    if (/\bnavigation\s+position\b/i.test(exactText)) score += 100;
+    if (/\bnavigation\b/i.test(exactText)) score += 40;
+    if (/\b(position|gps)\b/i.test(exactText)) score += 25;
+    if (/\b(latitude|longitude|lat|lon)\b/i.test(exactText)) score += 20;
+    if (entry.dataType === 'numeric' || typeof entry.value === 'number') {
+      score += 10;
+    }
+    return score;
+  }
+
+  private findVesselNavigationSpeedEntries(
+    entries: ShipTelemetryEntry[],
+    preferredSpeedKind?: 'sog' | 'stw' | 'vmg',
+  ): ShipTelemetryEntry[] {
+    const candidates = entries
+      .filter((entry) =>
+        this.isVesselNavigationSpeedEntry(entry, preferredSpeedKind),
+      )
+      .map((entry) => ({
+        entry,
+        score: this.scoreVesselNavigationSpeedEntry(entry, preferredSpeedKind),
+      }))
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          left.entry.key.localeCompare(right.entry.key),
+      );
+
+    return candidates.slice(0, 1).map((candidate) => candidate.entry);
+  }
+
+  private isVesselNavigationSpeedEntry(
+    entry: ShipTelemetryEntry,
+    preferredSpeedKind?: 'sog' | 'stw' | 'vmg',
+  ): boolean {
+    const haystack = this.buildTelemetryHaystack(entry);
+    if (
+      /\b(wind|fan|blower|hvac|throttle|rpm|engine|generator|genset|pump|motor|shaft|compressor|cabin|room)\b/i.test(
+        haystack,
+      )
+    ) {
+      return false;
+    }
+
+    if (preferredSpeedKind) {
+      return this.getNavigationSpeedKind(entry) === preferredSpeedKind;
+    }
+
+    return (
+      /\b(navigation|nmea|performance|vessel|ship|boat|yacht)\b/i.test(
+        haystack,
+      ) &&
+      /\b(speed\s+over\s+ground|sog|speed\s+through\s+water|stw|velocity\s+made\s+good|vmg|speed)\b/i.test(
+        haystack,
+      )
+    );
+  }
+
+  private getNavigationSpeedKind(
+    entry: ShipTelemetryEntry,
+  ): 'sog' | 'stw' | 'vmg' | 'speed' | null {
+    const haystack = this.buildTelemetryHaystack(entry);
+    if (/\b(speed\s+over\s+ground|sog)\b/i.test(haystack)) {
+      return 'sog';
+    }
+    if (/\b(speed\s+through\s+water|stw|water\s+speed)\b/i.test(haystack)) {
+      return 'stw';
+    }
+    if (/\b(velocity\s+made\s+good|vmg)\b/i.test(haystack)) {
+      return 'vmg';
+    }
+    if (/\bspeed\b/i.test(haystack)) {
+      return 'speed';
+    }
+    return null;
+  }
+
+  private scoreVesselNavigationSpeedEntry(
+    entry: ShipTelemetryEntry,
+    preferredSpeedKind?: 'sog' | 'stw' | 'vmg',
+  ): number {
+    const haystack = this.buildTelemetryHaystack(entry);
+    const kind = this.getNavigationSpeedKind(entry);
+    let score =
+      kind === 'sog'
+        ? 120
+        : kind === 'stw'
+          ? 95
+          : kind === 'vmg'
+            ? 55
+            : kind === 'speed'
+              ? 40
+              : 0;
+    if (preferredSpeedKind && kind === preferredSpeedKind) score += 80;
+    if (/\bnavigation\b/i.test(haystack)) score += 40;
+    if (/\bnmea\b/i.test(haystack)) score += 15;
+    if (/\b(kn|knot|knots|kts)\b/i.test(haystack)) score += 10;
+    if (entry.dataType === 'numeric' || typeof entry.value === 'number') {
+      score += 10;
+    }
+    return score;
+  }
+
+  private uniqueTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+  ): ShipTelemetryEntry[] {
+    const selected: ShipTelemetryEntry[] = [];
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      if (seen.has(entry.key)) {
+        continue;
+      }
+      selected.push(entry);
+      seen.add(entry.key);
+    }
+    return selected;
   }
 
   private findAggregateTankTelemetryEntries(
@@ -4240,15 +4617,13 @@ export class MetricsService implements OnModuleInit {
       (/\b(alarms?|warnings?|faults?|trips?)\b/i.test(normalized) &&
         asksForInventory);
 
-    if (
-      !mentionsTelemetryInventory ||
-      !asksForInventory
-    ) {
+    if (!mentionsTelemetryInventory || !asksForInventory) {
       return null;
     }
 
-    const wantsSampleList =
-      /\b(random|sample|some|few|selection)\b/i.test(normalized);
+    const wantsSampleList = /\b(random|sample|some|few|selection)\b/i.test(
+      normalized,
+    );
     const wantsFullList =
       /\b(all|available|full|complete|entire|every)\b/i.test(normalized) &&
       !wantsSampleList;
@@ -4276,7 +4651,7 @@ export class MetricsService implements OnModuleInit {
     resolvedSubjectQuery?: string,
   ): number | null {
     const request = this.parseTelemetryListRequest(query, resolvedSubjectQuery);
-    return request?.mode === 'sample' ? request.limit ?? 10 : null;
+    return request?.mode === 'sample' ? (request.limit ?? 10) : null;
   }
 
   private buildTelemetryQuerySignals(
@@ -4687,7 +5062,11 @@ export class MetricsService implements OnModuleInit {
           : scored;
 
     if (queryKinds.size === 0 || subjectTokens.length === 0) {
-      if (queryKinds.size === 0 && subjectTokens.length > 0 && isTelemetryInventoryQuery) {
+      if (
+        queryKinds.size === 0 &&
+        subjectTokens.length > 0 &&
+        isTelemetryInventoryQuery
+      ) {
         const withSubjectOnly = searchSpace.filter((candidate) =>
           this.matchesTelemetrySubject(candidate.entry, subjectTokens),
         );
@@ -4740,6 +5119,37 @@ export class MetricsService implements OnModuleInit {
     const cutoff = Math.max(minimumScore, relativeMinimum);
 
     return scored.filter((candidate) => candidate.score >= cutoff);
+  }
+
+  private ensureBestTelemetryKindCoverage(
+    selected: Array<{ entry: ShipTelemetryEntry; score: number }>,
+    candidates: Array<{ entry: ShipTelemetryEntry; score: number }>,
+    normalizedQuery: string,
+  ): Array<{ entry: ShipTelemetryEntry; score: number }> {
+    const queryKinds = [
+      ...this.extractTelemetryQueryMeasurementKinds(normalizedQuery),
+    ].filter((kind) => kind !== 'location');
+    if (queryKinds.length <= 1) {
+      return selected;
+    }
+
+    const byKey = new Map(
+      selected.map((candidate) => [candidate.entry.key, candidate]),
+    );
+    for (const kind of queryKinds) {
+      const bestForKind = candidates.find((candidate) =>
+        this.extractTelemetryEntryMeasurementKinds(candidate.entry).has(kind),
+      );
+      if (bestForKind && !byKey.has(bestForKind.entry.key)) {
+        byKey.set(bestForKind.entry.key, bestForKind);
+      }
+    }
+
+    return [...byKey.values()].sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.entry.key.localeCompare(right.entry.key),
+    );
   }
 
   private createTelemetrySampleSeed(value: string): number {
@@ -5099,14 +5509,16 @@ export class MetricsService implements OnModuleInit {
       [/\b(currents?|amperage|amps?)\b/i, 'current'],
       [/\b(loads?)\b/i, 'load'],
       [/\b(power|powers?|watts?|kilowatts?|megawatts?|kw|mw)\b/i, 'power'],
-      [/\b(energies?|watt\s*hours?|kilowatt\s*hours?|megawatt\s*hours?|wh|kwh|mwh)\b/i, 'energy'],
+      [
+        /\b(energies?|watt\s*hours?|kilowatt\s*hours?|megawatt\s*hours?|wh|kwh|mwh)\b/i,
+        'energy',
+      ],
       [/\b(rpms?|speeds?)\b/i, 'speed'],
       [/\b(flows?|rates?)\b/i, 'flow'],
       [/\b(runtime|runtimes|running|hours?|hour\s*meter)\b/i, 'hours'],
-      [/\b(status(?:es)?|state(?:s)?|alarms?|warnings?|faults?|trips?)\b/i, 'status'],
       [
-        /\b(latitude|longitude|coordinates?|position|gps|location|lat|lon)\b/i,
-        'location',
+        /\b(status(?:es)?|state(?:s)?|alarms?|warnings?|faults?|trips?)\b/i,
+        'status',
       ],
     ];
 
@@ -5114,6 +5526,16 @@ export class MetricsService implements OnModuleInit {
       if (pattern.test(value)) {
         kinds.add(label);
       }
+    }
+
+    if (
+      /\b(latitude|longitude|coordinates?|gps|location|lat|lon)\b/i.test(
+        normalized,
+      ) ||
+      (/\bposition\b/i.test(normalized) &&
+        this.hasTelemetryNavigationPositionContext(normalized))
+    ) {
+      kinds.add('location');
     }
 
     if (
@@ -5158,8 +5580,7 @@ export class MetricsService implements OnModuleInit {
     const hasQuantityUnit =
       /\b(l|lt|ltr|liters?|litres?|percent|percentage|%|gal|gallons?|m3|m 3)\b/i.test(
         normalized,
-      ) &&
-      !inventoryContextBlocked;
+      ) && !inventoryContextBlocked;
     if (hasQuantityUnit) {
       kinds.add('level');
     }
@@ -5174,14 +5595,12 @@ export class MetricsService implements OnModuleInit {
     const treatsCurrentAsLiveQualifier =
       kinds.has('current') &&
       !this.isElectricalCurrentQuery(normalized) &&
-      (
-        [...kinds].some((kind) => kind !== 'current') ||
+      ([...kinds].some((kind) => kind !== 'current') ||
         /\bcurrent\b\s+(value|values|reading|readings|status|state|metric|metrics|telemetry|signal|signals|level|levels|temperature|temperatures|pressure|pressures|voltage|voltages|power|powers|flow|flows|rate|rates|hours?|runtime)\b/i.test(
           normalized,
         ) ||
         /\b(now|right now|latest)\b/i.test(normalized) ||
-        Boolean(fluid && /\btanks?\b/i.test(normalized))
-      );
+        Boolean(fluid && /\btanks?\b/i.test(normalized)));
 
     if (treatsCurrentAsLiveQualifier) {
       kinds.delete('current');
@@ -5299,7 +5718,9 @@ export class MetricsService implements OnModuleInit {
     return token === 'port' || token === 'starboard';
   }
 
-  private extractExplicitTelemetryDirectionalTokens(query: string): Set<string> {
+  private extractExplicitTelemetryDirectionalTokens(
+    query: string,
+  ): Set<string> {
     const normalized = query.toLowerCase();
     const tokens = new Set<string>();
     const directionalNouns =
@@ -5313,7 +5734,9 @@ export class MetricsService implements OnModuleInit {
       tokens.add('starboard');
     }
 
-    if (new RegExp(`\\bleft\\b\\s+${directionalNouns}\\b`, 'i').test(normalized)) {
+    if (
+      new RegExp(`\\bleft\\b\\s+${directionalNouns}\\b`, 'i').test(normalized)
+    ) {
       tokens.add('port');
     }
 
@@ -5337,31 +5760,31 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isTelemetryKindToken(token: string): boolean {
-      return new Set([
-        'amp',
-        'amps',
-        'amperage',
-        'alarm',
-        'warning',
-        'fault',
-        'trip',
-        'current',
-        'energy',
-        'flow',
-        'hour',
-        'hours',
+    return new Set([
+      'amp',
+      'amps',
+      'amperage',
+      'alarm',
+      'warning',
+      'fault',
+      'trip',
+      'current',
+      'energy',
+      'flow',
+      'hour',
+      'hours',
       'lat',
       'latitude',
       'level',
       'location',
       'load',
       'lon',
-        'longitude',
-        'pressure',
-        'power',
-        'position',
-        'rate',
-        'reading',
+      'longitude',
+      'pressure',
+      'power',
+      'position',
+      'rate',
+      'reading',
       'rpm',
       'runtime',
       'speed',
@@ -5409,33 +5832,33 @@ export class MetricsService implements OnModuleInit {
     const normalized = token.toLowerCase();
     const aliases: Record<string, string> = {
       batteries: 'battery',
-        generators: 'generator',
-        gensets: 'genset',
-        right: 'starboard',
-        left: 'port',
-        stbd: 'starboard',
-        sb: 'starboard',
-        ps: 'port',
-        alarms: 'alarm',
-        warnings: 'warning',
-        faults: 'fault',
-        trips: 'trip',
-        status: 'status',
-        statuses: 'status',
-        states: 'state',
-        volts: 'voltage',
-        volt: 'voltage',
-        voltages: 'voltage',
-        pressures: 'pressure',
-        currents: 'current',
-        powers: 'power',
-        energies: 'energy',
-        loads: 'load',
-        flows: 'flow',
-        rates: 'rate',
-        temps: 'temperature',
-        temp: 'temperature',
-        readings: 'reading',
+      generators: 'generator',
+      gensets: 'genset',
+      right: 'starboard',
+      left: 'port',
+      stbd: 'starboard',
+      sb: 'starboard',
+      ps: 'port',
+      alarms: 'alarm',
+      warnings: 'warning',
+      faults: 'fault',
+      trips: 'trip',
+      status: 'status',
+      statuses: 'status',
+      states: 'state',
+      volts: 'voltage',
+      volt: 'voltage',
+      voltages: 'voltage',
+      pressures: 'pressure',
+      currents: 'current',
+      powers: 'power',
+      energies: 'energy',
+      loads: 'load',
+      flows: 'flow',
+      rates: 'rate',
+      temps: 'temperature',
+      temp: 'temperature',
+      readings: 'reading',
       metrics: 'metric',
       values: 'value',
       ships: 'ship',
@@ -5596,7 +6019,9 @@ export class MetricsService implements OnModuleInit {
     if (/\bsea\s*water\b|\bseawater\b/i.test(normalizedQuery)) {
       qualifiers.add('sea');
     }
-    if (/\bblack(?:\s+and\s+grey|\s*&\s*grey)?\s+water\b/i.test(normalizedQuery)) {
+    if (
+      /\bblack(?:\s+and\s+grey|\s*&\s*grey)?\s+water\b/i.test(normalizedQuery)
+    ) {
       qualifiers.add('black');
       if (/\bgrey\b|\bgray\b/i.test(normalizedQuery)) {
         qualifiers.add('grey');
@@ -5607,7 +6032,9 @@ export class MetricsService implements OnModuleInit {
     if (/\bgrey\s+water\b|\bgray\s+water\b/i.test(normalizedQuery)) {
       qualifiers.add('grey');
     }
-    if (/\bbilge\s+water\b|\bbilge\b[\s\S]{0,12}\btank\b/i.test(normalizedQuery)) {
+    if (
+      /\bbilge\s+water\b|\bbilge\b[\s\S]{0,12}\btank\b/i.test(normalizedQuery)
+    ) {
       qualifiers.add('bilge');
     }
 
@@ -5678,7 +6105,11 @@ export class MetricsService implements OnModuleInit {
     if (/\boil\b/i.test(normalizedQuery)) return { fluid: 'oil' };
     if (/\bcoolant\b/i.test(normalizedQuery)) return { fluid: 'coolant' };
     if (/\b(def|urea)\b/i.test(normalizedQuery)) return { fluid: 'def' };
-    if (/\b(water|fresh water|seawater|sea water|black water|grey water|gray water|bilge water)\b/i.test(normalizedQuery)) {
+    if (
+      /\b(water|fresh water|seawater|sea water|black water|grey water|gray water|bilge water)\b/i.test(
+        normalizedQuery,
+      )
+    ) {
       const waterQualifiers = this.detectWaterQualifiers(normalizedQuery);
       return (waterQualifiers?.length ?? 0) > 0
         ? { fluid: 'water', waterQualifiers }
@@ -5701,7 +6132,9 @@ export class MetricsService implements OnModuleInit {
     return 'water';
   }
 
-  private isImplicitDailyStoredFluidUsageQuery(normalizedQuery: string): boolean {
+  private isImplicitDailyStoredFluidUsageQuery(
+    normalizedQuery: string,
+  ): boolean {
     const subject = this.detectStoredFluidSubject(normalizedQuery);
     if (!subject) {
       return false;
@@ -5796,7 +6229,8 @@ export class MetricsService implements OnModuleInit {
     const hasOnlyLiveQualifier =
       queryKinds.size === 0 &&
       /\b(current|now|right now|latest)\b/i.test(normalizedQuery);
-    const hasSpecificTankReference = this.hasSpecificTankReference(normalizedQuery);
+    const hasSpecificTankReference =
+      this.hasSpecificTankReference(normalizedQuery);
 
     return (
       !hasSpecificTankReference &&
@@ -5911,7 +6345,12 @@ export class MetricsService implements OnModuleInit {
       ) ||
       /\b(battery|motor|generator|pump|inverter|charger|load)\s+current\b/i.test(
         normalizedQuery,
-      )
+      ) ||
+      /\b(battery|motor|generator|pump|inverter|charger|load|electrical|ac|dc)\b[\s\S]{0,80}\bcurrent\b/i.test(
+        normalizedQuery,
+      ) ||
+      /\bvoltage\s+(?:and|or|with|\/)\s+current\b/i.test(normalizedQuery) ||
+      /\bcurrent\s+(?:and|or|with|\/)\s+voltage\b/i.test(normalizedQuery)
     );
   }
 
@@ -6033,7 +6472,9 @@ export class MetricsService implements OnModuleInit {
     return indicatesTemperature && !indicatesQuantity;
   }
 
-  private isLikelyHistoricalTankQuantityEntry(entry: ShipTelemetryEntry): boolean {
+  private isLikelyHistoricalTankQuantityEntry(
+    entry: ShipTelemetryEntry,
+  ): boolean {
     const displayUnit = this.getTelemetryDisplayUnit(entry);
     if (displayUnit === 'liters' || displayUnit === '%') {
       return true;
@@ -6083,18 +6524,33 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isTelemetryLocationQuery(normalizedQuery: string): boolean {
+    const hasExplicitLocationTerm =
+      /\b(latitude|longitude|lat|lon|coordinates?|gps|location)\b/i.test(
+        normalizedQuery,
+      );
+    const hasVesselPositionTerm =
+      /\bposition\b/i.test(normalizedQuery) &&
+      !/\b(throttle|valve|switch|lever|damper|actuator|rudder|flap|fan|pump|engine|generator|genset|motor)\b/i.test(
+        normalizedQuery,
+      );
+    const hasWhereIntent =
+      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
+        normalizedQuery,
+      ) || /\bwhere\s+(?:are\s+we|am\s+i)\b/i.test(normalizedQuery);
+
     return (
-      (
-        /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location)\b/i.test(
-          normalizedQuery,
-        ) ||
-        /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
-          normalizedQuery,
-        )
-      ) &&
+      (hasExplicitLocationTerm || hasVesselPositionTerm || hasWhereIntent) &&
       !/\b(spare|part|parts|supplier|manufacturer|quantity|reference)\b/i.test(
         normalizedQuery,
       )
+    );
+  }
+
+  private hasTelemetryNavigationPositionContext(
+    normalizedValue: string,
+  ): boolean {
+    return /\b(navigation|nav|nmea|gps|coordinate|coordinates|latitude|longitude|lat|lon|location|yacht|vessel|ship|boat|course|waypoint|route)\b/i.test(
+      normalizedValue,
     );
   }
 
@@ -6165,9 +6621,7 @@ export class MetricsService implements OnModuleInit {
     const normalizedQuery = this.normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
-    if (
-      !this.shouldForceTankTelemetryClarification(entries, normalizedQuery)
-    ) {
+    if (!this.shouldForceTankTelemetryClarification(entries, normalizedQuery)) {
       return null;
     }
 
@@ -6221,9 +6675,9 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isAnyDirectTankStorageEntry(entry: ShipTelemetryEntry): boolean {
-    return (
-      ['fuel', 'oil', 'water', 'coolant', 'def'] as const
-    ).some((fluid) => this.isDirectTankStorageEntry(entry, { fluid }));
+    return (['fuel', 'oil', 'water', 'coolant', 'def'] as const).some((fluid) =>
+      this.isDirectTankStorageEntry(entry, { fluid }),
+    );
   }
 
   private getExplicitTelemetryCoordinateKinds(

@@ -61,8 +61,12 @@ describe('ChatService telemetry clarification', () => {
       'admin',
     );
 
-    expect(documentationService.prepareDocumentationContext).not.toHaveBeenCalled();
-    expect(metricsService.getShipTelemetryContextForQuery).not.toHaveBeenCalled();
+    expect(
+      documentationService.prepareDocumentationContext,
+    ).not.toHaveBeenCalled();
+    expect(
+      metricsService.getShipTelemetryContextForQuery,
+    ).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
       'Привіт! Чим можу допомогти?',
@@ -76,6 +80,19 @@ describe('ChatService telemetry clarification', () => {
       }),
       [],
     );
+  });
+
+  it('does not run current telemetry for documentation-only normalized procedure queries', () => {
+    const shouldLookup = (service as any).shouldLookupCurrentTelemetry(
+      { primaryIntent: 'telemetry_status' },
+      'How should the 15 ppm bilge alarm be installed and connected?',
+      {
+        sourceHints: ['DOCUMENTATION'],
+        timeIntent: { kind: 'none' },
+      },
+    );
+
+    expect(shouldLookup).toBe(false);
   });
 
   it('returns related telemetry clarification for admin global chat sessions', async () => {
@@ -587,13 +604,13 @@ describe('ChatService telemetry clarification', () => {
           sourceTitle:
             'VSS001990 - Viking PS37891054000 Fireman suite complete MCA SO_SOLAS Certificato Mod. B.pdf',
           sourceCategory: 'CERTIFICATES',
-          snippet:
-            'EC Type-Examination certificate for fire fighter garment.',
+          snippet: 'EC Type-Examination certificate for fire fighter garment.',
           pageNumber: 1,
         },
       ],
       previousUserQuery: undefined,
-      retrievalQuery: 'When does the fire suppression system certificate expire?',
+      retrievalQuery:
+        'When does the fire suppression system certificate expire?',
       resolvedSubjectQuery: undefined,
       answerQuery: undefined,
     });
@@ -2565,7 +2582,9 @@ describe('ChatService telemetry clarification', () => {
   });
 
   it('prefers documentation over telemetry fallback for hyphenated interval-maintenance list queries', () => {
-    const shouldPrefer = (service as any).shouldPreferDocumentationOverCurrentTelemetry(
+    const shouldPrefer = (
+      service as any
+    ).shouldPreferDocumentationOverCurrentTelemetry(
       {
         primaryIntent: 'maintenance_procedure',
         secondaryIntents: [],
@@ -2586,7 +2605,8 @@ describe('ChatService telemetry clarification', () => {
       },
       'list all 500-hour maintenance items for the diesel generator',
       {
-        rawQuery: 'list all 500-hour maintenance items for the diesel generator',
+        rawQuery:
+          'list all 500-hour maintenance items for the diesel generator',
         normalizedQuery:
           'list all 500-hour maintenance items for the diesel generator',
         retrievalQuery:
@@ -4357,8 +4377,7 @@ describe('ChatService telemetry clarification', () => {
         },
         {
           role: 'assistant',
-          content:
-            'The current matched telemetry readings are: ...',
+          content: 'The current matched telemetry readings are: ...',
           ragflowContext: {
             answerRoute: 'current_telemetry',
             resolvedSubjectQuery: 'Show fuel tank levels for Sea Wolf X',

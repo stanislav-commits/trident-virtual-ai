@@ -801,7 +801,11 @@ export class ChatService {
         );
       const shouldLookupCurrentTelemetry =
         !preferDocumentationOverCurrentTelemetry &&
-        this.shouldLookupCurrentTelemetry(queryPlan, telemetryIntentQuery);
+        this.shouldLookupCurrentTelemetry(
+          queryPlan,
+          telemetryIntentQuery,
+          effectiveNormalizedQuery,
+        );
 
       try {
         if (shouldLookupCurrentTelemetry && shipId) {
@@ -867,9 +871,7 @@ export class ChatService {
           for (const match of adminTelemetryMatches) {
             Object.entries(match.telemetry).forEach(([label, value]) => {
               telemetry[
-                shouldPrefixShipLabels
-                  ? `[${match.shipName}] ${label}`
-                  : label
+                shouldPrefixShipLabels ? `[${match.shipName}] ${label}` : label
               ] = value;
             });
           }
@@ -1034,7 +1036,8 @@ export class ChatService {
       }
 
       const deterministicDocumentationAnswer =
-        documentationContext.compareBySource || documentationContext.mergeBySource
+        documentationContext.compareBySource ||
+        documentationContext.mergeBySource
           ? null
           : this.buildDeterministicDocumentationAnswer(
               effectiveUserQuery,
@@ -5053,9 +5056,17 @@ export class ChatService {
   private shouldLookupCurrentTelemetry(
     queryPlan: ChatQueryPlan,
     userQuery: string,
+    normalizedQuery?: ChatNormalizedQuery,
   ): boolean {
     if (this.isExplicitTelemetrySourceQuery(userQuery)) {
       return true;
+    }
+
+    if (
+      this.isDocumentationOnlyNormalizedQuery(normalizedQuery) &&
+      !this.isCurrentTelemetryGuidedQuery(userQuery)
+    ) {
+      return false;
     }
 
     if (this.isCurrentPositionTelemetryQuery(userQuery)) {
@@ -5088,6 +5099,15 @@ export class ChatService {
       default:
         return false;
     }
+  }
+
+  private isDocumentationOnlyNormalizedQuery(
+    normalizedQuery?: ChatNormalizedQuery,
+  ): boolean {
+    return Boolean(
+      normalizedQuery?.sourceHints.includes('DOCUMENTATION') &&
+      !normalizedQuery.sourceHints.includes('TELEMETRY'),
+    );
   }
 
   private shouldPreferDocumentationOverCurrentTelemetry(
@@ -5243,8 +5263,7 @@ export class ChatService {
     return (
       /\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|how\s+to|how\s+should|how\s+do\s+i|procedure|steps?|check\s*list|checklist|instructions?|before|after|prepare|preparation|safely|safe\s+procedure|manual|documentation|according\s+to|install|installation|connect|connection|wire|wiring|configure|configuration|setup|set\s+up|start|stop|restart|flush|troubleshoot|create\s+(?:a\s+)?route|enter\s+(?:a\s+)?route|add\s+(?:a\s+)?waypoint|list\s+all|all\s+items?|included\s+items?)\b/i.test(
         userQuery,
-      ) ||
-      this.documentationQueryService.isIntervalMaintenanceQuery(userQuery)
+      ) || this.documentationQueryService.isIntervalMaintenanceQuery(userQuery)
     );
   }
 

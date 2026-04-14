@@ -4,49 +4,151 @@ import { ChatDocumentationScanService } from './chat-documentation-scan.service'
 describe('ChatDocumentationScanService', () => {
   const queryService = new ChatDocumentationQueryService();
   const masePage69TextItems = [
-    { text: '6.24 Periodic checks and maintenance', x: 180, y: 760, width: 180, height: 10 },
-    { text: 'Perform service at intervals indicated', x: 120, y: 720, width: 180, height: 10 },
-    { text: 'Every 200 hrs. or 12 Month', x: 304, y: 720, width: 90, height: 10 },
-    { text: 'Every 500 hrs. or 12 Month', x: 358, y: 720, width: 90, height: 10 },
-    { text: 'Every 1000 hrs. or 24 Month', x: 420, y: 720, width: 100, height: 10 },
+    {
+      text: '6.24 Periodic checks and maintenance',
+      x: 180,
+      y: 760,
+      width: 180,
+      height: 10,
+    },
+    {
+      text: 'Perform service at intervals indicated',
+      x: 120,
+      y: 720,
+      width: 180,
+      height: 10,
+    },
+    {
+      text: 'Every 200 hrs. or 12 Month',
+      x: 304,
+      y: 720,
+      width: 90,
+      height: 10,
+    },
+    {
+      text: 'Every 500 hrs. or 12 Month',
+      x: 358,
+      y: 720,
+      width: 90,
+      height: 10,
+    },
+    {
+      text: 'Every 1000 hrs. or 24 Month',
+      x: 420,
+      y: 720,
+      width: 100,
+      height: 10,
+    },
     { text: 'Fuel system', x: 48, y: 666, width: 80, height: 10 },
-    { text: 'Replace fuel filter and prefilter', x: 48, y: 648, width: 160, height: 10 },
+    {
+      text: 'Replace fuel filter and prefilter',
+      x: 48,
+      y: 648,
+      width: 160,
+      height: 10,
+    },
     { text: '•', x: 358, y: 648, width: 6, height: 10 },
     { text: 'Lubrication system', x: 48, y: 624, width: 100, height: 10 },
     { text: 'Change oil and filter', x: 48, y: 606, width: 120, height: 10 },
     { text: '•', x: 358, y: 606, width: 6, height: 10 },
     { text: 'Cooling system', x: 48, y: 582, width: 100, height: 10 },
-    { text: 'Check coolant levels in engine circuit / generator circuit', x: 48, y: 564, width: 240, height: 10 },
+    {
+      text: 'Check coolant levels in engine circuit / generator circuit',
+      x: 48,
+      y: 564,
+      width: 240,
+      height: 10,
+    },
     { text: '•', x: 304, y: 564, width: 6, height: 10 },
     { text: '•', x: 358, y: 564, width: 6, height: 10 },
-    { text: 'Clean the seawater filter', x: 48, y: 546, width: 140, height: 10 },
+    {
+      text: 'Clean the seawater filter',
+      x: 48,
+      y: 546,
+      width: 140,
+      height: 10,
+    },
     { text: '•', x: 304, y: 546, width: 6, height: 10 },
-    { text: 'Replace the seawater pump impeller', x: 48, y: 528, width: 170, height: 10 },
+    {
+      text: 'Replace the seawater pump impeller',
+      x: 48,
+      y: 528,
+      width: 170,
+      height: 10,
+    },
     { text: '•', x: 358, y: 528, width: 6, height: 10 },
-    { text: 'Replace the seawater pump', x: 48, y: 510, width: 150, height: 10 },
+    {
+      text: 'Replace the seawater pump',
+      x: 48,
+      y: 510,
+      width: 150,
+      height: 10,
+    },
     { text: '•', x: 420, y: 510, width: 6, height: 10 },
-    { text: 'Replace the aux. pump belt (for alternator cooling)', x: 48, y: 492, width: 220, height: 10 },
+    {
+      text: 'Replace the aux. pump belt (for alternator cooling)',
+      x: 48,
+      y: 492,
+      width: 220,
+      height: 10,
+    },
     { text: '•', x: 358, y: 492, width: 6, height: 10 },
     { text: 'Gas intake / exhaust', x: 48, y: 456, width: 120, height: 10 },
     { text: 'Replace the air filter', x: 48, y: 438, width: 110, height: 10 },
     { text: '•', x: 358, y: 438, width: 6, height: 10 },
-    { text: 'Check the exhaust flexible hose', x: 48, y: 420, width: 150, height: 10 },
+    {
+      text: 'Check the exhaust flexible hose',
+      x: 48,
+      y: 420,
+      width: 150,
+      height: 10,
+    },
     { text: '•', x: 358, y: 420, width: 6, height: 10 },
     { text: 'Electrical system', x: 48, y: 390, width: 100, height: 10 },
-    { text: 'Clean the battery terminals', x: 48, y: 372, width: 140, height: 10 },
+    {
+      text: 'Clean the battery terminals',
+      x: 48,
+      y: 372,
+      width: 140,
+      height: 10,
+    },
     { text: '•', x: 358, y: 372, width: 6, height: 10 },
     { text: 'Engine and assembly', x: 48, y: 342, width: 110, height: 10 },
-    { text: 'Engine speed control and adjustment', x: 48, y: 324, width: 170, height: 10 },
+    {
+      text: 'Engine speed control and adjustment',
+      x: 48,
+      y: 324,
+      width: 170,
+      height: 10,
+    },
     { text: '•', x: 358, y: 324, width: 6, height: 10 },
-    { text: 'Check the engine ground connections', x: 48, y: 306, width: 180, height: 10 },
+    {
+      text: 'Check the engine ground connections',
+      x: 48,
+      y: 306,
+      width: 180,
+      height: 10,
+    },
     { text: '•', x: 358, y: 306, width: 6, height: 10 },
     { text: 'Remote control system', x: 48, y: 276, width: 120, height: 10 },
     { text: 'Check software status', x: 48, y: 258, width: 120, height: 10 },
     { text: '•', x: 358, y: 258, width: 6, height: 10 },
   ];
   const masePage69RealisticTextItems = [
-    { text: '6.24 Periodic checks and maintenance', x: 182, y: 793, width: 180, height: 10 },
-    { text: 'Perform service at intervals indicated', x: 66, y: 726, width: 180, height: 10 },
+    {
+      text: '6.24 Periodic checks and maintenance',
+      x: 182,
+      y: 793,
+      width: 180,
+      height: 10,
+    },
+    {
+      text: 'Perform service at intervals indicated',
+      x: 66,
+      y: 726,
+      width: 180,
+      height: 10,
+    },
     { text: 'Before', x: 231, y: 734, width: 24, height: 8 },
     { text: 'starting', x: 229, y: 726, width: 32, height: 8 },
     { text: 'Every 200', x: 316, y: 736, width: 40, height: 8 },
@@ -60,36 +162,108 @@ describe('ChatDocumentationScanService', () => {
     { text: 'Month', x: 382, y: 721, width: 28, height: 8 },
     { text: 'General', x: 31, y: 705, width: 42, height: 10 },
     { text: 'Fuel system', x: 31, y: 683, width: 70, height: 10 },
-    { text: 'Water drainage in the water / diesel separator', x: 31, y: 670, width: 160, height: 10 },
+    {
+      text: 'Water drainage in the water / diesel separator',
+      x: 31,
+      y: 670,
+      width: 160,
+      height: 10,
+    },
     { text: '●', x: 238, y: 671, width: 6, height: 10 },
-    { text: 'Replace fuel filter and prefilter', x: 31, y: 659, width: 140, height: 10 },
+    {
+      text: 'Replace fuel filter and prefilter',
+      x: 31,
+      y: 659,
+      width: 140,
+      height: 10,
+    },
     { text: '●', x: 358, y: 660, width: 6, height: 10 },
     { text: 'Lubrication system', x: 31, y: 634, width: 100, height: 10 },
     { text: 'Change oil and filter', x: 31, y: 609, width: 120, height: 10 },
     { text: '●', x: 358, y: 611, width: 6, height: 10 },
     { text: 'Cooling system', x: 31, y: 593, width: 100, height: 10 },
-    { text: 'Check coolant levels in engine circuit / generator circuit', x: 31, y: 579, width: 240, height: 10 },
+    {
+      text: 'Check coolant levels in engine circuit / generator circuit',
+      x: 31,
+      y: 579,
+      width: 240,
+      height: 10,
+    },
     { text: '●', x: 266, y: 581, width: 6, height: 10 },
     { text: '●', x: 358, y: 581, width: 6, height: 10 },
-    { text: 'Clean the seawater filter', x: 31, y: 566, width: 140, height: 10 },
+    {
+      text: 'Clean the seawater filter',
+      x: 31,
+      y: 566,
+      width: 140,
+      height: 10,
+    },
     { text: '●', x: 326, y: 566, width: 6, height: 10 },
-    { text: 'Replace the seawater pump impeller', x: 31, y: 554, width: 170, height: 10 },
+    {
+      text: 'Replace the seawater pump impeller',
+      x: 31,
+      y: 554,
+      width: 170,
+      height: 10,
+    },
     { text: '●', x: 358, y: 556, width: 6, height: 10 },
-    { text: 'Replace the seawater pump', x: 31, y: 543, width: 150, height: 10 },
+    {
+      text: 'Replace the seawater pump',
+      x: 31,
+      y: 543,
+      width: 150,
+      height: 10,
+    },
     { text: '●', x: 452, y: 545, width: 6, height: 10 },
-    { text: 'Replace the aux. pump belt (for alternator cooling)', x: 31, y: 428, width: 220, height: 10 },
+    {
+      text: 'Replace the aux. pump belt (for alternator cooling)',
+      x: 31,
+      y: 428,
+      width: 220,
+      height: 10,
+    },
     { text: '●', x: 358, y: 429, width: 6, height: 10 },
     { text: 'Replace the air filter', x: 31, y: 315, width: 110, height: 10 },
     { text: '●', x: 358, y: 316, width: 6, height: 10 },
-    { text: 'Check the exhaust flexible hose', x: 31, y: 303, width: 150, height: 10 },
+    {
+      text: 'Check the exhaust flexible hose',
+      x: 31,
+      y: 303,
+      width: 150,
+      height: 10,
+    },
     { text: '●', x: 358, y: 305, width: 6, height: 10 },
-    { text: 'Clean the battery terminals', x: 31, y: 236, width: 140, height: 10 },
+    {
+      text: 'Clean the battery terminals',
+      x: 31,
+      y: 236,
+      width: 140,
+      height: 10,
+    },
     { text: '●', x: 358, y: 238, width: 6, height: 10 },
-    { text: 'Check drive belt and belt tensioner', x: 31, y: 195, width: 170, height: 10 },
+    {
+      text: 'Check drive belt and belt tensioner',
+      x: 31,
+      y: 195,
+      width: 170,
+      height: 10,
+    },
     { text: '●', x: 358, y: 197, width: 6, height: 10 },
-    { text: 'Engine speed control and adjustment', x: 31, y: 150, width: 170, height: 10 },
+    {
+      text: 'Engine speed control and adjustment',
+      x: 31,
+      y: 150,
+      width: 170,
+      height: 10,
+    },
     { text: '●', x: 358, y: 152, width: 6, height: 10 },
-    { text: 'Check the engine ground connections', x: 31, y: 139, width: 180, height: 10 },
+    {
+      text: 'Check the engine ground connections',
+      x: 31,
+      y: 139,
+      width: 180,
+      height: 10,
+    },
     { text: '●', x: 358, y: 141, width: 6, height: 10 },
     { text: 'Check software status', x: 31, y: 73, width: 120, height: 10 },
     { text: '●', x: 358, y: 74, width: 6, height: 10 },
@@ -102,9 +276,21 @@ describe('ChatDocumentationScanService', () => {
     { text: '2000', x: 417, y: 737, width: 22, height: 8 },
     { text: 'hrs.or 48', x: 410, y: 729, width: 40, height: 8 },
     { text: 'Month', x: 414, y: 721, width: 28, height: 8 },
-    { text: 'Check alternator coolant pump (Aux. pump)', x: 31, y: 415, width: 170, height: 10 },
+    {
+      text: 'Check alternator coolant pump (Aux. pump)',
+      x: 31,
+      y: 415,
+      width: 170,
+      height: 10,
+    },
     { text: 'в—Џ', x: 389, y: 417, width: 6, height: 10 },
-    { text: 'Replace alternator coolant pump (Aux. pump)', x: 31, y: 402, width: 180, height: 10 },
+    {
+      text: 'Replace alternator coolant pump (Aux. pump)',
+      x: 31,
+      y: 402,
+      width: 180,
+      height: 10,
+    },
     { text: 'в—Џ', x: 421, y: 404, width: 6, height: 10 },
     { text: 'Test of thermostats', x: 31, y: 389, width: 110, height: 10 },
     { text: 'в—Џ', x: 421, y: 391, width: 6, height: 10 },
@@ -272,26 +458,28 @@ describe('ChatDocumentationScanService', () => {
       queryService,
       {} as never,
     );
-    jest.spyOn(service as never, 'loadDocumentScanContexts' as never).mockResolvedValue([
-      {
-        ragflowDatasetId: 'dataset-1',
-        manuals: [
-          {
-            id: 'manual-contact',
-            ragflowDocumentId: 'doc-contact',
-            filename: 'JMS Company Contact Details Jan 26.pdf',
-            category: 'MANUALS',
-          },
-          {
-            id: 'manual-ntvrp',
-            ragflowDocumentId: 'doc-ntvrp',
-            filename: 'SEAWOLF X - NTVRP 2025.pdf',
-            category: 'HISTORY_PROCEDURES',
-          },
-        ],
-        score: 1,
-      },
-    ]);
+    jest
+      .spyOn(service as never, 'loadDocumentScanContexts' as never)
+      .mockResolvedValue([
+        {
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-contact',
+              ragflowDocumentId: 'doc-contact',
+              filename: 'JMS Company Contact Details Jan 26.pdf',
+              category: 'MANUALS',
+            },
+            {
+              id: 'manual-ntvrp',
+              ragflowDocumentId: 'doc-ntvrp',
+              filename: 'SEAWOLF X - NTVRP 2025.pdf',
+              category: 'HISTORY_PROCEDURES',
+            },
+          ],
+          score: 1,
+        },
+      ]);
 
     const citations =
       await service.expandPersonnelDirectoryDocumentChunkCitations(
@@ -314,6 +502,75 @@ describe('ChatDocumentationScanService', () => {
     ]);
   });
 
+  it('falls back to dataset search when personnel-directory chunk scan misses contact rows', async () => {
+    const ragflowService = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      listDocumentChunks: jest.fn().mockResolvedValue([]),
+      searchDataset: jest.fn().mockResolvedValue([
+        {
+          id: 'search-contact',
+          doc_id: 'doc-contact',
+          doc_name: 'JMS Company Contact Details Jan 26.pdf',
+          content:
+            'James Kirby - Fleet Manager (M) +34 680 664 753 jamesk@jmsyachting.com Carla Swaine - HR Manager Global HSQE (M) +44 7494 320 951 carla@jmsyachting.com',
+          similarity: 0.61,
+        },
+        {
+          id: 'search-noise',
+          doc_id: 'doc-monitor',
+          doc_name: 'Display User Manual.pdf',
+          content:
+            'For service contact the manufacturer support centre at support@example.com.',
+          similarity: 0.58,
+        },
+      ]),
+    };
+    const service = new ChatDocumentationScanService(
+      {} as never,
+      ragflowService as never,
+      queryService,
+      {} as never,
+    );
+    jest
+      .spyOn(service as never, 'loadDocumentScanContexts' as never)
+      .mockResolvedValue([
+        {
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-contact',
+              ragflowDocumentId: 'doc-contact',
+              filename: 'JMS Company Contact Details Jan 26.pdf',
+              category: 'MANUALS',
+            },
+            {
+              id: 'manual-monitor',
+              ragflowDocumentId: 'doc-monitor',
+              filename: 'Display User Manual.pdf',
+              category: 'MANUALS',
+            },
+          ],
+          score: 1,
+        },
+      ]);
+
+    const citations =
+      await service.expandPersonnelDirectoryDocumentChunkCitations(
+        'ship-1',
+        'manager contact details personnel directory company contact list',
+        'list all managers with their contact details',
+        [],
+      );
+
+    expect(ragflowService.searchDataset).toHaveBeenCalled();
+    expect(citations).toEqual([
+      expect.objectContaining({
+        sourceTitle: 'JMS Company Contact Details Jan 26.pdf',
+        snippet: expect.stringContaining('Fleet Manager'),
+      }),
+    ]);
+  });
+
   it('collects tank rows from sounding tables even when the row omits the word capacity', async () => {
     const ragflowService = {
       isConfigured: jest.fn().mockReturnValue(true),
@@ -324,8 +581,7 @@ describe('ChatDocumentationScanService', () => {
             return Promise.resolve([
               {
                 id: 'chunk-tanks',
-                content:
-                  'Fuel Tank 1P 3,142 liters Fuel Tank 2S 2,381 liters',
+                content: 'Fuel Tank 1P 3,142 liters Fuel Tank 2S 2,381 liters',
               },
             ]);
           }
@@ -345,26 +601,28 @@ describe('ChatDocumentationScanService', () => {
       queryService,
       {} as never,
     );
-    jest.spyOn(service as never, 'loadDocumentScanContexts' as never).mockResolvedValue([
-      {
-        ragflowDatasetId: 'dataset-1',
-        manuals: [
-          {
-            id: 'manual-tanks',
-            ragflowDocumentId: 'doc-tanks',
-            filename: 'Fuel Tank Sounding Table.pdf',
-            category: 'MANUALS',
-          },
-          {
-            id: 'manual-volvo',
-            ragflowDocumentId: 'doc-volvo',
-            filename: 'Volvo Penta operators manual.pdf',
-            category: 'MANUALS',
-          },
-        ],
-        score: 1,
-      },
-    ]);
+    jest
+      .spyOn(service as never, 'loadDocumentScanContexts' as never)
+      .mockResolvedValue([
+        {
+          ragflowDatasetId: 'dataset-1',
+          manuals: [
+            {
+              id: 'manual-tanks',
+              ragflowDocumentId: 'doc-tanks',
+              filename: 'Fuel Tank Sounding Table.pdf',
+              category: 'MANUALS',
+            },
+            {
+              id: 'manual-volvo',
+              ragflowDocumentId: 'doc-volvo',
+              filename: 'Volvo Penta operators manual.pdf',
+              category: 'MANUALS',
+            },
+          ],
+          score: 1,
+        },
+      ]);
 
     const citations = await service.expandTankCapacityDocumentChunkCitations(
       'ship-1',
@@ -402,7 +660,7 @@ describe('ChatDocumentationScanService', () => {
           id: 'search-sopep',
           doc_id: 'doc-sopep',
           content:
-            "SHIPBOARD OIL POLLUTION EMERGENCY PLAN List Of Tank Capacities <table><caption> FUELOILTANKS</caption> <tr><td >TANK No</td><td >DESCRIPTION</td><td >IMP. GAL.</td><td >CAPACITY (It)</td><td >FRAME</td></tr> <tr><td >FO1.PS</td><td >Midship/Aft Port Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr> <tr><td >FO2.STBD</td><td >Midship/Aft Starboard Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr></table>",
+            'SHIPBOARD OIL POLLUTION EMERGENCY PLAN List Of Tank Capacities <table><caption> FUELOILTANKS</caption> <tr><td >TANK No</td><td >DESCRIPTION</td><td >IMP. GAL.</td><td >CAPACITY (It)</td><td >FRAME</td></tr> <tr><td >FO1.PS</td><td >Midship/Aft Port Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr> <tr><td >FO2.STBD</td><td >Midship/Aft Starboard Fuel Tank</td><td></td><td >4970</td><td >12-15</td></tr></table>',
           similarity: 0.98,
         },
       ]),
@@ -494,7 +752,8 @@ describe('ChatDocumentationScanService', () => {
             {
               id: 'manual-mase',
               ragflowDocumentId: 'doc-mase',
-              filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+              filename:
+                'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
               category: 'MANUALS',
             },
           ],
@@ -510,7 +769,8 @@ describe('ChatDocumentationScanService', () => {
         [
           {
             shipManualId: 'manual-mase',
-            sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+            sourceTitle:
+              'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
             snippet:
               '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
             score: 0.97,
@@ -526,7 +786,9 @@ describe('ChatDocumentationScanService', () => {
         snippet: expect.stringContaining('Periodic checks and maintenance'),
       }),
     );
-    expect(citations[0]?.snippet).toContain('Replace fuel filter and prefilter');
+    expect(citations[0]?.snippet).toContain(
+      'Replace fuel filter and prefilter',
+    );
     expect(citations[0]?.snippet).toContain('Every 500 hrs');
   });
 
@@ -563,7 +825,8 @@ describe('ChatDocumentationScanService', () => {
             {
               id: 'manual-mase',
               ragflowDocumentId: 'doc-mase',
-              filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+              filename:
+                'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
               category: 'MANUALS',
             },
           ],
@@ -579,7 +842,8 @@ describe('ChatDocumentationScanService', () => {
         [
           {
             shipManualId: 'manual-mase',
-            sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+            sourceTitle:
+              'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
             snippet:
               '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
             score: 0.97,
@@ -638,7 +902,8 @@ describe('ChatDocumentationScanService', () => {
             {
               id: 'manual-mase',
               ragflowDocumentId: 'doc-mase',
-              filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+              filename:
+                'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
               category: 'MANUALS',
             },
           ],
@@ -654,7 +919,8 @@ describe('ChatDocumentationScanService', () => {
         [
           {
             shipManualId: 'manual-mase',
-            sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+            sourceTitle:
+              'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
             snippet:
               '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
             score: 0.97,
@@ -872,13 +1138,31 @@ describe('ChatDocumentationScanService', () => {
       {} as never,
     );
     const wrappedTextItems = [
-      { text: 'Periodic checks and maintenance', x: 180, y: 760, width: 180, height: 10 },
-      { text: 'Perform service at intervals indicated', x: 90, y: 720, width: 180, height: 10 },
+      {
+        text: 'Periodic checks and maintenance',
+        x: 180,
+        y: 760,
+        width: 180,
+        height: 10,
+      },
+      {
+        text: 'Perform service at intervals indicated',
+        x: 90,
+        y: 720,
+        width: 180,
+        height: 10,
+      },
       { text: 'Every 200', x: 316, y: 736, width: 40, height: 8 },
       { text: 'hrs.or 12', x: 316, y: 727, width: 40, height: 8 },
       { text: 'Month', x: 320, y: 719, width: 28, height: 8 },
       { text: 'Cooling system', x: 31, y: 690, width: 100, height: 10 },
-      { text: 'Verify and adjust the tension of the aux. pump belt', x: 31, y: 676, width: 220, height: 10 },
+      {
+        text: 'Verify and adjust the tension of the aux. pump belt',
+        x: 31,
+        y: 676,
+        width: 220,
+        height: 10,
+      },
       { text: 'b', x: 252, y: 676, width: 6, height: 10 },
       { text: '(for', x: 252, y: 676, width: 18, height: 10 },
       { text: 'alternator cooling)', x: 31, y: 664, width: 90, height: 10 },
@@ -906,7 +1190,14 @@ describe('ChatDocumentationScanService', () => {
     ).extractIntervalMaintenanceItemsFromTextItems(
       wrappedTextItems,
       'what is due every 200 hours or 12 months on the diesel generator?',
-      ['200 hour', '200 hours', '200 hrs', '12 month', '12 months', 'every 200'],
+      [
+        '200 hour',
+        '200 hours',
+        '200 hrs',
+        '12 month',
+        '12 months',
+        'every 200',
+      ],
     );
 
     expect(extracted?.items).toContain(
@@ -923,8 +1214,20 @@ describe('ChatDocumentationScanService', () => {
       {} as never,
     );
     const asNeededTextItems = [
-      { text: 'Periodic checks and maintenance', x: 180, y: 760, width: 180, height: 10 },
-      { text: 'Perform service at intervals indicated', x: 90, y: 720, width: 180, height: 10 },
+      {
+        text: 'Periodic checks and maintenance',
+        x: 180,
+        y: 760,
+        width: 180,
+        height: 10,
+      },
+      {
+        text: 'Perform service at intervals indicated',
+        x: 90,
+        y: 720,
+        width: 180,
+        height: 10,
+      },
       { text: 'Maintenance', x: 520, y: 736, width: 50, height: 8 },
       { text: 'as needed', x: 520, y: 727, width: 50, height: 8 },
       { text: 'Fuel system', x: 31, y: 690, width: 100, height: 10 },
@@ -937,7 +1240,13 @@ describe('ChatDocumentationScanService', () => {
       { text: 'Clean the air filter', x: 31, y: 596, width: 110, height: 10 },
       { text: '●', x: 534, y: 596, width: 6, height: 10 },
       { text: 'Engine and assembly', x: 31, y: 570, width: 120, height: 10 },
-      { text: 'Check and adjust the fuel injection pump', x: 31, y: 556, width: 190, height: 10 },
+      {
+        text: 'Check and adjust the fuel injection pump',
+        x: 31,
+        y: 556,
+        width: 190,
+        height: 10,
+      },
       { text: '●', x: 534, y: 556, width: 6, height: 10 },
     ];
 
@@ -1014,7 +1323,8 @@ describe('ChatDocumentationScanService', () => {
             {
               id: 'manual-mase',
               ragflowDocumentId: 'doc-mase',
-              filename: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+              filename:
+                'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
               category: 'MANUALS',
             },
           ],
@@ -1033,7 +1343,8 @@ describe('ChatDocumentationScanService', () => {
         [
           {
             shipManualId: 'manual-mase',
-            sourceTitle: 'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
+            sourceTitle:
+              'MASE generators_44042 - VS 350 SV MUM EN rev.0 (1).pdf',
             snippet:
               '3.8 Fuel Circuit. The generator is diesel-powered. For differences in level higher than 500 mm, fit a non-return valve.',
             score: 0.97,

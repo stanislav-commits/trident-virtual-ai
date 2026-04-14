@@ -2099,9 +2099,7 @@ export class ChatDocumentationQueryService {
       /\b(?:who|what|which)\s+should\s+(?:be\s+)?(?:notified|involved|checked|recorded|completed)\b/i.test(
         trimmed,
       ) ||
-      /\bwhat\s+(?:should|do)\s+i\s+check\s+first\b/i.test(
-        trimmed,
-      )
+      /\bwhat\s+(?:should|do)\s+i\s+check\s+first\b/i.test(trimmed)
     );
   }
 
@@ -2177,13 +2175,13 @@ export class ChatDocumentationQueryService {
     query: string,
     previousUserQuery?: string | null,
   ): string | null {
-    if (
-      this.isPhraseBasedCompletenessVerificationFollowUpQuery(query)
-    ) {
+    if (this.isPhraseBasedCompletenessVerificationFollowUpQuery(query)) {
       return 'show all available';
     }
 
-    if (!this.isSemanticCountCorrectionFollowUpQuery(query, previousUserQuery)) {
+    if (
+      !this.isSemanticCountCorrectionFollowUpQuery(query, previousUserQuery)
+    ) {
       return null;
     }
 
@@ -2791,14 +2789,10 @@ export class ChatDocumentationQueryService {
     }
 
     const normalizedPrevious = new Set(
-      previousTerms.map((term) =>
-        this.normalizeCompletenessSubjectTerm(term),
-      ),
+      previousTerms.map((term) => this.normalizeCompletenessSubjectTerm(term)),
     );
     const normalizedCurrent = new Set(
-      currentTerms.map((term) =>
-        this.normalizeCompletenessSubjectTerm(term),
-      ),
+      currentTerms.map((term) => this.normalizeCompletenessSubjectTerm(term)),
     );
     const currentAddsSpecificity = currentTerms.some(
       (term) =>
@@ -3002,10 +2996,10 @@ export class ChatDocumentationQueryService {
     const anchorTerms = this.extractContactAnchorTerms(query);
     const normalizedAnchors = [...new Set(anchorTerms)].join(' ');
     if (/\bdpa\b/i.test(query)) {
-      return 'dpa designated person ashore role responsibilities safety management';
+      return 'dpa designated person ashore role responsibility responsibilities sms company safety management system administration';
     }
     if (/\bcso\b/i.test(query)) {
-      return 'cso company security officer role responsibilities security management';
+      return 'cso company security officer role responsibility responsibilities security management system';
     }
 
     return normalizedAnchors
@@ -3013,7 +3007,7 @@ export class ChatDocumentationQueryService {
       : null;
   }
 
-  private isRoleDescriptionQuery(query: string): boolean {
+  isRoleDescriptionQuery(query: string): boolean {
     return (
       /\bwhat\s+does\b[\s\S]{0,40}\b(?:dpa|cso|manager|director|officer|engineer|captain|master|founder|president|head|role)\b/i.test(
         query,
@@ -3023,6 +3017,9 @@ export class ChatDocumentationQueryService {
       ) ||
       /\bwhat\s+is\s+(?:the\s+)?(?:role|responsibility|job)\b/i.test(query) ||
       /\bwhat\s+is\b[\s\S]{0,40}\bresponsible\s+for\b/i.test(query) ||
+      /\b(?:dpa|cso|manager|director|officer|engineer|captain|master|founder|president|head)\b[\s\S]{0,80}\bresponsibilit(?:y|ies)\b/i.test(
+        query,
+      ) ||
       /\b(?:describe|explain)\b[\s\S]{0,24}\b(?:role|responsibilit(?:y|ies)|dpa|cso)\b/i.test(
         query,
       )

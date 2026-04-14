@@ -104,8 +104,7 @@ describe('ChatDocumentationQueryService', () => {
         },
         {
           sourceTitle: 'MEPC.1-Circ.684.pdf',
-          snippet:
-            'Environmental efficiency guidance for ships and operators.',
+          snippet: 'Environmental efficiency guidance for ships and operators.',
         },
       ],
     );
@@ -116,7 +115,9 @@ describe('ChatDocumentationQueryService', () => {
       ),
     ).toBe(true);
     expect(
-      queries.some((query) => /MEPC\.1-Circ\.684 Reference ID 1S47/i.test(query)),
+      queries.some((query) =>
+        /MEPC\.1-Circ\.684 Reference ID 1S47/i.test(query),
+      ),
     ).toBe(false);
   });
 
@@ -160,7 +161,8 @@ describe('ChatDocumentationQueryService', () => {
   });
 
   it('recognizes hyphenated interval-maintenance enumeration phrasing', () => {
-    const query = 'list all 500-hour maintenance items for the diesel generator';
+    const query =
+      'list all 500-hour maintenance items for the diesel generator';
 
     expect(service.isProcedureQuery(query)).toBe(true);
     expect(service.isIntervalMaintenanceQuery(query)).toBe(true);
@@ -170,7 +172,8 @@ describe('ChatDocumentationQueryService', () => {
   });
 
   it('treats maintenance-as-needed generator questions as interval-maintenance queries', () => {
-    const query = 'what maintenance is listed as needed for the diesel generator?';
+    const query =
+      'what maintenance is listed as needed for the diesel generator?';
 
     expect(service.isProcedureQuery(query)).toBe(true);
     expect(service.isIntervalMaintenanceQuery(query)).toBe(true);
@@ -358,14 +361,20 @@ describe('ChatDocumentationQueryService', () => {
   });
 
   it('expands role-holder and role-description lookups without making expansion words anchors', () => {
-    const holderQuery = service.buildRetrievalQuery("who is vessel's dpa?", null);
-    const roleQuery = service.buildRetrievalQuery('what is the role of dpa?', null);
+    const holderQuery = service.buildRetrievalQuery(
+      "who is vessel's dpa?",
+      null,
+    );
+    const roleQuery = service.buildRetrievalQuery(
+      'what is the role of dpa?',
+      null,
+    );
 
     expect(holderQuery).toContain('dpa designated person ashore');
     expect(holderQuery).toContain('contact details personnel directory');
     expect(service.extractContactAnchorTerms(holderQuery)).toEqual(['dpa']);
     expect(roleQuery).toBe(
-      'dpa designated person ashore role responsibilities safety management',
+      'dpa designated person ashore role responsibility responsibilities sms company safety management system administration',
     );
   });
 
@@ -404,7 +413,8 @@ describe('ChatDocumentationQueryService', () => {
   });
 
   it('does not rewrite navigation position telemetry queries into personnel directory lookups', () => {
-    const historicalQuery = 'what was the yacht position on 15 March 2026 at 10:00?';
+    const historicalQuery =
+      'what was the yacht position on 15 March 2026 at 10:00?';
     const currentQuery = 'what is the yacht position right now?';
 
     expect(service.isRoleInventoryQuery(historicalQuery)).toBe(false);
@@ -425,7 +435,7 @@ describe('ChatDocumentationQueryService', () => {
         'list all managers with their contact details',
       ),
     ).toBe(
-      'dpa designated person ashore role responsibilities safety management',
+      'dpa designated person ashore role responsibility responsibilities sms company safety management system administration',
     );
   });
 

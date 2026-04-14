@@ -94,13 +94,12 @@ export class ChatDocumentationCitationService {
       queryContext,
       refined,
     );
+    refined = this.refineRoleDescriptionCitations(queryContext, refined);
 
     const referenceIds = [
       ...new Set(
-        (
-          queryContext.match(MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN) ?? []
-        ).map((value) =>
-          value.toLowerCase(),
+        (queryContext.match(MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN) ?? []).map(
+          (value) => value.toLowerCase(),
         ),
       ),
     ];
@@ -109,7 +108,9 @@ export class ChatDocumentationCitationService {
       const matchedByReference = refined.filter((citation) => {
         const haystack =
           `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
-        return referenceIds.some((referenceId) => haystack.includes(referenceId));
+        return referenceIds.some((referenceId) =>
+          haystack.includes(referenceId),
+        );
       });
       if (matchedByReference.length > 0) {
         refined = this.expandReferenceEvidenceCitations(
@@ -287,12 +288,13 @@ export class ChatDocumentationCitationService {
       };
     }
 
-    const shortlistedAnswerProfiles = this.selectShortlistedAnswerSourceProfiles(
-      retrievalQuery,
-      userQuery,
-      profiles,
-      options?.shortlistedManualIds,
-    );
+    const shortlistedAnswerProfiles =
+      this.selectShortlistedAnswerSourceProfiles(
+        retrievalQuery,
+        userQuery,
+        profiles,
+        options?.shortlistedManualIds,
+      );
     if (shortlistedAnswerProfiles.length > 1) {
       const sourceKeys = new Set(
         shortlistedAnswerProfiles.map((profile) => profile.sourceKey),
@@ -364,7 +366,10 @@ export class ChatDocumentationCitationService {
     };
   }
 
-  focusCitationsForQuery(query: string, citations: ChatCitation[]): ChatCitation[] {
+  focusCitationsForQuery(
+    query: string,
+    citations: ChatCitation[],
+  ): ChatCitation[] {
     if (citations.length === 0) return citations;
 
     const referenceIds = [
@@ -410,7 +415,8 @@ export class ChatDocumentationCitationService {
 
       const haystack =
         `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
-      const mentionedReferenceIds = this.extractMaintenanceReferenceIds(haystack);
+      const mentionedReferenceIds =
+        this.extractMaintenanceReferenceIds(haystack);
 
       if (
         mentionedReferenceIds.some(
@@ -467,6 +473,77 @@ export class ChatDocumentationCitationService {
       .map((entry) => entry.citation);
 
     return matched.length > 0 ? matched : citations;
+  }
+
+  private refineRoleDescriptionCitations(
+    query: string,
+    citations: ChatCitation[],
+  ): ChatCitation[] {
+    if (citations.length === 0 || !this.isRoleDescriptionCitationQuery(query)) {
+      return citations;
+    }
+
+    const roleAnchorPatterns = this.buildRoleDescriptionAnchorPatterns(query);
+    if (roleAnchorPatterns.length === 0) {
+      return citations;
+    }
+
+    const matched = citations.filter((citation) => {
+      const haystack =
+        `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+      return roleAnchorPatterns.some((pattern) => pattern.test(haystack));
+    });
+
+    if (matched.length > 0) {
+      return matched;
+    }
+
+    return /\b(?:dpa|cso)\b/i.test(query) ? [] : citations;
+  }
+
+  private isRoleDescriptionCitationQuery(query: string): boolean {
+    return (
+      this.queryService.isRoleDescriptionQuery(query) ||
+      /\b(?:dpa|cso|manager|director|officer|engineer|captain|master|founder|president|head)\b[\s\S]{0,100}\bresponsibilit(?:y|ies)\b/i.test(
+        query,
+      )
+    );
+  }
+
+  private buildRoleDescriptionAnchorPatterns(query: string): RegExp[] {
+    const patterns: RegExp[] = [];
+    const anchorTerms = this.queryService.extractContactAnchorTerms(query);
+
+    if (/\bdpa\b/i.test(query) || anchorTerms.includes('dpa')) {
+      patterns.push(/\bdpa\b/i, /\bdesignated\s+person\s+ashore\b/i);
+    }
+
+    if (/\bcso\b/i.test(query) || anchorTerms.includes('cso')) {
+      patterns.push(/\bcso\b/i, /\bcompany\s+security\s+officer\b/i);
+    }
+
+    const roleTerms = new Set([
+      'manager',
+      'director',
+      'officer',
+      'engineer',
+      'captain',
+      'master',
+      'founder',
+      'president',
+      'head',
+    ]);
+    for (const term of anchorTerms) {
+      if (['dpa', 'cso'].includes(term)) {
+        continue;
+      }
+      if (!roleTerms.has(term)) {
+        continue;
+      }
+      patterns.push(new RegExp(`\\b${this.escapeRegExp(term)}\\b`, 'i'));
+    }
+
+    return patterns;
   }
 
   private prioritizeSpecificationCitations(
@@ -563,7 +640,9 @@ export class ChatDocumentationCitationService {
     const haystack =
       `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
     const anchorTerms = this.queryService.extractContactAnchorTerms(query);
-    const matchedAnchors = anchorTerms.filter((term) => haystack.includes(term));
+    const matchedAnchors = anchorTerms.filter((term) =>
+      haystack.includes(term),
+    );
     const hasEmail =
       /\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/i.test(haystack) ||
       /\b(email|e-mail)\b/i.test(haystack);
@@ -610,6 +689,10 @@ export class ChatDocumentationCitationService {
     }
 
     return score;
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private refineCitationsForRequestedSource(
@@ -662,8 +745,9 @@ export class ChatDocumentationCitationService {
     hints: string[],
   ): number {
     const normalizedTitle =
-      this.queryService.normalizeSourceTitleHint(citation.sourceTitle)?.toLowerCase() ??
-      '';
+      this.queryService
+        .normalizeSourceTitleHint(citation.sourceTitle)
+        ?.toLowerCase() ?? '';
     const normalizedSnippet = `${citation.snippet ?? ''}`.toLowerCase();
 
     let score = 0;
@@ -741,9 +825,9 @@ export class ChatDocumentationCitationService {
 
       const haystack =
         `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
-      const mentionedReferenceIds = [
-        ...haystack.matchAll(/\b1p\d{2,}\b/g),
-      ].map((match) => match[0].toLowerCase());
+      const mentionedReferenceIds = [...haystack.matchAll(/\b1p\d{2,}\b/g)].map(
+        (match) => match[0].toLowerCase(),
+      );
       if (
         mentionedReferenceIds.some(
           (referenceId) => !normalizedReferenceIds.has(referenceId),
@@ -787,11 +871,12 @@ export class ChatDocumentationCitationService {
           focus.specificTerms.length > 0 &&
           this.hasConflictingPartsEvidence(haystack, focus.specificTerms);
         const sourceType = this.classifyCitationSourceType(citation);
-        const metadataEvidence = /\b(spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location)\b/i.test(
-          haystack,
-        )
-          ? 1
-          : 0;
+        const metadataEvidence =
+          /\b(spare\s*name|manufacturer\s*part#?|supplier\s*part#?|quantity|location)\b/i.test(
+            haystack,
+          )
+            ? 1
+            : 0;
 
         let score =
           (citation.score ?? 0) * 10 +
@@ -836,8 +921,7 @@ export class ChatDocumentationCitationService {
     }
 
     const generalMatches = scored.filter(
-      (entry) =>
-        entry.generalOverlap > 0 && !entry.hasConflictingPartsEvidence,
+      (entry) => entry.generalOverlap > 0 && !entry.hasConflictingPartsEvidence,
     );
     if (generalMatches.length > 0) {
       return generalMatches.map((entry) => entry.citation);
@@ -846,7 +930,9 @@ export class ChatDocumentationCitationService {
     return scored.map((entry) => entry.citation);
   }
 
-  private sortCitationsByUpcomingDue(citations: ChatCitation[]): ChatCitation[] {
+  private sortCitationsByUpcomingDue(
+    citations: ChatCitation[],
+  ): ChatCitation[] {
     const withKeys = citations.map((citation) => ({
       citation,
       due: this.extractUpcomingDueSortKey(citation.snippet ?? ''),
@@ -919,9 +1005,7 @@ export class ChatDocumentationCitationService {
       }
 
       if (result.nextDueHours === undefined) {
-        const allSlashNumbers = [
-          ...plainSnippet.matchAll(/\/\s*(\d{2,6})\b/g),
-        ];
+        const allSlashNumbers = [...plainSnippet.matchAll(/\/\s*(\d{2,6})\b/g)];
         const lastSlashNumber = allSlashNumbers.at(-1);
         if (lastSlashNumber) {
           result.nextDueHours = Number.parseInt(lastSlashNumber[1], 10);
@@ -953,9 +1037,10 @@ export class ChatDocumentationCitationService {
 
       const haystack =
         `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
-      const hasPartsEvidence = /\b(manufacturer\s*part#?|supplier\s*part#?|quantity|location|volvo\s+penta|engine\s+oil|zinc|anode|belt|filter|impeller|wear\s*kit|coolant|prefilter)\b/i.test(
-        haystack,
-      );
+      const hasPartsEvidence =
+        /\b(manufacturer\s*part#?|supplier\s*part#?|quantity|location|volvo\s+penta|engine\s+oil|zinc|anode|belt|filter|impeller|wear\s*kit|coolant|prefilter)\b/i.test(
+          haystack,
+        );
       if (!hasPartsEvidence) {
         return false;
       }
@@ -1130,7 +1215,8 @@ export class ChatDocumentationCitationService {
         wantsMaintenanceSchedule,
       );
 
-      if (categoryWeightA !== categoryWeightB) return categoryWeightB - categoryWeightA;
+      if (categoryWeightA !== categoryWeightB)
+        return categoryWeightB - categoryWeightA;
       if (weightA !== weightB) return weightB - weightA;
       return (b.score ?? 0) - (a.score ?? 0);
     });
@@ -1280,7 +1366,9 @@ export class ChatDocumentationCitationService {
     );
   }
 
-  private isOfficialRegistryCertificateCitation(citation: ChatCitation): boolean {
+  private isOfficialRegistryCertificateCitation(
+    citation: ChatCitation,
+  ): boolean {
     const haystack =
       `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
 
@@ -1341,7 +1429,9 @@ export class ChatDocumentationCitationService {
       ['december', 11],
     ]);
 
-    const numericMatch = normalized.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+    const numericMatch = normalized.match(
+      /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/,
+    );
     if (numericMatch) {
       const day = Number.parseInt(numericMatch[1], 10);
       const month = Number.parseInt(numericMatch[2], 10) - 1;
@@ -1552,7 +1642,9 @@ export class ChatDocumentationCitationService {
       });
 
     const focusFiltered = scored.filter(
-      (entry) => entry.analysis.focusOverlap > 0 || entry.analysis.querySpecificEvidence > 0,
+      (entry) =>
+        entry.analysis.focusOverlap > 0 ||
+        entry.analysis.querySpecificEvidence > 0,
     );
     if (focusFiltered.length > 0) {
       return focusFiltered.map((entry) => entry.citation);
@@ -1588,23 +1680,26 @@ export class ChatDocumentationCitationService {
           );
         })
         .sort((left, right) => {
-          const leftCertificate = left.sourceCategory === 'CERTIFICATES' ? 1 : 0;
+          const leftCertificate =
+            left.sourceCategory === 'CERTIFICATES' ? 1 : 0;
           const rightCertificate =
             right.sourceCategory === 'CERTIFICATES' ? 1 : 0;
           if (rightCertificate !== leftCertificate) {
             return rightCertificate - leftCertificate;
           }
 
-          const leftSurveyEvidence = /\b(survey|certificate|valid\s+until|expiry|expires?)\b/i.test(
-            `${left.sourceTitle ?? ''}\n${left.snippet ?? ''}`,
-          )
-            ? 1
-            : 0;
-          const rightSurveyEvidence = /\b(survey|certificate|valid\s+until|expiry|expires?)\b/i.test(
-            `${right.sourceTitle ?? ''}\n${right.snippet ?? ''}`,
-          )
-            ? 1
-            : 0;
+          const leftSurveyEvidence =
+            /\b(survey|certificate|valid\s+until|expiry|expires?)\b/i.test(
+              `${left.sourceTitle ?? ''}\n${left.snippet ?? ''}`,
+            )
+              ? 1
+              : 0;
+          const rightSurveyEvidence =
+            /\b(survey|certificate|valid\s+until|expiry|expires?)\b/i.test(
+              `${right.sourceTitle ?? ''}\n${right.snippet ?? ''}`,
+            )
+              ? 1
+              : 0;
           if (rightSurveyEvidence !== leftSurveyEvidence) {
             return rightSurveyEvidence - leftSurveyEvidence;
           }
@@ -1683,11 +1778,8 @@ export class ChatDocumentationCitationService {
           return Number(rightHasExplicitExpiry) - Number(leftHasExplicitExpiry);
         }
 
-        const leftOfficialCertificate = this.isOfficialRegistryCertificateCitation(
-          left,
-        )
-          ? 1
-          : 0;
+        const leftOfficialCertificate =
+          this.isOfficialRegistryCertificateCitation(left) ? 1 : 0;
         const rightOfficialCertificate =
           this.isOfficialRegistryCertificateCitation(right) ? 1 : 0;
         if (rightOfficialCertificate !== leftOfficialCertificate) {
@@ -1702,10 +1794,7 @@ export class ChatDocumentationCitationService {
       const standaloneMatches = broadCertificateRanking.filter((citation) =>
         this.isStandaloneCertificateLikeCitation(citation),
       );
-      if (
-        standaloneMatches.length > 0 &&
-        broadSoonQuery
-      ) {
+      if (standaloneMatches.length > 0 && broadSoonQuery) {
         const now = Date.now();
         const datedStandaloneMatches = standaloneMatches
           .map((citation) => ({
@@ -1792,7 +1881,10 @@ export class ChatDocumentationCitationService {
     citations: ChatCitation[],
     queryPlan: ChatQueryPlan,
   ): ChatCitation[] {
-    if (queryPlan.primaryIntent !== 'troubleshooting' || citations.length <= 1) {
+    if (
+      queryPlan.primaryIntent !== 'troubleshooting' ||
+      citations.length <= 1
+    ) {
       return citations;
     }
 
@@ -1844,7 +1936,9 @@ export class ChatDocumentationCitationService {
             haystack,
           ) && focusOverlap === 0;
         let score =
-          (citation.score ?? 0) * 10 + focusOverlap * 8 + troubleshootingEvidence * 4;
+          (citation.score ?? 0) * 10 +
+          focusOverlap * 8 +
+          troubleshootingEvidence * 4;
 
         if (looksUnrelatedControlSystem) {
           score -= 20;
@@ -2074,93 +2168,91 @@ export class ChatDocumentationCitationService {
       return citations;
     }
 
-    const intervalPhrases = this.queryService.extractMaintenanceIntervalSearchPhrases(
-      query,
-    );
+    const intervalPhrases =
+      this.queryService.extractMaintenanceIntervalSearchPhrases(query);
     const prefersHistoricalIntervalEvidence =
       this.queryService.isNextDueLookupQuery(query) ||
       /\b(last|previous|history|historical|completed|postponed|reference\s*id|task\s+name|component\s+name)\b/i.test(
         query,
       );
-    const scored = citations
-      .map((citation, index) => {
-        const haystack =
-          `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
-        let score = citation.score ?? 0;
+    const scored = citations.map((citation, index) => {
+      const haystack =
+        `${citation.sourceTitle ?? ''}\n${citation.snippet ?? ''}`.toLowerCase();
+      let score = citation.score ?? 0;
 
+      if (
+        /\b(periodic\s+checks?\s+and\s+maintenance|perform\s+service\s+at\s+intervals?|maintenance\s+as\s+needed|maintenance\s+schedule|service\s+schedule)\b/i.test(
+          haystack,
+        )
+      ) {
+        score += 40;
+      }
+
+      if (
+        /\b(mainten[a-z]*|service|inspection|checks?|schedule)\b/i.test(
+          haystack,
+        )
+      ) {
+        score += 12;
+      }
+
+      if (
+        /\b(before\s+starting|first\s+check\s+after|every\s+\d{2,6}|annual|annually|monthly|hours?|hrs?)\b/i.test(
+          haystack,
+        )
+      ) {
+        score += 18;
+      }
+
+      if (
+        /\b(replace|inspect|check|clean|change|verify|adjust|test|sample)\b/i.test(
+          haystack,
+        )
+      ) {
+        score += 8;
+      }
+
+      const intervalMatches = intervalPhrases.filter((phrase) =>
+        haystack.includes(phrase.toLowerCase()),
+      ).length;
+      score += intervalMatches * 12;
+
+      if (
+        intervalMatches === 0 &&
+        /\b\d{2,6}\s*(?:mm|mbar|bar|psi|v|volt|volts|amp|amps|a|kw|kva|rpm|c)\b/i.test(
+          haystack,
+        ) &&
+        /\b(fuel\s+circuit|diesel\s+fuel\s+inlet|fuel\s+outlet|diameter|opening|connection)\b/i.test(
+          haystack,
+        )
+      ) {
+        score -= 25;
+      }
+
+      if (prefersHistoricalIntervalEvidence) {
         if (
-          /\b(periodic\s+checks?\s+and\s+maintenance|perform\s+service\s+at\s+intervals?|maintenance\s+as\s+needed|maintenance\s+schedule|service\s+schedule)\b/i.test(
+          citation.sourceCategory === 'HISTORY_PROCEDURES' ||
+          /maintenance\s+tasks/i.test(citation.sourceTitle ?? '') ||
+          /\b(next\s+due|last\s+due|reference\s*id|task\s+name|component\s+name|completed|postponed)\b/i.test(
             haystack,
           )
         ) {
-          score += 40;
-        }
-
-        if (
-          /\b(mainten[a-z]*|service|inspection|checks?|schedule)\b/i.test(
-            haystack,
-          )
+          score += 28;
+        } else if (
+          citation.chunkId?.startsWith('manual-interval-scan:') === true
         ) {
-          score += 12;
+          score -= 6;
         }
+      }
 
-        if (
-          /\b(before\s+starting|first\s+check\s+after|every\s+\d{2,6}|annual|annually|monthly|hours?|hrs?)\b/i.test(
-            haystack,
-          )
-        ) {
-          score += 18;
-        }
-
-        if (
-          /\b(replace|inspect|check|clean|change|verify|adjust|test|sample)\b/i.test(
-            haystack,
-          )
-        ) {
-          score += 8;
-        }
-
-        const intervalMatches = intervalPhrases.filter((phrase) =>
-          haystack.includes(phrase.toLowerCase()),
-        ).length;
-        score += intervalMatches * 12;
-
-        if (
-          intervalMatches === 0 &&
-          /\b\d{2,6}\s*(?:mm|mbar|bar|psi|v|volt|volts|amp|amps|a|kw|kva|rpm|c)\b/i.test(
-            haystack,
-          ) &&
-          /\b(fuel\s+circuit|diesel\s+fuel\s+inlet|fuel\s+outlet|diameter|opening|connection)\b/i.test(
-            haystack,
-          )
-        ) {
-          score -= 25;
-        }
-
-        if (prefersHistoricalIntervalEvidence) {
-          if (
-            citation.sourceCategory === 'HISTORY_PROCEDURES' ||
-            /maintenance\s+tasks/i.test(citation.sourceTitle ?? '') ||
-            /\b(next\s+due|last\s+due|reference\s*id|task\s+name|component\s+name|completed|postponed)\b/i.test(
-              haystack,
-            )
-          ) {
-            score += 28;
-          } else if (
-            citation.chunkId?.startsWith('manual-interval-scan:') === true
-          ) {
-            score -= 6;
-          }
-        }
-
-        return {
-          citation,
-          index,
-          hasStructuredScan:
-            citation.chunkId?.startsWith('manual-interval-scan:') === true,
-          score,
-        };
-      });
+      return {
+        citation,
+        index,
+        hasStructuredScan:
+          citation.chunkId?.startsWith('manual-interval-scan:') === true,
+        score,
+      };
+    });
 
     const strongestStructuredSourceTitle = scored
       .filter((entry) => entry.hasStructuredScan && entry.citation.sourceTitle)
@@ -2200,7 +2292,8 @@ export class ChatDocumentationCitationService {
 
     if (strongestStructuredSourceTitle && !prefersHistoricalIntervalEvidence) {
       const preferredSourceEntries = shortlisted.filter(
-        (entry) => entry.citation.sourceTitle === strongestStructuredSourceTitle,
+        (entry) =>
+          entry.citation.sourceTitle === strongestStructuredSourceTitle,
       );
 
       if (preferredSourceEntries.length > 0) {
@@ -2220,7 +2313,9 @@ export class ChatDocumentationCitationService {
     const subjectTerms = this.queryService
       .extractRetrievalSubjectTerms(query)
       .filter((term) => term.length >= 3);
-    const overlap = subjectTerms.filter((term) => haystack.includes(term)).length;
+    const overlap = subjectTerms.filter((term) =>
+      haystack.includes(term),
+    ).length;
 
     if (
       /\b(lubrication|procedure|instructions?|maintenance|engine oil|oil filter|oil bypass filter|drain|fill|dipstick)\b/i.test(
@@ -2277,7 +2372,10 @@ export class ChatDocumentationCitationService {
     const nextForeignReference = [
       ...trailingSlice.matchAll(/\b1p\d{2,}\b/gi),
     ].find((match) => match[0].toLowerCase() !== anchor.toLowerCase());
-    if (nextForeignReference && typeof nextForeignReference.index === 'number') {
+    if (
+      nextForeignReference &&
+      typeof nextForeignReference.index === 'number'
+    ) {
       end = Math.min(
         end,
         anchorIndex + anchor.length + nextForeignReference.index,
@@ -2319,9 +2417,7 @@ export class ChatDocumentationCitationService {
     const leadingSlice = snippet.slice(start, anchorIndex);
     const leadingReferenceMatches = [
       ...leadingSlice.matchAll(MAINTENANCE_REFERENCE_ID_GLOBAL_PATTERN),
-    ].filter(
-      (match) => match[0].toLowerCase() !== normalizedAnchor,
-    );
+    ].filter((match) => match[0].toLowerCase() !== normalizedAnchor);
 
     const previousForeignReference =
       leadingReferenceMatches[leadingReferenceMatches.length - 1];
@@ -2548,7 +2644,8 @@ export class ChatDocumentationCitationService {
     }
 
     const matchedProfiles = profiles.filter(
-      (profile) => profile.subjectCoverage > 0 && profile.explicitEvidenceScore > 0,
+      (profile) =>
+        profile.subjectCoverage > 0 && profile.explicitEvidenceScore > 0,
     );
     if (matchedProfiles.length < 2) return [];
 
@@ -2731,7 +2828,9 @@ export class ChatDocumentationCitationService {
 
     const now = Date.now();
     const futureProfiles = certificateProfiles
-      .filter((profile) => profile.expiryTimestamps.some((timestamp) => timestamp >= now))
+      .filter((profile) =>
+        profile.expiryTimestamps.some((timestamp) => timestamp >= now),
+      )
       .sort((left, right) => {
         const leftSoonest =
           left.expiryTimestamps.find((timestamp) => timestamp >= now) ??
@@ -2774,7 +2873,9 @@ export class ChatDocumentationCitationService {
       ),
     );
     const futureEmbeddedProfiles = embeddedApprovalProfiles
-      .filter((profile) => profile.expiryTimestamps.some((timestamp) => timestamp >= now))
+      .filter((profile) =>
+        profile.expiryTimestamps.some((timestamp) => timestamp >= now),
+      )
       .sort((left, right) => {
         const leftSoonest =
           left.expiryTimestamps.find((timestamp) => timestamp >= now) ??
@@ -2792,7 +2893,9 @@ export class ChatDocumentationCitationService {
       return this.balanceCitationsAcrossSources(
         citations,
         new Set(
-          futureEmbeddedProfiles.slice(0, 5).map((profile) => profile.sourceKey),
+          futureEmbeddedProfiles
+            .slice(0, 5)
+            .map((profile) => profile.sourceKey),
         ),
         2,
       );
@@ -2829,7 +2932,9 @@ export class ChatDocumentationCitationService {
     citations: ChatCitation[],
     sourceKeys: Set<string>,
   ): ChatCitation[] {
-    return citations.filter((citation) => sourceKeys.has(this.getSourceKey(citation)));
+    return citations.filter((citation) =>
+      sourceKeys.has(this.getSourceKey(citation)),
+    );
   }
 
   private shouldLimitToTopManualSources(userQuery: string): boolean {
@@ -2871,7 +2976,8 @@ export class ChatDocumentationCitationService {
     }
 
     if (
-      topProfile.explicitEvidenceScore >= candidateProfile.explicitEvidenceScore + 4 &&
+      topProfile.explicitEvidenceScore >=
+        candidateProfile.explicitEvidenceScore + 4 &&
       topProfile.subjectCoverage >= candidateProfile.subjectCoverage + 1 &&
       topProfile.aggregateScore >= candidateProfile.aggregateScore * 1.75
     ) {
@@ -2881,7 +2987,8 @@ export class ChatDocumentationCitationService {
     return (
       candidateProfile.explicitEvidenceScore > 0 ||
       candidateProfile.subjectCoverage > 0 ||
-      candidateProfile.aggregateScore >= Math.max(topProfile.aggregateScore * 0.45, 1)
+      candidateProfile.aggregateScore >=
+        Math.max(topProfile.aggregateScore * 0.45, 1)
     );
   }
 
@@ -3011,7 +3118,10 @@ export class ChatDocumentationCitationService {
 
     const setA = new Set(a);
     const setB = new Set(b);
-    if (setA.size === setB.size && [...setA].every((value) => setB.has(value))) {
+    if (
+      setA.size === setB.size &&
+      [...setA].every((value) => setB.has(value))
+    ) {
       return false;
     }
 
