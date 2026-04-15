@@ -869,11 +869,22 @@ export class ChatService {
           }> = [];
 
           for (const ship of telemetryCandidateShips) {
+            const shipScopedEffectiveUserQuery =
+              this.stripExplicitShipReferenceFromTelemetryQuery(
+                effectiveUserQuery,
+                ship.name,
+              );
+            const shipScopedResolvedSubjectQuery = resolvedSubjectQuery
+              ? this.stripExplicitShipReferenceFromTelemetryQuery(
+                  resolvedSubjectQuery,
+                  ship.name,
+                )
+              : resolvedSubjectQuery;
             const telemetryContext =
               await this.metricsService.getShipTelemetryContextForQuery(
                 ship.id,
-                effectiveUserQuery,
-                resolvedSubjectQuery,
+                shipScopedEffectiveUserQuery,
+                shipScopedResolvedSubjectQuery,
               );
             const shipTelemetry = telemetryContext.telemetry;
             if (Object.keys(shipTelemetry).length > 0) {
@@ -2203,12 +2214,23 @@ export class ChatService {
     }> = [];
 
     for (const candidateShip of candidateShips) {
+      const shipScopedEffectiveUserQuery =
+        this.stripExplicitShipReferenceFromTelemetryQuery(
+          effectiveUserQuery,
+          candidateShip.name,
+        );
+      const shipScopedResolvedSubjectQuery = resolvedSubjectQuery
+        ? this.stripExplicitShipReferenceFromTelemetryQuery(
+            resolvedSubjectQuery,
+            candidateShip.name,
+          )
+        : resolvedSubjectQuery;
       const resolution = await this.tryResolveHistoricalTelemetryForShip({
         shipId: candidateShip.id,
         sessionId,
         userQuery,
-        effectiveUserQuery,
-        resolvedSubjectQuery,
+        effectiveUserQuery: shipScopedEffectiveUserQuery,
+        resolvedSubjectQuery: shipScopedResolvedSubjectQuery,
         normalizedQuery,
       });
       if (resolution.kind === 'none') {
@@ -2351,6 +2373,31 @@ export class ChatService {
     return matchedShips.length > 0 ? matchedShips : ships;
   }
 
+  private stripExplicitShipReferenceFromTelemetryQuery(
+    query: string,
+    shipName: string,
+  ): string {
+    const normalizedShipName = this.normalizeShipReferenceText(shipName);
+    const shipNameTokens = normalizedShipName.split(/\s+/).filter(Boolean);
+    if (shipNameTokens.length === 0) {
+      return query;
+    }
+
+    const separator = String.raw`[\s_./:-]*`;
+    const shipPattern = shipNameTokens
+      .map((token) => this.escapeRegExp(token))
+      .join(separator);
+    const stripped = query
+      .replace(new RegExp(String.raw`\b${shipPattern}\b`, 'gi'), ' ')
+      .replace(/\b(?:for|on|of|at|aboard|in)\s*$/i, ' ')
+      .replace(/^\s*(?:for|on|of|at|aboard|in)\b/i, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/^[,;: -]+|[,;: -]+$/g, '')
+      .trim();
+
+    return stripped || query;
+  }
+
   private normalizeShipReferenceText(value: string | null | undefined): string {
     return (value ?? '')
       .toLowerCase()
@@ -2358,6 +2405,10 @@ export class ChatService {
       .replace(/[^a-z0-9\s]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private validateAccess(

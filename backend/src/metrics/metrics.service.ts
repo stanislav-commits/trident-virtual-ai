@@ -117,6 +117,7 @@ interface TelemetryListRequest {
 interface NavigationMotionTelemetryIntent {
   wantsLocation: boolean;
   wantsSpeed: boolean;
+  wantsWind: boolean;
   preferredSpeedKind?: 'sog' | 'stw' | 'vmg';
 }
 
@@ -4441,6 +4442,15 @@ export class MetricsService implements OnModuleInit {
       allowComposite?: boolean;
     },
   ): ShipTelemetryEntry[] {
+    const navigationMotionEntries = this.findNavigationMotionTelemetryEntries(
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (navigationMotionEntries.length > 0) {
+      return navigationMotionEntries;
+    }
+
     if (options?.allowComposite !== false) {
       const compositeEntries = this.findCompositeTelemetryEntries(
         entries,
@@ -4468,15 +4478,6 @@ export class MetricsService implements OnModuleInit {
     );
     if (tankInventoryEntries.length > 0) {
       return tankInventoryEntries;
-    }
-
-    const navigationMotionEntries = this.findNavigationMotionTelemetryEntries(
-      entries,
-      query,
-      resolvedSubjectQuery,
-    );
-    if (navigationMotionEntries.length > 0) {
-      return navigationMotionEntries;
     }
 
     if (this.shouldUseLocationTelemetryShortcut(query, resolvedSubjectQuery)) {
@@ -4751,9 +4752,12 @@ export class MetricsService implements OnModuleInit {
     const locationEntries = intent.wantsLocation
       ? this.findCurrentVesselCoordinateEntries(entries)
       : [];
+    const windEntries = intent.wantsWind
+      ? this.findWindTelemetryEntries(entries)
+      : [];
     const selected = speedFirst
-      ? [...speedEntries, ...locationEntries]
-      : [...locationEntries, ...speedEntries];
+      ? [...speedEntries, ...locationEntries, ...windEntries]
+      : [...locationEntries, ...speedEntries, ...windEntries];
 
     return this.uniqueTelemetryEntries(selected);
   }
@@ -4774,8 +4778,18 @@ export class MetricsService implements OnModuleInit {
     }
 
     const wantsLocation = this.isNavigationLocationIntent(searchSpace);
-    const wantsSpeed = this.isNavigationSpeedIntent(searchSpace);
-    if (!wantsLocation && !wantsSpeed) {
+    const wantsWind = this.isWindTelemetryIntent(searchSpace);
+    const windOwnsSpeed =
+      wantsWind &&
+      !wantsLocation &&
+      !this.hasVesselNavigationContext(searchSpace) &&
+      (/\bwind\s+(?:speed|direction|angle)\b/i.test(searchSpace) ||
+        /\b(?:speed|direction|angle)\s+(?:of|for|in|on)\s+(?:the\s+)?wind\b/i.test(
+          searchSpace,
+        ));
+    const wantsSpeed =
+      this.isNavigationSpeedIntent(searchSpace) && !windOwnsSpeed;
+    if (!wantsLocation && !wantsSpeed && !wantsWind) {
       return null;
     }
 
@@ -4794,6 +4808,7 @@ export class MetricsService implements OnModuleInit {
     return {
       wantsLocation,
       wantsSpeed,
+      wantsWind,
       preferredSpeedKind: this.getPreferredNavigationSpeedKind(searchSpace),
     };
   }
@@ -5027,6 +5042,57 @@ export class MetricsService implements OnModuleInit {
     if (/\bnavigation\b/i.test(haystack)) score += 40;
     if (/\bnmea\b/i.test(haystack)) score += 15;
     if (/\b(kn|knot|knots|kts)\b/i.test(haystack)) score += 10;
+    if (entry.dataType === 'numeric' || typeof entry.value === 'number') {
+      score += 10;
+    }
+    return score;
+  }
+
+  private isWindTelemetryIntent(normalizedQuery: string): boolean {
+    return (
+      /\bwind\b/i.test(normalizedQuery) &&
+      !/\b(window|windlass|winding|spare|part|parts|manual|procedure)\b/i.test(
+        normalizedQuery,
+      )
+    );
+  }
+
+  private findWindTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+  ): ShipTelemetryEntry[] {
+    return entries
+      .filter((entry) => this.isWindTelemetryEntry(entry))
+      .map((entry) => ({
+        entry,
+        score: this.scoreWindTelemetryEntry(entry),
+      }))
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          left.entry.key.localeCompare(right.entry.key),
+      )
+      .slice(0, 6)
+      .map((candidate) => candidate.entry);
+  }
+
+  private isWindTelemetryEntry(entry: ShipTelemetryEntry): boolean {
+    const haystack = this.buildTelemetryIdentityHaystack(entry);
+    return /\bwind\b/i.test(haystack);
+  }
+
+  private scoreWindTelemetryEntry(entry: ShipTelemetryEntry): number {
+    const haystack = this.buildTelemetryIdentityHaystack(entry);
+    let score = 0;
+    if (/\benvironment\s+wind\b/i.test(haystack)) score += 80;
+    if (/\bnmea\b/i.test(haystack)) score += 25;
+    if (/\bspeed\s+(?:true|apparent|over\s+ground)\b/i.test(haystack)) {
+      score += 60;
+    }
+    if (/\bdirection\s+(?:true|magnetic)\b/i.test(haystack)) {
+      score += 50;
+    }
+    if (/\bangle\b/i.test(haystack)) score += 35;
+    if (/\bspeed\b/i.test(haystack)) score += 20;
     if (entry.dataType === 'numeric' || typeof entry.value === 'number') {
       score += 10;
     }
