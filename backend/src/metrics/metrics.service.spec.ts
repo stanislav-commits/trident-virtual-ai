@@ -1995,6 +1995,7 @@ describe('MetricsService telemetry matching', () => {
 
     expect(result.prefiltered).toBe(true);
     expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
     expect(Object.keys(result.telemetry)).toHaveLength(2);
     expect(
       Object.keys(result.telemetry).every((key) => /fresh water tank/i.test(key)),
@@ -2288,6 +2289,32 @@ describe('MetricsService telemetry matching', () => {
           field: 'Battery voltage (V)',
         },
       },
+      {
+        metricKey: 'Trending::Bow Thruster::Load (%)',
+        latestValue: 81,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Bow Thruster.Load (%)',
+          description: 'Bow thruster electrical load percentage.',
+          unit: '%',
+          bucket: 'Trending',
+          measurement: 'Bow Thruster',
+          field: 'Load (%)',
+        },
+      },
+      {
+        metricKey: 'Trending::System::Load average',
+        latestValue: 63,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'System.Load average',
+          description: 'General system load average.',
+          unit: '%',
+          bucket: 'Trending',
+          measurement: 'System',
+          field: 'Load average',
+        },
+      },
     ]);
 
     const result = await service.getShipTelemetryContextForQuery(
@@ -2299,6 +2326,8 @@ describe('MetricsService telemetry matching', () => {
     expect(labels.some((key) => /Throttle position/i.test(key))).toBe(true);
     expect(labels.some((key) => /Generator load/i.test(key))).toBe(true);
     expect(labels.every((key) => !/Battery voltage/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/Bow Thruster/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/System\.Load/i.test(key))).toBe(true);
   });
 
   it('composes mixed navigation and equipment metrics instead of collapsing to a single family', async () => {

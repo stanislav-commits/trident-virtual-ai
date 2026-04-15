@@ -452,6 +452,40 @@ describe('ChatQueryNormalizationService', () => {
     expect(normalized.sourceHints).toContain('TELEMETRY');
   });
 
+  it('keeps standalone historical navigation questions from inheriting a previous telemetry subject', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what was the yacht position on 15 March 2026 at 10:00?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what are the current generator throttle and load readings?',
+        },
+        {
+          role: 'assistant',
+          content: 'The current matched telemetry readings are: ...',
+          ragflowContext: {
+            answerRoute: 'current_telemetry',
+            resolvedSubjectQuery:
+              'what are the current generator throttle and load readings?',
+            telemetryFollowUpQuery:
+              'what are the current generator throttle and load readings?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('standalone');
+    expect(normalized.retrievalQuery).toBe(
+      'what was the yacht position on 15 March 2026 at 10:00?',
+    );
+    expect(normalized.operation).toBe('position');
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.timeIntent.absoluteDate).toBe('2026-03-15');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.retrievalQuery).not.toContain('generator');
+    expect(normalized.subject).toContain('yacht position');
+  });
+
   it('keeps live alarm-state queries in telemetry space without inferring starboard from "right now"', () => {
     const normalized = service.normalizeTurn({
       userQuery: 'Are any bilge alarms active right now?',

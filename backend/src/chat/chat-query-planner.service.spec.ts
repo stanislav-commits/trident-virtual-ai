@@ -1,7 +1,9 @@
 import { ChatQueryPlannerService } from './chat-query-planner.service';
+import { ChatQueryNormalizationService } from './chat-query-normalization.service';
 
 describe('ChatQueryPlannerService', () => {
   const service = new ChatQueryPlannerService();
+  const normalizationService = new ChatQueryNormalizationService();
 
   it('routes next-due maintenance questions to history first with telemetry support', () => {
     const plan = service.planQuery(
@@ -260,6 +262,44 @@ describe('ChatQueryPlannerService', () => {
 
     expect(plan.primaryIntent).toBe('telemetry_status');
     expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetryHistory).toBe(false);
+  });
+
+  it('routes conversational telemetry follow-ups about the current vessel location back to telemetry', () => {
+    const normalized = normalizationService.normalizeTurn({
+      userQuery: 'can you show me where this is?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: "what's current yacht speed and location",
+        },
+        {
+          role: 'assistant',
+          content: 'The current matched telemetry readings are: ...',
+          ragflowContext: {
+            answerRoute: 'current_telemetry',
+            resolvedSubjectQuery: "what's current yacht speed and location",
+            telemetryFollowUpQuery: "what's current yacht speed and location",
+          },
+        },
+      ],
+    });
+    const plan = service.planQuery(normalized, normalized.retrievalQuery);
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetry).toBe(true);
+  });
+
+  it('routes telemetry counter wording like operating time to telemetry status', () => {
+    const normalized = normalizationService.normalizeTurn({
+      userQuery: 'What is the operating time on the starboard diesel generator?',
+    });
+    const plan = service.planQuery(normalized, normalized.retrievalQuery);
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetry).toBe(true);
     expect(plan.requiresTelemetryHistory).toBe(false);
   });
 

@@ -1650,6 +1650,10 @@ export class ChatDocumentationQueryService {
     const trimmed = query.trim();
     if (!trimmed) return false;
 
+    if (this.isNavigationPositionQuery(trimmed)) {
+      return false;
+    }
+
     if (
       /^(?:(?:only)\s+)?(?:the\s+)?(?:contact|contacts|contact\s+details?|details?|email|emails|phone|telephone|mobile|number|numbers|address|role|roles|position|positions|title|titles)(?:\s+only)?[!.?]*$/i.test(
         trimmed,

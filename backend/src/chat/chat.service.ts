@@ -853,12 +853,22 @@ export class ChatService {
             select: { id: true, name: true },
             orderBy: { name: 'asc' },
           });
+          const telemetryCandidateShips =
+            this.filterTelemetryCandidateShipsByExplicitMention(
+              shipsWithMetrics,
+              {
+                userQuery,
+                effectiveUserQuery,
+                resolvedSubjectQuery,
+                normalizedQuery: effectiveNormalizedQuery,
+              },
+            );
           const adminTelemetryMatches: Array<{
             shipName: string;
             telemetry: Record<string, unknown>;
           }> = [];
 
-          for (const ship of shipsWithMetrics) {
+          for (const ship of telemetryCandidateShips) {
             const telemetryContext =
               await this.metricsService.getShipTelemetryContextForQuery(
                 ship.id,
@@ -2170,8 +2180,17 @@ export class ChatService {
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
+    const candidateShips = this.filterTelemetryCandidateShipsByExplicitMention(
+      shipsWithMetrics,
+      {
+        userQuery,
+        effectiveUserQuery,
+        resolvedSubjectQuery,
+        normalizedQuery,
+      },
+    );
 
-    if (shipsWithMetrics.length === 0) {
+    if (candidateShips.length === 0) {
       return null;
     }
 
@@ -2183,7 +2202,7 @@ export class ChatService {
       >;
     }> = [];
 
-    for (const candidateShip of shipsWithMetrics) {
+    for (const candidateShip of candidateShips) {
       const resolution = await this.tryResolveHistoricalTelemetryForShip({
         shipId: candidateShip.id,
         sessionId,
@@ -2204,7 +2223,7 @@ export class ChatService {
     }
 
     this.logger.debug(
-      `Historical telemetry admin-global session=${sessionId} candidateShips=${shipsWithMetrics.length} matchedShips=${matches.length}`,
+      `Historical telemetry admin-global session=${sessionId} candidateShips=${candidateShips.length} matchedShips=${matches.length}`,
     );
 
     if (matches.length === 0) {
@@ -2287,6 +2306,58 @@ export class ChatService {
     }
 
     return historicalTelemetryResolution;
+  }
+
+  private filterTelemetryCandidateShipsByExplicitMention(
+    ships: Array<{ id: string; name: string }>,
+    params: {
+      userQuery: string;
+      effectiveUserQuery?: string;
+      resolvedSubjectQuery?: string;
+      normalizedQuery?: ChatNormalizedQuery;
+    },
+  ): Array<{ id: string; name: string }> {
+    if (ships.length <= 1) {
+      return ships;
+    }
+
+    const searchSpaces = [
+      params.userQuery,
+      params.effectiveUserQuery ?? '',
+      params.resolvedSubjectQuery ?? '',
+      params.normalizedQuery?.effectiveQuery ?? '',
+      params.normalizedQuery?.retrievalQuery ?? '',
+      params.normalizedQuery?.subject ?? '',
+      params.normalizedQuery?.asset ?? '',
+    ]
+      .map((value) => this.normalizeShipReferenceText(value))
+      .filter(Boolean);
+
+    if (searchSpaces.length === 0) {
+      return ships;
+    }
+
+    const matchedShips = ships.filter((ship) => {
+      const normalizedShipName = this.normalizeShipReferenceText(ship.name);
+      if (!normalizedShipName || normalizedShipName.length < 3) {
+        return false;
+      }
+
+      return searchSpaces.some((space) =>
+        ` ${space} `.includes(` ${normalizedShipName} `),
+      );
+    });
+
+    return matchedShips.length > 0 ? matchedShips : ships;
+  }
+
+  private normalizeShipReferenceText(value: string | null | undefined): string {
+    return (value ?? '')
+      .toLowerCase()
+      .replace(/[_./:-]+/g, ' ')
+      .replace(/[^a-z0-9\s]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private validateAccess(

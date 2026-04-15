@@ -2926,6 +2926,125 @@ Next due: 07.07.2026 / 2034`,
     ).not.toHaveBeenCalled();
   });
 
+  it('skips documentation retrieval for contextual telemetry follow-ups about where the vessel is', async () => {
+    const contextService = {
+      findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),
+      findContextForAdminQuery: jest.fn().mockResolvedValue([]),
+    };
+    const queryService = new ChatDocumentationQueryService();
+    const normalizationService = new ChatQueryNormalizationService();
+    const citationService = {
+      mergeCitations: jest
+        .fn<(left: ChatCitation[], right: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((left, right) => [...left, ...right]),
+      pruneCitationsForResolvedSubject: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      refineCitationsForIntent: jest
+        .fn<
+          (
+            query: string,
+            userQuery: string,
+            citations: ChatCitation[],
+          ) => ChatCitation[]
+        >()
+        .mockImplementation((_query, _userQuery, citations) => citations),
+      focusCitationsForQuery: jest
+        .fn<(query: string, citations: ChatCitation[]) => ChatCitation[]>()
+        .mockImplementation((_query, citations) => citations),
+      prepareCitationsForAnswer: jest
+        .fn()
+        .mockImplementation(
+          (_query: string, _userQuery: string, citations: ChatCitation[]) => ({
+            citations,
+            compareBySource: false,
+            sourceComparisonTitles: [],
+            mergeBySource: false,
+            sourceMergeTitles: [],
+          }),
+        ),
+      limitCitationsForLlm: jest
+        .fn()
+        .mockImplementation((_userQuery, citations) => citations),
+    } as unknown as ChatDocumentationCitationService;
+    const scanService = {
+      expandReferenceDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandMaintenanceAssetDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandCertificateExpiryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandPersonnelDirectoryDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+      expandTankCapacityDocumentChunkCitations: jest.fn().mockResolvedValue([]),
+      expandAuditChecklistDocumentChunkCitations: jest
+        .fn()
+        .mockResolvedValue([]),
+    } as unknown as ChatDocumentationScanService;
+    const referenceExtractionService = {
+      buildResolvedMaintenanceSubjectQuery: jest.fn().mockReturnValue(null),
+      buildClarificationActions: jest.fn().mockReturnValue([]),
+    } as unknown as ChatReferenceExtractionService;
+
+    const service = new ChatDocumentationService(
+      contextService as never,
+      queryService,
+      citationService,
+      scanService,
+      referenceExtractionService,
+    );
+
+    const normalizedQuery = normalizationService.normalizeTurn({
+      userQuery: 'can you show me where this is?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: "what's current yacht speed and location",
+        },
+        {
+          role: 'assistant',
+          content: 'The current matched telemetry readings are: ...',
+          ragflowContext: {
+            answerRoute: 'current_telemetry',
+            resolvedSubjectQuery: "what's current yacht speed and location",
+            telemetryFollowUpQuery: "what's current yacht speed and location",
+          },
+        },
+      ],
+    });
+
+    const result = await service.prepareDocumentationContext({
+      shipId: 'ship-1',
+      role: 'user',
+      userQuery: 'can you show me where this is?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: "what's current yacht speed and location",
+        },
+        {
+          role: 'assistant',
+          content: 'The current matched telemetry readings are: ...',
+          ragflowContext: {
+            answerRoute: 'current_telemetry',
+            resolvedSubjectQuery: "what's current yacht speed and location",
+            telemetryFollowUpQuery: "what's current yacht speed and location",
+          },
+        },
+      ],
+      normalizedQuery,
+    });
+
+    expect(result.citations).toEqual([]);
+    expect(result.analysisCitations).toEqual([]);
+    expect(contextService.findContextForQuery).not.toHaveBeenCalled();
+    expect(
+      scanService.expandReferenceDocumentChunkCitations,
+    ).not.toHaveBeenCalled();
+  });
+
   it('skips documentation retrieval entirely for telemetry-first onboard inventory queries', async () => {
     const contextService = {
       findContextForQuery: jest.fn().mockResolvedValue({ citations: [] }),

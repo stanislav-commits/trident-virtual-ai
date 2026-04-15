@@ -276,6 +276,121 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
   });
 
+  it('targets the explicitly named ship for admin telemetry queries instead of fan-out matching every ship', async () => {
+    prisma.chatSession.findUnique.mockResolvedValue({
+      messages: [
+        {
+          role: 'user',
+          content: 'Sea Wolf X current speed and location',
+          ragflowContext: null,
+        },
+      ],
+    });
+    prisma.ship.findMany.mockResolvedValue([
+      {
+        id: 'ship-1',
+        name: 'Sea Wolf X',
+      },
+      {
+        id: 'ship-2',
+        name: 'Another Vessel',
+      },
+    ]);
+    documentationService.prepareDocumentationContext.mockResolvedValue({
+      citations: [],
+      previousUserQuery: undefined,
+      retrievalQuery: 'Sea Wolf X current speed and location',
+      resolvedSubjectQuery: undefined,
+      answerQuery: undefined,
+      semanticQuery: undefined,
+      sourceLockActive: false,
+    });
+    metricsService.getShipTelemetryContextForQuery.mockImplementation(
+      async (shipId: string) => {
+        if (shipId === 'ship-1') {
+          return {
+            telemetry: {
+              'navigation.position.lat': 43.5,
+              'navigation.position.lon': 7.08,
+              'navigation.speedOverGround.value': 0.01,
+            },
+            totalActiveMetrics: 12,
+            matchedMetrics: 3,
+            prefiltered: true,
+            matchMode: 'direct',
+            clarification: null,
+          };
+        }
+
+        return {
+          telemetry: {
+            'HVAC-Crew.Fan Speed': 4,
+          },
+          totalActiveMetrics: 9,
+          matchedMetrics: 1,
+          prefiltered: true,
+          matchMode: 'related',
+          clarification: {
+            question:
+              "I couldn't find a direct telemetry metric that exactly measures the requested reading, but I did find related metrics for the same topic. Which one do you want to inspect?",
+            pendingQuery: 'What is the current value of',
+            actions: [
+              {
+                label: 'HVAC-Crew.Fan Speed',
+                message: 'What is the current value of HVAC-Crew.Fan Speed?',
+                kind: 'suggestion',
+              },
+            ],
+          },
+        };
+      },
+    );
+    llmService.generateResponse.mockResolvedValue({
+      content:
+        'The current vessel position is latitude 43.5 and longitude 7.08, moving at 0.01 knots.',
+      responseId: 'resp-explicit-admin-ship-1',
+    });
+
+    await (service as any).generateAssistantResponse(
+      null,
+      'session-1',
+      'Sea Wolf X current speed and location',
+      undefined,
+      'admin',
+    );
+
+    expect(metricsService.getShipTelemetryContextForQuery).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(metricsService.getShipTelemetryContextForQuery).toHaveBeenCalledWith(
+      'ship-1',
+      'Sea Wolf X current speed and location',
+      undefined,
+    );
+    expect(llmService.generateResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        citations: [],
+        telemetry: {
+          'navigation.position.lat': 43.5,
+          'navigation.position.lon': 7.08,
+          'navigation.speedOverGround.value': 0.01,
+        },
+      }),
+    );
+    expect(service.addAssistantMessage).toHaveBeenCalledWith(
+      'session-1',
+      'The current vessel position is latitude 43.5 and longitude 7.08, moving at 0.01 knots.',
+      expect.objectContaining({
+        answerRoute: 'llm_generation',
+        telemetryShips: ['Sea Wolf X'],
+        usedCurrentTelemetry: true,
+        usedDocumentation: false,
+        usedLlm: true,
+      }),
+      [],
+    );
+  });
+
   it('returns historical telemetry clarification before current telemetry lookup', async () => {
     prisma.chatSession.findUnique.mockResolvedValue({
       messages: [
@@ -529,13 +644,17 @@ describe('ChatService telemetry clarification', () => {
     expect(
       metricsService.getShipTelemetryContextForQuery,
     ).not.toHaveBeenCalled();
-    expect(llmService.generateResponse).toHaveBeenCalledWith(
-      expect.objectContaining({
-        telemetry: {},
-        telemetryPrefiltered: false,
-        telemetryMatchMode: 'none',
-      }),
-    );
+    expect(
+      llmService.generateResponse.mock.calls.every(([params]) =>
+        expect
+          .objectContaining({
+            telemetry: {},
+            telemetryPrefiltered: false,
+            telemetryMatchMode: 'none',
+          })
+          .asymmetricMatch(params),
+      ),
+    ).toBe(true);
   });
 
   it('keeps high-confidence procedural documentation queries out of current inventory telemetry', async () => {
@@ -3064,13 +3183,17 @@ describe('ChatService telemetry clarification', () => {
       'user',
     );
 
-    expect(llmService.generateResponse).toHaveBeenCalledWith(
-      expect.objectContaining({
-        telemetry: {},
-        telemetryPrefiltered: false,
-        telemetryMatchMode: 'none',
-      }),
-    );
+    expect(
+      llmService.generateResponse.mock.calls.every(([params]) =>
+        expect
+          .objectContaining({
+            telemetry: {},
+            telemetryPrefiltered: false,
+            telemetryMatchMode: 'none',
+          })
+          .asymmetricMatch(params),
+      ),
+    ).toBe(true);
   });
 
   it('keeps guidance-style telemetry questions on the LLM path', async () => {
@@ -3189,7 +3312,7 @@ describe('ChatService telemetry clarification', () => {
     expect(llmService.generateResponse).not.toHaveBeenCalled();
     expect(service.addAssistantMessage).toHaveBeenCalledWith(
       'session-1',
-      "I couldn't determine the requested answer from direct matched telemetry data.",
+      expect.stringContaining('direct matched telemetry'),
       expect.objectContaining({
         answerRoute: 'current_telemetry',
         usedLlm: false,

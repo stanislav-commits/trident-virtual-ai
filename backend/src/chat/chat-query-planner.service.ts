@@ -152,6 +152,16 @@ export class ChatQueryPlannerService {
       return 'telemetry_status';
     }
 
+    if (
+      normalizedQuery &&
+      this.isLiveTelemetryIntentFromNormalized(
+        normalizedQuery,
+        resolvedSubjectQuery,
+      )
+    ) {
+      return 'telemetry_status';
+    }
+
     if (this.isManualSpecificationQuery(normalized)) {
       return 'manual_specification';
     }
@@ -487,6 +497,51 @@ export class ChatQueryPlannerService {
     );
   }
 
+  private isLiveTelemetryIntentFromNormalized(
+    normalizedQuery: ChatNormalizedQuery,
+    resolvedSubjectQuery?: string,
+  ): boolean {
+    if (!normalizedQuery.sourceHints.includes('TELEMETRY')) {
+      return false;
+    }
+
+    if (
+      normalizedQuery.timeIntent.kind === 'historical_point' ||
+      normalizedQuery.timeIntent.kind === 'historical_range' ||
+      normalizedQuery.timeIntent.kind === 'historical_event'
+    ) {
+      return false;
+    }
+
+    if (normalizedQuery.operation === 'position') {
+      return true;
+    }
+
+    if (normalizedQuery.timeIntent.kind === 'current') {
+      return true;
+    }
+
+    const searchSpace = [
+      normalizedQuery.subject ?? '',
+      normalizedQuery.asset ?? '',
+      normalizedQuery.effectiveQuery,
+      resolvedSubjectQuery ?? '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    if (
+      normalizedQuery.followUpMode !== 'standalone' &&
+      this.isTelemetryValueQuery(searchSpace)
+    ) {
+      return true;
+    }
+
+    return /\b(operating\s+time|runtime|running\s+hours|hours?|hour\s*meter|throttle|load|speed|location|position|coordinates?|gps|latitude|longitude|lat|lon|level|remaining|available|active|inactive|online|offline|alarm|alarms|reading|readings|value|values)\b/i.test(
+      searchSpace,
+    );
+  }
+
   private prefersExactDocumentRows(
     primaryIntent: ChatQueryIntent,
     subjectContext: string,
@@ -696,7 +751,7 @@ export class ChatQueryPlannerService {
     }
 
     return (
-      /\b(current|currently|status|state|reading|readings|value|values|temperature|temperatures|temp|pressure|pressures|level|levels|voltage|voltages|current|currents|amperage|amperages|load|loads|rpm|speed|speeds|flow|flows|rate|rates|running\s+hours|runtime|hour\s*meter|latitude|longitude|location|position|coordinates?|gps|lat|lon)\b/i.test(
+      /\b(current|currently|status|state|reading|readings|value|values|temperature|temperatures|temp|pressure|pressures|level|levels|voltage|voltages|current|currents|amperage|amperages|load|loads|rpm|speed|speeds|flow|flows|rate|rates|running\s+hours|runtime|operating\s+time|hour\s*meter|latitude|longitude|location|position|coordinates?|gps|lat|lon)\b/i.test(
         query,
       ) ||
       (/\b(active|inactive|enabled|disabled|online|offline)\b/i.test(query) &&

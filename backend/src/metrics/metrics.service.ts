@@ -5937,8 +5937,27 @@ export class MetricsService implements OnModuleInit {
     const byKey = new Map(
       selected.map((candidate) => [candidate.entry.key, candidate]),
     );
+    const subjectTokens = this.getTelemetrySubjectTokens(
+      this.buildTelemetryQuerySignals(normalizedQuery).tokens,
+    );
+    const subjectScopedCandidates =
+      subjectTokens.length > 0
+        ? candidates.filter(
+            (candidate) =>
+              this.matchesTelemetrySpecificContext(
+                candidate.entry,
+                normalizedQuery,
+              ) && this.matchesTelemetrySubject(candidate.entry, subjectTokens),
+          )
+        : [];
     for (const kind of queryKinds) {
-      const bestForKind = candidates.find((candidate) =>
+      const candidatePool =
+        subjectScopedCandidates.some((candidate) =>
+          this.extractTelemetryEntryMeasurementKinds(candidate.entry).has(kind),
+        )
+          ? subjectScopedCandidates
+          : candidates;
+      const bestForKind = candidatePool.find((candidate) =>
         this.extractTelemetryEntryMeasurementKinds(candidate.entry).has(kind),
       );
       if (bestForKind && !byKey.has(bestForKind.entry.key)) {
@@ -6116,6 +6135,11 @@ export class MetricsService implements OnModuleInit {
     const normalizedQuery = this.normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
+
+    const fluid = this.detectStoredFluidSubject(normalizedQuery);
+    if (fluid && this.isAggregateStoredFluidQuery(normalizedQuery, fluid)) {
+      return null;
+    }
 
     return this.shouldForceTankTelemetryClarification(entries, normalizedQuery)
       ? 'ambiguous_tank_reading'
