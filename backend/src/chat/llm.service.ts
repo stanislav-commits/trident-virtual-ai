@@ -363,6 +363,16 @@ export class LlmService {
         'When no documentation citations are provided, do not mention manuals, documents, or missing documentation.\n\n';
     }
 
+    if (
+      this.isVesselSpeedTelemetryQuery(context.userQuery) &&
+      this.hasVesselSpeedTelemetryValue(context.telemetry)
+    ) {
+      prompt +=
+        'Important: This telemetry includes a direct current vessel speed reading. ' +
+        'Treat speedOverGround, SOG, speedThroughWater, STW, VMG, or vessel speed labels with numeric values as available speed telemetry. ' +
+        'If the user asks for speed, pace, how fast the vessel is moving, or a combined location/speed answer, include that speed value directly and do not say speed or pace is unavailable.\n\n';
+    }
+
     if (context.telemetryMatchMode === 'exact') {
       prompt +=
         'Important: The telemetry below contains an exact metric match for the question. ' +
@@ -1163,13 +1173,62 @@ export class LlmService {
 
   private isLocationTelemetryQuery(query: string): boolean {
     return (
-      /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location)\b/i.test(
+      (/\b(latitude|longitude|lat|lon|coordinates?|position|gps|location|whereabouts)\b/i.test(
         query,
-      ) &&
+      ) ||
+        /\bwhere\s+(?:are\s+we|am\s+i)\b/i.test(query) ||
+        /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
+          query,
+        )) &&
       !/\b(spare|part|parts|supplier|manufacturer|quantity|reference)\b/i.test(
         query,
       )
     );
+  }
+
+  private isVesselSpeedTelemetryQuery(query: string): boolean {
+    const normalized = query.toLowerCase();
+    const asksSpeed =
+      /\b(speed|pace|sog|stw|vmg|knots?|kts?)\b/i.test(normalized) ||
+      /\bhow\s+fast\b/i.test(normalized) ||
+      /\b(?:we|vessel|yacht|ship|boat)\s+(?:are\s+)?(?:is\s+)?(?:moving|sailing|underway)\b/i.test(
+        normalized,
+      );
+    if (!asksSpeed) {
+      return false;
+    }
+
+    const windOwnsSpeed =
+      /\bwind\b/i.test(normalized) &&
+      !/\b(location|position|coordinates?|where|whereabouts|vessel|yacht|ship|boat|we|our|sog|pace|how\s+fast|moving)\b/i.test(
+        normalized,
+      );
+
+    return !windOwnsSpeed;
+  }
+
+  private hasVesselSpeedTelemetryValue(
+    telemetry?: Record<string, unknown>,
+  ): boolean {
+    if (!telemetry) {
+      return false;
+    }
+
+    return Object.entries(telemetry).some(([label, value]) => {
+      if (value === null || value === undefined || value === '') {
+        return false;
+      }
+      if (
+        /\b(wind|fan|hvac|blower|pump|engine|generator|genset|motor|rpm|throttle)\b/i.test(
+          label,
+        )
+      ) {
+        return false;
+      }
+      return /\b(speed\s*over\s*ground|speedoverground|sog|speed\s*through\s*water|speedthroughwater|stw|velocity\s*made\s*good|vmg|vessel\s*speed|navigation\.[\w.]*speed)\b/i.test(
+        label,
+      );
+    });
   }
 
   private isTelemetryListQuery(query: string): boolean {

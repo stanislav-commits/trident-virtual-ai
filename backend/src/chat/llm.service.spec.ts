@@ -613,6 +613,32 @@ describe('LlmService maintenance calculation guard', () => {
     );
   });
 
+  it('tells telemetry prompts to treat pace wording as direct vessel speed when speed telemetry is present', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: 'what are our current whereabouts and pace?',
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'direct',
+      telemetry: {
+        'navigation.position.lat': 43.53606,
+        'navigation.position.lon': 7.006816666666666,
+        'navigation.speedOverGround.value': 0.42,
+      },
+      noDocumentation: true,
+    });
+
+    expect(prompt).toContain(
+      'This telemetry includes the vessel\'s current coordinate pair.',
+    );
+    expect(prompt).toContain(
+      'This telemetry includes a direct current vessel speed reading.',
+    );
+    expect(prompt).toContain(
+      'do not say speed or pace is unavailable',
+    );
+  });
+
   it('tells answer formatting to use plain lines instead of decorative bold markers', () => {
     const service = new LlmService();
 

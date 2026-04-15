@@ -110,8 +110,8 @@ export class TelemetryQuerySemanticNormalizerService {
       'Do not answer the user question.',
       'Return only concise canonical telemetry search hints that could help match metric labels, fields, measurements, or descriptions.',
       'Prefer canonical marine telemetry wording over the user wording when the user uses conversational phrasing.',
-      'For vessel location requests, include phrases such as latitude, longitude, vessel position, or coordinates when appropriate.',
-      'For vessel speed requests, include speed over ground when that is the most likely current navigation speed metric.',
+      'For vessel location requests, including conversational wording like whereabouts or where are we, include phrases such as latitude, longitude, vessel position, or coordinates when appropriate.',
+      'For vessel speed requests, including pace, how fast, moving, or underway wording, include speed over ground when that is the most likely current navigation speed metric.',
       'For runtime questions, map natural language such as operating time or time on equipment to running hours, runtime, or hour meter when appropriate.',
       'Do not invent vendor or equipment names that are not implied by the query.',
       'Keep subjectTerms short noun phrases or single-word asset terms.',
@@ -190,7 +190,10 @@ export class TelemetryQuerySemanticNormalizerService {
       measurementKinds,
       subjectTerms,
       semanticPhrases,
-      preferredSpeedKind: /\bsog\b/i.test(normalized) ? 'sog' : null,
+      preferredSpeedKind:
+        /\b(speed\s+over\s+ground|sog|pace|how\s+fast)\b/i.test(normalized)
+          ? 'sog'
+          : null,
       confidence:
         measurementKinds.length > 0 || semanticPhrases.length > 0 ? 0.35 : 0.15,
     };
@@ -280,8 +283,11 @@ export class TelemetryQuerySemanticNormalizerService {
     const checks: Array<
       [kind: TelemetrySemanticQuery['measurementKinds'][number], pattern: RegExp]
     > = [
-      ['location', /\b(latitude|longitude|location|position|coordinates?|lat|lon|gps)\b/i],
-      ['speed', /\b(speed|sog|stw|vmg|knots?|kts?)\b/i],
+      [
+        'location',
+        /\b(latitude|longitude|location|position|coordinates?|whereabouts|lat|lon|gps)\b|\bwhere\s+(?:are\s+we|am\s+i)\b/i,
+      ],
+      ['speed', /\b(speed|pace|sog|stw|vmg|knots?|kts?)\b|\bhow\s+fast\b/i],
       ['hours', /\b(runtime|running|hours?|hour meter)\b/i],
       ['voltage', /\b(voltages?|volts?)\b/i],
       ['current', /\b(currents?|amps?|amperage)\b/i],

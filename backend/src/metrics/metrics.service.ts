@@ -4924,7 +4924,7 @@ export class MetricsService implements OnModuleInit {
 
   private getNavigationLocationIntentIndex(normalizedQuery: string): number {
     const match = normalizedQuery.match(
-      /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location|where\s+(?:is|are))\b/i,
+      /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location|whereabouts|where\s+(?:is|are))\b/i,
     );
     return match?.index ?? -1;
   }
@@ -6453,7 +6453,7 @@ export class MetricsService implements OnModuleInit {
         /\b(energies?|watt\s*hours?|kilowatt\s*hours?|megawatt\s*hours?|wh|kwh|mwh)\b/i,
         'energy',
       ],
-      [/\b(rpms?|speeds?)\b/i, 'speed'],
+      [/\b(rpms?|speeds?|pace)\b/i, 'speed'],
       [/\b(flows?|rates?)\b/i, 'flow'],
       [/\b(runtime|runtimes|running|hours?|hour\s*meter)\b/i, 'hours'],
       [
@@ -6469,9 +6469,10 @@ export class MetricsService implements OnModuleInit {
     }
 
     if (
-      /\b(latitude|longitude|coordinates?|gps|location|lat|lon)\b/i.test(
+      /\b(latitude|longitude|coordinates?|gps|location|whereabouts|lat|lon)\b/i.test(
         normalized,
       ) ||
+      /\bwhere\s+(?:are\s+we|am\s+i)\b/i.test(normalized) ||
       (/\bposition\b/i.test(normalized) &&
         this.hasTelemetryNavigationPositionContext(normalized))
     ) {
@@ -6531,6 +6532,15 @@ export class MetricsService implements OnModuleInit {
   private extractTelemetryQueryMeasurementKinds(value: string): Set<string> {
     const kinds = this.extractTelemetryMeasurementKinds(value);
     const normalized = this.normalizeTelemetryText(value);
+    if (this.isNavigationLocationIntent(normalized)) {
+      kinds.add('location');
+    }
+    if (
+      this.isNavigationSpeedIntent(normalized) &&
+      !this.hasNonNavigationPrimarySpeedSubject(normalized)
+    ) {
+      kinds.add('speed');
+    }
     const fluid = this.detectStoredFluidSubject(normalized);
     const treatsCurrentAsLiveQualifier =
       kinds.has('current') &&
@@ -7465,9 +7475,9 @@ export class MetricsService implements OnModuleInit {
 
   private isTelemetryLocationQuery(normalizedQuery: string): boolean {
     const hasExplicitLocationTerm =
-      /\b(latitude|longitude|lat|lon|coordinates?|gps|location)\b/i.test(
+      /\b(latitude|longitude|lat|lon|coordinates?|gps|location|whereabouts)\b/i.test(
         normalizedQuery,
-      );
+      ) || /\bwhere\s+(?:are\s+we|am\s+i)\b/i.test(normalizedQuery);
     const hasVesselPositionTerm =
       /\bposition\b/i.test(normalizedQuery) &&
       !/\b(throttle|valve|switch|lever|damper|actuator|rudder|flap|fan|pump|engine|generator|genset|motor)\b/i.test(
