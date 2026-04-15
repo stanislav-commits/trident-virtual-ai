@@ -56,6 +56,18 @@ function normalizeEscapedMarkdown(text: string): string {
   return text.replace(/\\([*_`~])/g, "$1");
 }
 
+function normalizeMojibakePunctuation(text: string): string {
+  return text
+    .replace(/вЂ”|â€”/g, "-")
+    .replace(/вЂ“|â€“/g, "-")
+    .replace(/вЂ™|вЂ|â€™|â€˜/g, "'")
+    .replace(/вЂњ|вЂќ|â€œ|â€\u009d/g, '"')
+    .replace(/В°|Â°/g, "°")
+    .replace(/В·|Â·/g, "·")
+    .replace(/Г—/g, "x")
+    .replace(/Â/g, "");
+}
+
 function extractInlineButtonActions(text: string): {
   cleanedText: string;
   actions: ChatSuggestionActionDto[];
@@ -101,11 +113,12 @@ function CitationBadge({
     ? `${ref.sourceTitle || "Document"}${ref.pageNumber ? ` — p. ${ref.pageNumber}` : ""}`
     : `Source [${idx}]`;
   const canOpen = !!(ref?.shipId && ref?.shipManualId && onOpen);
+  const normalizedTitle = normalizeMojibakePunctuation(title);
 
   return (
     <span
       className={`chat-cite-badge${canOpen ? " chat-cite-badge--clickable" : ""}`}
-      title={title}
+      title={normalizedTitle}
       role={canOpen ? "button" : undefined}
       tabIndex={canOpen ? 0 : undefined}
       onClick={
@@ -179,9 +192,11 @@ export function MessageBubble({
     : [];
   const normalizedAssistantContent =
     role === "assistant"
-      ? normalizeEscapedMarkdown(
-          stripLegacyInteractiveMarkup(
-            normalizeMathLikeFormatting(content.trim()),
+      ? normalizeMojibakePunctuation(
+          normalizeEscapedMarkdown(
+            stripLegacyInteractiveMarkup(
+              normalizeMathLikeFormatting(content.trim()),
+            ),
           ),
         )
       : content.trim();

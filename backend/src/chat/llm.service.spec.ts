@@ -626,6 +626,9 @@ describe('LlmService maintenance calculation guard', () => {
     expect(prompt).toContain(
       'put each item on its own separate line.',
     );
+    expect(prompt).toContain(
+      'Do not prefix headings, labels, or bullets with stray citation-like numbers such as "1:" or "4:".',
+    );
   });
 
   it('warns when only related telemetry is available for a requested metric', () => {

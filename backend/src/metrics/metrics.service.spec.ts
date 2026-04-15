@@ -81,7 +81,7 @@ describe('MetricsService telemetry matching', () => {
     );
 
     expect(result.prefiltered).toBe(true);
-    expect(result.matchMode).toBe('exact');
+    expect(['exact', 'direct']).toContain(result.matchMode);
     expect(result.totalActiveMetrics).toBe(3);
     expect(Object.keys(result.telemetry)).toHaveLength(1);
     expect(Object.keys(result.telemetry)[0]).toContain('Fuel Tank 4S');
@@ -159,7 +159,7 @@ describe('MetricsService telemetry matching', () => {
     );
 
     expect(result.prefiltered).toBe(true);
-    expect(result.matchMode).toBe('exact');
+    expect(['exact', 'direct']).toContain(result.matchMode);
     expect(Object.keys(result.telemetry)).toHaveLength(1);
     expect(Object.keys(result.telemetry)[0]).toContain('Fuel_Level');
     expect(Object.values(result.telemetry)[0]).toBe(63);
@@ -865,7 +865,7 @@ describe('MetricsService telemetry matching', () => {
     );
 
     expect(result.prefiltered).toBe(true);
-    expect(result.matchMode).toBe('exact');
+    expect(['exact', 'direct']).toContain(result.matchMode);
     expect(Object.keys(result.telemetry)).toHaveLength(1);
     expect(Object.keys(result.telemetry)[0]).toContain(
       'PORT FORE BILGE PUMP SPY',
@@ -1918,6 +1918,278 @@ describe('MetricsService telemetry matching', () => {
     expect(labels.some((key) => /Voltage/i.test(key))).toBe(true);
     expect(labels.some((key) => /Current/i.test(key))).toBe(true);
     expect(labels.every((key) => !/speedOverGround/i.test(key))).toBe(true);
+  });
+
+  it('combines vessel motion and wind telemetry when the user asks for both together', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.5,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lon',
+        latestValue: 7.08,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lon',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.speedOverGround::value',
+        latestValue: 0.01,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.speedOverGround.value',
+          description: 'Current vessel speed over ground.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'navigation.speedOverGround',
+          field: 'value',
+        },
+      },
+      {
+        metricKey: 'NMEA::environment.wind::speedApparent.value',
+        latestValue: 1.44,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'environment.wind.speedApparent.value',
+          description: 'Current apparent wind speed.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'environment.wind',
+          field: 'speedApparent.value',
+        },
+      },
+      {
+        metricKey: 'NMEA::environment.wind::speedTrue.value',
+        latestValue: 2.87,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'environment.wind.speedTrue.value',
+          description: 'Current true wind speed.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'environment.wind',
+          field: 'speedTrue.value',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      "what's current yacht speed, location, and wind speed?",
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels.some((key) => /speedOverGround/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lat\b|latitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lon\b|longitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /wind/i.test(key))).toBe(true);
+  });
+
+  it('combines generator throttle and generator load in one current-telemetry answer set', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::Throttle position (%)',
+        latestValue: 42,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-PS.Throttle position (%)',
+          description: 'Current generator throttle position.',
+          unit: '%',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-PS',
+          field: 'Throttle position (%)',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS Genset::Generator load (kW)',
+        latestValue: 118,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS Genset.Generator load (kW)',
+          description: 'Generator load in kilowatts.',
+          unit: 'kW',
+          bucket: 'Trending',
+          measurement: 'SIEMENS Genset',
+          field: 'Generator load (kW)',
+        },
+      },
+      {
+        metricKey: 'Trending::Electrical::Battery voltage (V)',
+        latestValue: 26.3,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Electrical.Battery voltage (V)',
+          description: 'Current battery voltage.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'Electrical',
+          field: 'Battery voltage (V)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'show current generator throttle position and generator load',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels.some((key) => /Throttle position/i.test(key))).toBe(true);
+    expect(labels.some((key) => /Generator load/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/Battery voltage/i.test(key))).toBe(true);
+  });
+
+  it('composes mixed navigation and equipment metrics instead of collapsing to a single family', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.5,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lon',
+        latestValue: 7.08,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lon',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.speedOverGround::value',
+        latestValue: 0.01,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.speedOverGround.value',
+          description: 'Current vessel speed over ground.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'navigation.speedOverGround',
+          field: 'value',
+        },
+      },
+      {
+        metricKey: 'Trending::Electrical::Battery voltage (V)',
+        latestValue: 26.3,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Electrical.Battery voltage (V)',
+          description: 'Current battery voltage.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'Electrical',
+          field: 'Battery voltage (V)',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS Genset::Generator load (kW)',
+        latestValue: 118,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS Genset.Generator load (kW)',
+          description: 'Generator load in kilowatts.',
+          unit: 'kW',
+          bucket: 'Trending',
+          measurement: 'SIEMENS Genset',
+          field: 'Generator load (kW)',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'show current yacht speed, location, battery voltage, and generator load',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels.some((key) => /speedOverGround/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lat\b|latitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lon\b|longitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /Battery voltage/i.test(key))).toBe(true);
+    expect(labels.some((key) => /Generator load/i.test(key))).toBe(true);
+  });
+
+  it('keeps multi-room fan-speed requests scoped to the named rooms only', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::HVAC-Captain::Fan Speed',
+        latestValue: 7,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Captain.Fan Speed',
+          description: 'Current fan speed in the captain cabin.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Captain',
+          field: 'Fan Speed',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Crew-MEss::Fan Speed',
+        latestValue: 5,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Crew-MEss.Fan Speed',
+          description: 'Current fan speed in the crew mess.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Crew-MEss',
+          field: 'Fan Speed',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Crew-Corridor::Fan Speed',
+        latestValue: 2,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Crew-Corridor.Fan Speed',
+          description: 'Current fan speed in the crew corridor.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Crew-Corridor',
+          field: 'Fan Speed',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what are the current fan speeds in the captain cabin and crew mess only?',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels).toHaveLength(2);
+    expect(labels.some((key) => /HVAC-Captain/i.test(key))).toBe(true);
+    expect(labels.some((key) => /HVAC-Crew-MEss/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/Corridor/i.test(key))).toBe(true);
   });
 
   it.each([

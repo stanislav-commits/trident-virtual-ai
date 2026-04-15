@@ -141,6 +141,202 @@ describe('ChatDocumentationService', () => {
     expect(selectedManualIds).toEqual(['manual-primary', 'manual-secondary']);
   });
 
+  it('widens semantic manual scope for personnel directory queries', () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const selectedManualIds = (service as any).selectSemanticManualIds(
+      [
+        {
+          manualId: 'manual-1',
+          documentId: 'doc-1',
+          filename: 'Manager Handbook.pdf',
+          category: 'MANUALS',
+          score: 187,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-2',
+          documentId: 'doc-2',
+          filename: 'Company Contact Details.pdf',
+          category: 'MANUALS',
+          score: 170,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-3',
+          documentId: 'doc-3',
+          filename: 'Fleet Contacts.pdf',
+          category: 'MANUALS',
+          score: 164,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-4',
+          documentId: 'doc-4',
+          filename: 'Personnel Directory.pdf',
+          category: 'MANUALS',
+          score: 155,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-5',
+          documentId: 'doc-5',
+          filename: 'Bridge Contacts.pdf',
+          category: 'MANUALS',
+          score: 146,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-6',
+          documentId: 'doc-6',
+          filename: 'Engineering Contacts.pdf',
+          category: 'MANUALS',
+          score: 143,
+          reasons: ['profile_text'],
+        },
+      ],
+      {
+        schemaVersion: '2026-04-06.semantic-v2',
+        intent: 'general_information',
+        conceptFamily: 'asset_system',
+        selectedConceptIds: [],
+        candidateConceptIds: [],
+        equipment: [],
+        systems: [],
+        vendor: null,
+        model: null,
+        sourcePreferences: ['MANUALS'],
+        explicitSource: null,
+        pageHint: null,
+        sectionHint: null,
+        answerFormat: 'direct_answer',
+        needsClarification: false,
+        clarificationReason: null,
+        confidence: 0.82,
+      },
+      'manager contact details personnel directory company contact list',
+    );
+
+    expect(selectedManualIds).toEqual([
+      'manual-1',
+      'manual-2',
+      'manual-3',
+      'manual-4',
+      'manual-5',
+      'manual-6',
+    ]);
+  });
+
+  it('backfills all shortlisted personnel-directory manuals instead of limiting to two', async () => {
+    const service = new ChatDocumentationService(
+      {} as never,
+      new ChatDocumentationQueryService(),
+      {
+        mergeCitations: jest
+          .fn()
+          .mockImplementation(
+            (base, additional) => [...base, ...additional] as unknown[],
+          ),
+      } as never,
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const searchCitationsForQuery = jest
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          shipManualId: 'manual-2',
+          sourceTitle: 'Company Contact Details.pdf',
+          snippet: 'Nick Gray - Yacht Manager - +1 954 298 8385 - nick@company.com',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          shipManualId: 'manual-3',
+          sourceTitle: 'Fleet Contacts.pdf',
+          snippet: 'Toby Jakeman - Yacht Manager - +1 954 670 6737 - toby@company.com',
+        },
+      ]);
+
+    const result = await (service as any).backfillMissingShortlistedManualEvidence({
+      citations: [
+        {
+          shipManualId: 'manual-1',
+          sourceTitle: 'Manager Handbook.pdf',
+          snippet: 'Managers are responsible for safe operations.',
+        },
+      ],
+      userQuery: 'list all managers with their contact details',
+      retrievalQuery: 'manager contact details personnel directory company contact list',
+      shortlistedManualIds: ['manual-1', 'manual-2', 'manual-3'],
+      semanticCandidates: [
+        {
+          manualId: 'manual-1',
+          documentId: 'doc-1',
+          filename: 'Manager Handbook.pdf',
+          category: 'MANUALS',
+          score: 187,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-2',
+          documentId: 'doc-2',
+          filename: 'Company Contact Details.pdf',
+          category: 'MANUALS',
+          score: 170,
+          reasons: ['profile_text'],
+        },
+        {
+          manualId: 'manual-3',
+          documentId: 'doc-3',
+          filename: 'Fleet Contacts.pdf',
+          category: 'MANUALS',
+          score: 164,
+          reasons: ['profile_text'],
+        },
+      ],
+      sourceLockDecision: {
+        active: false,
+        lockedManualId: null,
+        lockedManualTitle: null,
+        lockedDocumentId: null,
+        reason: null,
+      },
+      searchCitationsForQuery,
+    });
+
+    expect(searchCitationsForQuery).toHaveBeenNthCalledWith(
+      1,
+      'manager contact details personnel directory company contact list',
+      ['manual-2'],
+    );
+    expect(searchCitationsForQuery).toHaveBeenNthCalledWith(
+      2,
+      'manager contact details personnel directory company contact list',
+      ['manual-3'],
+    );
+    expect(
+      result.map((citation: { shipManualId?: string | null }) => citation.shipManualId),
+    ).toEqual(['manual-1', 'manual-2', 'manual-3']);
+  });
+
   it('does not ask for semantic source clarification when the top candidate has stronger direct source-match evidence', () => {
     const service = new ChatDocumentationService(
       {} as never,

@@ -116,6 +116,20 @@ interface NavigationMotionTelemetryIntent {
   preferredSpeedKind?: 'sog' | 'stw' | 'vmg';
 }
 
+interface TelemetryQueryComponent {
+  raw: string;
+  normalized: string;
+  subjectPhrase: string;
+  commonSubjectPhrase: string;
+  entityPhrase: string;
+  measurementPhrase: string;
+  measurementAnchorPhrase: string;
+  hasMeasurementPhrase: boolean;
+  hasMeaningfulSubject: boolean;
+  queryKinds: Set<string>;
+  tokenCount: number;
+}
+
 interface StoredFluidSubject {
   fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def';
   waterQualifiers?: Array<'fresh' | 'sea' | 'black' | 'grey' | 'bilge'>;
@@ -3787,14 +3801,485 @@ export class MetricsService implements OnModuleInit {
     return `${firstLine.slice(0, 157).trimEnd()}...`;
   }
 
+  private findCompositeTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    options?: {
+      limitResults?: boolean;
+      allowComposite?: boolean;
+    },
+  ): ShipTelemetryEntry[] {
+    const componentQueries = this.buildCompositeTelemetryQueries(
+      query,
+    );
+    if (componentQueries.length <= 1) {
+      return [];
+    }
+
+    const mergedEntries: ShipTelemetryEntry[] = [];
+    let matchedComponents = 0;
+
+    for (const componentQuery of componentQueries) {
+      const matchedEntries = this.findRelevantTelemetryEntries(
+        entries,
+        componentQuery,
+        undefined,
+        {
+          ...options,
+          allowComposite: false,
+          limitResults: false,
+        },
+      );
+      if (matchedEntries.length === 0) {
+        continue;
+      }
+
+      matchedComponents += 1;
+      mergedEntries.push(...matchedEntries);
+    }
+
+    if (matchedComponents < 2) {
+      return [];
+    }
+
+    const uniqueEntries = this.uniqueTelemetryEntries(mergedEntries);
+    return options?.limitResults === false
+      ? uniqueEntries
+      : uniqueEntries.slice(0, 24);
+  }
+
+  private buildCompositeTelemetryQueries(
+    query: string,
+  ): string[] {
+    const rawQuery = query.replace(/\s+/g, ' ').trim();
+    if (
+      !rawQuery ||
+      !/(,|;|\band\b|\bplus\b|\balong with\b|\bas well as\b|&)/i.test(
+        rawQuery,
+      )
+    ) {
+      return [];
+    }
+
+    const rawParts = rawQuery
+      .split(/\s*(?:,|;|\band\b|\bplus\b|&|\balong with\b|\bas well as\b)\s*/i)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (rawParts.length <= 1) {
+      return [];
+    }
+
+    const components = rawParts
+      .map((part) => this.analyzeTelemetryQueryComponent(part))
+      .filter(
+        (component) =>
+          component.normalized.length > 0 &&
+          (component.hasMeasurementPhrase || component.hasMeaningfulSubject),
+      );
+    if (components.length <= 1) {
+      return [];
+    }
+
+    const queries = components
+      .map((component, index, all) =>
+        this.buildCompositeTelemetryComponentQuery(component, index, all),
+      )
+      .filter(Boolean);
+
+    const uniqueQueries: string[] = [];
+    const seen = new Set<string>();
+    for (const candidate of queries) {
+      const normalizedCandidate = this.normalizeTelemetryText(candidate);
+      if (!normalizedCandidate || seen.has(normalizedCandidate)) {
+        continue;
+      }
+
+      seen.add(normalizedCandidate);
+      uniqueQueries.push(candidate);
+    }
+
+    return uniqueQueries;
+  }
+
+  private analyzeTelemetryQueryComponent(
+    rawPart: string,
+  ): TelemetryQueryComponent {
+    const raw = rawPart.trim().replace(/^[,;:]+|[,;:]+$/g, '').trim();
+    const normalized = this.normalizeTelemetryText(raw);
+    const orderedTokens = normalized.split(/\s+/).filter(Boolean);
+    const tokenCount = orderedTokens.length;
+    const measurementAnchorIndex =
+      this.getTelemetryMeasurementAnchorIndex(orderedTokens);
+    const measurementAnchorPhrase =
+      this.extractTelemetryMeasurementAnchorPhrase(
+        orderedTokens,
+        measurementAnchorIndex,
+      );
+    const commonSubjectPhrase =
+      this.extractTelemetryCommonSubjectPhrase(
+        orderedTokens,
+        measurementAnchorIndex,
+      );
+    const entityPhrase = this.extractTelemetryEntityPhrase(
+      orderedTokens,
+      measurementAnchorIndex,
+    );
+    const measurementPhrase = measurementAnchorPhrase.trim();
+    const querySignals = this.buildTelemetryQuerySignals(raw);
+    const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
+    const queryKinds = this.extractTelemetryQueryMeasurementKinds(normalized);
+    const subjectPhrase = [commonSubjectPhrase, entityPhrase]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    return {
+      raw,
+      normalized,
+      subjectPhrase,
+      commonSubjectPhrase,
+      entityPhrase,
+      measurementPhrase,
+      measurementAnchorPhrase: measurementAnchorPhrase || measurementPhrase,
+      hasMeasurementPhrase:
+        Boolean(measurementPhrase) ||
+        queryKinds.size > 0 ||
+        this.isNavigationLocationIntent(normalized) ||
+        this.isNavigationSpeedIntent(normalized),
+      hasMeaningfulSubject:
+        (Boolean(subjectPhrase) &&
+          this.isTelemetrySubjectPhrase(subjectPhrase)) ||
+        subjectTokens.some((token) => this.isTelemetrySubjectPhrase(token)),
+      queryKinds,
+      tokenCount,
+    };
+  }
+
+  private buildCompositeTelemetryComponentQuery(
+    component: TelemetryQueryComponent,
+    index: number,
+    components: TelemetryQueryComponent[],
+  ): string {
+    if (!component.raw) {
+      return '';
+    }
+
+    if (
+      component.hasMeasurementPhrase &&
+      (component.hasMeaningfulSubject || component.tokenCount >= 3)
+    ) {
+      return component.raw;
+    }
+
+    const inheritedCommonSubject =
+      this.findNearestCompositeTelemetryPhrase(
+        components,
+        index,
+        'commonSubjectPhrase',
+      ) ?? '';
+    const inheritedMeasurementPhrase =
+      this.findNearestCompositeTelemetryPhrase(
+        components,
+        index,
+        'measurementPhrase',
+      ) ?? '';
+    const inheritedMeasurementAnchor =
+      this.findNearestCompositeTelemetryPhrase(
+        components,
+        index,
+        'measurementAnchorPhrase',
+      ) ?? '';
+
+    if (component.hasMeasurementPhrase) {
+      if (
+        !component.hasMeaningfulSubject &&
+        inheritedCommonSubject &&
+        component.measurementAnchorPhrase
+      ) {
+        return `${inheritedCommonSubject} ${component.measurementAnchorPhrase}`.trim();
+      }
+
+      return component.raw;
+    }
+
+    const localSubjectPhrase =
+      component.entityPhrase || component.subjectPhrase || component.raw;
+    if (!localSubjectPhrase) {
+      return component.raw;
+    }
+
+    if (inheritedMeasurementAnchor) {
+      const shouldUseInheritedCommonSubject =
+        inheritedCommonSubject &&
+        this.isTelemetryQualifierPhrase(localSubjectPhrase);
+      const prefix = shouldUseInheritedCommonSubject
+        ? `${inheritedCommonSubject} ${inheritedMeasurementAnchor}`
+        : `${localSubjectPhrase} ${inheritedMeasurementAnchor}`;
+      return prefix.trim();
+    }
+
+    if (inheritedMeasurementPhrase) {
+      return `${inheritedMeasurementPhrase} ${localSubjectPhrase}`.trim();
+    }
+
+    return component.raw;
+  }
+
+  private findNearestCompositeTelemetryPhrase(
+    components: TelemetryQueryComponent[],
+    index: number,
+    field:
+      | 'commonSubjectPhrase'
+      | 'measurementPhrase'
+      | 'measurementAnchorPhrase',
+  ): string | null {
+    for (let offset = 1; offset < components.length; offset += 1) {
+      const backward = components[index - offset];
+      if (backward?.[field]) {
+        return backward[field];
+      }
+
+      const forward = components[index + offset];
+      if (forward?.[field]) {
+        return forward[field];
+      }
+    }
+
+    return null;
+  }
+
+  private getTelemetryMeasurementAnchorIndex(tokens: string[]): number {
+    return tokens.findIndex((token) =>
+      this.isTelemetryMeasurementAnchorToken(token),
+    );
+  }
+
+  private extractTelemetryMeasurementAnchorPhrase(
+    tokens: string[],
+    anchorIndex: number,
+  ): string {
+    if (anchorIndex < 0) {
+      return '';
+    }
+
+    const anchorToken = tokens[anchorIndex];
+    const parts: string[] = [];
+    const previousToken = tokens[anchorIndex - 1];
+    if (
+      previousToken &&
+      this.shouldIncludePreviousTokenInTelemetryMeasurementPhrase(
+        previousToken,
+        anchorToken,
+      )
+    ) {
+      parts.push(previousToken);
+    }
+
+    parts.push(anchorToken);
+    return parts.join(' ').trim();
+  }
+
+  private extractTelemetryCommonSubjectPhrase(
+    tokens: string[],
+    anchorIndex: number,
+  ): string {
+    if (anchorIndex < 0) {
+      return '';
+    }
+
+    const measurementStartsAt =
+      anchorIndex > 0 &&
+      this.shouldIncludePreviousTokenInTelemetryMeasurementPhrase(
+        tokens[anchorIndex - 1],
+        tokens[anchorIndex],
+      )
+        ? anchorIndex - 1
+        : anchorIndex;
+    return tokens
+      .slice(0, measurementStartsAt)
+      .filter((token) => !this.isTelemetryClauseFillerToken(token))
+      .join(' ')
+      .trim();
+  }
+
+  private extractTelemetryEntityPhrase(
+    tokens: string[],
+    anchorIndex: number,
+  ): string {
+    const searchTokens =
+      anchorIndex >= 0 ? tokens.slice(anchorIndex + 1) : tokens.slice();
+    return searchTokens
+      .filter((token) => !this.isTelemetryClauseFillerToken(token))
+      .join(' ')
+      .trim();
+  }
+
+  private isTelemetryMeasurementAnchorToken(token: string): boolean {
+    return new Set([
+      'temperature',
+      'pressure',
+      'voltage',
+      'current',
+      'load',
+      'power',
+      'energy',
+      'speed',
+      'flow',
+      'rate',
+      'runtime',
+      'hour',
+      'hours',
+      'status',
+      'state',
+      'alarm',
+      'warning',
+      'fault',
+      'trip',
+      'level',
+      'levels',
+      'location',
+      'position',
+      'coordinate',
+      'coordinates',
+      'gps',
+      'latitude',
+      'longitude',
+      'lat',
+      'lon',
+    ]).has(token);
+  }
+
+  private shouldIncludePreviousTokenInTelemetryMeasurementPhrase(
+    previousToken: string,
+    anchorToken: string,
+  ): boolean {
+    if (!previousToken || !anchorToken) {
+      return false;
+    }
+
+    if (anchorToken === 'speed') {
+      return new Set(['fan', 'wind']).has(previousToken);
+    }
+
+    if (anchorToken === 'position') {
+      return new Set(['throttle', 'rudder']).has(previousToken);
+    }
+
+    return false;
+  }
+
+  private isTelemetryClauseFillerToken(token: string): boolean {
+    return new Set([
+      'a',
+      'an',
+      'and',
+      'any',
+      'are',
+      'at',
+      'current',
+      'currently',
+      'for',
+      'from',
+      'how',
+      'in',
+      'is',
+      'latest',
+      'me',
+      'now',
+      'of',
+      'on',
+      'only',
+      'our',
+      'please',
+      'right',
+      'show',
+      'tell',
+      'the',
+      'their',
+      'there',
+      'these',
+      'this',
+      'what',
+      'where',
+      'which',
+      'with',
+      'yacht',
+    ]).has(token);
+  }
+
+  private isTelemetryQualifierPhrase(value: string): boolean {
+    const tokens = this.normalizeTelemetryText(value)
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter((token) => !this.isTelemetryClauseFillerToken(token));
+    if (tokens.length === 0) {
+      return false;
+    }
+
+    return tokens.every((token) =>
+      new Set([
+        'aft',
+        'bridge',
+        'cabin',
+        'captain',
+        'corridor',
+        'crew',
+        'deck',
+        'engine',
+        'fwd',
+        'forward',
+        'galley',
+        'garage',
+        'left',
+        'lower',
+        'mess',
+        'mid',
+        'port',
+        'right',
+        'room',
+        'salon',
+        'starboard',
+        'stbd',
+        'upper',
+      ]).has(token),
+    );
+  }
+
+  private isTelemetrySubjectPhrase(value: string): boolean {
+    if (!value.trim()) {
+      return false;
+    }
+
+    const normalized = this.normalizeTelemetryText(value);
+    if (this.isTelemetryQualifierPhrase(normalized)) {
+      return true;
+    }
+
+    return /\b(alarm|battery|bilge|blower|bridge|cabin|compressor|coolant|corridor|crew|current|depth|engine|fan|flow|fuel|galley|garage|generator|genset|gps|hvac|level|load|location|longitude|latitude|mess|motor|oil|position|power|pressure|pump|rate|room|rpm|rudder|salon|sensor|speed|status|tank|temperature|throttle|trip|voltage|warning|water|wind)\b/i.test(
+      normalized,
+    );
+  }
+
   private findRelevantTelemetryEntries(
     entries: ShipTelemetryEntry[],
     query: string,
     resolvedSubjectQuery?: string,
     options?: {
       limitResults?: boolean;
+      allowComposite?: boolean;
     },
   ): ShipTelemetryEntry[] {
+    if (options?.allowComposite !== false) {
+      const compositeEntries = this.findCompositeTelemetryEntries(
+        entries,
+        query,
+        options,
+      );
+      if (compositeEntries.length > 0) {
+        return compositeEntries;
+      }
+    }
+
     const aggregateTankEntries = this.findAggregateTankTelemetryEntries(
       entries,
       query,

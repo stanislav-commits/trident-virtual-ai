@@ -237,6 +237,7 @@ export class ChatDocumentationService {
       const semanticManualIds = this.selectSemanticManualIds(
         semanticCandidates,
         semanticQuery,
+        effectiveUserQuery.trim() || retrievalQuery,
       );
       const baseAllowedManualIds = this.resolveRetrievalManualScope({
         sourceLockDecision,
@@ -710,6 +711,7 @@ export class ChatDocumentationService {
       );
       citations = await this.backfillMissingShortlistedManualEvidence({
         citations,
+        userQuery: effectiveUserQuery,
         retrievalQuery: documentationRetrievalQuery,
         shortlistedManualIds: semanticManualIds,
         semanticCandidates,
@@ -1602,6 +1604,7 @@ export class ChatDocumentationService {
   private selectSemanticManualIds(
     candidates: DocumentationSemanticCandidate[],
     semanticQuery?: DocumentationSemanticQuery,
+    retrievalQuery?: string,
   ): string[] {
     if (candidates.length === 0) {
       return [];
@@ -1610,6 +1613,21 @@ export class ChatDocumentationService {
     if (semanticQuery?.answerFormat === 'comparison') {
       return this.uniqueCandidateSources(candidates)
         .slice(0, 4)
+        .map((candidate) => candidate.manualId);
+    }
+
+    const isPersonnelDirectoryQuery =
+      retrievalQuery &&
+      this.queryService.isPersonnelDirectoryQuery(retrievalQuery);
+    if (isPersonnelDirectoryQuery) {
+      const topScore = candidates[0].score;
+      const floor = Math.max(18, topScore * 0.58);
+      const selected = this.uniqueCandidateSources(
+        candidates.filter((candidate) => candidate.score >= floor),
+      );
+
+      return (selected.length > 0 ? selected : this.uniqueCandidateSources(candidates))
+        .slice(0, 6)
         .map((candidate) => candidate.manualId);
     }
 
@@ -1627,6 +1645,7 @@ export class ChatDocumentationService {
 
   private async backfillMissingShortlistedManualEvidence(params: {
     citations: ChatCitation[];
+    userQuery: string;
     retrievalQuery: string;
     shortlistedManualIds: string[];
     semanticCandidates: DocumentationSemanticCandidate[];
@@ -1636,13 +1655,18 @@ export class ChatDocumentationService {
       allowedManualIds?: string[],
     ) => Promise<ChatCitation[]>;
   }): Promise<ChatCitation[]> {
+    const personnelDirectoryQuery =
+      this.queryService.isPersonnelDirectoryQuery(
+        `${params.userQuery}\n${params.retrievalQuery}`,
+      );
+    const maxShortlistedManuals = personnelDirectoryQuery ? 6 : 2;
     const shortlistedManualIds = [
       ...new Set(
         params.shortlistedManualIds
           .map((manualId) => manualId.trim())
           .filter(Boolean),
       ),
-    ].slice(0, 2);
+    ].slice(0, maxShortlistedManuals);
 
     if (
       params.citations.length === 0 ||

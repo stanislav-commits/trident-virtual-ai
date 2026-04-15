@@ -667,6 +667,7 @@ export class LlmService {
       '- Add short inline source tags after confirmed factual statements whenever the evidence clearly supports them.\n' +
       '- Use simple plain lines or "-" bullets when listing items; do not decorate ordinary list items with bold markers.\n' +
       '- When naming multiple forms, checklist items, tasks, roles, or contacts, put each item on its own separate line.\n' +
+      '- Do not prefix headings, labels, or bullets with stray citation-like numbers such as "1:" or "4:".\n' +
       '- Do not add a separate "Sources" section unless the user asks for sources explicitly.\n';
 
     switch (queryPlan.primaryIntent) {
