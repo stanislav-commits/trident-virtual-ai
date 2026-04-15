@@ -591,29 +591,6 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
-    const broadTankClarificationEntries =
-      this.findBroadTankClarificationEntries(
-        scopedEntries,
-        query,
-        effectiveResolvedSubjectQuery,
-      );
-    if (broadTankClarificationEntries) {
-      return {
-        telemetry: this.toTelemetryMap(broadTankClarificationEntries),
-        totalActiveMetrics: scopedEntries.length,
-        matchedMetrics: broadTankClarificationEntries.length,
-        prefiltered: true,
-        matchMode: 'related',
-        clarification: this.buildTelemetryClarification(
-          'related',
-          broadTankClarificationEntries,
-          query,
-          effectiveResolvedSubjectQuery,
-          'ambiguous_tank_reading',
-        ),
-      };
-    }
-
     const matchedEntries = this.findRelevantTelemetryEntries(
       scopedEntries,
       query,
@@ -622,19 +599,11 @@ export class MetricsService implements OnModuleInit {
     );
 
     if (matchedEntries.length > 0) {
-      const baseMatchMode = this.determineTelemetryMatchMode(
+      const matchMode = this.determineTelemetryMatchMode(
         matchedEntries,
         query,
         effectiveResolvedSubjectQuery,
       );
-      const forcedClarificationReason =
-        this.getTelemetryForcedClarificationReason(
-          baseMatchMode,
-          matchedEntries,
-          query,
-          effectiveResolvedSubjectQuery,
-        );
-      const matchMode = forcedClarificationReason ? 'related' : baseMatchMode;
       return {
         telemetry: this.toTelemetryMap(matchedEntries),
         totalActiveMetrics: scopedEntries.length,
@@ -646,7 +615,6 @@ export class MetricsService implements OnModuleInit {
           matchedEntries,
           query,
           effectiveResolvedSubjectQuery,
-          forcedClarificationReason,
         ),
       };
     }
@@ -807,32 +775,6 @@ export class MetricsService implements OnModuleInit {
         kind: 'answer',
         content:
           'No active telemetry metrics matched the requested historical subject on this ship.',
-      };
-    }
-
-    const broadTankClarificationEntries =
-      this.findBroadTankClarificationEntries(
-        scopedEntries,
-        query,
-        effectiveResolvedSubjectQuery,
-      ) ??
-      (scopedEntries.length < entries.length
-        ? this.findBroadTankClarificationEntries(
-            entries,
-            query,
-            effectiveResolvedSubjectQuery,
-          )
-        : null);
-    if (broadTankClarificationEntries) {
-      return {
-        kind: 'clarification',
-        clarificationQuestion:
-          'I found multiple historical tank readings that could match this question. Which tank do you want to inspect?',
-        pendingQuery: query.trim(),
-        clarificationActions: this.buildHistoricalClarificationActions(
-          broadTankClarificationEntries,
-          parsedRequest,
-        ),
       };
     }
 
@@ -1310,22 +1252,6 @@ export class MetricsService implements OnModuleInit {
       if (fullHasDirectPath && !filteredHasDirectPath) {
         return 'suppressed_direct_match';
       }
-    }
-
-    const allBroadTankClarification = this.findBroadTankClarificationEntries(
-      allEntries,
-      query,
-      resolvedSubjectQuery,
-    );
-    if (
-      allBroadTankClarification &&
-      !this.findBroadTankClarificationEntries(
-        filteredEntries,
-        query,
-        resolvedSubjectQuery,
-      )
-    ) {
-      return 'suppressed_tank_scope';
     }
 
     const normalizedSearchSpace = this.normalizeTelemetryText(
@@ -4476,6 +4402,15 @@ export class MetricsService implements OnModuleInit {
       return aggregateTankEntries;
     }
 
+    const broadTankInventoryEntries = this.findBroadTankInventoryTelemetryEntries(
+      entries,
+      query,
+      resolvedSubjectQuery,
+    );
+    if (broadTankInventoryEntries.length > 0) {
+      return broadTankInventoryEntries;
+    }
+
     const tankInventoryEntries = this.findDirectTankInventoryTelemetryEntries(
       entries,
       query,
@@ -5327,6 +5262,31 @@ export class MetricsService implements OnModuleInit {
       });
 
     return selected.slice(0, 16);
+  }
+
+  private findBroadTankInventoryTelemetryEntries(
+    entries: ShipTelemetryEntry[],
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): ShipTelemetryEntry[] {
+    const searchSpace = this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+    if (
+      this.detectStoredFluidSubject(searchSpace) ||
+      !this.isBroadTankInventoryQuery(searchSpace)
+    ) {
+      return [];
+    }
+
+    return entries
+      .filter((entry) => this.isBroadTankStorageEntry(entry))
+      .sort((left, right) => {
+        const tankRank =
+          this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
+        return tankRank || left.key.localeCompare(right.key);
+      })
+      .slice(0, 16);
   }
 
   private findLocationTelemetryEntries(
@@ -6316,9 +6276,8 @@ export class MetricsService implements OnModuleInit {
     entries: ShipTelemetryEntry[],
     query: string,
     resolvedSubjectQuery?: string,
-    forcedClarificationReason?: 'ambiguous_tank_reading' | null,
   ): ShipTelemetryContext['clarification'] {
-    if (matchMode !== 'related' && !forcedClarificationReason) {
+    if (matchMode !== 'related') {
       return null;
     }
 
@@ -6333,40 +6292,10 @@ export class MetricsService implements OnModuleInit {
 
     return {
       question:
-        forcedClarificationReason === 'ambiguous_tank_reading'
-          ? 'I found multiple current tank readings that could match this question. Which tank do you want to inspect?'
-          : "I couldn't find a direct telemetry metric that exactly measures the requested reading, but I did find related metrics for the same topic. Which one do you want to inspect?",
+        "I couldn't find a direct telemetry metric that exactly measures the requested reading, but I did find related metrics for the same topic. Which one do you want to inspect?",
       pendingQuery: this.buildTelemetryClarificationPendingQuery(query),
       actions,
     };
-  }
-
-  private getTelemetryForcedClarificationReason(
-    matchMode: 'exact' | 'direct' | 'related',
-    entries: ShipTelemetryEntry[],
-    query: string,
-    resolvedSubjectQuery?: string,
-  ): 'ambiguous_tank_reading' | null {
-    if (matchMode !== 'direct') {
-      return null;
-    }
-
-    if (!this.shouldOfferTelemetryClarification(query, resolvedSubjectQuery)) {
-      return null;
-    }
-
-    const normalizedQuery = this.normalizeTelemetryText(
-      `${query}\n${resolvedSubjectQuery ?? ''}`,
-    );
-
-    const fluid = this.detectStoredFluidSubject(normalizedQuery);
-    if (fluid && this.isAggregateStoredFluidQuery(normalizedQuery, fluid)) {
-      return null;
-    }
-
-    return this.shouldForceTankTelemetryClarification(entries, normalizedQuery)
-      ? 'ambiguous_tank_reading'
-      : null;
   }
 
   private shouldOfferTelemetryClarification(
@@ -7301,6 +7230,34 @@ export class MetricsService implements OnModuleInit {
     );
   }
 
+  private isBroadTankInventoryQuery(normalizedQuery: string): boolean {
+    if (!/\btanks?\b/i.test(normalizedQuery)) {
+      return false;
+    }
+
+    if (
+      /\b(used|consumed|consumption|usage|burn(?:ed|t|ing)?|spent|rate|flow|pressure|temp(?:erature)?|voltage|power|energy|frequency|status|state|alarm|warning|fault|trip)\b/i.test(
+        normalizedQuery,
+      )
+    ) {
+      return false;
+    }
+
+    const queryKinds =
+      this.extractTelemetryQueryMeasurementKinds(normalizedQuery);
+    const hasInventoryIntent =
+      /\b(level|levels|quantity|volume|contents?|inventory|remaining|left|available|onboard|amount)\b/i.test(
+        normalizedQuery,
+      );
+    const hasLookupStyle =
+      /\b(what|show|list|display|give|tell|provide)\b/i.test(normalizedQuery);
+    const hasOnlyLiveQualifier =
+      queryKinds.size === 0 &&
+      /\b(current|now|right now|latest)\b/i.test(normalizedQuery);
+
+    return hasInventoryIntent || hasLookupStyle || hasOnlyLiveQualifier;
+  }
+
   private isImplicitHistoricalFuelInventoryQuery(
     normalizedQuery: string,
   ): boolean {
@@ -7390,6 +7347,32 @@ export class MetricsService implements OnModuleInit {
       /\btank\b/i.test(haystack) &&
       this.entryMatchesStoredFluidSubject(entry, subject) &&
       !/\b(used|consumed|consumption|rate|flow|pressure)\b/i.test(haystack)
+    );
+  }
+
+  private isBroadTankStorageEntry(entry: ShipTelemetryEntry): boolean {
+    if (
+      (
+        [
+          { fluid: 'fuel' },
+          { fluid: 'oil' },
+          { fluid: 'coolant' },
+          { fluid: 'water' },
+          { fluid: 'def' },
+        ] as StoredFluidSubject[]
+      ).some((subject) => this.isDedicatedTankStorageField(entry, subject))
+    ) {
+      return true;
+    }
+
+    const haystack = this.buildTelemetryHaystack(entry);
+    const kinds = this.extractTelemetryEntryMeasurementKinds(entry);
+    return (
+      kinds.has('level') &&
+      /\btank\b/i.test(haystack) &&
+      !/\b(used|consumed|consumption|rate|flow|pressure|temp(?:erature)?|alarm|warning|fault|trip)\b/i.test(
+        haystack,
+      )
     );
   }
 
@@ -7630,116 +7613,6 @@ export class MetricsService implements OnModuleInit {
     }
 
     return kinds;
-  }
-
-  private shouldForceTankTelemetryClarification(
-    entries: ShipTelemetryEntry[],
-    normalizedQuery: string,
-  ): boolean {
-    if (entries.length <= 1 || !/\btank\b/i.test(normalizedQuery)) {
-      return false;
-    }
-
-    const queryKinds =
-      this.extractTelemetryQueryMeasurementKinds(normalizedQuery);
-    const asksForTankReading =
-      queryKinds.has('level') ||
-      /\b(status|reading|value|available|remaining|left)\b/i.test(
-        normalizedQuery,
-      );
-    if (!asksForTankReading) {
-      return false;
-    }
-
-    const tankLabels = [
-      ...new Set(
-        entries
-          .map(
-            (entry) =>
-              this.getDedicatedTankDisplayLabel(entry) ??
-              this.buildTelemetrySuggestionLabel(entry),
-          )
-          .map((label) => this.normalizeTelemetryText(label))
-          .filter((label) => /\btank\b/i.test(label)),
-      ),
-    ];
-
-    if (tankLabels.length <= 1) {
-      return false;
-    }
-
-    return !this.hasSpecificTankSelectorInQuery(normalizedQuery);
-  }
-
-  private findBroadTankClarificationEntries(
-    entries: ShipTelemetryEntry[],
-    query: string,
-    resolvedSubjectQuery?: string,
-  ): ShipTelemetryEntry[] | null {
-    if (!this.shouldOfferTelemetryClarification(query, resolvedSubjectQuery)) {
-      return null;
-    }
-
-    const normalizedQuery = this.normalizeTelemetryText(
-      `${query}\n${resolvedSubjectQuery ?? ''}`,
-    );
-    if (!this.shouldForceTankTelemetryClarification(entries, normalizedQuery)) {
-      return null;
-    }
-
-    const fluid = this.detectStoredFluidSubject(normalizedQuery);
-    if (fluid && this.isAggregateStoredFluidQuery(normalizedQuery, fluid)) {
-      return null;
-    }
-
-    const tankCandidates = entries.filter((entry) =>
-      fluid
-        ? this.isDirectTankStorageEntry(entry, fluid)
-        : this.isAnyDirectTankStorageEntry(entry),
-    );
-
-    const uniqueCandidates = new Map<string, ShipTelemetryEntry>();
-    for (const entry of tankCandidates) {
-      const label = this.normalizeTelemetryText(
-        this.getDedicatedTankDisplayLabel(entry) ??
-          this.buildTelemetrySuggestionLabel(entry),
-      );
-      if (!label || uniqueCandidates.has(label)) {
-        continue;
-      }
-      uniqueCandidates.set(label, entry);
-    }
-
-    const selectedEntries = [...uniqueCandidates.values()]
-      .sort((left, right) => {
-        const orderDiff =
-          this.getTelemetryTankOrder(left) - this.getTelemetryTankOrder(right);
-        if (orderDiff !== 0) {
-          return orderDiff;
-        }
-
-        return this.buildTelemetrySuggestionLabel(left).localeCompare(
-          this.buildTelemetrySuggestionLabel(right),
-        );
-      })
-      .slice(0, 8);
-
-    return selectedEntries.length > 1 ? selectedEntries : null;
-  }
-
-  private hasSpecificTankSelectorInQuery(normalizedQuery: string): boolean {
-    return (
-      /\btank\s+\d{1,3}[a-z]?\b/i.test(normalizedQuery) ||
-      /\b(port|starboard|ps|stbd|sb|aft|forward|fwd|midship)\b/i.test(
-        normalizedQuery,
-      )
-    );
-  }
-
-  private isAnyDirectTankStorageEntry(entry: ShipTelemetryEntry): boolean {
-    return (['fuel', 'oil', 'water', 'coolant', 'def'] as const).some((fluid) =>
-      this.isDirectTankStorageEntry(entry, { fluid }),
-    );
   }
 
   private getExplicitTelemetryCoordinateKinds(

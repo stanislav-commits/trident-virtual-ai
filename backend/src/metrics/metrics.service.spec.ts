@@ -3205,7 +3205,7 @@ describe('MetricsService telemetry matching', () => {
     },
   );
 
-  it('forces clarification for broad tank level queries when multiple tank readings match', async () => {
+  it('returns all matched tank readings for broad tank level queries', async () => {
     const service = buildService([
       {
         metricKey: 'Trending::Tanks-Temperatures::Fuel Tank 1P',
@@ -3254,23 +3254,18 @@ describe('MetricsService telemetry matching', () => {
     );
 
     expect(result.prefiltered).toBe(true);
-    expect(result.matchMode).toBe('related');
-    expect(result.clarification?.question).toContain(
-      'multiple current tank readings',
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(Object.keys(result.telemetry)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Fuel Tank 1P'),
+        expect.stringContaining('Fuel Tank 1S'),
+        expect.stringContaining('Fresh Water Tank 1'),
+      ]),
     );
-    expect(
-      result.clarification?.actions.some((action) =>
-        action.label.includes('Fuel Tank 1P'),
-      ),
-    ).toBe(true);
-    expect(
-      result.clarification?.actions.some((action) =>
-        action.label.includes('Fuel Tank 1S'),
-      ),
-    ).toBe(true);
   });
 
-  it('forces clarification for generic tank level queries even when only one candidate explicitly says level', async () => {
+  it('returns all generic tank level matches instead of asking for clarification', async () => {
     const service = buildService([
       {
         metricKey: 'Trending::SIEMENS-MASE-GENSET-PS::DEF Tank level (%)',
@@ -3319,23 +3314,18 @@ describe('MetricsService telemetry matching', () => {
     );
 
     expect(result.prefiltered).toBe(true);
-    expect(result.matchMode).toBe('related');
-    expect(result.clarification?.question).toContain(
-      'multiple current tank readings',
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(Object.keys(result.telemetry)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('DEF Tank level'),
+        expect.stringContaining('Fuel Tank 1P'),
+        expect.stringContaining('FRESH WATER TANK 10S LITERS'),
+      ]),
     );
-    expect(
-      result.clarification?.actions.some((action) =>
-        action.label.includes('DEF Tank level'),
-      ),
-    ).toBe(true);
-    expect(
-      result.clarification?.actions.some((action) =>
-        action.label.includes('Fuel Tank 1P'),
-      ),
-    ).toBe(true);
   });
 
-  it('forces clarification for generic water tank level queries when multiple water tanks match', async () => {
+  it('returns all matching water tank readings for generic water tank level queries', async () => {
     const service = buildService([
       {
         metricKey: 'Trending::Tanks-Temperatures::Fresh Water Tank 1',
@@ -3384,13 +3374,111 @@ describe('MetricsService telemetry matching', () => {
     );
 
     expect(result.prefiltered).toBe(true);
-    expect(result.matchMode).toBe('related');
-    expect(result.clarification?.question).toContain(
-      'multiple current tank readings',
-    );
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
     expect(
       Object.keys(result.telemetry).every((key) => key.includes('Water Tank')),
     ).toBe(true);
+  });
+
+  it('keeps vessel speed and location together with broad oil tank readings in one direct answer set', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.5,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lon',
+        latestValue: 7.08,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lon',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.speedOverGround::value',
+        latestValue: 0.01,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.speedOverGround.value',
+          description: 'Current vessel speed over ground.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'navigation.speedOverGround',
+          field: 'value',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Oil Tank 1P',
+        latestValue: 410,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Oil Tank 1P',
+          description: 'Oil tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Oil Tank 1P',
+        },
+      },
+      {
+        metricKey: 'Trending::Tanks-Temperatures::Oil Tank 2S',
+        latestValue: 395,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'Tanks-Temperatures.Oil Tank 2S',
+          description: 'Oil tank level reading.',
+          unit: 'l',
+          bucket: 'Trending',
+          measurement: 'Tanks-Temperatures',
+          field: 'Oil Tank 2S',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Captain::Fan Speed',
+        latestValue: 7,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Captain.Fan Speed',
+          description: 'Current fan speed in the captain cabin.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Captain',
+          field: 'Fan Speed',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      "what's the current yacht speed,location, oil tank level",
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(labels).toHaveLength(5);
+    expect(labels.some((key) => /speedOverGround/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lat\b|latitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lon\b|longitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /Oil Tank 1P/i.test(key))).toBe(true);
+    expect(labels.some((key) => /Oil Tank 2S/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/Fan Speed/i.test(key))).toBe(true);
   });
 
   it('keeps exact tank queries on the direct path', async () => {
@@ -5276,7 +5364,7 @@ describe('MetricsService historical telemetry', () => {
     );
   });
 
-  it('asks for clarification before answering generic historical tank-level replies with multiple tank families', async () => {
+  it('answers generic historical tank-level replies with the matched tank readings', async () => {
     const prisma = {
       ship: {
         findUnique: jest.fn().mockResolvedValue({
@@ -5333,7 +5421,32 @@ describe('MetricsService historical telemetry', () => {
 
     const influxdb = {
       isConfigured: jest.fn().mockReturnValue(true),
-      queryHistoricalNearestValues: jest.fn(),
+      queryHistoricalNearestValues: jest.fn().mockResolvedValue([
+        {
+          key: 'Trending::Tanks::Fuel Tank 1P',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fuel Tank 1P',
+          value: 3100,
+          time: '2026-03-25T12:00:00.000Z',
+        },
+        {
+          key: 'Trending::Tanks::Fresh Water Tank 10S',
+          bucket: 'Trending',
+          measurement: 'Tanks',
+          field: 'Fresh Water Tank 10S',
+          value: 870,
+          time: '2026-03-25T12:00:00.000Z',
+        },
+        {
+          key: 'Trending::Genset::DEF Tank level (%)',
+          bucket: 'Trending',
+          measurement: 'Genset',
+          field: 'DEF Tank level (%)',
+          value: 99,
+          time: '2026-03-25T12:00:00.000Z',
+        },
+      ]),
     };
 
     const metricDescriptions = {
@@ -5352,22 +5465,14 @@ describe('MetricsService historical telemetry', () => {
       'what was the tank level 2026-03-25?',
     );
 
-    expect(result.kind).toBe('clarification');
-    expect(result.clarificationQuestion).toContain(
-      'multiple historical tank readings',
+    expect(result.kind).toBe('answer');
+    expect((result as any).content).toContain(
+      'At 2026-03-25 12:00 UTC, the matched historical telemetry readings were',
     );
-    expect(
-      (result as any).clarificationActions?.map(
-        (action: { label: string }) => action.label,
-      ),
-    ).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('Fuel Tank 1P'),
-        expect.stringContaining('Fresh Water Tank 10S'),
-        expect.stringContaining('DEF Tank level'),
-      ]),
-    );
-    expect(influxdb.queryHistoricalNearestValues).not.toHaveBeenCalled();
+    expect((result as any).content).toContain('Fuel Tank 1P');
+    expect((result as any).content).toContain('Fresh Water Tank 10S');
+    expect((result as any).content).toContain('DEF Tank level');
+    expect(influxdb.queryHistoricalNearestValues).toHaveBeenCalled();
   });
 
   it('answers bare relative fuel-onboard questions from historical point-in-time telemetry', async () => {
