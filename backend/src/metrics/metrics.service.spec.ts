@@ -2192,6 +2192,114 @@ describe('MetricsService telemetry matching', () => {
     expect(labels.every((key) => !/Corridor/i.test(key))).toBe(true);
   });
 
+  it('keeps battery context when current is used as a live qualifier before another metric', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-SB::Battery voltage (V)',
+        latestValue: 26.9,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-SB.Battery voltage (V)',
+          description: 'Current battery voltage for the starboard genset.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-SB',
+          field: 'Battery voltage (V)',
+        },
+      },
+      {
+        metricKey: 'Trending::SERVICE-BATTERY-PACK::Battery current (A)',
+        latestValue: 18.4,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SERVICE-BATTERY-PACK.Battery current (A)',
+          description: 'Current battery charge/discharge current.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'SERVICE-BATTERY-PACK',
+          field: 'Battery current (A)',
+        },
+      },
+      {
+        metricKey: 'Trending::CAPTAIN-CABIN::RMS current - phase A',
+        latestValue: 0.87,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'CAPTAIN-CABIN.RMS current - phase A',
+          description: 'Electrical RMS current in the captain cabin.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'CAPTAIN-CABIN',
+          field: 'RMS current - phase A',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'show current battery voltage and current',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels.some((key) => /Battery voltage/i.test(key))).toBe(true);
+    expect(labels.some((key) => /Battery current/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/CAPTAIN-CABIN/i.test(key))).toBe(true);
+  });
+
+  it('does not substitute room electrical current when a multi-room fan-speed query names those rooms', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::HVAC-Captain::Fan Speed',
+        latestValue: 5,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Captain.Fan Speed',
+          description: 'Current fan speed in the captain cabin.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Captain',
+          field: 'Fan Speed',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Crew-MEss::Fan Speed',
+        latestValue: 6,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Crew-MEss.Fan Speed',
+          description: 'Current fan speed in the crew mess.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Crew-MEss',
+          field: 'Fan Speed',
+        },
+      },
+      {
+        metricKey: 'Trending::CREW-MESS::RMS current - phase A',
+        latestValue: 0.52,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'CREW-MESS.RMS current - phase A',
+          description: 'Electrical current in the crew mess.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'CREW-MESS',
+          field: 'RMS current - phase A',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'what are the current fan speeds in the captain cabin and crew mess only?',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels.some((key) => /HVAC-Captain/i.test(key))).toBe(true);
+    expect(labels.some((key) => /HVAC-Crew-MEss/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/RMS current/i.test(key))).toBe(true);
+  });
+
   it.each([
     {
       query: 'What is the current fuel status?',

@@ -4012,10 +4012,18 @@ export class MetricsService implements OnModuleInit {
       const shouldUseInheritedCommonSubject =
         inheritedCommonSubject &&
         this.isTelemetryQualifierPhrase(localSubjectPhrase);
-      const prefix = shouldUseInheritedCommonSubject
-        ? `${inheritedCommonSubject} ${inheritedMeasurementAnchor}`
-        : `${localSubjectPhrase} ${inheritedMeasurementAnchor}`;
-      return prefix.trim();
+      if (shouldUseInheritedCommonSubject) {
+        return `${inheritedCommonSubject} ${inheritedMeasurementAnchor} ${localSubjectPhrase}`.trim();
+      }
+
+      if (
+        inheritedMeasurementPhrase &&
+        inheritedMeasurementPhrase !== inheritedMeasurementAnchor
+      ) {
+        return `${inheritedMeasurementPhrase} ${localSubjectPhrase}`.trim();
+      }
+
+      return `${localSubjectPhrase} ${inheritedMeasurementAnchor}`.trim();
     }
 
     if (inheritedMeasurementPhrase) {
@@ -4049,9 +4057,17 @@ export class MetricsService implements OnModuleInit {
   }
 
   private getTelemetryMeasurementAnchorIndex(tokens: string[]): number {
-    return tokens.findIndex((token) =>
-      this.isTelemetryMeasurementAnchorToken(token),
-    );
+    return tokens.findIndex((token, index) => {
+      if (!this.isTelemetryMeasurementAnchorToken(token)) {
+        return false;
+      }
+
+      if (token !== 'current') {
+        return true;
+      }
+
+      return !this.isTelemetryCurrentQualifierToken(tokens, index);
+    });
   }
 
   private extractTelemetryMeasurementAnchorPhrase(
@@ -4115,6 +4131,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isTelemetryMeasurementAnchorToken(token: string): boolean {
+    const normalizedToken = this.normalizeTelemetryToken(token);
     return new Set([
       'temperature',
       'pressure',
@@ -4146,7 +4163,23 @@ export class MetricsService implements OnModuleInit {
       'longitude',
       'lat',
       'lon',
-    ]).has(token);
+    ]).has(normalizedToken);
+  }
+
+  private isTelemetryCurrentQualifierToken(
+    tokens: string[],
+    index: number,
+  ): boolean {
+    if (tokens[index] !== 'current') {
+      return false;
+    }
+
+    return tokens.some(
+      (token, tokenIndex) =>
+        tokenIndex > index &&
+        this.isTelemetryMeasurementAnchorToken(token) &&
+        token !== 'current',
+    );
   }
 
   private shouldIncludePreviousTokenInTelemetryMeasurementPhrase(
@@ -4157,12 +4190,16 @@ export class MetricsService implements OnModuleInit {
       return false;
     }
 
-    if (anchorToken === 'speed') {
-      return new Set(['fan', 'wind']).has(previousToken);
+    const normalizedPreviousToken =
+      this.normalizeTelemetryToken(previousToken);
+    const normalizedAnchorToken = this.normalizeTelemetryToken(anchorToken);
+
+    if (normalizedAnchorToken === 'speed') {
+      return new Set(['fan', 'wind']).has(normalizedPreviousToken);
     }
 
-    if (anchorToken === 'position') {
-      return new Set(['throttle', 'rudder']).has(previousToken);
+    if (normalizedAnchorToken === 'position') {
+      return new Set(['throttle', 'rudder']).has(normalizedPreviousToken);
     }
 
     return false;
