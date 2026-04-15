@@ -13,6 +13,7 @@ import { SendMessageDto } from './dto/send-message.dto';
 import {
   ChatSessionResponseDto,
   ChatMessageResponseDto,
+  ChatSessionListResponseDto,
 } from './dto/chat-response.dto';
 import { ChatDocumentationService } from './chat-documentation.service';
 import {
@@ -64,6 +65,17 @@ interface DeterministicTankCapacityEntry {
   citation: ChatCitation;
 }
 
+interface ChatSessionListParams {
+  search?: string;
+  cursor?: string;
+  limit?: string | number;
+}
+
+interface ChatSessionCursorPayload {
+  updatedAt: string;
+  id: string;
+}
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -98,29 +110,69 @@ export class ChatService {
   async listSessions(
     userId: string,
     role: string,
-    search?: string,
-  ): Promise<ChatSessionResponseDto[]> {
-    let where: any = { userId, deletedAt: null };
+    params?: ChatSessionListParams,
+  ): Promise<ChatSessionListResponseDto> {
+    const normalizedSearch = params?.search?.trim();
+    const pageSize = this.normalizeSessionPageSize(params?.limit);
+    const cursor = this.parseSessionCursor(params?.cursor);
+    const baseWhere: any = { userId, deletedAt: null };
 
-    if (search) {
-      where.title = { contains: search, mode: 'insensitive' };
+    if (normalizedSearch) {
+      baseWhere.title = { contains: normalizedSearch, mode: 'insensitive' };
     }
 
-    const sessions = await this.prisma.chatSession.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        messages: {
-          where: { deletedAt: null },
-          select: { id: true },
-        },
-      },
-    });
+    const pinnedWhere = { ...baseWhere, pinnedAt: { not: null } };
+    const unpinnedWhere: any = { ...baseWhere, pinnedAt: null };
+    if (cursor) {
+      const cursorDate = new Date(cursor.updatedAt);
+      unpinnedWhere.OR = [
+        { updatedAt: { lt: cursorDate } },
+        { updatedAt: cursorDate, id: { lt: cursor.id } },
+      ];
+    }
 
-    return sortChatSessions(sessions).map((session) => ({
+    const [pinnedSessions, unpinnedSessions] = await Promise.all([
+      cursor
+        ? Promise.resolve([])
+        : this.prisma.chatSession.findMany({
+            where: pinnedWhere,
+            orderBy: [{ pinnedAt: 'desc' }, { updatedAt: 'desc' }, { id: 'desc' }],
+            include: {
+              messages: {
+                where: { deletedAt: null },
+                select: { id: true },
+              },
+            },
+          }),
+      this.prisma.chatSession.findMany({
+        where: unpinnedWhere,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        take: pageSize + 1,
+        include: {
+          messages: {
+            where: { deletedAt: null },
+            select: { id: true },
+          },
+        },
+      }),
+    ]);
+
+    const hasMore = unpinnedSessions.length > pageSize;
+    const pagedUnpinnedSessions = unpinnedSessions.slice(0, pageSize);
+    const sessions = sortChatSessions([
+      ...pinnedSessions,
+      ...pagedUnpinnedSessions,
+    ]).map((session) => ({
       ...this.formatSessionResponse(session),
       messageCount: session.messages.length,
     }));
+    const lastSession = pagedUnpinnedSessions[pagedUnpinnedSessions.length - 1];
+
+    return {
+      sessions,
+      nextCursor: hasMore && lastSession ? this.encodeSessionCursor(lastSession) : null,
+      hasMore,
+    };
   }
 
   async getSession(
@@ -2442,6 +2494,63 @@ export class ChatService {
       updatedAt: session.updatedAt.toISOString(),
       deletedAt: session.deletedAt?.toISOString() ?? null,
     };
+  }
+
+  private normalizeSessionPageSize(value?: string | number): number {
+    const parsed =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? Number.parseInt(value, 10)
+          : Number.NaN;
+    if (!Number.isFinite(parsed)) {
+      return 30;
+    }
+    return Math.min(100, Math.max(1, parsed));
+  }
+
+  private parseSessionCursor(
+    value?: string,
+  ): ChatSessionCursorPayload | null {
+    if (!value?.trim()) {
+      return null;
+    }
+
+    try {
+      const decoded = Buffer.from(value, 'base64url').toString('utf8');
+      const payload = JSON.parse(decoded) as Partial<ChatSessionCursorPayload>;
+      if (
+        !payload ||
+        typeof payload.updatedAt !== 'string' ||
+        typeof payload.id !== 'string' ||
+        !payload.updatedAt.trim() ||
+        !payload.id.trim() ||
+        Number.isNaN(new Date(payload.updatedAt).getTime())
+      ) {
+        throw new Error('Invalid chat session cursor');
+      }
+      return {
+        updatedAt: payload.updatedAt,
+        id: payload.id,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        `Invalid chat session cursor: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private encodeSessionCursor(session: {
+    id: string;
+    updatedAt: Date;
+  }): string {
+    return Buffer.from(
+      JSON.stringify({
+        updatedAt: session.updatedAt.toISOString(),
+        id: session.id,
+      }),
+      'utf8',
+    ).toString('base64url');
   }
 
   private formatMessageResponse(message: any): ChatMessageResponseDto {

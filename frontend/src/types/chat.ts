@@ -53,6 +53,12 @@ export interface ChatSessionDto {
   messageCount?: number;
 }
 
+export interface ChatSessionListDto {
+  sessions: ChatSessionDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 // Local UI types (may differ from backend DTOs)
 export interface Message extends ChatMessageDto {
   isLoading?: boolean;

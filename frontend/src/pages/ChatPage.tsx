@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
@@ -20,17 +20,22 @@ export function ChatPage() {
   const navigate = useNavigate();
   const { sessionId } = useParams<{ sessionId: string }>();
   const activeSessionId = sessionId ?? null;
+  const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const {
     sessions,
     isLoading: isLoadingSessions,
+    isLoadingMore: isLoadingMoreSessions,
+    hasMore: hasMoreSessions,
     error: sessionsError,
     createSession,
     deleteSession,
     renameSession,
     pinSession,
+    loadMoreSessions,
     refreshSessions,
-  } = useChatSessions(token);
+  } = useChatSessions(token, deferredSearchQuery);
 
   const {
     messages,
@@ -43,19 +48,7 @@ export function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
-
-  const filteredSessions = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return sessions;
-    }
-
-    const normalizedQuery = searchQuery.toLowerCase();
-    return sessions.filter((session) =>
-      (session.title || "").toLowerCase().includes(normalizedQuery),
-    );
-  }, [searchQuery, sessions]);
 
   const pollForResponse = useCallback(
     async (currentSessionId: string, userMessageId: string) => {
@@ -232,7 +225,7 @@ export function ChatPage() {
     <AppLayout
       sidebar={
         <ChatList
-          sessions={filteredSessions.map((session) => ({
+          sessions={sessions.map((session) => ({
             id: session.id,
             title: session.title || "New Chat",
             messageCount: session.messageCount || 0,
@@ -245,6 +238,9 @@ export function ChatPage() {
           onDelete={handleDeleteSession}
           onRename={handleRenameSession}
           onTogglePin={handleTogglePin}
+          hasMore={hasMoreSessions}
+          isLoadingMore={isLoadingMoreSessions}
+          onLoadMore={loadMoreSessions}
         />
       }
       onNewChat={handleNewChat}

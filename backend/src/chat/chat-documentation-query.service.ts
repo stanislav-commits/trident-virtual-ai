@@ -1708,7 +1708,7 @@ export class ChatDocumentationQueryService {
   private isPhraseBasedCompletenessVerificationFollowUpQuery(
     query: string,
   ): boolean {
-    return /\b(are you sure|is that all|is this all|complete list|full list|did you miss|missing any|missing some|any more|anything else|any others|all of them|all certificates|you missed|write all|show all|list all|all available|full inventory|complete inventory)\b/i.test(
+    return /\b(are you sure|is that all|is this all|complete list|full list|complete checklist|full checklist|did you miss|missing any|missing some|any more|anything else|any others|all of them|all certificates|you missed|write all|show all|list all|all available|full inventory|complete inventory)\b/i.test(
       query,
     );
   }
@@ -2097,7 +2097,7 @@ export class ChatDocumentationQueryService {
     }
 
     return (
-      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|warnings?|requirements?|limits?|limitations?|tools?|materials?|tables?|diagrams?|figures?|drawings?|charts?|summar(?:y|ies|ize)|process(?:es)?|sequence|overview)\b/i.test(
+      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|checklists?|warnings?|requirements?|limits?|limitations?|tools?|materials?|tables?|diagrams?|figures?|drawings?|charts?|summar(?:y|ies|ize)|process(?:es)?|sequence|overview)\b/i.test(
         trimmed,
       ) ||
       /\b(?:who|what|which)\s+should\s+(?:be\s+)?(?:notified|involved|checked|recorded|completed)\b/i.test(

@@ -23,4 +23,22 @@ describe('TelemetryQuerySemanticNormalizerService', () => {
     );
     expect(result.preferredSpeedKind).toBe('sog');
   });
+
+  it('maps vessel heading wording to heading fallback hints', async () => {
+    const service = new TelemetryQuerySemanticNormalizerService({
+      isConfigured: () => false,
+      generateStructuredObject: jest.fn(),
+    } as never);
+
+    const result = await service.normalize({
+      userQuery: 'what is the current vessel heading?',
+    });
+
+    expect(result.measurementKinds).toEqual(
+      expect.arrayContaining(['heading']),
+    );
+    expect(result.semanticPhrases).toEqual(
+      expect.arrayContaining(['vessel heading', 'heading true']),
+    );
+  });
 });

@@ -373,6 +373,16 @@ export class LlmService {
         'If the user asks for speed, pace, how fast the vessel is moving, or a combined location/speed answer, include that speed value directly and do not say speed or pace is unavailable.\n\n';
     }
 
+    if (
+      this.isVesselHeadingTelemetryQuery(context.userQuery) &&
+      this.hasVesselHeadingTelemetryValue(context.telemetry)
+    ) {
+      prompt +=
+        'Important: This telemetry includes a direct current vessel heading reading. ' +
+        'Treat headingTrue, headingMagnetic, or vessel heading labels with numeric values as available heading telemetry. ' +
+        'If the user asks for heading, course, or a combined location/speed/heading answer, include that heading value directly and do not say heading is unavailable.\n\n';
+    }
+
     if (context.telemetryMatchMode === 'exact') {
       prompt +=
         'Important: The telemetry below contains an exact metric match for the question. ' +
@@ -1151,11 +1161,11 @@ export class LlmService {
     }
 
     const asksForCurrentReading =
-      /\b(current|currently|status|reading|value|temperature|temp|pressure|level|voltage|amperage|current draw|load|rpm|speed|flow|rate)\b/i.test(
+      /\b(current|currently|status|reading|value|temperature|temp|pressure|level|voltage|amperage|current draw|load|rpm|speed|heading|course|flow|rate)\b/i.test(
         query,
       );
     const mentionsTelemetrySignal =
-      /\b(oil|fuel|coolant|fresh\s*water|seawater|water|tank|battery|depth|rudder|trim|temperature|temp|pressure|voltage|current|load|rpm|speed|level|flow|rate|generator|engine|pump|compressor|sensor|meter)\b/i.test(
+      /\b(oil|fuel|coolant|fresh\s*water|seawater|water|tank|battery|depth|rudder|trim|temperature|temp|pressure|voltage|current|load|rpm|speed|heading|course|navigation|level|flow|rate|generator|engine|pump|compressor|sensor|meter)\b/i.test(
         query,
       );
 
@@ -1207,6 +1217,13 @@ export class LlmService {
     return !windOwnsSpeed;
   }
 
+  private isVesselHeadingTelemetryQuery(query: string): boolean {
+    const normalized = query.toLowerCase();
+    return /\b(heading|heading true|heading magnetic|course over ground|cog)\b/i.test(
+      normalized,
+    );
+  }
+
   private hasVesselSpeedTelemetryValue(
     telemetry?: Record<string, unknown>,
   ): boolean {
@@ -1226,6 +1243,30 @@ export class LlmService {
         return false;
       }
       return /\b(speed\s*over\s*ground|speedoverground|sog|speed\s*through\s*water|speedthroughwater|stw|velocity\s*made\s*good|vmg|vessel\s*speed|navigation\.[\w.]*speed)\b/i.test(
+        label,
+      );
+    });
+  }
+
+  private hasVesselHeadingTelemetryValue(
+    telemetry?: Record<string, unknown>,
+  ): boolean {
+    if (!telemetry) {
+      return false;
+    }
+
+    return Object.entries(telemetry).some(([label, value]) => {
+      if (value === null || value === undefined || value === '') {
+        return false;
+      }
+      if (
+        /\b(wind|fan|hvac|blower|pump|engine|generator|genset|motor|rpm|throttle|rudder)\b/i.test(
+          label,
+        )
+      ) {
+        return false;
+      }
+      return /\b(heading\s*true|headingtrue|heading\s*magnetic|headingmagnetic|vessel\s*heading|navigation\.[\w.]*heading)\b/i.test(
         label,
       );
     });

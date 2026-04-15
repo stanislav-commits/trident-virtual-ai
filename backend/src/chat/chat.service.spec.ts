@@ -3,6 +3,7 @@ import { ChatService } from './chat.service';
 describe('ChatService telemetry clarification', () => {
   const prisma = {
     chatSession: {
+      findMany: jest.fn(),
       findUnique: jest.fn(),
     },
     ship: {
@@ -5424,5 +5425,116 @@ describe('ChatService telemetry clarification', () => {
         (message: { content: string }) => message.content,
       ),
     ).toEqual(Array.from({ length: 20 }, (_, index) => `message-${index + 3}`));
+  });
+
+  it('returns pinned sessions plus the first lazy-loaded page of unpinned sessions', async () => {
+    prisma.chatSession.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'pinned-1',
+          title: 'Pinned Chat',
+          userId: 'user-1',
+          shipId: 'ship-1',
+          pinnedAt: new Date('2026-04-15T10:00:00.000Z'),
+          createdAt: new Date('2026-04-10T10:00:00.000Z'),
+          updatedAt: new Date('2026-04-15T10:00:00.000Z'),
+          deletedAt: null,
+          messages: [{ id: 'm-1' }, { id: 'm-2' }],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'session-3',
+          title: 'Session 3',
+          userId: 'user-1',
+          shipId: 'ship-1',
+          pinnedAt: null,
+          createdAt: new Date('2026-04-13T10:00:00.000Z'),
+          updatedAt: new Date('2026-04-13T10:00:00.000Z'),
+          deletedAt: null,
+          messages: [{ id: 'm-3' }],
+        },
+        {
+          id: 'session-2',
+          title: 'Session 2',
+          userId: 'user-1',
+          shipId: 'ship-1',
+          pinnedAt: null,
+          createdAt: new Date('2026-04-12T10:00:00.000Z'),
+          updatedAt: new Date('2026-04-12T10:00:00.000Z'),
+          deletedAt: null,
+          messages: [{ id: 'm-4' }],
+        },
+        {
+          id: 'session-1',
+          title: 'Session 1',
+          userId: 'user-1',
+          shipId: 'ship-1',
+          pinnedAt: null,
+          createdAt: new Date('2026-04-11T10:00:00.000Z'),
+          updatedAt: new Date('2026-04-11T10:00:00.000Z'),
+          deletedAt: null,
+          messages: [{ id: 'm-5' }],
+        },
+      ]);
+
+    const result = await service.listSessions('user-1', 'user', { limit: '2' });
+
+    expect(result.sessions.map((session) => session.id)).toEqual([
+      'pinned-1',
+      'session-3',
+      'session-2',
+    ]);
+    expect(result.sessions[0].messageCount).toBe(2);
+    expect(result.hasMore).toBe(true);
+    expect(result.nextCursor).toEqual(expect.any(String));
+  });
+
+  it('uses the cursor to load the next page of unpinned chat sessions without repeating pinned chats', async () => {
+    const cursor = Buffer.from(
+      JSON.stringify({
+        updatedAt: '2026-04-12T10:00:00.000Z',
+        id: 'session-2',
+      }),
+      'utf8',
+    ).toString('base64url');
+
+    prisma.chatSession.findMany.mockResolvedValueOnce([
+      {
+        id: 'session-1',
+        title: 'Session 1',
+        userId: 'user-1',
+        shipId: 'ship-1',
+        pinnedAt: null,
+        createdAt: new Date('2026-04-11T10:00:00.000Z'),
+        updatedAt: new Date('2026-04-11T10:00:00.000Z'),
+        deletedAt: null,
+        messages: [{ id: 'm-1' }],
+      },
+    ]);
+
+    const result = await service.listSessions('user-1', 'user', {
+      cursor,
+      limit: '2',
+    });
+
+    expect(prisma.chatSession.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.chatSession.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          pinnedAt: null,
+          OR: [
+            { updatedAt: { lt: new Date('2026-04-12T10:00:00.000Z') } },
+            {
+              updatedAt: new Date('2026-04-12T10:00:00.000Z'),
+              id: { lt: 'session-2' },
+            },
+          ],
+        }),
+      }),
+    );
+    expect(result.sessions.map((session) => session.id)).toEqual(['session-1']);
+    expect(result.hasMore).toBe(false);
+    expect(result.nextCursor).toBeNull();
   });
 });

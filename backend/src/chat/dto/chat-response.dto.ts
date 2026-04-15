@@ -34,3 +34,9 @@ export class ChatSessionResponseDto {
   messages?: ChatMessageResponseDto[];
   messageCount?: number;
 }
+
+export class ChatSessionListResponseDto {
+  sessions: ChatSessionResponseDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}

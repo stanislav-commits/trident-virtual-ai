@@ -24,6 +24,7 @@ const TELEMETRY_MEASUREMENT_KINDS = [
   'status',
   'level',
   'location',
+  'heading',
 ] as const;
 
 const TELEMETRY_QUERY_SEMANTIC_SCHEMA = {
@@ -112,6 +113,7 @@ export class TelemetryQuerySemanticNormalizerService {
       'Prefer canonical marine telemetry wording over the user wording when the user uses conversational phrasing.',
       'For vessel location requests, including conversational wording like whereabouts or where are we, include phrases such as latitude, longitude, vessel position, or coordinates when appropriate.',
       'For vessel speed requests, including pace, how fast, moving, or underway wording, include speed over ground when that is the most likely current navigation speed metric.',
+      'For vessel heading requests, including heading, heading true, or course wording, include phrases such as heading true, heading magnetic, or vessel heading when appropriate.',
       'For runtime questions, map natural language such as operating time or time on equipment to running hours, runtime, or hour meter when appropriate.',
       'Do not invent vendor or equipment names that are not implied by the query.',
       'Keep subjectTerms short noun phrases or single-word asset terms.',
@@ -245,6 +247,11 @@ export class TelemetryQuerySemanticNormalizerService {
           phrases.add('vessel speed');
           phrases.add('speed over ground');
           break;
+        case 'heading':
+          phrases.add('vessel heading');
+          phrases.add('heading true');
+          phrases.add('heading magnetic');
+          break;
         case 'hours':
           phrases.add('running hours');
           phrases.add('runtime');
@@ -264,6 +271,10 @@ export class TelemetryQuerySemanticNormalizerService {
         }
         if (kind === 'speed') {
           phrases.add(`${subjectPhrase} speed`);
+          continue;
+        }
+        if (kind === 'heading') {
+          phrases.add(`${subjectPhrase} heading`);
           continue;
         }
         if (kind === 'hours') {
@@ -288,6 +299,10 @@ export class TelemetryQuerySemanticNormalizerService {
         /\b(latitude|longitude|location|position|coordinates?|whereabouts|lat|lon|gps)\b|\bwhere\s+(?:are\s+we|am\s+i)\b/i,
       ],
       ['speed', /\b(speed|pace|sog|stw|vmg|knots?|kts?)\b|\bhow\s+fast\b/i],
+      [
+        'heading',
+        /\b(heading|heading\s+true|heading\s+magnetic|course\s+over\s+ground|cog)\b/i,
+      ],
       ['hours', /\b(runtime|running|hours?|hour meter)\b/i],
       ['voltage', /\b(voltages?|volts?)\b/i],
       ['current', /\b(currents?|amps?|amperage)\b/i],

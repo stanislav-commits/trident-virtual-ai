@@ -639,6 +639,30 @@ describe('LlmService maintenance calculation guard', () => {
     );
   });
 
+  it('tells telemetry prompts to treat heading wording as direct vessel heading when heading telemetry is present', () => {
+    const service = new LlmService();
+
+    const prompt = (service as any).buildUserPrompt({
+      userQuery: "what's the current speed, heading and location of the vessel",
+      telemetryPrefiltered: true,
+      telemetryMatchMode: 'direct',
+      telemetry: {
+        'navigation.position.lat': 43.49536333333333,
+        'navigation.position.lon': 7.077596666666667,
+        'navigation.speedOverGround.value': 0.007202224046785648,
+        'navigation.headingTrue.value': 182.4,
+      },
+      noDocumentation: true,
+    });
+
+    expect(prompt).toContain(
+      'This telemetry includes a direct current vessel heading reading.',
+    );
+    expect(prompt).toContain(
+      'do not say heading is unavailable',
+    );
+  });
+
   it('tells answer formatting to use plain lines instead of decorative bold markers', () => {
     const service = new LlmService();
 
@@ -795,6 +819,14 @@ describe('LlmService maintenance calculation guard', () => {
     ).toBe('telemetry_status');
     expect(
       (service as any).classifyQueryIntent('Latitude and longitude'),
+    ).toBe('telemetry_status');
+  });
+
+  it('classifies vessel heading questions as telemetry queries', () => {
+    const service = new LlmService();
+
+    expect(
+      (service as any).classifyQueryIntent('What is the current vessel heading?'),
     ).toBe('telemetry_status');
   });
 });

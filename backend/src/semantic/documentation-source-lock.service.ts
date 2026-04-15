@@ -328,7 +328,7 @@ export class DocumentationSourceLockService {
     }
 
     return (
-      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|warnings?|requirements?|limits?|limitations?|tools?|materials?|tables?|diagrams?|figures?|drawings?|charts?|summar(?:y|ies|ize)|process(?:es)?|sequence|overview)\b/i.test(
+      /\b(parts?|spares?|items?|components?|quantit(?:y|ies)|qty|pages?|sources?|steps?|procedures?|records?|checks?|checklists?|warnings?|requirements?|limits?|limitations?|tools?|materials?|tables?|diagrams?|figures?|drawings?|charts?|summar(?:y|ies|ize)|process(?:es)?|sequence|overview)\b/i.test(
         trimmed,
       ) ||
       /\b(?:who|what|which)\s+should\s+(?:be\s+)?(?:notified|involved|checked|recorded|completed)\b/i.test(

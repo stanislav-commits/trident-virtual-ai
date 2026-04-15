@@ -117,6 +117,7 @@ interface TelemetryListRequest {
 interface NavigationMotionTelemetryIntent {
   wantsLocation: boolean;
   wantsSpeed: boolean;
+  wantsHeading: boolean;
   wantsWind: boolean;
   preferredSpeedKind?: 'sog' | 'stw' | 'vmg';
 }
@@ -4743,16 +4744,14 @@ export class MetricsService implements OnModuleInit {
     );
     const speedIndex = this.getNavigationSpeedIntentIndex(searchSpace);
     const locationIndex = this.getNavigationLocationIntentIndex(searchSpace);
-    const speedFirst =
-      intent.wantsSpeed &&
-      (!intent.wantsLocation ||
-        (speedIndex >= 0 &&
-          (locationIndex < 0 || speedIndex <= locationIndex)));
     const speedEntries = intent.wantsSpeed
       ? this.findVesselNavigationSpeedEntries(
           entries,
           intent.preferredSpeedKind,
         )
+      : [];
+    const headingEntries = intent.wantsHeading
+      ? this.findVesselNavigationHeadingEntries(entries)
       : [];
     const locationEntries = intent.wantsLocation
       ? this.findCurrentVesselCoordinateEntries(entries)
@@ -4760,9 +4759,35 @@ export class MetricsService implements OnModuleInit {
     const windEntries = intent.wantsWind
       ? this.findWindTelemetryEntries(entries)
       : [];
-    const selected = speedFirst
-      ? [...speedEntries, ...locationEntries, ...windEntries]
-      : [...locationEntries, ...speedEntries, ...windEntries];
+
+    const selected = [
+      {
+        index:
+          locationIndex >= 0 ? locationIndex : Number.MAX_SAFE_INTEGER - 4,
+        entries: locationEntries,
+      },
+      {
+        index: speedIndex >= 0 ? speedIndex : Number.MAX_SAFE_INTEGER - 3,
+        entries: speedEntries,
+      },
+      {
+        index:
+          this.getNavigationHeadingIntentIndex(searchSpace) >= 0
+            ? this.getNavigationHeadingIntentIndex(searchSpace)
+            : Number.MAX_SAFE_INTEGER - 2,
+        entries: headingEntries,
+      },
+      {
+        index:
+          this.getNavigationWindIntentIndex(searchSpace) >= 0
+            ? this.getNavigationWindIntentIndex(searchSpace)
+            : Number.MAX_SAFE_INTEGER - 1,
+        entries: windEntries,
+      },
+    ]
+      .filter((group) => group.entries.length > 0)
+      .sort((left, right) => left.index - right.index)
+      .flatMap((group) => group.entries);
 
     return this.uniqueTelemetryEntries(selected);
   }
@@ -4797,17 +4822,19 @@ export class MetricsService implements OnModuleInit {
   ): NavigationMotionTelemetryIntent | null {
     const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
     const requestedKinds = [...queryKinds].filter(
-      (kind) => kind !== 'location' && kind !== 'speed',
+      (kind) => kind !== 'location' && kind !== 'speed' && kind !== 'heading',
     );
     if (requestedKinds.length > 0) {
       return null;
     }
 
     const wantsLocation = this.isNavigationLocationIntent(searchSpace);
+    const wantsHeading = this.isNavigationHeadingIntent(searchSpace);
     const wantsWind = this.isWindTelemetryIntent(searchSpace);
     const windOwnsSpeed =
       wantsWind &&
       !wantsLocation &&
+      !wantsHeading &&
       !this.hasVesselNavigationContext(searchSpace) &&
       (/\bwind\s+(?:speed|direction|angle)\b/i.test(searchSpace) ||
         /\b(?:speed|direction|angle)\s+(?:of|for|in|on)\s+(?:the\s+)?wind\b/i.test(
@@ -4815,7 +4842,7 @@ export class MetricsService implements OnModuleInit {
         ));
     const wantsSpeed =
       this.isNavigationSpeedIntent(searchSpace) && !windOwnsSpeed;
-    if (!wantsLocation && !wantsSpeed && !wantsWind) {
+    if (!wantsLocation && !wantsSpeed && !wantsHeading && !wantsWind) {
       return null;
     }
 
@@ -4825,6 +4852,7 @@ export class MetricsService implements OnModuleInit {
 
     if (
       !wantsLocation &&
+      !wantsHeading &&
       !wantsWind &&
       !this.hasVesselNavigationContext(searchSpace) &&
       !/\b(we|our)\b/i.test(searchSpace)
@@ -4835,6 +4863,7 @@ export class MetricsService implements OnModuleInit {
     return {
       wantsLocation,
       wantsSpeed,
+      wantsHeading,
       wantsWind,
       preferredSpeedKind: this.getPreferredNavigationSpeedKind(searchSpace),
     };
@@ -4879,8 +4908,17 @@ export class MetricsService implements OnModuleInit {
     );
   }
 
+  private isNavigationHeadingIntent(normalizedQuery: string): boolean {
+    return (
+      /\b(heading|heading\s+true|heading\s+magnetic)\b/i.test(
+        normalizedQuery,
+      ) ||
+      /\b(course\s+over\s+ground|cog)\b/i.test(normalizedQuery)
+    );
+  }
+
   private hasVesselNavigationContext(normalizedQuery: string): boolean {
-    return /\b(yacht|vessel|ship|boat|navigation|nav|gps|position|location|coordinates?|latitude|longitude|lat|lon|sog|stw|vmg)\b/i.test(
+    return /\b(yacht|vessel|ship|boat|navigation|nav|gps|position|location|coordinates?|latitude|longitude|lat|lon|heading|course|cog|sog|stw|vmg)\b/i.test(
       normalizedQuery,
     );
   }
@@ -4926,6 +4964,18 @@ export class MetricsService implements OnModuleInit {
     const match = normalizedQuery.match(
       /\b(latitude|longitude|lat|lon|coordinates?|position|gps|location|whereabouts|where\s+(?:is|are))\b/i,
     );
+    return match?.index ?? -1;
+  }
+
+  private getNavigationHeadingIntentIndex(normalizedQuery: string): number {
+    const match = normalizedQuery.match(
+      /\b(heading|heading\s+true|heading\s+magnetic|course\s+over\s+ground|cog)\b/i,
+    );
+    return match?.index ?? -1;
+  }
+
+  private getNavigationWindIntentIndex(normalizedQuery: string): number {
+    const match = normalizedQuery.match(/\bwind\b/i);
     return match?.index ?? -1;
   }
 
@@ -5025,6 +5075,24 @@ export class MetricsService implements OnModuleInit {
     return candidates.slice(0, 1).map((candidate) => candidate.entry);
   }
 
+  private findVesselNavigationHeadingEntries(
+    entries: ShipTelemetryEntry[],
+  ): ShipTelemetryEntry[] {
+    const candidates = entries
+      .filter((entry) => this.isVesselNavigationHeadingEntry(entry))
+      .map((entry) => ({
+        entry,
+        score: this.scoreVesselNavigationHeadingEntry(entry),
+      }))
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          left.entry.key.localeCompare(right.entry.key),
+      );
+
+    return candidates.slice(0, 1).map((candidate) => candidate.entry);
+  }
+
   private isVesselNavigationSpeedEntry(
     entry: ShipTelemetryEntry,
     preferredSpeedKind?: 'sog' | 'stw' | 'vmg',
@@ -5069,6 +5137,46 @@ export class MetricsService implements OnModuleInit {
       return 'speed';
     }
     return null;
+  }
+
+  private isVesselNavigationHeadingEntry(entry: ShipTelemetryEntry): boolean {
+    const haystack = this.buildTelemetryHaystack(entry);
+    if (
+      /\b(wind|fan|blower|hvac|throttle|rpm|engine|generator|genset|pump|motor|shaft|compressor|room|route|waypoint|destination|origin)\b/i.test(
+        haystack,
+      )
+    ) {
+      return false;
+    }
+
+    return (
+      /\b(navigation|nmea|performance|vessel|ship|boat|yacht)\b/i.test(
+        haystack,
+      ) &&
+      /\b(heading\s+true|headingtrue|heading\s+magnetic|headingmagnetic|heading)\b/i.test(
+        haystack,
+      )
+    );
+  }
+
+  private scoreVesselNavigationHeadingEntry(entry: ShipTelemetryEntry): number {
+    const haystack = this.buildTelemetryHaystack(entry);
+    let score = 0;
+    if (/\bheading\s+true|headingtrue\b/i.test(haystack)) score += 140;
+    if (/\bheading\s+magnetic|headingmagnetic\b/i.test(haystack)) score += 110;
+    if (/\bheading\b/i.test(haystack)) score += 75;
+    if (/\bnavigation\b/i.test(haystack)) score += 40;
+    if (/\bnmea\b/i.test(haystack)) score += 15;
+    if (
+      /\b(deg|degree|degrees|rad|radian|radians)\b/i.test(haystack) ||
+      entry.unit?.toLowerCase() === 'deg'
+    ) {
+      score += 10;
+    }
+    if (entry.dataType === 'numeric' || typeof entry.value === 'number') {
+      score += 10;
+    }
+    return score;
   }
 
   private scoreVesselNavigationSpeedEntry(
@@ -6454,6 +6562,7 @@ export class MetricsService implements OnModuleInit {
         'energy',
       ],
       [/\b(rpms?|speeds?|pace)\b/i, 'speed'],
+      [/\b(heading|headings|heading\s+true|heading\s+magnetic|course\s+over\s+ground|cog)\b/i, 'heading'],
       [/\b(flows?|rates?)\b/i, 'flow'],
       [/\b(runtime|runtimes|running|hours?|hour\s*meter)\b/i, 'hours'],
       [
@@ -6540,6 +6649,9 @@ export class MetricsService implements OnModuleInit {
       !this.hasNonNavigationPrimarySpeedSubject(normalized)
     ) {
       kinds.add('speed');
+    }
+    if (this.isNavigationHeadingIntent(normalized)) {
+      kinds.add('heading');
     }
     const fluid = this.detectStoredFluidSubject(normalized);
     const treatsCurrentAsLiveQualifier =

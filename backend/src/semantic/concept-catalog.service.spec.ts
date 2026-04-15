@@ -28,4 +28,33 @@ describe('ConceptCatalogService', () => {
     );
     expect(helm?.score ?? 0).toBeGreaterThan(bunkering?.score ?? 0);
   });
+
+  it('treats bunker checklist wording as a bunkering concept instead of a generic maintenance checklist', async () => {
+    const prisma = {
+      tag: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    } as any;
+    const service = new ConceptCatalogService(prisma);
+
+    const candidates = await service.shortlistConcepts(
+      'show me the bunker checklist',
+      { limit: 4, minScore: 0 },
+    );
+    const bunkering = candidates.find(
+      (candidate) => candidate.conceptId === 'bunkering_operation',
+    );
+    const maintenanceChecklist = candidates.find(
+      (candidate) => candidate.conceptId === 'maintenance_checklist',
+    );
+
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        conceptId: 'bunkering_operation',
+      }),
+    );
+    expect(bunkering?.score ?? 0).toBeGreaterThan(
+      maintenanceChecklist?.score ?? 0,
+    );
+  });
 });

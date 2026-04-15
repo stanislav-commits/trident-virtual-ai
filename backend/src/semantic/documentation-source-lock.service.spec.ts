@@ -363,6 +363,7 @@ describe('DocumentationSourceLockService', () => {
       'Which tables or diagrams are relevant?',
       'What are the limitations?',
       'Can you summarize the process for a new engineer?',
+      'What is the full checklist?',
       'What page is this from?',
     ]) {
       expect(

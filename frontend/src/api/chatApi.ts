@@ -1,10 +1,33 @@
 import { fetchWithAuth } from "./client";
-import type { ChatSessionDto, ChatMessageDto } from "../types/chat";
+import type {
+  ChatSessionDto,
+  ChatMessageDto,
+  ChatSessionListDto,
+} from "../types/chat";
 
 export async function getChatSessions(
   token: string,
-): Promise<ChatSessionDto[]> {
-  const res = await fetchWithAuth("chat/sessions", { token });
+  params?: {
+    search?: string;
+    cursor?: string | null;
+    limit?: number;
+  },
+): Promise<ChatSessionListDto> {
+  const searchParams = new URLSearchParams();
+  if (params?.search?.trim()) {
+    searchParams.set("search", params.search.trim());
+  }
+  if (params?.cursor?.trim()) {
+    searchParams.set("cursor", params.cursor.trim());
+  }
+  if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+    searchParams.set("limit", `${params.limit}`);
+  }
+
+  const path = searchParams.size
+    ? `chat/sessions?${searchParams.toString()}`
+    : "chat/sessions";
+  const res = await fetchWithAuth(path, { token });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to fetch chat sessions");

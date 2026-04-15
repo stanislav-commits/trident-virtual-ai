@@ -15,6 +15,9 @@ const STATIC_CONCEPTS: ConceptDefinition[] = [
       'Receiving fuel onboard, including preparation, transfer monitoring, completion, and spill prevention.',
     aliases: [
       'bunkering',
+      'bunker operation',
+      'bunker transfer',
+      'bunker checklist',
       'fuel transfer',
       'taking fuel onboard',
       'fuel receiving',
@@ -162,6 +165,16 @@ const CONCEPT_MATCH_STOP_WORDS = new Set([
   'technical',
   'user',
   'vessel',
+]);
+
+const CONCEPT_MATCH_LOW_SIGNAL_TOKENS = new Set([
+  'check',
+  'checklist',
+  'guide',
+  'list',
+  'operation',
+  'procedure',
+  'task',
 ]);
 
 interface CachedConceptCatalog {
@@ -359,7 +372,7 @@ export class ConceptCatalogService {
     let overlap = 0;
     for (const token of queryTokens) {
       if (conceptTokens.has(token)) {
-        overlap += 1;
+        overlap += CONCEPT_MATCH_LOW_SIGNAL_TOKENS.has(token) ? 1 : 2;
       }
     }
 
@@ -388,8 +401,25 @@ export class ConceptCatalogService {
   private tokenize(value: string): string[] {
     return this.normalizeText(value)
       .split(' ')
+      .map((token) => this.canonicalizeToken(token))
       .filter(
         (token) => token.length > 1 && !CONCEPT_MATCH_STOP_WORDS.has(token),
       );
+  }
+
+  private canonicalizeToken(value: string): string {
+    if (value.endsWith('ies') && value.length > 4) {
+      return `${value.slice(0, -3)}y`;
+    }
+    if (value.endsWith('ing') && value.length > 5) {
+      return value.slice(0, -3);
+    }
+    if (value.endsWith('ed') && value.length > 4) {
+      return value.slice(0, -2);
+    }
+    if (value.endsWith('s') && value.length > 3 && !value.endsWith('ss')) {
+      return value.slice(0, -1);
+    }
+    return value;
   }
 }

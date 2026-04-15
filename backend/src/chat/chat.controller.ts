@@ -21,6 +21,7 @@ import { SetChatSessionPinDto } from './dto/set-chat-session-pin.dto';
 import {
   ChatSessionResponseDto,
   ChatMessageResponseDto,
+  ChatSessionListResponseDto,
 } from './dto/chat-response.dto';
 import type { AuthUser } from '../auth/auth.service';
 
@@ -50,8 +51,14 @@ export class ChatController {
   async listSessions(
     @CurrentUser() user: AuthUser,
     @Query('search') search?: string,
-  ): Promise<ChatSessionResponseDto[]> {
-    return this.chatService.listSessions(user.id, user.role, search);
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ): Promise<ChatSessionListResponseDto> {
+    return this.chatService.listSessions(user.id, user.role, {
+      search,
+      cursor,
+      limit,
+    });
   }
 
   @Get('sessions/:id')

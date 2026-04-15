@@ -2203,6 +2203,91 @@ describe('MetricsService telemetry matching', () => {
     expect(labels.every((key) => !/Fan Speed/i.test(key))).toBe(true);
   });
 
+  it('returns vessel heading together with current speed and location for combined navigation queries', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::navigation.position::lat',
+        latestValue: 43.49536333333333,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lat',
+          description: 'Current vessel latitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lat',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.position::lon',
+        latestValue: 7.077596666666667,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.position.lon',
+          description: 'Current vessel longitude in decimal degrees.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.position',
+          field: 'lon',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.speedOverGround::value',
+        latestValue: 0.007202224046785648,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.speedOverGround.value',
+          description: 'Current vessel speed over ground.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'navigation.speedOverGround',
+          field: 'value',
+        },
+      },
+      {
+        metricKey: 'NMEA::navigation.headingTrue::value',
+        latestValue: 182.4,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'navigation.headingTrue.value',
+          description: 'Current vessel heading true.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'navigation.headingTrue',
+          field: 'value',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Captain::Fan Speed',
+        latestValue: 7,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Captain.Fan Speed',
+          description: 'Captain cabin fan speed.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Captain',
+          field: 'Fan Speed',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      "what's the current speed, heading and location of the vessel",
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(labels).toHaveLength(4);
+    expect(labels.some((key) => /headingTrue/i.test(key))).toBe(true);
+    expect(labels.some((key) => /speedOverGround/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lat\b|latitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lon\b|longitude/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/Fan Speed/i.test(key))).toBe(true);
+  });
+
   it('uses telemetry semantic hints for operating-time wording on generator hours', async () => {
     const telemetrySemanticNormalizer = {
       normalize: jest.fn().mockResolvedValue({

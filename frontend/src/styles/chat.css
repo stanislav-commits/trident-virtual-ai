@@ -244,6 +244,33 @@
   border-radius: 2px;
 }
 
+.chat-list__load-more-wrap {
+  padding: 12px 6px 4px;
+}
+
+.chat-list__load-more {
+  width: 100%;
+  border: 1px solid var(--chat-border-sidebar);
+  background: var(--chat-surface-2);
+  color: var(--chat-text-main);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.chat-list__load-more:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.chat-list__load-more:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
 /* Sidebar footer */
 .chat-sidebar__footer {
   padding: 8px 14px 12px;

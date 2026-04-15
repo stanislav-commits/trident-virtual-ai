@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ChatSessionDto } from "../types/chat";
 import {
   getChatSessions,
@@ -9,9 +9,14 @@ import {
 } from "../api/chatApi";
 import { sortChatSessions } from "../utils/chatSessionOrder";
 
+const CHAT_SESSION_PAGE_SIZE = 20;
+
 interface UseChatSessionsState {
   sessions: ChatSessionDto[];
   isLoading: boolean;
+  isLoadingMore: boolean;
+  hasMore: boolean;
+  nextCursor: string | null;
   error: string | null;
 }
 
@@ -27,38 +32,91 @@ function mergeSessionUpdate(
   };
 }
 
-export function useChatSessions(token: string | null) {
+function mergeSessionPages(
+  current: ChatSessionDto[],
+  incoming: ChatSessionDto[],
+): ChatSessionDto[] {
+  const merged = new Map<string, ChatSessionDto>();
+
+  for (const session of current) {
+    merged.set(session.id, session);
+  }
+
+  for (const session of incoming) {
+    const existing = merged.get(session.id);
+    merged.set(
+      session.id,
+      existing ? mergeSessionUpdate(existing, session) : session,
+    );
+  }
+
+  return sortChatSessions([...merged.values()]);
+}
+
+export function useChatSessions(
+  token: string | null,
+  searchQuery = "",
+) {
+  const normalizedSearch = searchQuery.trim();
   const [state, setState] = useState<UseChatSessionsState>({
     sessions: [],
     isLoading: false,
+    isLoadingMore: false,
+    hasMore: false,
+    nextCursor: null,
     error: null,
   });
 
-  // Fetch sessions on mount and when token changes
-  useEffect(() => {
+  const fetchFirstPage = useCallback(async () => {
     if (!token) {
-      setState({ sessions: [], isLoading: false, error: null });
+      setState({
+        sessions: [],
+        isLoading: false,
+        isLoadingMore: false,
+        hasMore: false,
+        nextCursor: null,
+        error: null,
+      });
       return;
     }
 
-    const fetchSessions = async () => {
-      setState((prev) => ({ ...prev, isLoading: true, error: null }));
-      try {
-        const data = await getChatSessions(token);
-        setState({
-          sessions: sortChatSessions(data),
-          isLoading: false,
-          error: null,
-        });
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to load sessions";
-        setState({ sessions: [], isLoading: false, error: message });
-      }
-    };
+    setState((prev) => ({
+      ...prev,
+      isLoading: true,
+      isLoadingMore: false,
+      error: null,
+    }));
 
-    fetchSessions();
-  }, [token]);
+    try {
+      const data = await getChatSessions(token, {
+        search: normalizedSearch || undefined,
+        limit: CHAT_SESSION_PAGE_SIZE,
+      });
+      setState({
+        sessions: sortChatSessions(data.sessions),
+        isLoading: false,
+        isLoadingMore: false,
+        hasMore: data.hasMore,
+        nextCursor: data.nextCursor,
+        error: null,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to load sessions";
+      setState({
+        sessions: [],
+        isLoading: false,
+        isLoadingMore: false,
+        hasMore: false,
+        nextCursor: null,
+        error: message,
+      });
+    }
+  }, [normalizedSearch, token]);
+
+  useEffect(() => {
+    void fetchFirstPage();
+  }, [fetchFirstPage]);
 
   const createSession = async (shipId: string | undefined, title?: string) => {
     if (!token) throw new Error("No authentication token");
@@ -88,7 +146,7 @@ export function useChatSessions(token: string | null) {
       await deleteChatSession(sessionId, token);
       setState((prev) => ({
         ...prev,
-        sessions: prev.sessions.filter((s) => s.id !== sessionId),
+        sessions: prev.sessions.filter((session) => session.id !== sessionId),
       }));
     } catch (err) {
       const message =
@@ -106,8 +164,10 @@ export function useChatSessions(token: string | null) {
       setState((prev) => ({
         ...prev,
         sessions: sortChatSessions(
-          prev.sessions.map((s) =>
-            s.id === sessionId ? mergeSessionUpdate(s, updated) : s,
+          prev.sessions.map((session) =>
+            session.id === sessionId
+              ? mergeSessionUpdate(session, updated)
+              : session,
           ),
         ),
       }));
@@ -127,8 +187,10 @@ export function useChatSessions(token: string | null) {
       setState((prev) => ({
         ...prev,
         sessions: sortChatSessions(
-          prev.sessions.map((s) =>
-            s.id === sessionId ? mergeSessionUpdate(s, updated) : s,
+          prev.sessions.map((session) =>
+            session.id === sessionId
+              ? mergeSessionUpdate(session, updated)
+              : session,
           ),
         ),
       }));
@@ -141,21 +203,54 @@ export function useChatSessions(token: string | null) {
     }
   };
 
-  const refreshSessions = async () => {
-    if (!token) return;
+  const loadMoreSessions = useCallback(async () => {
+    if (
+      !token ||
+      state.isLoading ||
+      state.isLoadingMore ||
+      !state.hasMore ||
+      !state.nextCursor
+    ) {
+      return;
+    }
+
+    setState((prev) => ({ ...prev, isLoadingMore: true, error: null }));
+
     try {
-      const data = await getChatSessions(token);
+      const data = await getChatSessions(token, {
+        search: normalizedSearch || undefined,
+        cursor: state.nextCursor,
+        limit: CHAT_SESSION_PAGE_SIZE,
+      });
       setState((prev) => ({
         ...prev,
-        sessions: sortChatSessions(data),
+        sessions: mergeSessionPages(prev.sessions, data.sessions),
+        isLoadingMore: false,
+        hasMore: data.hasMore,
+        nextCursor: data.nextCursor,
         error: null,
       }));
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to refresh sessions";
-      setState((prev) => ({ ...prev, error: message }));
+        err instanceof Error ? err.message : "Failed to load more sessions";
+      setState((prev) => ({
+        ...prev,
+        isLoadingMore: false,
+        error: message,
+      }));
     }
-  };
+  }, [
+    normalizedSearch,
+    state.hasMore,
+    state.isLoading,
+    state.isLoadingMore,
+    state.nextCursor,
+    token,
+  ]);
+
+  const refreshSessions = useCallback(async () => {
+    await fetchFirstPage();
+  }, [fetchFirstPage]);
 
   return {
     ...state,
@@ -163,6 +258,7 @@ export function useChatSessions(token: string | null) {
     deleteSession,
     renameSession,
     pinSession,
+    loadMoreSessions,
     refreshSessions,
   };
 }

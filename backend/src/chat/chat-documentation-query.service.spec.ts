@@ -539,6 +539,23 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(true);
   });
 
+  it('inherits the previous bunker subject for full-checklist follow-ups', () => {
+    const retrievalQuery = service.buildRetrievalQuery(
+      'what the full checklist',
+      'show me the bunker checklist',
+    );
+
+    expect(retrievalQuery).toContain('bunker checklist');
+    expect(retrievalQuery).toContain('show all available');
+    expect(
+      service.shouldPromoteRetrievalQueryToAnswerQuery(
+        'what the full checklist',
+        'show me the bunker checklist',
+        retrievalQuery,
+      ),
+    ).toBe(true);
+  });
+
   it('inherits the previous subject for vague next-maintenance follow-up questions', () => {
     expect(
       service.buildRetrievalQuery(
