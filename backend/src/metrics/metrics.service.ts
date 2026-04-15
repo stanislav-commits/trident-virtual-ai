@@ -19,6 +19,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TagLinksService } from '../tags/tag-links.service';
 import { CreateMetricDefinitionDto } from './dto/create-metric-definition.dto';
 import { MetricDescriptionService } from './metric-description.service';
+import {
+  TelemetryQuerySemanticNormalizerService,
+  type TelemetrySemanticQuery,
+} from './telemetry-query-semantic-normalizer.service';
 import { UpdateMetricDefinitionDto } from './dto/update-metric-definition.dto';
 import type { ChatNormalizedQuery } from '../chat/chat.types';
 
@@ -224,6 +228,8 @@ export class MetricsService implements OnModuleInit {
     private readonly influxdb: InfluxdbService,
     private readonly metricDescriptions: MetricDescriptionService,
     @Optional() private readonly tagLinks?: TagLinksService,
+    @Optional()
+    private readonly telemetrySemanticNormalizer?: TelemetryQuerySemanticNormalizerService,
   ) {}
 
   onModuleInit() {
@@ -535,11 +541,21 @@ export class MetricsService implements OnModuleInit {
     resolvedSubjectQuery?: string,
   ): Promise<ShipTelemetryContext> {
     const entries = await this.loadShipTelemetryEntries(shipId);
+    const telemetrySemanticResolvedSubjectQuery =
+      await this.buildTelemetrySemanticResolvedSubjectQuery({
+        userQuery: query,
+        resolvedSubjectQuery,
+      });
+    const effectiveResolvedSubjectQuery =
+      this.mergeTelemetryResolvedSubjectQueries(
+        resolvedSubjectQuery,
+        telemetrySemanticResolvedSubjectQuery,
+      );
     const scopedEntries = await this.applyTagPrefilterToEntries(
       shipId,
       entries,
       query,
-      resolvedSubjectQuery,
+      effectiveResolvedSubjectQuery,
     );
     if (!scopedEntries.length) {
       return {
@@ -554,13 +570,13 @@ export class MetricsService implements OnModuleInit {
 
     const telemetryListRequest = this.parseTelemetryListRequest(
       query,
-      resolvedSubjectQuery,
+      effectiveResolvedSubjectQuery,
     );
     if (telemetryListRequest?.mode === 'sample') {
       const sampleSelection = this.pickTelemetrySampleEntries(
         scopedEntries,
         query,
-        resolvedSubjectQuery,
+        effectiveResolvedSubjectQuery,
         telemetryListRequest.limit ?? 10,
       );
       return {
@@ -577,7 +593,7 @@ export class MetricsService implements OnModuleInit {
       this.findBroadTankClarificationEntries(
         scopedEntries,
         query,
-        resolvedSubjectQuery,
+        effectiveResolvedSubjectQuery,
       );
     if (broadTankClarificationEntries) {
       return {
@@ -590,7 +606,7 @@ export class MetricsService implements OnModuleInit {
           'related',
           broadTankClarificationEntries,
           query,
-          resolvedSubjectQuery,
+          effectiveResolvedSubjectQuery,
           'ambiguous_tank_reading',
         ),
       };
@@ -599,7 +615,7 @@ export class MetricsService implements OnModuleInit {
     const matchedEntries = this.findRelevantTelemetryEntries(
       scopedEntries,
       query,
-      resolvedSubjectQuery,
+      effectiveResolvedSubjectQuery,
       { limitResults: telemetryListRequest?.mode !== 'full' },
     );
 
@@ -607,14 +623,14 @@ export class MetricsService implements OnModuleInit {
       const baseMatchMode = this.determineTelemetryMatchMode(
         matchedEntries,
         query,
-        resolvedSubjectQuery,
+        effectiveResolvedSubjectQuery,
       );
       const forcedClarificationReason =
         this.getTelemetryForcedClarificationReason(
           baseMatchMode,
           matchedEntries,
           query,
-          resolvedSubjectQuery,
+          effectiveResolvedSubjectQuery,
         );
       const matchMode = forcedClarificationReason ? 'related' : baseMatchMode;
       return {
@@ -627,20 +643,20 @@ export class MetricsService implements OnModuleInit {
           matchMode,
           matchedEntries,
           query,
-          resolvedSubjectQuery,
+          effectiveResolvedSubjectQuery,
           forcedClarificationReason,
         ),
       };
     }
 
     const normalizedSearchSpace = this.normalizeTelemetryText(
-      `${query}\n${resolvedSubjectQuery ?? ''}`,
+      `${query}\n${effectiveResolvedSubjectQuery ?? ''}`,
     );
     if (this.hasStrictTelemetryContext(normalizedSearchSpace)) {
       const fallbackEntries = this.findTelemetryFallbackEntries(
         scopedEntries,
         query,
-        resolvedSubjectQuery,
+        effectiveResolvedSubjectQuery,
       );
       const fallbackMatchMode = fallbackEntries.length > 0 ? 'related' : 'none';
 
@@ -656,7 +672,7 @@ export class MetricsService implements OnModuleInit {
                 fallbackMatchMode,
                 fallbackEntries,
                 query,
-                resolvedSubjectQuery,
+                effectiveResolvedSubjectQuery,
               )
             : null,
       };
@@ -678,7 +694,7 @@ export class MetricsService implements OnModuleInit {
     const fallbackEntries = this.findTelemetryFallbackEntries(
       scopedEntries,
       query,
-      resolvedSubjectQuery,
+      effectiveResolvedSubjectQuery,
     );
 
     const fallbackMatchMode = fallbackEntries.length > 0 ? 'related' : 'none';
@@ -694,7 +710,7 @@ export class MetricsService implements OnModuleInit {
               fallbackMatchMode,
               fallbackEntries,
               query,
-              resolvedSubjectQuery,
+              effectiveResolvedSubjectQuery,
             )
           : null,
     };
@@ -766,11 +782,23 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
+    const telemetrySemanticResolvedSubjectQuery =
+      await this.buildTelemetrySemanticResolvedSubjectQuery({
+        userQuery: query,
+        resolvedSubjectQuery:
+          parsedRequest.metricQuery || resolvedSubjectQuery || undefined,
+      });
+    const effectiveResolvedSubjectQuery =
+      this.mergeTelemetryResolvedSubjectQueries(
+        resolvedSubjectQuery,
+        parsedRequest.metricQuery,
+        telemetrySemanticResolvedSubjectQuery,
+      );
     const scopedEntries = await this.applyTagPrefilterToEntries(
       shipId,
       entries,
       query,
-      resolvedSubjectQuery,
+      effectiveResolvedSubjectQuery,
     );
     if (scopedEntries.length === 0) {
       return {
@@ -784,13 +812,13 @@ export class MetricsService implements OnModuleInit {
       this.findBroadTankClarificationEntries(
         scopedEntries,
         query,
-        resolvedSubjectQuery,
+        effectiveResolvedSubjectQuery,
       ) ??
       (scopedEntries.length < entries.length
         ? this.findBroadTankClarificationEntries(
             entries,
             query,
-            resolvedSubjectQuery,
+            effectiveResolvedSubjectQuery,
           )
         : null);
     if (broadTankClarificationEntries) {
@@ -809,6 +837,7 @@ export class MetricsService implements OnModuleInit {
     const matchedEntries = this.findHistoricalTelemetryEntries(
       scopedEntries,
       parsedRequest,
+      effectiveResolvedSubjectQuery,
     );
     this.logger.debug(
       `Historical telemetry matching ship=${shipId} activeEntries=${scopedEntries.length} matchedEntries=${matchedEntries.length}`,
@@ -828,7 +857,7 @@ export class MetricsService implements OnModuleInit {
         : this.determineTelemetryMatchMode(
             matchedEntries,
             parsedRequest.metricQuery,
-            undefined,
+            effectiveResolvedSubjectQuery,
           );
     this.logger.debug(
       `Historical telemetry match mode ship=${shipId} mode=${matchMode} metricKeys=${matchedEntries
@@ -1081,6 +1110,101 @@ export class MetricsService implements OnModuleInit {
     }));
   }
 
+  private async buildTelemetrySemanticResolvedSubjectQuery(params: {
+    userQuery: string;
+    resolvedSubjectQuery?: string;
+  }): Promise<string | undefined> {
+    if (!this.telemetrySemanticNormalizer) {
+      return undefined;
+    }
+
+    const semanticQuery = await this.telemetrySemanticNormalizer.normalize({
+      userQuery: params.userQuery,
+      resolvedSubjectQuery: params.resolvedSubjectQuery,
+    });
+    return this.buildTelemetrySemanticHintText(semanticQuery);
+  }
+
+  private buildTelemetrySemanticHintText(
+    semanticQuery: TelemetrySemanticQuery,
+  ): string | undefined {
+    const hints = [
+      ...semanticQuery.subjectTerms,
+      ...semanticQuery.semanticPhrases,
+      ...semanticQuery.measurementKinds.flatMap((kind) =>
+        this.getTelemetrySemanticKindHintPhrases(
+          kind,
+          semanticQuery.preferredSpeedKind,
+        ),
+      ),
+    ]
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (hints.length === 0) {
+      return undefined;
+    }
+
+    const uniqueHints: string[] = [];
+    const seen = new Set<string>();
+    for (const hint of hints) {
+      const normalizedHint = this.normalizeTelemetryText(hint);
+      if (!normalizedHint || seen.has(normalizedHint)) {
+        continue;
+      }
+      seen.add(normalizedHint);
+      uniqueHints.push(hint);
+      if (uniqueHints.length >= 16) {
+        break;
+      }
+    }
+
+    return uniqueHints.length > 0 ? uniqueHints.join('\n') : undefined;
+  }
+
+  private getTelemetrySemanticKindHintPhrases(
+    kind: string,
+    preferredSpeedKind: TelemetrySemanticQuery['preferredSpeedKind'],
+  ): string[] {
+    switch (kind) {
+      case 'location':
+        return ['vessel location', 'vessel position', 'latitude', 'longitude'];
+      case 'speed':
+        return preferredSpeedKind === 'stw'
+          ? ['vessel speed', 'speed through water']
+          : preferredSpeedKind === 'vmg'
+            ? ['vessel speed', 'velocity made good']
+            : ['vessel speed', 'speed over ground'];
+      case 'hours':
+        return ['running hours', 'runtime', 'hour meter'];
+      case 'status':
+        return ['status', 'state', 'alarm'];
+      case 'level':
+        return ['level', 'quantity', 'remaining'];
+      default:
+        return [kind];
+    }
+  }
+
+  private mergeTelemetryResolvedSubjectQueries(
+    ...parts: Array<string | undefined>
+  ): string | undefined {
+    const merged: string[] = [];
+    const seen = new Set<string>();
+    for (const part of parts) {
+      const trimmed = part?.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const normalized = this.normalizeTelemetryText(trimmed);
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      merged.push(trimmed);
+    }
+    return merged.length > 0 ? merged.join('\n') : undefined;
+  }
+
   private async applyTagPrefilterToEntries(
     shipId: string,
     entries: ShipTelemetryEntry[],
@@ -1279,6 +1403,7 @@ export class MetricsService implements OnModuleInit {
   private findHistoricalTelemetryEntries(
     entries: ShipTelemetryEntry[],
     request: ParsedHistoricalTelemetryRequest,
+    resolvedSubjectQuery?: string,
   ): ShipTelemetryEntry[] {
     if (request.operation === 'event') {
       const normalizedMetricQuery = this.normalizeTelemetryText(
@@ -1298,18 +1423,24 @@ export class MetricsService implements OnModuleInit {
         return fuelTankEntries;
       }
 
-      return this.findRelevantTelemetryEntries(entries, normalizedMetricQuery);
+      return this.findRelevantTelemetryEntries(
+        entries,
+        normalizedMetricQuery,
+        resolvedSubjectQuery,
+      );
     }
 
     if (request.operation === 'position') {
       return this.findLocationTelemetryEntries(
         entries,
         request.metricQuery,
-        undefined,
+        resolvedSubjectQuery,
       );
     }
 
-    const searchSpace = this.normalizeTelemetryText(request.metricQuery);
+    const searchSpace = this.normalizeTelemetryText(
+      `${request.metricQuery}\n${resolvedSubjectQuery ?? ''}`,
+    );
     const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
     const aggregateTankEntries =
       this.findHistoricalAggregateTankTelemetryEntries(
@@ -1367,7 +1498,11 @@ export class MetricsService implements OnModuleInit {
       }
     }
 
-    return this.findRelevantTelemetryEntries(entries, request.metricQuery);
+    return this.findRelevantTelemetryEntries(
+      entries,
+      request.metricQuery,
+      resolvedSubjectQuery,
+    );
   }
 
   private findHistoricalAggregateTankTelemetryEntries(

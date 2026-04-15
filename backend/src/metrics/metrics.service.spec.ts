@@ -7,6 +7,9 @@ describe('MetricsService telemetry matching', () => {
       tagLinks?: {
         findTaggedMetricKeysForShipQuery?: jest.Mock;
       };
+      telemetrySemanticNormalizer?: {
+        normalize?: jest.Mock;
+      };
     },
   ) => {
     const prisma = {
@@ -28,6 +31,7 @@ describe('MetricsService telemetry matching', () => {
       influxdb as never,
       metricDescriptions as never,
       options?.tagLinks as never,
+      options?.telemetrySemanticNormalizer as never,
     );
   };
 
@@ -1756,6 +1760,248 @@ describe('MetricsService telemetry matching', () => {
     expect(labels.some((key) => /\.lat\b|latitude/i.test(key))).toBe(true);
     expect(labels.some((key) => /\.lon\b|longitude/i.test(key))).toBe(true);
     expect(labels.every((key) => !/Fan Speed/i.test(key))).toBe(true);
+  });
+
+  it('uses telemetry semantic hints for conversational whereabouts and pace wording', async () => {
+    const telemetrySemanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue({
+        schemaVersion: 'telemetry-semantic-query.v1',
+        measurementKinds: ['location', 'speed'],
+        subjectTerms: ['vessel'],
+        semanticPhrases: [
+          'vessel location',
+          'vessel position',
+          'latitude',
+          'longitude',
+          'speed over ground',
+        ],
+        preferredSpeedKind: 'sog',
+        confidence: 0.94,
+      }),
+    };
+    const service = buildService(
+      [
+        {
+          metricKey: 'NMEA::navigation.position::lat',
+          latestValue: 43.5,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'navigation.position.lat',
+            description: 'Current vessel latitude in decimal degrees.',
+            unit: 'deg',
+            bucket: 'NMEA',
+            measurement: 'navigation.position',
+            field: 'lat',
+          },
+        },
+        {
+          metricKey: 'NMEA::navigation.position::lon',
+          latestValue: 7.08,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'navigation.position.lon',
+            description: 'Current vessel longitude in decimal degrees.',
+            unit: 'deg',
+            bucket: 'NMEA',
+            measurement: 'navigation.position',
+            field: 'lon',
+          },
+        },
+        {
+          metricKey: 'NMEA::navigation.speedOverGround::value',
+          latestValue: 0.01,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'navigation.speedOverGround.value',
+            description: 'Current vessel speed over ground.',
+            unit: 'kn',
+            bucket: 'NMEA',
+            measurement: 'navigation.speedOverGround',
+            field: 'value',
+          },
+        },
+        {
+          metricKey: 'Trending::HVAC-Crew::Fan Speed',
+          latestValue: 4,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'HVAC-Crew.Fan Speed',
+            description: 'Current crew area fan speed.',
+            unit: null,
+            bucket: 'Trending',
+            measurement: 'HVAC-Crew',
+            field: 'Fan Speed',
+          },
+        },
+      ],
+      { telemetrySemanticNormalizer },
+    );
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'Can you tell me our current whereabouts and pace?',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(telemetrySemanticNormalizer.normalize).toHaveBeenCalled();
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(labels).toHaveLength(3);
+    expect(labels.some((key) => /speedOverGround/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lat\b|latitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lon\b|longitude/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/Fan Speed/i.test(key))).toBe(true);
+  });
+
+  it('uses telemetry semantic hints for operating-time wording on generator hours', async () => {
+    const telemetrySemanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue({
+        schemaVersion: 'telemetry-semantic-query.v1',
+        measurementKinds: ['hours'],
+        subjectTerms: ['starboard', 'diesel generator'],
+        semanticPhrases: [
+          'starboard generator runtime',
+          'starboard generator running hours',
+          'starboard generator hour meter',
+        ],
+        preferredSpeedKind: null,
+        confidence: 0.91,
+      }),
+    };
+    const service = buildService(
+      [
+        {
+          metricKey: 'Trending::GENSET-PS::Running hours total',
+          latestValue: 1910,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'GENSET-PS.Running hours total',
+            description: 'Total running hours for the port diesel generator.',
+            unit: 'h',
+            bucket: 'Trending',
+            measurement: 'GENSET-PS',
+            field: 'Running hours total',
+          },
+        },
+        {
+          metricKey: 'Trending::GENSET-SB::Running hours total',
+          latestValue: 2148,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'GENSET-SB.Running hours total',
+            description:
+              'Total running hours for the starboard diesel generator.',
+            unit: 'h',
+            bucket: 'Trending',
+            measurement: 'GENSET-SB',
+            field: 'Running hours total',
+          },
+        },
+        {
+          metricKey: 'Trending::GENSET-SB::Actual speed (rpm)',
+          latestValue: 1500,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'GENSET-SB.Actual speed (rpm)',
+            description: 'Current starboard diesel generator speed.',
+            unit: 'rpm',
+            bucket: 'Trending',
+            measurement: 'GENSET-SB',
+            field: 'Actual speed (rpm)',
+          },
+        },
+      ],
+      { telemetrySemanticNormalizer },
+    );
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'What is the operating time on the starboard diesel generator?',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(result.prefiltered).toBe(true);
+    expect(['exact', 'direct']).toContain(result.matchMode);
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toContain('Running hours');
+    expect(labels[0]).toContain('GENSET-SB');
+    expect(labels[0]).not.toContain('rpm');
+  });
+
+  it('uses telemetry semantic hints for potable-water inventory wording', async () => {
+    const telemetrySemanticNormalizer = {
+      normalize: jest.fn().mockResolvedValue({
+        schemaVersion: 'telemetry-semantic-query.v1',
+        measurementKinds: ['level'],
+        subjectTerms: ['fresh water'],
+        semanticPhrases: [
+          'fresh water quantity',
+          'onboard fresh water',
+          'fresh water remaining',
+        ],
+        preferredSpeedKind: null,
+        confidence: 0.9,
+      }),
+    };
+    const service = buildService(
+      [
+        {
+          metricKey: 'Trending::Tanks::Fresh_Water_Tank_1P',
+          latestValue: 620,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'Tanks.Fresh_Water_Tank_1P',
+            description: 'Fresh water tank quantity.',
+            unit: 'L',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fresh_Water_Tank_1P',
+          },
+        },
+        {
+          metricKey: 'Trending::Tanks::Fresh_Water_Tank_2S',
+          latestValue: 605,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'Tanks.Fresh_Water_Tank_2S',
+            description: 'Fresh water tank quantity.',
+            unit: 'L',
+            bucket: 'Trending',
+            measurement: 'Tanks',
+            field: 'Fresh_Water_Tank_2S',
+          },
+        },
+        {
+          metricKey: 'Trending::Pumps::Fresh water pressure',
+          latestValue: 2.8,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'Pumps.Fresh water pressure',
+            description: 'Fresh water pressure at the service pump.',
+            unit: 'bar',
+            bucket: 'Trending',
+            measurement: 'Pumps',
+            field: 'Fresh water pressure',
+          },
+        },
+      ],
+      { telemetrySemanticNormalizer },
+    );
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'How much potable water do we have aboard?',
+    );
+
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(Object.keys(result.telemetry)).toHaveLength(2);
+    expect(
+      Object.keys(result.telemetry).every((key) => /fresh water tank/i.test(key)),
+    ).toBe(true);
+    expect(
+      Object.keys(result.telemetry).every((key) => !/pressure/i.test(key)),
+    ).toBe(true);
   });
 
   it('keeps equipment speed queries scoped to the equipment subject', async () => {
