@@ -364,7 +364,7 @@ describe('ChatService telemetry clarification', () => {
     );
     expect(metricsService.getShipTelemetryContextForQuery).toHaveBeenCalledWith(
       'ship-1',
-      'current speed and location',
+      'vessel current speed and location',
       undefined,
     );
     expect(llmService.generateResponse).toHaveBeenCalledWith(

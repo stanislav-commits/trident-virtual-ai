@@ -112,6 +112,7 @@ export class ChatQueryNormalizationService {
       /\b(latitude|longitude|position|coordinates?|gps|location|lat|lon)\b/i.test(
         normalized,
       ) ||
+      /\bwhereabouts\b/i.test(normalized) ||
       /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(normalized)
     ) {
       return 'position';
@@ -244,7 +245,7 @@ export class ChatQueryNormalizationService {
         expression:
           this.extractMatchedFragment(
             normalized,
-            /\b(where\s+(?:are|r)\s+we|where\s+am\s+i|how\s+fast\s+(?:are\s+)?(?:we|i|the\s+(?:yacht|vessel|ship|boat))|speed\s+over\s+ground|sog|stw|knots?)\b/i,
+            /\b(where\s+(?:are|r)\s+we|where\s+am\s+i|where\s+is\s+[\w\s'-]{2,80}?\b(?:now|right\s+now|currently)|how\s+fast\s+(?:are\s+)?(?:we|i|the\s+(?:yacht|vessel|ship|boat))|how\s+fast\s+(?:is|are)\s+[\w\s'-]{2,80}?\b(?:moving|going|travelling|traveling|sailing|underway)|speed\s+over\s+ground|sog|stw|knots?)\b/i,
           ) ?? 'current navigation state',
       };
     }
@@ -273,7 +274,7 @@ export class ChatQueryNormalizationService {
         normalized,
       );
     const telemetryMeasurementIntent =
-      /\b(telemetry|metric|metrics|tank|tanks|temperature|temperatures|pressure|pressures|voltage|voltages|current|currents|amperage|amperages|load|loads|level|levels|alarm|alarms|rpm|runtime|hours?|speed|speeds|sog|stw|knots?|position|latitude|longitude|location|coordinates?|gps|lat|lon)\b/i.test(
+      /\b(telemetry|metric|metrics|tank|tanks|temperature|temperatures|pressure|pressures|voltage|voltages|current|currents|amperage|amperages|load|loads|level|levels|alarm|alarms|rpm|runtime|hours?|speed|speeds|sog|stw|knots?|wind|direction|angle|position|latitude|longitude|location|coordinates?|gps|lat|lon)\b/i.test(
         normalized,
       ) || this.isConversationalCurrentNavigationQuery(normalized);
     const protectedProceduralDocumentationIntent =
@@ -377,18 +378,26 @@ export class ChatQueryNormalizationService {
       /\bwhere\s+am\s+i\b/i.test(normalized) ||
       /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
         normalized,
-      );
+      ) ||
+      /\bwhere\s+is\s+[\w\s'-]{2,80}?\b(?:now|right\s+now|currently)\b/i.test(
+        normalized,
+      ) ||
+      /\bwhereabouts\b/i.test(normalized);
     const asksOwnSpeed =
       /\bhow\s+fast\s+(?:are\s+)?(?:we|i|the\s+(?:yacht|vessel|ship|boat))\b/i.test(
         normalized,
       ) ||
+      /\bhow\s+fast\s+(?:is|are)\s+[\w\s'-]{2,80}?\b(?:moving|going|travelling|traveling|sailing|underway)\b/i.test(
+        normalized,
+      ) ||
       /\b(?:yacht|vessel|ship|boat)\s+speed\b/i.test(normalized) ||
+      /\bpace\b/i.test(normalized) ||
       /\bspeed\s+over\s+ground\b/i.test(normalized) ||
       /\b(?:sog|stw|knots?)\b/i.test(normalized);
     const hasNavigationSubject =
       /\b(?:we|i|yacht|vessel|ship|boat|navigation|gps|position|location)\b/i.test(
         normalized,
-      );
+      ) || asksWhereWeAre;
 
     return asksWhereWeAre || (asksOwnSpeed && hasNavigationSubject);
   }

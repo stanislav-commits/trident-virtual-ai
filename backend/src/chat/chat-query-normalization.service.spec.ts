@@ -144,6 +144,17 @@ describe('ChatQueryNormalizationService', () => {
     expect(normalized.sourceHints).not.toContain('DOCUMENTATION');
   });
 
+  it('treats named-vessel current motion questions as current telemetry', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'Where is Sea Wolf X right now and how fast is it moving?',
+    });
+
+    expect(normalized.operation).toBe('position');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).not.toContain('DOCUMENTATION');
+  });
+
   it('recognizes natural-language kit contents as documentation intent', () => {
     const normalized = service.normalizeTurn({
       userQuery:

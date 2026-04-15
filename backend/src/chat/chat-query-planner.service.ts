@@ -537,7 +537,7 @@ export class ChatQueryPlannerService {
       return true;
     }
 
-    return /\b(operating\s+time|runtime|running\s+hours|hours?|hour\s*meter|throttle|load|speed|location|position|coordinates?|gps|latitude|longitude|lat|lon|level|remaining|available|active|inactive|online|offline|alarm|alarms|reading|readings|value|values)\b/i.test(
+    return /\b(operating\s+time|runtime|running\s+hours|hours?|hour\s*meter|throttle|load|speed|wind|direction|angle|location|position|coordinates?|gps|latitude|longitude|lat|lon|level|remaining|available|active|inactive|online|offline|alarm|alarms|reading|readings|value|values)\b/i.test(
       searchSpace,
     );
   }
@@ -751,7 +751,7 @@ export class ChatQueryPlannerService {
     }
 
     return (
-      /\b(current|currently|status|state|reading|readings|value|values|temperature|temperatures|temp|pressure|pressures|level|levels|voltage|voltages|current|currents|amperage|amperages|load|loads|rpm|speed|speeds|flow|flows|rate|rates|running\s+hours|runtime|operating\s+time|hour\s*meter|latitude|longitude|location|position|coordinates?|gps|lat|lon)\b/i.test(
+      /\b(current|currently|status|state|reading|readings|value|values|temperature|temperatures|temp|pressure|pressures|level|levels|voltage|voltages|current|currents|amperage|amperages|load|loads|rpm|speed|speeds|wind|direction|angle|flow|flows|rate|rates|running\s+hours|runtime|operating\s+time|hour\s*meter|latitude|longitude|location|position|coordinates?|gps|lat|lon)\b/i.test(
         query,
       ) ||
       (/\b(active|inactive|enabled|disabled|online|offline)\b/i.test(query) &&
@@ -791,9 +791,15 @@ export class ChatQueryPlannerService {
       /\bwhere\s+am\s+i\b/i.test(normalized) ||
       /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
         normalized,
+      ) ||
+      /\bwhere\s+is\s+[\w\s'-]{2,80}?\b(?:now|right\s+now|currently)\b/i.test(
+        normalized,
       );
     const asksOwnSpeed =
       /\bhow\s+fast\s+(?:are\s+)?(?:we|i|the\s+(?:yacht|vessel|ship|boat))\b/i.test(
+        normalized,
+      ) ||
+      /\bhow\s+fast\s+(?:is|are)\s+[\w\s'-]{2,80}?\b(?:moving|going|travelling|traveling|sailing|underway)\b/i.test(
         normalized,
       ) ||
       /\b(?:yacht|vessel|ship|boat)\s+speed\b/i.test(normalized) ||
@@ -802,7 +808,7 @@ export class ChatQueryPlannerService {
     const hasNavigationSubject =
       /\b(?:we|i|yacht|vessel|ship|boat|navigation|gps|position|location)\b/i.test(
         normalized,
-      );
+      ) || asksWhereWeAre;
 
     return asksWhereWeAre || (asksOwnSpeed && hasNavigationSubject);
   }

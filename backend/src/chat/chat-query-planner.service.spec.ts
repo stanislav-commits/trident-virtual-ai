@@ -320,6 +320,17 @@ describe('ChatQueryPlannerService', () => {
     expect(plan.requiresTelemetryHistory).toBe(false);
   });
 
+  it('routes named-vessel current motion questions to telemetry status', () => {
+    const plan = service.planQuery(
+      'Where is Sea Wolf X right now and how fast is it moving?',
+    );
+
+    expect(plan.primaryIntent).toBe('telemetry_status');
+    expect(plan.sourcePriorities[0]).toBe('TELEMETRY');
+    expect(plan.requiresTelemetry).toBe(true);
+    expect(plan.requiresTelemetryHistory).toBe(false);
+  });
+
   it('routes current onboard inventory questions to telemetry status', () => {
     const plan = service.planQuery('How many fresh water onboard right now?');
 

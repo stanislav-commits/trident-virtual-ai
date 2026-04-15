@@ -1216,6 +1216,10 @@ export class MetricsService implements OnModuleInit {
       return entries;
     }
 
+    if (this.detectNavigationMotionTelemetryIntent(query, resolvedSubjectQuery)) {
+      return entries;
+    }
+
     const intentQuery = [query, resolvedSubjectQuery]
       .filter(Boolean)
       .join('\n')
@@ -4733,8 +4737,9 @@ export class MetricsService implements OnModuleInit {
       return [];
     }
 
-    const searchSpace = this.normalizeTelemetryText(
-      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    const searchSpace = this.getNavigationMotionIntentSearchSpace(
+      query,
+      resolvedSubjectQuery,
     );
     const speedIndex = this.getNavigationSpeedIntentIndex(searchSpace);
     const locationIndex = this.getNavigationLocationIntentIndex(searchSpace);
@@ -4766,9 +4771,30 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): NavigationMotionTelemetryIntent | null {
+    const primarySearchSpace = this.normalizeTelemetryText(query);
+    const primaryIntent =
+      this.detectNavigationMotionTelemetryIntentInSearchSpace(
+        primarySearchSpace,
+      );
+    if (primaryIntent) {
+      return primaryIntent;
+    }
+
     const searchSpace = this.normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
+    if (!searchSpace || searchSpace === primarySearchSpace) {
+      return null;
+    }
+
+    return this.detectNavigationMotionTelemetryIntentInSearchSpace(
+      searchSpace,
+    );
+  }
+
+  private detectNavigationMotionTelemetryIntentInSearchSpace(
+    searchSpace: string,
+  ): NavigationMotionTelemetryIntent | null {
     const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
     const requestedKinds = [...queryKinds].filter(
       (kind) => kind !== 'location' && kind !== 'speed',
@@ -4799,6 +4825,7 @@ export class MetricsService implements OnModuleInit {
 
     if (
       !wantsLocation &&
+      !wantsWind &&
       !this.hasVesselNavigationContext(searchSpace) &&
       !/\b(we|our)\b/i.test(searchSpace)
     ) {
@@ -4813,16 +4840,38 @@ export class MetricsService implements OnModuleInit {
     };
   }
 
+  private getNavigationMotionIntentSearchSpace(
+    query: string,
+    resolvedSubjectQuery?: string,
+  ): string {
+    const primarySearchSpace = this.normalizeTelemetryText(query);
+    if (
+      this.detectNavigationMotionTelemetryIntentInSearchSpace(
+        primarySearchSpace,
+      )
+    ) {
+      return primarySearchSpace;
+    }
+
+    return this.normalizeTelemetryText(
+      `${query}\n${resolvedSubjectQuery ?? ''}`,
+    );
+  }
+
   private isNavigationLocationIntent(normalizedQuery: string): boolean {
     return (
       this.isTelemetryLocationQuery(normalizedQuery) ||
-      /\bwhere\s+(?:are\s+we|am\s+i)\b/i.test(normalizedQuery)
+      /\bwhere\s+(?:are\s+we|am\s+i)\b/i.test(normalizedQuery) ||
+      /\bwhereabouts\b/i.test(normalizedQuery) ||
+      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
+        normalizedQuery,
+      )
     );
   }
 
   private isNavigationSpeedIntent(normalizedQuery: string): boolean {
     return (
-      /\b(speed|sog|stw|vmg|knots?|kts?)\b/i.test(normalizedQuery) ||
+      /\b(speed|pace|sog|stw|vmg|knots?|kts?)\b/i.test(normalizedQuery) ||
       /\bhow\s+fast\b/i.test(normalizedQuery) ||
       /\b(?:are\s+we|we\s+are|vessel\s+is|yacht\s+is|ship\s+is|boat\s+is)\s+(?:moving|sailing|underway)\b/i.test(
         normalizedQuery,
@@ -4868,7 +4917,7 @@ export class MetricsService implements OnModuleInit {
 
   private getNavigationSpeedIntentIndex(normalizedQuery: string): number {
     const match = normalizedQuery.match(
-      /\b(speed|sog|stw|vmg|how\s+fast|moving|sailing|underway)\b/i,
+      /\b(speed|pace|sog|stw|vmg|how\s+fast|moving|sailing|underway)\b/i,
     );
     return match?.index ?? -1;
   }

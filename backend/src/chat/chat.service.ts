@@ -2388,7 +2388,7 @@ export class ChatService {
       .map((token) => this.escapeRegExp(token))
       .join(separator);
     const stripped = query
-      .replace(new RegExp(String.raw`\b${shipPattern}\b`, 'gi'), ' ')
+      .replace(new RegExp(String.raw`\b${shipPattern}\b`, 'gi'), ' vessel ')
       .replace(/\b(?:for|on|of|at|aboard|in)\s*$/i, ' ')
       .replace(/^\s*(?:for|on|of|at|aboard|in)\b/i, ' ')
       .replace(/\s+/g, ' ')
@@ -5701,7 +5701,11 @@ export class ChatService {
       /\b(latitude|longitude|location|position|coordinates?|gps|lat|lon)\b/i.test(
         normalized,
       ) ||
+      /\bwhereabouts\b/i.test(normalized) ||
       /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
+        normalized,
+      ) ||
+      /\bwhere\s+is\s+[\w\s'-]{2,80}?\b(?:now|right\s+now|currently)\b/i.test(
         normalized,
       );
     if (!mentionsPosition) {
@@ -5710,7 +5714,12 @@ export class ChatService {
 
     return (
       /\b(current|currently|now|right now|actual|live)\b/i.test(normalized) ||
-      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(normalized)
+      /\bwhere\s+is\s+(?:the\s+)?(?:yacht|vessel|ship|boat)\b/i.test(
+        normalized,
+      ) ||
+      /\bwhere\s+is\s+[\w\s'-]{2,80}?\b(?:now|right\s+now|currently)\b/i.test(
+        normalized,
+      )
     );
   }
 

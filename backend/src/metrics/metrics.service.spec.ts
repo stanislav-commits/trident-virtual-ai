@@ -1793,6 +1793,185 @@ describe('MetricsService telemetry matching', () => {
     expect(labels.every((key) => !/Fan Speed/i.test(key))).toBe(true);
   });
 
+  it('keeps strong navigation and wind intent ahead of misleading tag prefilter hints', async () => {
+    const tagLinks = {
+      findTaggedMetricKeysForShipQuery: jest
+        .fn()
+        .mockResolvedValue(['Trending::HVAC-Captain::Fan Speed']),
+    };
+    const service = buildService(
+      [
+        {
+          metricKey: 'NMEA::navigation.position::lat',
+          latestValue: 43.5,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'navigation.position.lat',
+            description: 'Current vessel latitude in decimal degrees.',
+            unit: 'deg',
+            bucket: 'NMEA',
+            measurement: 'navigation.position',
+            field: 'lat',
+          },
+        },
+        {
+          metricKey: 'NMEA::navigation.position::lon',
+          latestValue: 7.08,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'navigation.position.lon',
+            description: 'Current vessel longitude in decimal degrees.',
+            unit: 'deg',
+            bucket: 'NMEA',
+            measurement: 'navigation.position',
+            field: 'lon',
+          },
+        },
+        {
+          metricKey: 'NMEA::navigation::speedOverGround.value',
+          latestValue: 0.01,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'navigation.speedOverGround.value',
+            description: 'Current vessel speed over ground.',
+            unit: 'kn',
+            bucket: 'NMEA',
+            measurement: 'navigation',
+            field: 'speedOverGround.value',
+          },
+        },
+        {
+          metricKey: 'NMEA::environment.wind::speedTrue.value',
+          latestValue: 2.87,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'environment.wind.speedTrue.value',
+            description: 'Current true wind speed.',
+            unit: 'kn',
+            bucket: 'NMEA',
+            measurement: 'environment.wind',
+            field: 'speedTrue.value',
+          },
+        },
+        {
+          metricKey: 'NMEA::environment.wind::directionTrue.value',
+          latestValue: 54,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'environment.wind.directionTrue.value',
+            description: 'Current true wind direction.',
+            unit: 'deg',
+            bucket: 'NMEA',
+            measurement: 'environment.wind',
+            field: 'directionTrue.value',
+          },
+        },
+        {
+          metricKey: 'Trending::HVAC-Captain::Fan Speed',
+          latestValue: 7,
+          valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+          metric: {
+            label: 'HVAC-Captain.Fan Speed',
+            description: 'Current fan speed in the captain cabin.',
+            unit: null,
+            bucket: 'Trending',
+            measurement: 'HVAC-Captain',
+            field: 'Fan Speed',
+          },
+        },
+      ],
+      { tagLinks },
+    );
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      "what's current speed, location, and wind?",
+      'HVAC fan speed',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(tagLinks.findTaggedMetricKeysForShipQuery).not.toHaveBeenCalled();
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(labels.some((key) => /speedOverGround/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lat\b|latitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /\.lon\b|longitude/i.test(key))).toBe(true);
+    expect(labels.some((key) => /wind.*speed/i.test(key))).toBe(true);
+    expect(labels.some((key) => /wind.*direction/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/Fan Speed/i.test(key))).toBe(true);
+  });
+
+  it('returns wind speed and direction directly for wind-only weather requests', async () => {
+    const service = buildService([
+      {
+        metricKey: 'NMEA::environment.wind::speedTrue.value',
+        latestValue: 2.87,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'environment.wind.speedTrue.value',
+          description: 'Current true wind speed.',
+          unit: 'kn',
+          bucket: 'NMEA',
+          measurement: 'environment.wind',
+          field: 'speedTrue.value',
+        },
+      },
+      {
+        metricKey: 'NMEA::environment.wind::directionTrue.value',
+        latestValue: 54,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'environment.wind.directionTrue.value',
+          description: 'Current true wind direction.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'environment.wind',
+          field: 'directionTrue.value',
+        },
+      },
+      {
+        metricKey: 'NMEA::environment.wind::angleApparent.value',
+        latestValue: 12,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'environment.wind.angleApparent.value',
+          description: 'Current apparent wind angle.',
+          unit: 'deg',
+          bucket: 'NMEA',
+          measurement: 'environment.wind',
+          field: 'angleApparent.value',
+        },
+      },
+      {
+        metricKey: 'Trending::HVAC-Captain::Fan Speed',
+        latestValue: 7,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'HVAC-Captain.Fan Speed',
+          description: 'Current fan speed in the captain cabin.',
+          unit: null,
+          bucket: 'Trending',
+          measurement: 'HVAC-Captain',
+          field: 'Fan Speed',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'current wind speed and direction',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(result.prefiltered).toBe(true);
+    expect(result.matchMode).toBe('direct');
+    expect(result.clarification).toBeNull();
+    expect(labels.some((key) => /wind.*speed/i.test(key))).toBe(true);
+    expect(labels.some((key) => /wind.*direction/i.test(key))).toBe(true);
+    expect(labels.every((key) => !/Fan Speed/i.test(key))).toBe(true);
+  });
+
   it('understands conversational vessel motion wording as speed and location', async () => {
     const service = buildService([
       {
