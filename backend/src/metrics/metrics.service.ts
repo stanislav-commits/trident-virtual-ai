@@ -5613,6 +5613,14 @@ export class MetricsService implements OnModuleInit {
     );
 
     if (withSubjectAndKind.length > 0) {
+      const directlyAssociated = this.filterTelemetryCandidatesByDirectSubjectKindAssociation(
+        withSubjectAndKind,
+        querySignals,
+      );
+      if (directlyAssociated.length > 0) {
+        return directlyAssociated;
+      }
+
       return withSubjectAndKind;
     }
 
@@ -5641,6 +5649,142 @@ export class MetricsService implements OnModuleInit {
     const cutoff = Math.max(minimumScore, relativeMinimum);
 
     return scored.filter((candidate) => candidate.score >= cutoff);
+  }
+
+  private filterTelemetryCandidatesByDirectSubjectKindAssociation(
+    candidates: Array<{ entry: ShipTelemetryEntry; score: number }>,
+    querySignals: {
+      normalizedQuery: string;
+      tokens: string[];
+      phrases: string[];
+    },
+  ): Array<{ entry: ShipTelemetryEntry; score: number }> {
+    const queryKinds = [
+      ...this.extractTelemetryQueryMeasurementKinds(querySignals.normalizedQuery),
+    ];
+    if (queryKinds.length !== 1) {
+      return [];
+    }
+
+    const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
+    if (subjectTokens.length === 0) {
+      return [];
+    }
+
+    return candidates.filter((candidate) =>
+      subjectTokens.some((subjectToken) =>
+        this.hasTelemetryDirectSubjectKindAssociation(
+          candidate.entry,
+          subjectToken,
+          queryKinds[0],
+        ),
+      ),
+    );
+  }
+
+  private hasTelemetryDirectSubjectKindAssociation(
+    entry: ShipTelemetryEntry,
+    subjectToken: string,
+    kind: string,
+  ): boolean {
+    const candidateTexts = [
+      entry.field ?? '',
+      entry.label ?? '',
+      entry.description ?? '',
+    ]
+      .map((value) => this.normalizeTelemetryText(value))
+      .filter(Boolean);
+    if (candidateTexts.length === 0) {
+      return false;
+    }
+
+    const normalizedSubject = this.normalizeTelemetryToken(subjectToken);
+    const kindTokens = this.getTelemetryKindAssociationTokens(kind);
+
+    return candidateTexts.some((text) =>
+      kindTokens.some((kindToken) =>
+        this.hasTelemetryNearbyOrderedTokens(
+          text,
+          normalizedSubject,
+          kindToken,
+          1,
+        ),
+      ),
+    );
+  }
+
+  private hasTelemetryNearbyOrderedTokens(
+    text: string,
+    firstToken: string,
+    secondToken: string,
+    maxIntermediateTokens: number,
+  ): boolean {
+    const tokens = this.normalizeTelemetryText(text)
+      .split(/\s+/)
+      .filter(Boolean);
+    if (tokens.length === 0) {
+      return false;
+    }
+
+    const firstVariants = new Set(
+      this.expandTelemetryTokenVariants(this.normalizeTelemetryToken(firstToken)),
+    );
+    const secondVariants = new Set(
+      this.expandTelemetryTokenVariants(
+        this.normalizeTelemetryToken(secondToken),
+      ),
+    );
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      if (!firstVariants.has(tokens[index])) {
+        continue;
+      }
+
+      const maxIndex = Math.min(
+        tokens.length - 1,
+        index + maxIntermediateTokens + 1,
+      );
+      for (let nextIndex = index + 1; nextIndex <= maxIndex; nextIndex += 1) {
+        if (secondVariants.has(tokens[nextIndex])) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private getTelemetryKindAssociationTokens(kind: string): string[] {
+    switch (kind) {
+      case 'current':
+        return ['current'];
+      case 'voltage':
+        return ['voltage'];
+      case 'speed':
+        return ['speed', 'rpm'];
+      case 'temperature':
+        return ['temperature', 'temp'];
+      case 'pressure':
+        return ['pressure'];
+      case 'load':
+        return ['load'];
+      case 'power':
+        return ['power'];
+      case 'energy':
+        return ['energy'];
+      case 'flow':
+        return ['flow', 'rate'];
+      case 'hours':
+        return ['hours', 'hour', 'runtime', 'running'];
+      case 'status':
+        return ['status', 'state', 'alarm', 'warning', 'fault', 'trip'];
+      case 'level':
+        return ['level'];
+      case 'location':
+        return ['location', 'position', 'gps', 'latitude', 'longitude'];
+      default:
+        return [kind];
+    }
   }
 
   private ensureBestTelemetryKindCoverage(

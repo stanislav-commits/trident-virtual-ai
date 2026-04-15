@@ -2246,6 +2246,77 @@ describe('MetricsService telemetry matching', () => {
     expect(labels.every((key) => !/CAPTAIN-CABIN/i.test(key))).toBe(true);
   });
 
+  it('prefers direct battery current telemetry over battery-adjacent charger currents', async () => {
+    const service = buildService([
+      {
+        metricKey: 'Trending::SIEMENS-MASE-GENSET-SB::Battery voltage (V)',
+        latestValue: 26.9,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-MASE-GENSET-SB.Battery voltage (V)',
+          description: 'Current battery voltage for the starboard genset.',
+          unit: 'V',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-MASE-GENSET-SB',
+          field: 'Battery voltage (V)',
+        },
+      },
+      {
+        metricKey: 'Trending::SIEMENS-BATTERY-BMS-SB::Battery cluster current (A)',
+        latestValue: 23,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'SIEMENS-BATTERY-BMS-SB.Battery cluster current (A)',
+          description: 'Current battery cluster current on the starboard side.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'SIEMENS-BATTERY-BMS-SB',
+          field: 'Battery cluster current (A)',
+        },
+      },
+      {
+        metricKey: 'Trending::PORT-GENERATOR-BATTERY-CHARGER::RMS current - phase A',
+        latestValue: 0.43,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'PORT-GENERATOR-BATTERY-CHARGER.RMS current - phase A',
+          description: 'Electrical RMS current for the port generator battery charger.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'PORT-GENERATOR-BATTERY-CHARGER',
+          field: 'RMS current - phase A',
+        },
+      },
+      {
+        metricKey: 'Trending::PORT-SERVICE-BATTERY-CHARGER::RMS current - phase A',
+        latestValue: 6.46,
+        valueUpdatedAt: new Date('2026-03-21T12:00:00.000Z'),
+        metric: {
+          label: 'PORT-SERVICE-BATTERY-CHARGER.RMS current - phase A',
+          description: 'Electrical RMS current for the port service battery charger.',
+          unit: 'A',
+          bucket: 'Trending',
+          measurement: 'PORT-SERVICE-BATTERY-CHARGER',
+          field: 'RMS current - phase A',
+        },
+      },
+    ]);
+
+    const result = await service.getShipTelemetryContextForQuery(
+      'ship-1',
+      'show current battery voltage and current',
+    );
+
+    const labels = Object.keys(result.telemetry);
+    expect(labels.some((key) => /Battery voltage/i.test(key))).toBe(true);
+    expect(labels.some((key) => /Battery cluster current/i.test(key))).toBe(
+      true,
+    );
+    expect(
+      labels.every((key) => !/BATTERY-CHARGER/i.test(key)),
+    ).toBe(true);
+  });
+
   it('does not substitute room electrical current when a multi-room fan-speed query names those rooms', async () => {
     const service = buildService([
       {
