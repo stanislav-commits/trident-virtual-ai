@@ -5427,6 +5427,42 @@ describe('ChatService telemetry clarification', () => {
     ).toEqual(Array.from({ length: 20 }, (_, index) => `message-${index + 3}`));
   });
 
+  it('does not use audit checklist deterministic formatting for operational checklist queries', () => {
+    const result = (service as any).buildDeterministicDocumentationAnswer(
+      'show me the bunker checklist',
+      'manual_specification',
+      [
+        {
+          sourceTitle: 'Procedures - Bunkering and Transfers (3).pdf',
+          snippet:
+            'PASS: pressure built up in the hose. 1. Ensure the line is blown through. 2. Inform the deck officer and captain. 3. Take readings of all tanks.',
+        },
+      ],
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('keeps deterministic audit checklist extraction for true inspection checklist requests', () => {
+    const result = (service as any).buildDeterministicDocumentationAnswer(
+      'show me the inspection checklist',
+      'manual_specification',
+      [
+        {
+          sourceTitle: 'Fire safety inspection checklist.pdf',
+          snippet:
+            'Pass: emergency exits clear. Fail: extinguisher missing seal.',
+        },
+      ],
+    );
+
+    expect(result).toEqual({
+      content: expect.stringContaining(
+        'The audit or checklist points I extracted are:',
+      ),
+    });
+  });
+
   it('returns pinned sessions plus the first lazy-loaded page of unpinned sessions', async () => {
     prisma.chatSession.findMany
       .mockResolvedValueOnce([

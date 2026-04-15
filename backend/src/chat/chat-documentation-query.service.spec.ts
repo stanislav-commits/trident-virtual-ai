@@ -556,6 +556,17 @@ describe('ChatDocumentationQueryService', () => {
     ).toBe(true);
   });
 
+  it('does not classify operational checklist requests as audit checklist lookups', () => {
+    expect(service.isAuditChecklistLookupQuery('show me the bunker checklist')).toBe(
+      false,
+    );
+    expect(
+      service.isAuditChecklistLookupQuery(
+        'show me the inspection checklist for fire safety',
+      ),
+    ).toBe(true);
+  });
+
   it('inherits the previous subject for vague next-maintenance follow-up questions', () => {
     expect(
       service.buildRetrievalQuery(

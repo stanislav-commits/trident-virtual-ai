@@ -1071,8 +1071,21 @@ export class ChatDocumentationQueryService {
   }
 
   isAuditChecklistLookupQuery(query: string): boolean {
-    return /\b(audit|audits|compliance|inspection|inspections|checklist|checklists|survey|surveys)\b/i.test(
-      query,
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    if (
+      !/\b(audit|audits|compliance|inspection|inspections|checklist|checklists|survey|surveys)\b/i.test(
+        normalized,
+      )
+    ) {
+      return false;
+    }
+
+    return /\b(audit|audits|compliance|inspection|inspections|survey|surveys|finding|findings|defect|defects|deficienc(?:y|ies)|non[-\s]?conform(?:ity|ities)|psc|port\s+state\s+control)\b/i.test(
+      normalized,
     );
   }
 
