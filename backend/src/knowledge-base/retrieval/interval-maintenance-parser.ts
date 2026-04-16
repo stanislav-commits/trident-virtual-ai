@@ -831,7 +831,7 @@ export function sortIntervalMaintenanceChunks(
 }
 
 // ---------------------------------------------------------------------------
-// PDF page loading (async – requires pdfjs-dist)
+// PDF page loading (async - requires pdfjs-dist)
 // ---------------------------------------------------------------------------
 
 let pdfJsModulePromise: Promise<any> | null = null;

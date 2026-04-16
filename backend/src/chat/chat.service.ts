@@ -108,7 +108,7 @@ export class ChatService {
   //
   // These wrappers preserve the public ChatService API used by ChatController
   // and existing unit tests. The actual persistence + formatting lives in
-  // chat/session/chat-session.service.ts. Do not add behavior here — extend
+  // chat/session/chat-session.service.ts. Do not add behavior here - extend
   // ChatSessionService instead.
 
   async createSession(

@@ -6,7 +6,7 @@
  */
 
 // ---------------------------------------------------------------------------
-// Types (minimal – mirrored from scan service to stay decoupled)
+// Types (minimal - mirrored from scan service to stay decoupled)
 // ---------------------------------------------------------------------------
 
 export interface EnrichedChunkLike {
