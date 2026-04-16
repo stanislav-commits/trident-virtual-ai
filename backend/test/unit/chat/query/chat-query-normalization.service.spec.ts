@@ -1,0 +1,612 @@
+import { ChatQueryNormalizationService } from '../../../../src/chat/query/chat-query-normalization.service';
+
+describe('ChatQueryNormalizationService', () => {
+  const service = new ChatQueryNormalizationService();
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-31T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('normalizes equivalent historical tank-level phrasings to the same material query meaning', () => {
+    const queries = [
+      'what was the tank level 2026-03-25?',
+      'tank level on 2026-03-25',
+      'what did the tank read on 25 March 2026?',
+    ].map((userQuery) => service.normalizeTurn({ userQuery }));
+
+    for (const normalized of queries) {
+      expect(normalized.timeIntent.kind).toBe('historical_point');
+      expect(normalized.timeIntent.absoluteDate).toBe('2026-03-25');
+      expect(normalized.sourceHints).toContain('TELEMETRY');
+      expect(normalized.subject).toEqual(expect.stringContaining('tank'));
+    }
+
+    expect(queries[0].operation).toBe(queries[1].operation);
+    expect(queries[1].operation).toBe(queries[2].operation);
+  });
+
+  it('detects historical fuel-event language as a first-class event query', () => {
+    const bunkering = service.normalizeTurn({
+      userQuery: 'when was last bunkering?',
+    });
+    const increase = service.normalizeTurn({
+      userQuery: 'check it based on fuel last increase',
+    });
+
+    expect(bunkering.operation).toBe('event');
+    expect(bunkering.timeIntent.kind).toBe('historical_event');
+    expect(bunkering.timeIntent.eventType).toBe('bunkering');
+    expect(increase.operation).toBe('event');
+    expect(increase.timeIntent.kind).toBe('historical_event');
+    expect(increase.timeIntent.eventType).toBe('fuel_increase');
+  });
+
+  it('detects change-over-time telemetry questions as trend operations instead of sums', () => {
+    const trend = service.normalizeTurn({
+      userQuery: 'explain me total fuel trend for last 7 days',
+    });
+    const difference = service.normalizeTurn({
+      userQuery: 'what was the difference in total fuel over the last 7 days?',
+    });
+    const abrupt = service.normalizeTurn({
+      userQuery:
+        'were there any sharp jumps in bilge level over the last week?',
+    });
+
+    expect(trend.operation).toBe('trend');
+    expect(trend.timeIntent.kind).toBe('historical_range');
+    expect(trend.sourceHints).toContain('TELEMETRY');
+    expect(difference.operation).toBe('trend');
+    expect(difference.timeIntent.kind).toBe('historical_range');
+    expect(difference.sourceHints).toContain('TELEMETRY');
+    expect(abrupt.operation).toBe('trend');
+    expect(abrupt.timeIntent.kind).toBe('historical_range');
+    expect(abrupt.sourceHints).toContain('TELEMETRY');
+  });
+
+  it('treats usage wording as a delta-style telemetry operation', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'What is the daily usage of fresh water?',
+    });
+
+    expect(normalized.operation).toBe('delta');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+  });
+
+  it('treats stored-fluid onboard questions as telemetry intent even for water systems', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'How many fresh water onboard right now?',
+    });
+
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).not.toContain('DOCUMENTATION');
+    expect(normalized.timeIntent.kind).toBe('current');
+  });
+
+  it('treats generic equipment procedures and maintenance asks as documentation intent', () => {
+    const procedure = service.normalizeTurn({
+      userQuery: 'How to start manual fuel pump?',
+    });
+    const maintenance = service.normalizeTurn({
+      userQuery: 'Weekly maintenance for air compressor',
+    });
+
+    expect(procedure.sourceHints).toContain('DOCUMENTATION');
+    expect(procedure.sourceHints).not.toContain('TELEMETRY');
+    expect(maintenance.sourceHints).toContain('DOCUMENTATION');
+    expect(maintenance.sourceHints).not.toContain('TELEMETRY');
+  });
+
+  it('does not let telemetry vocabulary override procedural documentation intent', () => {
+    const gpsProcedure = service.normalizeTurn({
+      userQuery: 'How to create route in gps navigator?',
+    });
+    const alarmInstallation = service.normalizeTurn({
+      userQuery:
+        'How should the 15 ppm bilge alarm be installed and connected?',
+    });
+
+    expect(gpsProcedure.operation).toBe('lookup');
+    expect(gpsProcedure.sourceHints).toContain('DOCUMENTATION');
+    expect(gpsProcedure.sourceHints).not.toContain('TELEMETRY');
+    expect(alarmInstallation.operation).toBe('lookup');
+    expect(alarmInstallation.sourceHints).toContain('DOCUMENTATION');
+    expect(alarmInstallation.sourceHints).not.toContain('TELEMETRY');
+  });
+
+  it('keeps live navigation and alarm readings as telemetry intent', () => {
+    const position = service.normalizeTurn({
+      userQuery: 'What is the current GPS position?',
+    });
+    const alarmStatus = service.normalizeTurn({
+      userQuery: 'Are any bilge alarms active right now?',
+    });
+
+    expect(position.operation).toBe('position');
+    expect(position.sourceHints).toContain('TELEMETRY');
+    expect(position.timeIntent.kind).toBe('current');
+    expect(alarmStatus.sourceHints).toContain('TELEMETRY');
+    expect(alarmStatus.timeIntent.kind).toBe('current');
+  });
+
+  it('treats conversational own-ship motion questions as current telemetry', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'where are we and how fast are we moving?',
+    });
+
+    expect(normalized.operation).toBe('position');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).not.toContain('DOCUMENTATION');
+  });
+
+  it('treats named-vessel current motion questions as current telemetry', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'Where is Sea Wolf X right now and how fast is it moving?',
+    });
+
+    expect(normalized.operation).toBe('position');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).not.toContain('DOCUMENTATION');
+  });
+
+  it('recognizes natural-language kit contents as documentation intent', () => {
+    const normalized = service.normalizeTurn({
+      userQuery:
+        'Which kit contains the O-rings and lip seals for the waterjet?',
+    });
+
+    expect(normalized.sourceHints).toContain('DOCUMENTATION');
+    expect(normalized.sourceHints).not.toContain('TELEMETRY');
+  });
+
+  it('treats order-specific operating data as documentation rather than analytics', () => {
+    const normalized = service.normalizeTurn({
+      userQuery:
+        'Where can I find order-specific operating data for the separator?',
+    });
+
+    expect(normalized.sourceHints).toContain('DOCUMENTATION');
+    expect(normalized.sourceHints).not.toContain('ANALYTICS');
+  });
+
+  it('attaches a time-only reply to the active historical clarification state', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: '12:00 UTC',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what was the tank level 2026-03-25?',
+        },
+        {
+          role: 'assistant',
+          content:
+            'Please specify the exact time for this historical telemetry lookup.',
+          ragflowContext: {
+            awaitingClarification: true,
+            answerRoute: 'clarification',
+            clarificationReason: 'historical_telemetry_query',
+            pendingClarificationQuery: 'what was the tank level 2026-03-25?',
+            normalizedQuery: {
+              rawQuery: 'what was the tank level 2026-03-25?',
+              normalizedQuery: 'what was the tank level 2026-03-25?',
+              retrievalQuery: 'what was the tank level 2026-03-25?',
+              effectiveQuery: 'what was the tank level 2026-03-25?',
+              followUpMode: 'standalone',
+              subject: 'tank level',
+              operation: 'lookup',
+              timeIntent: {
+                kind: 'historical_point',
+                expression: '2026-03-25',
+                absoluteDate: '2026-03-25',
+              },
+              sourceHints: ['TELEMETRY', 'HISTORY'],
+              isClarificationReply: false,
+              ambiguityFlags: ['missing_explicit_time'],
+            },
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('clarification_reply');
+    expect(normalized.retrievalQuery).toContain('at 12:00 UTC');
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.ambiguityFlags).not.toContain('missing_explicit_time');
+    expect(normalized.clarificationState).toEqual(
+      expect.objectContaining({
+        clarificationDomain: 'historical_telemetry',
+        pendingQuery: 'what was the tank level 2026-03-25?',
+        requiredFields: ['time_of_day'],
+        resolvedFields: expect.objectContaining({
+          date: '2026-03-25',
+          time_of_day: '12:00 UTC',
+        }),
+      }),
+    );
+  });
+
+  it('keeps DPA contact follow-ups on the previous resolved subject after clarification-state refactoring', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'provide contacts',
+      messageHistory: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+        },
+        {
+          role: 'assistant',
+          content: 'The vessel DPA is John Doe.',
+          ragflowContext: {
+            answerRoute: 'deterministic_contact',
+            resolvedSubjectQuery: 'dpa contact details',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe('dpa contact details');
+    expect(normalized.isClarificationReply).toBe(false);
+  });
+
+  it('keeps bare contact shorthand and other-one follow-ups on the prior DPA subject', () => {
+    const contacts = service.normalizeTurn({
+      userQuery: 'contacts',
+      messageHistory: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+        },
+        {
+          role: 'assistant',
+          content: 'The vessel DPA is JMS.',
+          ragflowContext: {
+            answerRoute: 'llm_generation',
+            resolvedSubjectQuery: "who is vessel's dpa?",
+          },
+        },
+      ],
+    });
+
+    expect(contacts.followUpMode).toBe('follow_up');
+    expect(contacts.retrievalQuery).toBe('vessel dpa contact details');
+
+    const otherOne = service.normalizeTurn({
+      userQuery: 'what about the other one?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: "who is vessel's dpa?",
+        },
+        {
+          role: 'assistant',
+          content: 'I found multiple matching DPA contacts.',
+          ragflowContext: {
+            answerRoute: 'deterministic_contact',
+            resolvedSubjectQuery: 'vessel dpa contact email',
+          },
+        },
+      ],
+    });
+
+    expect(otherOne.followUpMode).toBe('follow_up');
+    expect(otherOne.retrievalQuery).toBe(
+      'vessel dpa contact email what about the other one?',
+    );
+  });
+
+  it('prefers explicit ordinal dates over duplicated relative fragments in historical continuations', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: '5 days ago, on 25th of March',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'how many total fuel in tanks 5 days ago?',
+        },
+        {
+          role: 'assistant',
+          content: 'Here is the historical fuel answer.',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'how many total fuel in tanks 5 days ago',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe(
+      'how many total fuel in tanks on 2026-03-25',
+    );
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.timeIntent.absoluteDate).toBe('2026-03-25');
+  });
+
+  it('keeps telemetry source override follow-ups attached to the previous subject', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'based on telemetry',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'when and which was the bilge alarm last activated?',
+        },
+        {
+          role: 'assistant',
+          content: 'I could not confirm that from the documentation.',
+          ragflowContext: {
+            answerRoute: 'llm_generation',
+            resolvedSubjectQuery:
+              'when and which was the bilge alarm last activated?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toContain('bilge alarm');
+    expect(normalized.retrievalQuery).toContain('last activated');
+    expect(normalized.retrievalQuery).toContain('from telemetry');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.timeIntent.kind).toBe('none');
+  });
+
+  it('keeps completeness follow-ups attached to the previous telemetry subject', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'you missed a lot of bilge alarms, write all',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'list all available bilge alarm metrics',
+        },
+        {
+          role: 'assistant',
+          content: 'Here are some bilge alarm metrics.',
+          ragflowContext: {
+            answerRoute: 'deterministic_telemetry',
+            resolvedSubjectQuery: 'list all available bilge alarm metrics',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toContain('bilge alarm metrics');
+    expect(normalized.retrievalQuery).toContain('show all available');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+  });
+
+  it('preserves historical time anchors for completeness follow-ups after telemetry aggregates', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'you missed 3 tanks',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'how much total fuel was 5 days ago?',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-28 09:47 UTC, the total was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'how much total fuel was 5 days ago?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toContain('5 days ago');
+    expect(normalized.retrievalQuery).toContain('show all available');
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.timeIntent.relativeAmount).toBe(5);
+    expect(normalized.timeIntent.relativeUnit).toBe('day');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).toContain('HISTORY');
+  });
+
+  it('lets an explicit current-time follow-up override the previous historical anchor', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what about now?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'how much total fuel was 5 days ago?',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-28 09:47 UTC, the total was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'how much total fuel was 5 days ago?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toContain('fuel');
+    expect(normalized.retrievalQuery).toContain('tanks');
+    expect(normalized.retrievalQuery).toContain('right now');
+    expect(normalized.retrievalQuery).not.toContain('show all available');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+  });
+
+  it('does not leak a previous historical time intent into a current coordinate question', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what lon and lat is now?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what lon and lat were 5 days ago?',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-27 10:05 UTC, the vessel position was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'what lon and lat were 5 days ago?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('standalone');
+    expect(normalized.operation).toBe('position');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+  });
+
+  it('keeps standalone historical navigation questions from inheriting a previous telemetry subject', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what was the yacht position on 15 March 2026 at 10:00?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what are the current generator throttle and load readings?',
+        },
+        {
+          role: 'assistant',
+          content: 'The current matched telemetry readings are: ...',
+          ragflowContext: {
+            answerRoute: 'current_telemetry',
+            resolvedSubjectQuery:
+              'what are the current generator throttle and load readings?',
+            telemetryFollowUpQuery:
+              'what are the current generator throttle and load readings?',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('standalone');
+    expect(normalized.retrievalQuery).toBe(
+      'what was the yacht position on 15 March 2026 at 10:00?',
+    );
+    expect(normalized.operation).toBe('position');
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.timeIntent.absoluteDate).toBe('2026-03-15');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.retrievalQuery).not.toContain('generator');
+    expect(normalized.subject).toContain('yacht position');
+  });
+
+  it('keeps live alarm-state queries in telemetry space without inferring starboard from "right now"', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'Are any bilge alarms active right now?',
+    });
+
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.asset).toBeUndefined();
+  });
+
+  it('detects telemetry hints for plural current-reading queries', () => {
+    const normalized = service.normalizeTurn({
+      userQuery:
+        'What are the port generator battery charger voltages right now?',
+    });
+
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.timeIntent.kind).toBe('current');
+    expect(normalized.asset).toBe('port generator');
+  });
+
+  it('keeps vague aggregate follow-ups attached to the prior live telemetry subject', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what the sum',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what the fuel level',
+        },
+        {
+          role: 'assistant',
+          content: 'Here are the current fuel tank readings.',
+          ragflowContext: {
+            answerRoute: 'current_telemetry',
+            resolvedSubjectQuery: 'what the fuel level',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe('what the fuel level in the tanks');
+    expect(normalized.operation).toBe('sum');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.timeIntent.kind).toBe('none');
+  });
+
+  it('preserves historical telemetry anchors for vague aggregate follow-ups', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what the total',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what was the fuel level 5 days ago',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-26 10:00 UTC, the fuel level was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'what was the fuel level 5 days ago',
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe(
+      'what was the fuel level in the tanks 5 days ago',
+    );
+    expect(normalized.operation).toBe('sum');
+    expect(normalized.timeIntent.kind).toBe('historical_point');
+    expect(normalized.timeIntent.relativeAmount).toBe(5);
+    expect(normalized.timeIntent.relativeUnit).toBe('day');
+    expect(normalized.sourceHints).toContain('TELEMETRY');
+    expect(normalized.sourceHints).toContain('HISTORY');
+  });
+
+  it('restores aggregate intent for explicit current-time follow-ups using prior assistant telemetry metadata', () => {
+    const normalized = service.normalizeTurn({
+      userQuery: 'what about now?',
+      messageHistory: [
+        {
+          role: 'user',
+          content: 'what was the fuel level 5 days ago',
+        },
+        {
+          role: 'assistant',
+          content: 'At 2026-03-31 19:03 UTC, the historical total was ...',
+          ragflowContext: {
+            answerRoute: 'historical_telemetry',
+            resolvedSubjectQuery: 'what was the fuel level 5 days ago',
+            normalizedQuery: {
+              operation: 'sum',
+              timeIntent: {
+                kind: 'historical_point',
+                relativeAmount: 5,
+                relativeUnit: 'day',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(normalized.followUpMode).toBe('follow_up');
+    expect(normalized.retrievalQuery).toBe(
+      'how much total fuel level in the tanks right now',
+    );
+    expect(normalized.operation).toBe('sum');
+    expect(normalized.timeIntent.kind).toBe('current');
+  });
+});

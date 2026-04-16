@@ -20,28 +20,24 @@ import {
   resolveShipManualCategory,
   type ShipManualCategory,
 } from './manual-category';
-
-export interface ManualRecord {
-  id: string;
-  ragflowDocumentId: string;
-  filename: string;
-  category: ShipManualCategory;
-  uploadedAt: Date;
-}
-
-export interface ManualsPaginationMeta {
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-}
-
-export interface PaginatedManualsResult<T> {
-  items: T[];
-  pagination: ManualsPaginationMeta;
-}
+import {
+  buildManualPaginationMeta,
+  normalizeManualPagination,
+} from './manuals/manual-pagination.utils';
+import {
+  buildManualWhere,
+  normalizeManualIds,
+  normalizeManualSearchTerm,
+} from './manuals/manual-query.utils';
+import type {
+  ManualRecord,
+  PaginatedManualsResult,
+} from './manuals/manual-pagination.types';
+export type {
+  ManualRecord,
+  ManualsPaginationMeta,
+  PaginatedManualsResult,
+} from './manuals/manual-pagination.types';
 
 type ManualWithShip = {
   id: string;
@@ -67,47 +63,6 @@ export class ManualsService {
     private readonly manualsParseScheduler: ManualsParseScheduler,
     @Optional() private readonly tagLinks?: TagLinksService,
   ) {}
-
-  private normalizeManualIds(ids?: string[]): string[] {
-    if (!ids?.length) return [];
-    return [...new Set(ids.map((id) => id?.trim()).filter(Boolean))];
-  }
-
-  private normalizeSearchTerm(search?: string): string | undefined {
-    const normalized = search?.trim();
-    return normalized ? normalized : undefined;
-  }
-
-  private buildManualWhere(
-    shipId: string,
-    options?: {
-      category?: ShipManualCategory;
-      search?: string;
-      includeManualIds?: string[];
-      excludeManualIds?: string[];
-    },
-  ) {
-    const normalizedSearch = this.normalizeSearchTerm(options?.search);
-
-    return {
-      shipId,
-      ...(options?.category ? { category: options.category } : {}),
-      ...(normalizedSearch
-        ? {
-            filename: {
-              contains: normalizedSearch,
-              mode: 'insensitive' as const,
-            },
-          }
-        : {}),
-      ...(options?.includeManualIds?.length
-        ? { id: { in: options.includeManualIds } }
-        : {}),
-      ...(options?.excludeManualIds?.length
-        ? { id: { notIn: options.excludeManualIds } }
-        : {}),
-    };
-  }
 
   private getCategoryMetadata(category: ShipManualCategory) {
     const details =
@@ -279,38 +234,6 @@ export class ManualsService {
     return created.length === 1 ? created[0] : created;
   }
 
-  private normalizePagination(page?: number, pageSize?: number) {
-    const normalizedPage = Number.isFinite(page)
-      ? Math.max(1, Math.floor(page as number))
-      : 1;
-    const normalizedPageSize = Number.isFinite(pageSize)
-      ? Math.max(1, Math.min(Math.floor(pageSize as number), this.maxPageSize))
-      : this.defaultPageSize;
-
-    return {
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-    };
-  }
-
-  private buildPaginationMeta(
-    total: number,
-    page: number,
-    pageSize: number,
-  ): ManualsPaginationMeta {
-    const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
-    const currentPage = Math.min(page, totalPages);
-
-    return {
-      page: currentPage,
-      pageSize,
-      total,
-      totalPages,
-      hasNextPage: currentPage < totalPages,
-      hasPreviousPage: currentPage > 1,
-    };
-  }
-
   private async getManualPage(
     shipId: string,
     page?: number,
@@ -318,13 +241,16 @@ export class ManualsService {
     category?: ShipManualCategory,
     search?: string,
   ): Promise<PaginatedManualsResult<ManualRecord>> {
-    const pagination = this.normalizePagination(page, pageSize);
-    const where = this.buildManualWhere(shipId, {
+    const pagination = normalizeManualPagination(page, pageSize, {
+      defaultPageSize: this.defaultPageSize,
+      maxPageSize: this.maxPageSize,
+    });
+    const where = buildManualWhere(shipId, {
       category,
       search,
     });
     const total = await this.prisma.shipManual.count({ where });
-    const meta = this.buildPaginationMeta(
+    const meta = buildManualPaginationMeta(
       total,
       pagination.page,
       pagination.pageSize,
@@ -537,9 +463,9 @@ export class ManualsService {
     if (!ship) throw new NotFoundException('Ship not found');
 
     const mode = dto.mode === 'all' ? 'all' : 'manualIds';
-    const manualIds = this.normalizeManualIds(dto.manualIds);
-    const excludeManualIds = this.normalizeManualIds(dto.excludeManualIds);
-    const search = this.normalizeSearchTerm(dto.search);
+    const manualIds = normalizeManualIds(dto.manualIds);
+    const excludeManualIds = normalizeManualIds(dto.excludeManualIds);
+    const search = normalizeManualSearchTerm(dto.search);
     let category: ShipManualCategory | undefined;
     if (dto.category !== undefined) {
       category = parseShipManualCategory(dto.category);
@@ -555,12 +481,12 @@ export class ManualsService {
     const manuals = await this.prisma.shipManual.findMany({
       where:
         mode === 'all'
-          ? this.buildManualWhere(shipId, {
+          ? buildManualWhere(shipId, {
               category,
               search,
               excludeManualIds,
             })
-          : this.buildManualWhere(shipId, {
+          : buildManualWhere(shipId, {
               includeManualIds: manualIds,
             }),
       include: { ship: true },

@@ -1,12 +1,15 @@
 import {
   Injectable,
-  ForbiddenException,
-  NotFoundException,
-  BadRequestException,
   Logger,
+  Optional,
 } from '@nestjs/common';
+import {
+  extractCertificateExpiryEntries,
+  isBroadCertificateSoonQuery,
+} from '../common/certificate-expiry.utils';
+import { isCurrentInventoryTelemetryQuery as matchesCurrentInventoryTelemetryQuery } from '../common/telemetry-query-intent.utils';
 import { PrismaService } from '../prisma/prisma.service';
-import { LlmGeneratedResponse, LlmService } from './llm.service';
+import { LlmGeneratedResponse, LlmService } from './llm/llm.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { CreateChatSessionDto } from './dto/create-chat-session.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -15,7 +18,7 @@ import {
   ChatMessageResponseDto,
   ChatSessionListResponseDto,
 } from './dto/chat-response.dto';
-import { ChatDocumentationService } from './chat-documentation.service';
+import { ChatDocumentationService } from '../knowledge-base/documentation/chat-documentation.service';
 import {
   ChatAnswerRoute,
   ChatCitation,
@@ -27,15 +30,19 @@ import {
   detectChatResponseLanguage,
   localizeApproximateDuration,
   localizeChatText,
-} from './chat-language.utils';
+} from './conversation/chat-language.utils';
 import type { DocumentationSemanticQuery } from '../semantic/semantic.types';
-import { sortChatSessions } from './chat-session-order';
 import {
   ChatQueryPlan,
   ChatQueryPlannerService,
-} from './chat-query-planner.service';
-import { ChatDocumentationQueryService } from './chat-documentation-query.service';
-import { ChatQueryNormalizationService } from './chat-query-normalization.service';
+} from './query/chat-query-planner.service';
+import { ChatDocumentationQueryService } from '../knowledge-base/documentation/chat-documentation-query.service';
+import { ChatQueryNormalizationService } from './query/chat-query-normalization.service';
+import {
+  ChatSessionListParams,
+  ChatSessionService,
+} from './session/chat-session.service';
+import { formatMessageResponse as formatChatMessageResponse } from './session/chat-session.formatters';
 
 interface TelemetryClarificationAction {
   label: string;
@@ -65,46 +72,50 @@ interface DeterministicTankCapacityEntry {
   citation: ChatCitation;
 }
 
-interface ChatSessionListParams {
-  search?: string;
-  cursor?: string;
-  limit?: string | number;
-}
-
-interface ChatSessionCursorPayload {
-  updatedAt: string;
-  id: string;
-}
-
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
-  private readonly queryPlanner = new ChatQueryPlannerService();
-  private readonly documentationQueryService =
-    new ChatDocumentationQueryService();
-  private readonly queryNormalizationService =
-    new ChatQueryNormalizationService(this.documentationQueryService);
+  private readonly queryPlanner: ChatQueryPlannerService;
+  private readonly documentationQueryService: ChatDocumentationQueryService;
+  private readonly queryNormalizationService: ChatQueryNormalizationService;
+  private readonly chatSessionService: ChatSessionService;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly llmService: LlmService,
     private readonly metricsService: MetricsService,
     private readonly documentationService: ChatDocumentationService,
-  ) {}
+    @Optional() chatSessionService?: ChatSessionService,
+    @Optional() queryPlanner?: ChatQueryPlannerService,
+    @Optional() documentationQueryService?: ChatDocumentationQueryService,
+  ) {
+    // ChatSessionService owns CRUD over chat sessions/messages and the title
+    // auto-generation side effect. We accept it as an optional constructor
+    // arg so legacy unit tests (that instantiate ChatService directly) keep
+    // working while the migration is in flight: if not provided we build one
+    // from the same prisma + llmService dependencies.
+    this.chatSessionService =
+      chatSessionService ?? new ChatSessionService(prisma, llmService);
+    this.queryPlanner = queryPlanner ?? new ChatQueryPlannerService();
+    this.documentationQueryService =
+      documentationQueryService ?? new ChatDocumentationQueryService();
+    this.queryNormalizationService = new ChatQueryNormalizationService(
+      this.documentationQueryService,
+    );
+  }
+
+  // ---------- session/message CRUD: thin delegation to ChatSessionService ----------
+  //
+  // These wrappers preserve the public ChatService API used by ChatController
+  // and existing unit tests. The actual persistence + formatting lives in
+  // chat/session/chat-session.service.ts. Do not add behavior here — extend
+  // ChatSessionService instead.
 
   async createSession(
     userId: string,
     dto: CreateChatSessionDto,
   ): Promise<ChatSessionResponseDto> {
-    const session = await this.prisma.chatSession.create({
-      data: {
-        userId,
-        shipId: dto.shipId ?? null,
-        title: dto.title || 'New Chat',
-      },
-    });
-
-    return this.formatSessionResponse(session);
+    return this.chatSessionService.createSession(userId, dto);
   }
 
   async listSessions(
@@ -112,67 +123,7 @@ export class ChatService {
     role: string,
     params?: ChatSessionListParams,
   ): Promise<ChatSessionListResponseDto> {
-    const normalizedSearch = params?.search?.trim();
-    const pageSize = this.normalizeSessionPageSize(params?.limit);
-    const cursor = this.parseSessionCursor(params?.cursor);
-    const baseWhere: any = { userId, deletedAt: null };
-
-    if (normalizedSearch) {
-      baseWhere.title = { contains: normalizedSearch, mode: 'insensitive' };
-    }
-
-    const pinnedWhere = { ...baseWhere, pinnedAt: { not: null } };
-    const unpinnedWhere: any = { ...baseWhere, pinnedAt: null };
-    if (cursor) {
-      const cursorDate = new Date(cursor.updatedAt);
-      unpinnedWhere.OR = [
-        { updatedAt: { lt: cursorDate } },
-        { updatedAt: cursorDate, id: { lt: cursor.id } },
-      ];
-    }
-
-    const [pinnedSessions, unpinnedSessions] = await Promise.all([
-      cursor
-        ? Promise.resolve([])
-        : this.prisma.chatSession.findMany({
-            where: pinnedWhere,
-            orderBy: [{ pinnedAt: 'desc' }, { updatedAt: 'desc' }, { id: 'desc' }],
-            include: {
-              messages: {
-                where: { deletedAt: null },
-                select: { id: true },
-              },
-            },
-          }),
-      this.prisma.chatSession.findMany({
-        where: unpinnedWhere,
-        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-        take: pageSize + 1,
-        include: {
-          messages: {
-            where: { deletedAt: null },
-            select: { id: true },
-          },
-        },
-      }),
-    ]);
-
-    const hasMore = unpinnedSessions.length > pageSize;
-    const pagedUnpinnedSessions = unpinnedSessions.slice(0, pageSize);
-    const sessions = sortChatSessions([
-      ...pinnedSessions,
-      ...pagedUnpinnedSessions,
-    ]).map((session) => ({
-      ...this.formatSessionResponse(session),
-      messageCount: session.messages.length,
-    }));
-    const lastSession = pagedUnpinnedSessions[pagedUnpinnedSessions.length - 1];
-
-    return {
-      sessions,
-      nextCursor: hasMore && lastSession ? this.encodeSessionCursor(lastSession) : null,
-      hasMore,
-    };
+    return this.chatSessionService.listSessions(userId, role, params);
   }
 
   async getSession(
@@ -180,140 +131,69 @@ export class ChatService {
     userId: string,
     role: string,
   ): Promise<ChatSessionResponseDto> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        messages: {
-          where: { deletedAt: null },
-          include: {
-            contextReferences: {
-              include: {
-                shipManual: { select: { shipId: true, category: true } },
-              },
-            },
-          },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
-    });
-
-    if (!session) throw new NotFoundException('Chat session not found');
-
-    this.validateAccess(session, userId, role);
-
-    if (session.deletedAt) {
-      throw new NotFoundException('Chat session not found');
-    }
-
-    return {
-      ...this.formatSessionResponse(session),
-      messages: session.messages.map((message) =>
-        this.formatMessageResponse(message),
-      ),
-    };
+    return this.chatSessionService.getSession(sessionId, userId, role);
   }
 
+  /**
+   * Persist a user message and asynchronously kick off title generation and
+   * the assistant response. The async work is fire-and-forget by design.
+   */
   async addMessage(
     sessionId: string,
     userId: string,
     role: string,
     dto: SendMessageDto,
   ): Promise<ChatMessageResponseDto> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        ship: { select: { id: true, name: true, lastTelemetry: true } },
-      },
-    });
-
-    if (!session) throw new NotFoundException('Chat session not found');
-
-    this.validateAccess(session, userId, role);
-
-    if (session.deletedAt) {
-      throw new NotFoundException('Chat session not found');
-    }
-
-    if (!dto.content?.trim()) {
-      throw new BadRequestException('Message content cannot be empty');
-    }
-
-    const userMessage = await this.prisma.chatMessage.create({
-      data: {
+    const { userMessage, shipId, shipName } =
+      await this.chatSessionService.persistUserMessage(
         sessionId,
-        role: 'user',
-        content: dto.content.trim(),
-      },
-      include: {
-        contextReferences: {
-          include: { shipManual: { select: { shipId: true, category: true } } },
-        },
-      },
-    });
+        userId,
+        role,
+        dto.content,
+      );
 
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { updatedAt: new Date() },
-    });
-
-    this.autoGenerateTitle(sessionId, dto.content).catch((error) =>
-      this.logger.error('Failed to auto-generate title', error),
-    );
+    this.chatSessionService
+      .autoGenerateTitle(sessionId, dto.content)
+      .catch((error) =>
+        this.logger.error('Failed to auto-generate title', error),
+      );
 
     this.generateAssistantResponse(
-      session.shipId ?? null,
+      shipId,
       sessionId,
       dto.content,
-      session.ship?.name,
+      shipName ?? undefined,
       role,
     ).catch((error) =>
       this.logger.error('Failed to generate assistant response', error),
     );
 
-    return this.formatMessageResponse(userMessage);
+    return userMessage;
   }
 
+  /**
+   * Public for backward compatibility with unit tests that spy on this method.
+   * Internal callers in this file go through `addRoutedAssistantMessage`,
+   * which still calls `this.addAssistantMessage(...)` so spies keep working.
+   */
   async addAssistantMessage(
     sessionId: string,
     content: string,
     ragflowContext?: Record<string, unknown> | null,
     contextReferences?: ChatCitation[],
   ): Promise<ChatMessageResponseDto> {
-    const message = await this.prisma.chatMessage.create({
-      data: {
-        sessionId,
-        role: 'assistant',
-        content,
-        ragflowContext: ragflowContext
-          ? JSON.parse(JSON.stringify(ragflowContext))
-          : null,
-        contextReferences: contextReferences
-          ? {
-              create: contextReferences.map((reference) => ({
-                shipManualId: reference.shipManualId,
-                chunkId: reference.chunkId,
-                score: reference.score,
-                pageNumber: reference.pageNumber,
-                snippet: reference.snippet,
-                sourceTitle: reference.sourceTitle,
-                sourceUrl: reference.sourceUrl,
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        contextReferences: {
-          include: { shipManual: { select: { shipId: true, category: true } } },
-        },
-      },
-    });
+    return this.chatSessionService.addAssistantMessage(
+      sessionId,
+      content,
+      ragflowContext,
+      contextReferences,
+    );
+  }
 
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { updatedAt: new Date() },
-    });
-
-    return this.formatMessageResponse(message);
+  private formatMessageResponse(
+    message: Parameters<typeof formatChatMessageResponse>[0],
+  ): ReturnType<typeof formatChatMessageResponse> {
+    return formatChatMessageResponse(message);
   }
 
   async updateSessionTitle(
@@ -322,19 +202,12 @@ export class ChatService {
     role: string,
     title?: string,
   ): Promise<ChatSessionResponseDto> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-    });
-
-    if (!session) throw new NotFoundException('Chat session not found');
-    this.validateAccess(session, userId, role);
-
-    const updated = await this.prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { title: title || session.title },
-    });
-
-    return this.formatSessionResponse(updated);
+    return this.chatSessionService.updateSessionTitle(
+      sessionId,
+      userId,
+      role,
+      title,
+    );
   }
 
   async setSessionPinned(
@@ -343,19 +216,12 @@ export class ChatService {
     role: string,
     isPinned: boolean,
   ): Promise<ChatSessionResponseDto> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-    });
-
-    if (!session) throw new NotFoundException('Chat session not found');
-    this.validateAccess(session, userId, role);
-
-    const updated = await this.prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { pinnedAt: isPinned ? new Date() : null },
-    });
-
-    return this.formatSessionResponse(updated);
+    return this.chatSessionService.setSessionPinned(
+      sessionId,
+      userId,
+      role,
+      isPinned,
+    );
   }
 
   async deleteSession(
@@ -363,18 +229,7 @@ export class ChatService {
     userId: string,
     role: string,
   ): Promise<void> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-    });
-
-    if (!session) throw new NotFoundException('Chat session not found');
-
-    this.validateAccess(session, userId, role);
-
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { deletedAt: new Date() },
-    });
+    return this.chatSessionService.deleteSession(sessionId, userId, role);
   }
 
   async deleteMessage(
@@ -383,32 +238,12 @@ export class ChatService {
     userId: string,
     role: string,
   ): Promise<void> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        messages: {
-          where: { id: messageId },
-          select: { id: true, sessionId: true },
-        },
-      },
-    });
-
-    if (!session) throw new NotFoundException('Chat session not found');
-
-    this.validateAccess(session, userId, role);
-
-    if (session.deletedAt) {
-      throw new NotFoundException('Chat session not found');
-    }
-
-    if (session.messages.length === 0) {
-      throw new NotFoundException('Message not found');
-    }
-
-    await this.prisma.chatMessage.update({
-      where: { id: messageId },
-      data: { deletedAt: new Date() },
-    });
+    return this.chatSessionService.deleteMessage(
+      sessionId,
+      messageId,
+      userId,
+      role,
+    );
   }
 
   async regenerateLastResponse(
@@ -416,77 +251,20 @@ export class ChatService {
     userId: string,
     role: string,
   ): Promise<ChatMessageResponseDto> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        ship: { select: { id: true, name: true } },
-        messages: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'desc' },
-          take: 2,
-        },
-      },
-    });
-
-    if (!session) throw new NotFoundException('Chat session not found');
-
-    this.validateAccess(session, userId, role);
-
-    if (session.deletedAt) {
-      throw new NotFoundException('Chat session not found');
-    }
-
-    if (
-      session.messages.length < 2 ||
-      session.messages[0].role !== 'assistant' ||
-      session.messages[1].role !== 'user'
-    ) {
-      throw new BadRequestException(
-        'Regenerate only applies to the last assistant reply',
+    const { userQuery, shipId, shipName } =
+      await this.chatSessionService.prepareRegenerate(
+        sessionId,
+        userId,
+        role,
       );
-    }
-
-    await this.prisma.chatMessage.update({
-      where: { id: session.messages[0].id },
-      data: { deletedAt: new Date() },
-    });
 
     return this.generateAssistantResponse(
-      session.shipId ?? null,
+      shipId,
       sessionId,
-      session.messages[1].content,
-      session.ship?.name,
+      userQuery,
+      shipName ?? undefined,
       role,
     );
-  }
-
-  private async autoGenerateTitle(
-    sessionId: string,
-    firstMessage: string,
-  ): Promise<void> {
-    const session = await this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        messages: {
-          where: { deletedAt: null, role: 'user' },
-          select: { id: true },
-        },
-      },
-    });
-
-    if (
-      !session ||
-      session.messages.length !== 1 ||
-      (session.title && session.title !== 'New Chat')
-    ) {
-      return;
-    }
-
-    const title = await this.llmService.generateTitle(firstMessage);
-    await this.prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { title },
-    });
   }
 
   private async generateAssistantResponse(
@@ -2463,119 +2241,6 @@ export class ChatService {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  private validateAccess(
-    session: { userId: string },
-    userId: string,
-    role: string,
-  ): void {
-    if (session.userId !== userId) {
-      throw new ForbiddenException('Cannot access this chat session');
-    }
-  }
-
-  private formatSessionResponse(session: {
-    id: string;
-    title: string | null;
-    userId: string;
-    shipId: string | null;
-    pinnedAt?: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-    deletedAt: Date | null;
-  }): ChatSessionResponseDto {
-    return {
-      id: session.id,
-      title: session.title ?? undefined,
-      userId: session.userId,
-      shipId: session.shipId,
-      pinnedAt: session.pinnedAt?.toISOString() ?? null,
-      isPinned: !!session.pinnedAt,
-      createdAt: session.createdAt.toISOString(),
-      updatedAt: session.updatedAt.toISOString(),
-      deletedAt: session.deletedAt?.toISOString() ?? null,
-    };
-  }
-
-  private normalizeSessionPageSize(value?: string | number): number {
-    const parsed =
-      typeof value === 'number'
-        ? value
-        : typeof value === 'string'
-          ? Number.parseInt(value, 10)
-          : Number.NaN;
-    if (!Number.isFinite(parsed)) {
-      return 30;
-    }
-    return Math.min(100, Math.max(1, parsed));
-  }
-
-  private parseSessionCursor(
-    value?: string,
-  ): ChatSessionCursorPayload | null {
-    if (!value?.trim()) {
-      return null;
-    }
-
-    try {
-      const decoded = Buffer.from(value, 'base64url').toString('utf8');
-      const payload = JSON.parse(decoded) as Partial<ChatSessionCursorPayload>;
-      if (
-        !payload ||
-        typeof payload.updatedAt !== 'string' ||
-        typeof payload.id !== 'string' ||
-        !payload.updatedAt.trim() ||
-        !payload.id.trim() ||
-        Number.isNaN(new Date(payload.updatedAt).getTime())
-      ) {
-        throw new Error('Invalid chat session cursor');
-      }
-      return {
-        updatedAt: payload.updatedAt,
-        id: payload.id,
-      };
-    } catch (error) {
-      throw new BadRequestException(
-        `Invalid chat session cursor: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  private encodeSessionCursor(session: {
-    id: string;
-    updatedAt: Date;
-  }): string {
-    return Buffer.from(
-      JSON.stringify({
-        updatedAt: session.updatedAt.toISOString(),
-        id: session.id,
-      }),
-      'utf8',
-    ).toString('base64url');
-  }
-
-  private formatMessageResponse(message: any): ChatMessageResponseDto {
-    return {
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      ragflowContext: message.ragflowContext ?? null,
-      contextReferences: (message.contextReferences || []).map((ref: any) => ({
-        id: ref.id,
-        shipManualId: ref.shipManualId,
-        shipId: ref.shipManual?.shipId ?? null,
-        chunkId: ref.chunkId,
-        score: ref.score,
-        pageNumber: ref.pageNumber,
-        snippet: ref.snippet,
-        sourceTitle: ref.sourceTitle,
-        sourceCategory: ref.shipManual?.category ?? undefined,
-        sourceUrl: ref.sourceUrl,
-      })),
-      createdAt: message.createdAt.toISOString(),
-      deletedAt: message.deletedAt?.toISOString() ?? null,
-    };
-  }
-
   private mergeTelemetryClarificationForAdminShip(
     existing: TelemetryClarification | null,
     shipName: string,
@@ -3896,14 +3561,7 @@ export class ChatService {
   }
 
   private isBroadCertificateSoonQuery(query: string): boolean {
-    const normalized = query.toLowerCase();
-    return (
-      /\b(certificates?|certifications?)\b/.test(normalized) &&
-      /\b(expire|expiry|expiries|expiring|valid\s+until|due\s+to\s+expire)\b/.test(
-        normalized,
-      ) &&
-      /\b(soon|upcoming|next|nearest)\b/.test(normalized)
-    );
+    return isBroadCertificateSoonQuery(query);
   }
 
   private extractExplicitCertificateExpiry(
@@ -3915,113 +3573,7 @@ export class ChatService {
   private extractExplicitCertificateExpiries(
     snippet?: string,
   ): Array<{ timestamp: number; displayDate: string }> {
-    if (!snippet) {
-      return [];
-    }
-
-    const plainText = snippet
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const patterns = [
-      /\b(?:valid\s+until|expiry(?:\s+date)?|expiration(?:\s+date)?|expiring|expires?\s+on|expire\s+on|will\s+expire\s+on|scadenza(?:\s*\/\s*expiring)?|expiring:)\b[^0-9a-z]{0,20}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?(?:\s+|[-/])[a-z]{3,9}(?:\s+|[-/])\d{2,4})\b/gi,
-    ];
-    const seen = new Set<number>();
-    const expiries: Array<{ timestamp: number; displayDate: string }> = [];
-
-    for (const pattern of patterns) {
-      for (const match of plainText.matchAll(pattern)) {
-        if (!match?.[1]) {
-          continue;
-        }
-
-        const parsedDate = this.parseExplicitCertificateDateToken(match[1]);
-        if (!parsedDate || seen.has(parsedDate)) {
-          continue;
-        }
-
-        seen.add(parsedDate);
-        expiries.push({
-          timestamp: parsedDate,
-          displayDate: this.formatExplicitCertificateDate(parsedDate),
-        });
-      }
-    }
-
-    return expiries.sort((left, right) => left.timestamp - right.timestamp);
-  }
-
-  private parseExplicitCertificateDateToken(token: string): number | null {
-    const normalized = token.replace(/\s+/g, ' ').trim();
-    const monthNames = new Map<string, number>([
-      ['jan', 0],
-      ['january', 0],
-      ['feb', 1],
-      ['february', 1],
-      ['mar', 2],
-      ['march', 2],
-      ['apr', 3],
-      ['april', 3],
-      ['may', 4],
-      ['jun', 5],
-      ['june', 5],
-      ['jul', 6],
-      ['july', 6],
-      ['aug', 7],
-      ['august', 7],
-      ['sep', 8],
-      ['sept', 8],
-      ['september', 8],
-      ['oct', 9],
-      ['october', 9],
-      ['nov', 10],
-      ['november', 10],
-      ['dec', 11],
-      ['december', 11],
-    ]);
-
-    const numericMatch = normalized.match(
-      /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/,
-    );
-    if (numericMatch) {
-      const day = Number.parseInt(numericMatch[1], 10);
-      const month = Number.parseInt(numericMatch[2], 10) - 1;
-      let year = Number.parseInt(numericMatch[3], 10);
-      if (year < 100) {
-        year += year >= 70 ? 1900 : 2000;
-      }
-      const timestamp = Date.UTC(year, month, day);
-      return Number.isNaN(timestamp) ? null : timestamp;
-    }
-
-    const monthNameMatch = normalized.match(
-      /^(\d{1,2})(?:st|nd|rd|th)?(?:\s+|[-/])([a-z]{3,9})(?:\s+|[-/])(\d{2,4})$/i,
-    );
-    if (monthNameMatch) {
-      const day = Number.parseInt(monthNameMatch[1], 10);
-      const month = monthNames.get(monthNameMatch[2].toLowerCase());
-      if (month === undefined) {
-        return null;
-      }
-      let year = Number.parseInt(monthNameMatch[3], 10);
-      if (year < 100) {
-        year += year >= 70 ? 1900 : 2000;
-      }
-      const timestamp = Date.UTC(year, month, day);
-      return Number.isNaN(timestamp) ? null : timestamp;
-    }
-
-    return null;
-  }
-
-  private formatExplicitCertificateDate(timestamp: number): string {
-    return new Intl.DateTimeFormat('en-GB', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }).format(new Date(timestamp));
+    return extractCertificateExpiryEntries(snippet);
   }
 
   private formatApproximateTimeUntil(
@@ -5639,27 +5191,7 @@ export class ChatService {
   }
 
   private isCurrentInventoryTelemetryQuery(userQuery: string): boolean {
-    const normalized = userQuery.toLowerCase();
-    if (
-      /\b(next\s+month|next\s+week|forecast|budget|trend|historical|history|over\s+the\s+last|last\s+\d+\s+(?:days?|weeks?|months?)|need\s+to\s+order|order)\b/i.test(
-        normalized,
-      )
-    ) {
-      return false;
-    }
-
-    return (
-      /\b(onboard|on\s+board|in\s+(?:the\s+)?tanks?|tank\s+levels?|all\s+fuel\s+tanks|remaining|available)\b/i.test(
-        normalized,
-      ) ||
-      (/\b(fuel|oil|water|coolant|def|urea)\b/i.test(normalized) &&
-        /\b(level|levels|quantity|amount|volume|contents?)\b/i.test(
-          normalized,
-        ) &&
-        /\b(tank|tanks)\b/i.test(normalized)) ||
-      (/\b(how\s+many|how\s+much|total|combined|sum)\b/i.test(normalized) &&
-        /\b(fuel|oil|water|coolant)\b/i.test(normalized))
-    );
+    return matchesCurrentInventoryTelemetryQuery(userQuery);
   }
 
   private buildTelemetryIntentQuery(params: {

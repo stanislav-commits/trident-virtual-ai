@@ -8,8 +8,25 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
 import { TagMatcherService, type MatchableTag } from './tag-matcher.service';
-import type { ManualSemanticProfile } from '../semantic/semantic.types';
 import { parseManualSemanticProfile } from '../semantic/semantic.validators';
+import {
+  inferStoredFluidInventoryTagMatches,
+  type QueryTagMatch,
+} from './linking/stored-fluid-tag-inference.utils';
+import {
+  normalizeTagIds,
+  pickManualTagIds,
+  pickSingleTagIds,
+  truncateTagLinkLogValue,
+} from './linking/tag-link-normalization.utils';
+import {
+  buildManualMatchText,
+  buildManualRoleHintTokens,
+  buildManualSemanticFragments,
+  buildMetricMatchText,
+  buildMetricPrimaryMatchText,
+  type ManualSemanticTagFragment,
+} from './linking/tag-link-text.utils';
 
 export interface TagLinkSummary {
   id: string;
@@ -36,12 +53,6 @@ const MANUAL_CONTENT_TAG_MAX_CHARS = 24_000;
 const MANUAL_CONTENT_TAG_MIN_SCORE = 18;
 const MANUAL_CONTENT_TAG_MIN_HITS = 2;
 const MANUAL_SEMANTIC_TAG_MAX_MATCHES = 3;
-
-interface QueryTagMatch {
-  tagId: string;
-  key: string;
-  score: number;
-}
 
 @Injectable()
 export class TagLinksService {
@@ -150,7 +161,7 @@ export class TagLinksService {
     tagIds: string[] | undefined,
   ): Promise<TagLinkSummary[]> {
     await this.assertShipManualExists(shipId, manualId);
-    const normalizedTagIds = this.normalizeTagIds(tagIds);
+    const normalizedTagIds = normalizeTagIds(tagIds);
     await this.assertTagIdsExist(normalizedTagIds);
 
     await this.prisma.$transaction(async (tx) => {
@@ -222,7 +233,7 @@ export class TagLinksService {
     }
 
     const assignments = eligible.map((definition) => {
-      const tagIds = this.pickSingleTagIds(
+      const tagIds = pickSingleTagIds(
         this.matchMetricDefinitionTagIds(definition, profiles),
       );
 
@@ -343,7 +354,7 @@ export class TagLinksService {
           manualLabel: manual.filename,
           existingCount: manual.tags.length,
           source: match.source,
-          tagIds: this.pickManualTagIds(match.tagIds),
+          tagIds: pickManualTagIds(match.tagIds, MANUAL_SEMANTIC_TAG_MAX_MATCHES),
         };
       }),
     );
@@ -453,7 +464,7 @@ export class TagLinksService {
     const tagMatches = await this.matchQueryTags(query);
     if (tagMatches.length === 0) {
       this.logger.debug(
-        `Telemetry tag scope ship=${shipId} query="${this.truncateForLog(query)}" matchedTags=none scopedMetrics=0`,
+        `Telemetry tag scope ship=${shipId} query="${truncateTagLinkLogValue(query)}" matchedTags=none scopedMetrics=0`,
       );
       return [];
     }
@@ -470,7 +481,7 @@ export class TagLinksService {
     ];
     if (taggedMetricKeys.length === 0) {
       this.logger.debug(
-        `Telemetry tag scope ship=${shipId} query="${this.truncateForLog(query)}" matchedTags=${tagMatches.map((match) => match.key).join(',')} scopedMetrics=0`,
+        `Telemetry tag scope ship=${shipId} query="${truncateTagLinkLogValue(query)}" matchedTags=${tagMatches.map((match) => match.key).join(',')} scopedMetrics=0`,
       );
       return [];
     }
@@ -488,7 +499,7 @@ export class TagLinksService {
 
     const metricKeys = rows.map((row) => row.metricKey);
     this.logger.debug(
-      `Telemetry tag scope ship=${shipId} query="${this.truncateForLog(query)}" matchedTags=${tagMatches.map((match) => match.key).join(',')} scopedMetrics=${metricKeys.length}${metricKeys.length > 0 ? ` sample=${metricKeys.slice(0, 5).join(',')}` : ''}`,
+      `Telemetry tag scope ship=${shipId} query="${truncateTagLinkLogValue(query)}" matchedTags=${tagMatches.map((match) => match.key).join(',')} scopedMetrics=${metricKeys.length}${metricKeys.length > 0 ? ` sample=${metricKeys.slice(0, 5).join(',')}` : ''}`,
     );
 
     return metricKeys;
@@ -502,7 +513,7 @@ export class TagLinksService {
     const tagMatches = await this.matchQueryTags(query);
     if (tagMatches.length === 0) {
       this.logger.debug(
-        `Manual tag scope ship=${shipId} query="${this.truncateForLog(query)}" matchedTags=none scopedManuals=0`,
+        `Manual tag scope ship=${shipId} query="${truncateTagLinkLogValue(query)}" matchedTags=none scopedManuals=0`,
       );
       return [];
     }
@@ -523,7 +534,7 @@ export class TagLinksService {
 
     const manualIds = rows.map((row) => row.id);
     this.logger.debug(
-      `Manual tag scope ship=${shipId} query="${this.truncateForLog(query)}" matchedTags=${tagMatches.map((match) => match.key).join(',')} scopedManuals=${manualIds.length}${categories?.length ? ` categories=${categories.join(',')}` : ''}`,
+      `Manual tag scope ship=${shipId} query="${truncateTagLinkLogValue(query)}" matchedTags=${tagMatches.map((match) => match.key).join(',')} scopedManuals=${manualIds.length}${categories?.length ? ` categories=${categories.join(',')}` : ''}`,
     );
 
     return manualIds;
@@ -536,7 +547,7 @@ export class TagLinksService {
     const tagMatches = await this.matchQueryTags(query);
     if (tagMatches.length === 0) {
       this.logger.debug(
-        `Manual tag scope admin query="${this.truncateForLog(query)}" matchedTags=none scopedManuals=0`,
+        `Manual tag scope admin query="${truncateTagLinkLogValue(query)}" matchedTags=none scopedManuals=0`,
       );
       return [];
     }
@@ -556,7 +567,7 @@ export class TagLinksService {
 
     const manualIds = rows.map((row) => row.id);
     this.logger.debug(
-      `Manual tag scope admin query="${this.truncateForLog(query)}" matchedTags=${tagMatches.map((match) => match.key).join(',')} scopedManuals=${manualIds.length}${categories?.length ? ` categories=${categories.join(',')}` : ''}`,
+      `Manual tag scope admin query="${truncateTagLinkLogValue(query)}" matchedTags=${tagMatches.map((match) => match.key).join(',')} scopedManuals=${manualIds.length}${categories?.length ? ` categories=${categories.join(',')}` : ''}`,
     );
 
     return manualIds;
@@ -590,34 +601,7 @@ export class TagLinksService {
       return directMatches;
     }
 
-    return this.inferStoredFluidInventoryTagMatches(query, profiles);
-  }
-
-  private inferStoredFluidInventoryTagMatches(
-    query: string,
-    profiles: Array<{
-      tag: MatchableTag;
-      profile: ReturnType<TagMatcherService['buildProfiles']>[number];
-    }>,
-  ): QueryTagMatch[] {
-    const normalizedQuery = this.normalizeQueryText(query);
-    const fluid = this.detectStoredFluidQuerySubject(normalizedQuery);
-    if (!fluid || !this.isStoredFluidInventoryQuery(normalizedQuery, fluid)) {
-      return [];
-    }
-
-    return profiles
-      .filter(
-        (profile) =>
-          profile.tag.item === 'storage_tank' &&
-          this.tagMatchesStoredFluid(profile.tag, fluid),
-      )
-      .slice(0, 4)
-      .map((profile) => ({
-        tagId: profile.tag.id,
-        key: profile.tag.key,
-        score: 10,
-      }));
+    return inferStoredFluidInventoryTagMatches(query, profiles);
   }
 
   private async loadTagProfiles() {
@@ -644,83 +628,12 @@ export class TagLinksService {
     return this.cachedTagProfiles;
   }
 
-  private buildMetricMatchText(metric: {
-    key: string;
-    label: string;
-    description: string | null;
-    unit: string | null;
-    bucket: string | null;
-    measurement: string | null;
-    field: string | null;
-  }): string {
-    return [
-      metric.key,
-      metric.label,
-      metric.bucket,
-      metric.measurement,
-      metric.field,
-      metric.description,
-      metric.unit,
-    ]
-      .filter(Boolean)
-      .join(' ');
-  }
-
-  private buildMetricPrimaryMatchText(metric: {
-    description: string | null;
-    unit: string | null;
-    field: string | null;
-  }): string {
-    return [metric.field, metric.description, metric.unit]
-      .filter(Boolean)
-      .join(' ');
-  }
-
-  private buildManualMatchText(manual: {
-    filename: string;
-    category: string;
-  }): string {
-    return [manual.filename, manual.category].filter(Boolean).join(' ');
-  }
-
-  private buildManualSemanticMatchText(profile: ManualSemanticProfile): string {
-    return [
-      profile.vendor,
-      profile.model,
-      ...profile.aliases,
-      ...profile.systems,
-      ...profile.equipment,
-      profile.summary,
-      ...profile.pageTopics.map((topic) => topic.summary),
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(' ');
-  }
-
-  private buildManualSemanticFragments(
-    profile: ManualSemanticProfile,
-  ): Array<{ text: string; weight: number }> {
-    return [
-      { text: profile.vendor ?? '', weight: 1 },
-      { text: profile.model ?? '', weight: 1 },
-      ...profile.aliases.map((alias) => ({ text: alias, weight: 2 })),
-      ...profile.systems.map((system) => ({ text: system, weight: 3 })),
-      ...profile.equipment.map((equipment) => ({ text: equipment, weight: 2 })),
-      { text: profile.summary ?? '', weight: 2 },
-      ...profile.pageTopics.map((topic) => ({
-        text: topic.summary,
-        weight: 1,
-      })),
-      { text: this.buildManualSemanticMatchText(profile), weight: 1 },
-    ].filter((entry) => entry.text.trim().length > 0);
-  }
-
   private collectManualSemanticTagEvidence(
     profiles: Array<{
       tag: MatchableTag;
       profile: ReturnType<TagMatcherService['buildProfiles']>[number];
     }>,
-    fragments: Array<{ text: string; weight: number }>,
+    fragments: ManualSemanticTagFragment[],
   ): Map<string, number> {
     const evidence = new Map<
       string,
@@ -758,16 +671,6 @@ export class TagLinksService {
     );
   }
 
-  private buildManualRoleHintTokens(profile: ManualSemanticProfile): Set<string> {
-    return new Set(
-      this.normalizeQueryText(
-        [...profile.aliases, ...profile.equipment].join(' '),
-      )
-        .split(' ')
-        .filter((token) => token.length > 2),
-    );
-  }
-
   private async matchManualTagIds(
     manual: {
       id: string;
@@ -784,7 +687,7 @@ export class TagLinksService {
   ): Promise<{ tagIds: string[]; source: 'semantic' | 'content' | 'title' | 'none' }> {
     const matcherProfiles = profiles.map((entry) => entry.profile);
     const titleMatches = this.matcher
-      .matchTags(matcherProfiles, this.buildManualMatchText(manual), 'manual')
+      .matchTags(matcherProfiles, buildManualMatchText(manual), 'manual')
       .map((match) => match.tagId);
     const semanticMatches = this.matchManualTagIdsFromSemanticProfile(
       manual,
@@ -864,10 +767,10 @@ export class TagLinksService {
         (entry) => entry.conceptIds,
       ),
     );
-    const roleHintTokens = this.buildManualRoleHintTokens(profile);
+    const roleHintTokens = buildManualRoleHintTokens(profile);
     const semanticMatchMap = this.collectManualSemanticTagEvidence(
       profiles,
-      this.buildManualSemanticFragments(profile),
+      buildManualSemanticFragments(profile),
     );
 
     const rankedCandidates = profiles.map(({ tag, profile: tagProfile }) => {
@@ -1103,7 +1006,7 @@ export class TagLinksService {
     const matcherProfiles = profiles.map((entry) => entry.profile);
     const primaryMatches = this.matcher.matchTags(
       matcherProfiles,
-      this.buildMetricPrimaryMatchText(metric),
+      buildMetricPrimaryMatchText(metric),
       'metric',
     );
 
@@ -1116,19 +1019,15 @@ export class TagLinksService {
     }
 
     return this.matcher
-      .matchTags(matcherProfiles, this.buildMetricMatchText(metric), 'metric')
+      .matchTags(matcherProfiles, buildMetricMatchText(metric), 'metric')
       .map((match) => match.tagId);
-  }
-
-  private normalizeTagIds(tagIds: string[] | undefined): string[] {
-    return [...new Set((tagIds ?? []).map((id) => id?.trim()).filter(Boolean))];
   }
 
   private normalizeSingleTagIds(
     tagIds: string[] | undefined,
     entityLabel: 'metric' | 'document',
   ): string[] {
-    const normalized = this.normalizeTagIds(tagIds);
+    const normalized = normalizeTagIds(tagIds);
 
     if (normalized.length > 1) {
       throw new BadRequestException(
@@ -1137,115 +1036,6 @@ export class TagLinksService {
     }
 
     return normalized;
-  }
-
-  private pickSingleTagIds(tagIds: string[]): string[] {
-    const normalized = [...new Set(tagIds.map((id) => id?.trim()).filter(Boolean))];
-    return normalized.length > 0 ? [normalized[0]] : [];
-  }
-
-  private pickManualTagIds(tagIds: string[]): string[] {
-    return [...new Set(tagIds.map((id) => id?.trim()).filter(Boolean))].slice(
-      0,
-      MANUAL_SEMANTIC_TAG_MAX_MATCHES,
-    );
-  }
-
-  private truncateForLog(value: string, maxLength: number = 140): string {
-    const normalized = value.replace(/\s+/g, ' ').trim();
-    if (normalized.length <= maxLength) {
-      return normalized;
-    }
-
-    return `${normalized.slice(0, maxLength - 1)}…`;
-  }
-
-  private normalizeQueryText(value: string): string {
-    return value
-      .replace(/([a-z])([A-Z])/g, '$1 $2')
-      .toLowerCase()
-      .replace(/\bport[\s-]*side\b/g, ' port ')
-      .replace(/\b(?:ps)\b/g, ' port ')
-      .replace(/\bstarboard[\s-]*side\b/g, ' starboard ')
-      .replace(/\b(?:stbd|stb|sb)\b/g, ' starboard ')
-      .replace(/\bgensets?\b/g, ' generator ')
-      .replace(/[_.:/\\-]+/g, ' ')
-      .replace(/[^a-z0-9\s]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  private detectStoredFluidQuerySubject(
-    normalizedQuery: string,
-  ): 'fuel' | 'oil' | 'water' | 'coolant' | 'def' | null {
-    if (/\bfuel\b/i.test(normalizedQuery)) return 'fuel';
-    if (/\boil\b/i.test(normalizedQuery)) return 'oil';
-    if (/\bcoolant\b/i.test(normalizedQuery)) return 'coolant';
-    if (/\b(def|urea)\b/i.test(normalizedQuery)) return 'def';
-    if (/\b(water|fresh water|seawater)\b/i.test(normalizedQuery)) {
-      return 'water';
-    }
-    return null;
-  }
-
-  private isStoredFluidInventoryQuery(
-    normalizedQuery: string,
-    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
-  ): boolean {
-    const fluidPattern =
-      fluid === 'water'
-        ? /\b(water|fresh water|seawater)\b/i
-        : fluid === 'def'
-          ? /\b(def|urea)\b/i
-          : new RegExp(`\\b${fluid}\\b`, 'i');
-
-    if (!fluidPattern.test(normalizedQuery)) {
-      return false;
-    }
-
-    if (
-      /\b(used|consumed|consumption|usage|burn(?:ed|t|ing)?|spent|rate|flow|pressure|temp(?:erature)?|voltage|power|energy|frequency|pump|transfer)\b/i.test(
-        normalizedQuery,
-      )
-    ) {
-      return false;
-    }
-
-    const hasTankContext = /\b(tank|tanks|storage)\b/i.test(normalizedQuery);
-    const hasInventoryIntent =
-      /\b(level|levels|quantity|volume|contents?|inventory|remaining|left|available|onboard|amount)\b/i.test(
-        normalizedQuery,
-      );
-    const isLookupStyleQuestion =
-      /\b(what|show|list|display|give|tell|provide)\b/i.test(normalizedQuery);
-
-    return hasInventoryIntent || (hasTankContext && isLookupStyleQuestion);
-  }
-
-  private tagMatchesStoredFluid(
-    tag: MatchableTag,
-    fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def',
-  ): boolean {
-    const normalizedKey = this.normalizeQueryText(tag.key.replace(/:/g, ' '));
-    const normalizedSubcategory = this.normalizeQueryText(tag.subcategory);
-
-    switch (fluid) {
-      case 'water':
-        return (
-          /\bwater\b/i.test(normalizedKey) ||
-          /\bwater\b/i.test(normalizedSubcategory)
-        );
-      case 'def':
-        return (
-          /\b(def|urea|adblue)\b/i.test(normalizedKey) ||
-          /\b(def|urea)\b/i.test(normalizedSubcategory)
-        );
-      default:
-        return (
-          new RegExp(`\\b${fluid}\\b`, 'i').test(normalizedKey) ||
-          new RegExp(`\\b${fluid}\\b`, 'i').test(normalizedSubcategory)
-        );
-    }
   }
 
   private async assertTagIdsExist(tagIds: string[]): Promise<void> {

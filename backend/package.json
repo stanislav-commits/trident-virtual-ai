@@ -78,15 +78,24 @@
       "json",
       "ts"
     ],
-    "rootDir": "src",
+    "rootDir": ".",
+    "roots": [
+      "<rootDir>/src",
+      "<rootDir>/test/unit"
+    ],
     "testRegex": ".*\\.spec\\.ts$",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/dist/",
+      "/test/jest-e2e\\.json$"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "src/**/*.(t|j)s"
     ],
-    "coverageDirectory": "../coverage",
+    "coverageDirectory": "./coverage",
     "testEnvironment": "node"
   }
 }

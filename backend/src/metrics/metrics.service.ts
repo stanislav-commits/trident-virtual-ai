@@ -22,196 +22,69 @@ import { MetricDescriptionService } from './metric-description.service';
 import {
   TelemetryQuerySemanticNormalizerService,
   type TelemetrySemanticQuery,
-} from './telemetry-query-semantic-normalizer.service';
+} from './live-telemetry/telemetry-query-semantic-normalizer.service';
 import { UpdateMetricDefinitionDto } from './dto/update-metric-definition.dto';
 import type { ChatNormalizedQuery } from '../chat/chat.types';
-
-const TAG_SUMMARY_SELECT = {
-  id: true,
-  key: true,
-  category: true,
-  subcategory: true,
-  item: true,
-  description: true,
-} as const;
-
-const METRIC_SELECT = {
-  key: true,
-  label: true,
-  description: true,
-  unit: true,
-  bucket: true,
-  measurement: true,
-  field: true,
-  firstSeenAt: true,
-  lastSeenAt: true,
-  status: true,
-  dataType: true,
-  createdAt: true,
-  tags: {
-    take: 1,
-    orderBy: {
-      tag: { key: 'asc' },
-    },
-    select: {
-      tag: {
-        select: TAG_SUMMARY_SELECT,
-      },
-    },
-  },
-} as const;
-
-interface SyncShipMetricsOptions {
-  metrics?: InfluxMetric[];
-  activeMetricKeys?: string[];
-  scheduleDescriptions?: boolean;
-  syncValues?: boolean;
-}
-
-interface DescriptionBackfillBatchResult {
-  generated: number;
-  cooldownMs: number;
-}
-
-interface ShipMetricsSyncJob {
-  shipId: string;
-  organizationName: string;
-  activeMetricKeys?: string[];
-}
-
-interface ShipTelemetryEntry {
-  key: string;
-  label: string;
-  description?: string | null;
-  unit?: string | null;
-  bucket?: string | null;
-  measurement?: string | null;
-  field?: string | null;
-  dataType?: string | null;
-  value: string | number | boolean | null;
-  updatedAt?: Date | null;
-}
-
-interface ShipTelemetryContext {
-  telemetry: Record<string, string | number | boolean | null>;
-  totalActiveMetrics: number;
-  matchedMetrics: number;
-  prefiltered: boolean;
-  matchMode: 'none' | 'sample' | 'exact' | 'direct' | 'related';
-  clarification: {
-    question: string;
-    pendingQuery: string;
-    actions: Array<{
-      label: string;
-      message: string;
-      kind?: 'suggestion' | 'all';
-    }>;
-  } | null;
-}
-
-interface TelemetryListRequest {
-  mode: 'sample' | 'full';
-  limit?: number;
-}
-
-interface NavigationMotionTelemetryIntent {
-  wantsLocation: boolean;
-  wantsSpeed: boolean;
-  wantsHeading: boolean;
-  wantsWind: boolean;
-  preferredSpeedKind?: 'sog' | 'stw' | 'vmg';
-}
-
-interface TelemetryQueryComponent {
-  raw: string;
-  normalized: string;
-  subjectPhrase: string;
-  commonSubjectPhrase: string;
-  entityPhrase: string;
-  measurementPhrase: string;
-  measurementAnchorPhrase: string;
-  hasMeasurementPhrase: boolean;
-  hasMeaningfulSubject: boolean;
-  queryKinds: Set<string>;
-  tokenCount: number;
-}
-
-interface StoredFluidSubject {
-  fluid: 'fuel' | 'oil' | 'water' | 'coolant' | 'def';
-  waterQualifiers?: Array<'fresh' | 'sea' | 'black' | 'grey' | 'bilge'>;
-}
-
-interface ShipHistoricalTelemetryResolution {
-  kind: 'none' | 'clarification' | 'answer';
-  content?: string;
-  pendingQuery?: string;
-  clarificationQuestion?: string;
-  clarificationActions?: Array<{
-    label: string;
-    message: string;
-    kind?: 'suggestion' | 'all';
-  }>;
-}
-
-interface HistoricalPositiveTelemetryEvent {
-  entry: ShipTelemetryEntry;
-  time: Date;
-  delta: number;
-  fromValue: number;
-  toValue: number;
-}
-
-interface HistoricalTrendDeltaEntry {
-  entry: ShipTelemetryEntry;
-  fromValue: number;
-  toValue: number;
-  delta: number;
-}
-
-interface HistoricalTrendSeriesPoint {
-  time: Date;
-  value: number;
-}
-
-interface HistoricalTrendJumpSummary {
-  fromTime: Date;
-  toTime: Date;
-  fromValue: number;
-  toValue: number;
-  delta: number;
-  standout: boolean;
-}
-
-interface HistoricalTrendSeriesSummary {
-  sampledEvery: string;
-  aggregateStart: number;
-  aggregateEnd: number;
-  aggregateDelta: number;
-  deltas: HistoricalTrendDeltaEntry[];
-  lowest: HistoricalTrendSeriesPoint | null;
-  highest: HistoricalTrendSeriesPoint | null;
-  largestJump: HistoricalTrendJumpSummary | null;
-}
-
-interface ParsedHistoricalTelemetryRequest {
-  metricQuery: string;
-  operation:
-    | 'point'
-    | 'average'
-    | 'min'
-    | 'max'
-    | 'sum'
-    | 'trend'
-    | 'delta'
-    | 'position'
-    | 'event';
-  range: InfluxHistoricalQueryRange;
-  pointInTime?: Date;
-  rangeLabel: string;
-  clarificationQuestion?: string;
-  eventType?: 'bunkering' | 'fuel_increase';
-  trendFocus?: 'general' | 'abrupt_change';
-}
+import {
+  parseHistoricalTelemetryRequest,
+  type ParsedHistoricalTelemetryRequest,
+} from './historical-telemetry/historical-telemetry-query-parser';
+import {
+  formatAggregateNumber,
+  formatHistoricalTimestamp,
+  formatSignedAggregateNumber,
+  getHistoricalRangeDurationMs,
+  getMedianValue,
+  isHistoricalQueryTimeout,
+  isNegligibleHistoricalChange,
+  parseHistoricalNumericValue,
+} from './historical-telemetry/historical-telemetry.utils';
+import {
+  canonicalizeTelemetrySubjectToken,
+  expandTelemetryTokenVariants,
+  matchesTelemetrySubjectToken,
+  normalizeTelemetryText,
+  normalizeTelemetryToken,
+} from './live-telemetry/telemetry-text.utils';
+import {
+  describeStoredFluidSubject,
+  detectStoredFluidSubject,
+  matchesStoredFluidSubject,
+  matchesWaterQualifier,
+} from './live-telemetry/matching/stored-fluid-subject.utils';
+import {
+  buildTelemetryClarificationActions,
+  buildTelemetryClarificationPendingQuery,
+  buildTelemetryClarificationQuestion,
+  buildTelemetrySuggestionLabel,
+} from './live-telemetry/rendering/telemetry-clarification-renderer';
+import { uniqueTelemetryEntries } from './live-telemetry/collection/telemetry-entry-collection.utils';
+import { parseTelemetryListRequest } from './live-telemetry/query/telemetry-list-request.utils';
+import {
+  buildTelemetryQuerySignals,
+  type TelemetryQuerySignals,
+} from './live-telemetry/query/telemetry-query-signals.utils';
+import { METRIC_SELECT } from './metric-definition.selects';
+import type {
+  DescriptionBackfillBatchResult,
+  ShipMetricsSyncJob,
+  SyncShipMetricsOptions,
+} from './sync/metrics-sync.types';
+import type {
+  NavigationMotionTelemetryIntent,
+  ShipTelemetryContext,
+  ShipTelemetryEntry,
+  StoredFluidSubject,
+  TelemetryQueryComponent,
+} from './live-telemetry/live-telemetry.types';
+import type {
+  HistoricalPositiveTelemetryEvent,
+  HistoricalTrendDeltaEntry,
+  HistoricalTrendJumpSummary,
+  HistoricalTrendSeriesPoint,
+  HistoricalTrendSeriesSummary,
+  ShipHistoricalTelemetryResolution,
+} from './historical-telemetry/historical-telemetry.types';
 
 @Injectable()
 export class MetricsService implements OnModuleInit {
@@ -570,7 +443,7 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
-    const telemetryListRequest = this.parseTelemetryListRequest(
+    const telemetryListRequest = parseTelemetryListRequest(
       query,
       effectiveResolvedSubjectQuery,
     );
@@ -651,7 +524,7 @@ export class MetricsService implements OnModuleInit {
       };
     }
 
-    const normalizedSearchSpace = this.normalizeTelemetryText(
+    const normalizedSearchSpace = normalizeTelemetryText(
       `${query}\n${effectiveResolvedSubjectQuery ?? ''}`,
     );
     if (this.hasStrictTelemetryContext(normalizedSearchSpace)) {
@@ -731,11 +604,14 @@ export class MetricsService implements OnModuleInit {
         resolvedSubjectQuery ?? '',
       )}"`,
     );
-    const parsedRequest = this.parseHistoricalTelemetryRequest(
+    const parsedRequest = parseHistoricalTelemetryRequest({
       query,
       resolvedSubjectQuery,
       normalizedQuery,
-    );
+      isTelemetryLocationQuery: (value) => this.isTelemetryLocationQuery(value),
+      isImplicitDailyStoredFluidUsageQuery: (value) =>
+        this.isImplicitDailyStoredFluidUsageQuery(value),
+    });
     if (!parsedRequest) {
       this.logger.debug(
         `Historical telemetry parser returned none for ship=${shipId}`,
@@ -1149,7 +1025,7 @@ export class MetricsService implements OnModuleInit {
     const uniqueHints: string[] = [];
     const seen = new Set<string>();
     for (const hint of hints) {
-      const normalizedHint = this.normalizeTelemetryText(hint);
+      const normalizedHint = normalizeTelemetryText(hint);
       if (!normalizedHint || seen.has(normalizedHint)) {
         continue;
       }
@@ -1197,7 +1073,7 @@ export class MetricsService implements OnModuleInit {
       if (!trimmed) {
         continue;
       }
-      const normalized = this.normalizeTelemetryText(trimmed);
+      const normalized = normalizeTelemetryText(trimmed);
       if (!normalized || seen.has(normalized)) {
         continue;
       }
@@ -1328,10 +1204,10 @@ export class MetricsService implements OnModuleInit {
       return 'suppressed_tank_scope';
     }
 
-    const normalizedSearchSpace = this.normalizeTelemetryText(
+    const normalizedSearchSpace = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
-    const fluid = this.detectStoredFluidSubject(normalizedSearchSpace);
+    const fluid = detectStoredFluidSubject(normalizedSearchSpace);
     if (fluid) {
       const allAggregateEntries = this.findAggregateTankTelemetryEntries(
         allEntries,
@@ -1412,7 +1288,7 @@ export class MetricsService implements OnModuleInit {
     resolvedSubjectQuery?: string,
   ): ShipTelemetryEntry[] {
     if (request.operation === 'event') {
-      const normalizedMetricQuery = this.normalizeTelemetryText(
+      const normalizedMetricQuery = normalizeTelemetryText(
         request.metricQuery,
       );
       const fuelTankEntries = entries
@@ -1444,7 +1320,7 @@ export class MetricsService implements OnModuleInit {
       );
     }
 
-    const searchSpace = this.normalizeTelemetryText(
+    const searchSpace = normalizeTelemetryText(
       `${request.metricQuery}\n${resolvedSubjectQuery ?? ''}`,
     );
     const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
@@ -1517,8 +1393,8 @@ export class MetricsService implements OnModuleInit {
     normalizedQuery?: string,
   ): ShipTelemetryEntry[] {
     const searchSpace =
-      normalizedQuery ?? this.normalizeTelemetryText(request.metricQuery);
-    const subject = this.detectStoredFluidSubject(searchSpace);
+      normalizedQuery ?? normalizeTelemetryText(request.metricQuery);
+    const subject = detectStoredFluidSubject(searchSpace);
     if (
       subject &&
       this.shouldUseHistoricalTankStorageAnalysis(request, searchSpace, subject)
@@ -1574,10 +1450,10 @@ export class MetricsService implements OnModuleInit {
     request: ParsedHistoricalTelemetryRequest;
   }): Promise<string | null> {
     const { matchedEntries, organizationName, request } = params;
-    const normalizedMetricQuery = this.normalizeTelemetryText(
+    const normalizedMetricQuery = normalizeTelemetryText(
       request.metricQuery,
     );
-    const storedFluidSubject = this.detectStoredFluidSubject(
+    const storedFluidSubject = detectStoredFluidSubject(
       normalizedMetricQuery,
     );
     const usesStoredFluidTankLevels =
@@ -1690,7 +1566,7 @@ export class MetricsService implements OnModuleInit {
           entry,
           row.value,
         );
-        return `- ${this.buildTelemetrySuggestionLabel(entry)}: ${formattedValue}`;
+        return `- ${buildTelemetrySuggestionLabel(entry)}: ${formattedValue}`;
       })
       .filter((line): line is string => Boolean(line));
 
@@ -1748,7 +1624,7 @@ export class MetricsService implements OnModuleInit {
       }
 
       return [
-        `For ${request.rangeLabel}, the first recorded vessel position was Latitude ${firstPosition.latitude.toFixed(6)}, Longitude ${firstPosition.longitude.toFixed(6)} at ${this.formatHistoricalTimestamp(firstPosition.time)}, and the last recorded position was Latitude ${lastPosition.latitude.toFixed(6)}, Longitude ${lastPosition.longitude.toFixed(6)} at ${this.formatHistoricalTimestamp(lastPosition.time)} [Telemetry History].`,
+        `For ${request.rangeLabel}, the first recorded vessel position was Latitude ${firstPosition.latitude.toFixed(6)}, Longitude ${firstPosition.longitude.toFixed(6)} at ${formatHistoricalTimestamp(firstPosition.time)}, and the last recorded position was Latitude ${lastPosition.latitude.toFixed(6)}, Longitude ${lastPosition.longitude.toFixed(6)} at ${formatHistoricalTimestamp(lastPosition.time)} [Telemetry History].`,
         '',
         'Ask for a specific time if you need the exact position at one moment within that period.',
       ].join('\n');
@@ -1759,7 +1635,7 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
-    return `For ${request.rangeLabel}, the recorded vessel position was Latitude ${singlePosition.latitude.toFixed(6)}, Longitude ${singlePosition.longitude.toFixed(6)} at ${this.formatHistoricalTimestamp(singlePosition.time)} [Telemetry History].`;
+    return `For ${request.rangeLabel}, the recorded vessel position was Latitude ${singlePosition.latitude.toFixed(6)}, Longitude ${singlePosition.longitude.toFixed(6)} at ${formatHistoricalTimestamp(singlePosition.time)} [Telemetry History].`;
   }
 
   private async buildHistoricalPointAggregateAnswer(
@@ -1789,7 +1665,7 @@ export class MetricsService implements OnModuleInit {
     const values = matchedEntries
       .map((entry) => {
         const row = rowsByKey.get(entry.key);
-        const numericValue = this.parseHistoricalNumericValue(row?.value);
+        const numericValue = parseHistoricalNumericValue(row?.value);
         if (!row || numericValue == null) {
           return null;
         }
@@ -1831,16 +1707,16 @@ export class MetricsService implements OnModuleInit {
             : values.reduce((sum, item) => sum + item.value, 0) / values.length;
 
     if (values.length === 1) {
-      return `At ${request.rangeLabel}, the ${labelMap[operation]} ${this.buildTelemetrySuggestionLabel(values[0].entry)} was ${this.formatAggregateNumber(values[0].value)}${unitSuffix} [Telemetry History].`;
+      return `At ${request.rangeLabel}, the ${labelMap[operation]} ${buildTelemetrySuggestionLabel(values[0].entry)} was ${formatAggregateNumber(values[0].value)}${unitSuffix} [Telemetry History].`;
     }
 
     const lines = values.map(
       (item) =>
-        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.value)}${unitSuffix}`,
+        `- ${buildTelemetrySuggestionLabel(item.entry)}: ${formatAggregateNumber(item.value)}${unitSuffix}`,
     );
 
     return [
-      `At ${request.rangeLabel}, the ${labelMap[operation]} across the matched historical telemetry readings was ${this.formatAggregateNumber(overallValue)}${unitSuffix} [Telemetry History].`,
+      `At ${request.rangeLabel}, the ${labelMap[operation]} across the matched historical telemetry readings was ${formatAggregateNumber(overallValue)}${unitSuffix} [Telemetry History].`,
       '',
       ...lines,
     ].join('\n');
@@ -1945,9 +1821,9 @@ export class MetricsService implements OnModuleInit {
       .slice(0, 4)
       .map(
         (event) =>
-          `- ${this.buildTelemetrySuggestionLabel(event.entry)}: ${this.formatAggregateNumber(event.fromValue)}${unitSuffix} -> ${this.formatAggregateNumber(event.toValue)}${unitSuffix} (${this.formatAggregateNumber(event.delta)}${unitSuffix})`,
+          `- ${buildTelemetrySuggestionLabel(event.entry)}: ${formatAggregateNumber(event.fromValue)}${unitSuffix} -> ${formatAggregateNumber(event.toValue)}${unitSuffix} (${formatAggregateNumber(event.delta)}${unitSuffix})`,
       );
-    const timestamp = this.formatHistoricalTimestamp(new Date(latestTimestamp));
+    const timestamp = formatHistoricalTimestamp(new Date(latestTimestamp));
     const eventLabel =
       request.eventType === 'bunkering'
         ? 'bunkering-like fuel increase'
@@ -1955,11 +1831,11 @@ export class MetricsService implements OnModuleInit {
 
     if (clusteredEvents.length === 1) {
       const [event] = clusteredEvents;
-      return `The latest historical ${eventLabel} was at ${timestamp}, when ${this.buildTelemetrySuggestionLabel(event.entry)} increased by ${this.formatAggregateNumber(event.delta)}${unitSuffix} [Telemetry History].`;
+      return `The latest historical ${eventLabel} was at ${timestamp}, when ${buildTelemetrySuggestionLabel(event.entry)} increased by ${formatAggregateNumber(event.delta)}${unitSuffix} [Telemetry History].`;
     }
 
     return [
-      `The latest historical ${eventLabel} was at ${timestamp}, when the matched fuel readings increased by ${this.formatAggregateNumber(totalDelta)}${unitSuffix} [Telemetry History].`,
+      `The latest historical ${eventLabel} was at ${timestamp}, when the matched fuel readings increased by ${formatAggregateNumber(totalDelta)}${unitSuffix} [Telemetry History].`,
       '',
       ...lines,
     ].join('\n');
@@ -1984,10 +1860,10 @@ export class MetricsService implements OnModuleInit {
         const events: HistoricalPositiveTelemetryEvent[] = [];
 
         for (let index = 1; index < series.length; index += 1) {
-          const previousValue = this.parseHistoricalNumericValue(
+          const previousValue = parseHistoricalNumericValue(
             series[index - 1]?.value,
           );
-          const currentValue = this.parseHistoricalNumericValue(
+          const currentValue = parseHistoricalNumericValue(
             series[index]?.value,
           );
           if (previousValue == null || currentValue == null) {
@@ -2021,7 +1897,7 @@ export class MetricsService implements OnModuleInit {
   private getHistoricalEventSeriesOptions(
     range: InfluxHistoricalQueryRange,
   ): Array<InfluxHistoricalSeriesOptions & { windowMs: number }> {
-    const durationMs = this.getHistoricalRangeDurationMs(range);
+    const durationMs = getHistoricalRangeDurationMs(range);
     if (durationMs == null || durationMs <= 2 * 24 * 60 * 60 * 1000) {
       return [];
     }
@@ -2156,19 +2032,6 @@ export class MetricsService implements OnModuleInit {
     return { rows: [] };
   }
 
-  private getHistoricalRangeDurationMs(
-    range: InfluxHistoricalQueryRange,
-  ): number | null {
-    const start = new Date(range.start);
-    const stop = new Date(range.stop);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(stop.getTime())) {
-      return null;
-    }
-
-    const durationMs = stop.getTime() - start.getTime();
-    return durationMs > 0 ? durationMs : null;
-  }
-
   private buildHistoricalEventRefinementRange(
     originalRange: InfluxHistoricalQueryRange,
     approximateEventTime: Date,
@@ -2216,10 +2079,10 @@ export class MetricsService implements OnModuleInit {
 
     const deltas = matchedEntries
       .map((entry) => {
-        const first = this.parseHistoricalNumericValue(
+        const first = parseHistoricalNumericValue(
           firstByKey.get(entry.key)?.value,
         );
-        const last = this.parseHistoricalNumericValue(
+        const last = parseHistoricalNumericValue(
           lastByKey.get(entry.key)?.value,
         );
         if (first == null || last == null) {
@@ -2248,10 +2111,10 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
-    const normalizedMetricQuery = this.normalizeTelemetryText(
+    const normalizedMetricQuery = normalizeTelemetryText(
       request.metricQuery,
     );
-    const storedFluidSubject = this.detectStoredFluidSubject(
+    const storedFluidSubject = detectStoredFluidSubject(
       normalizedMetricQuery,
     );
     if (
@@ -2277,15 +2140,15 @@ export class MetricsService implements OnModuleInit {
     const unitSuffix = unit ? ` ${unit}` : '';
     const lines = deltas.map(
       (item) =>
-        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.delta)}${unitSuffix}`,
+        `- ${buildTelemetrySuggestionLabel(item.entry)}: ${formatAggregateNumber(item.delta)}${unitSuffix}`,
     );
 
     if (deltas.length === 1) {
-      return `Based on historical telemetry from ${request.rangeLabel}, ${this.buildTelemetrySuggestionLabel(deltas[0].entry)} changed by ${this.formatAggregateNumber(deltas[0].delta)}${unitSuffix} [Telemetry History].`;
+      return `Based on historical telemetry from ${request.rangeLabel}, ${buildTelemetrySuggestionLabel(deltas[0].entry)} changed by ${formatAggregateNumber(deltas[0].delta)}${unitSuffix} [Telemetry History].`;
     }
 
     return [
-      `Based on historical telemetry from ${request.rangeLabel}, the total across the matched metrics was ${this.formatAggregateNumber(total)}${unitSuffix} [Telemetry History].`,
+      `Based on historical telemetry from ${request.rangeLabel}, the total across the matched metrics was ${formatAggregateNumber(total)}${unitSuffix} [Telemetry History].`,
       '',
       ...lines,
     ].join('\n');
@@ -2309,12 +2172,12 @@ export class MetricsService implements OnModuleInit {
       deltas.map((item) => item.entry),
     );
     const unitSuffix = unit ? ` ${unit}` : '';
-    const fluidLabel = this.describeStoredFluidSubject(subject);
+    const fluidLabel = describeStoredFluidSubject(subject);
     const lines = deltas.map(
       (item) =>
-        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.fromValue)}${unitSuffix} -> ${this.formatAggregateNumber(item.toValue)}${unitSuffix} (${this.formatSignedAggregateNumber(item.delta)}${unitSuffix})`,
+        `- ${buildTelemetrySuggestionLabel(item.entry)}: ${formatAggregateNumber(item.fromValue)}${unitSuffix} -> ${formatAggregateNumber(item.toValue)}${unitSuffix} (${formatSignedAggregateNumber(item.delta)}${unitSuffix})`,
     );
-    const normalizedMetricQuery = this.normalizeTelemetryText(
+    const normalizedMetricQuery = normalizeTelemetryText(
       request.metricQuery,
     );
     const usageQuery = this.isHistoricalStoredFluidUsageQuery(
@@ -2325,19 +2188,19 @@ export class MetricsService implements OnModuleInit {
     if (usageQuery) {
       if (netDelta < 0) {
         const usedAmount = Math.abs(netDelta);
-        const durationMs = this.getHistoricalRangeDurationMs(request.range);
+        const durationMs = getHistoricalRangeDurationMs(request.range);
         const dailyAverage =
           durationMs != null && durationMs > 0
             ? usedAmount / (durationMs / (24 * 60 * 60 * 1000))
             : null;
         const output = [
-          `Based on tank-level telemetry from ${request.rangeLabel}, total ${fluidLabel} across the matched tanks fell from ${this.formatAggregateNumber(totalStart)}${unitSuffix} to ${this.formatAggregateNumber(totalEnd)}${unitSuffix}, which implies ${this.formatAggregateNumber(usedAmount)}${unitSuffix} used over that period [Telemetry History].`,
+          `Based on tank-level telemetry from ${request.rangeLabel}, total ${fluidLabel} across the matched tanks fell from ${formatAggregateNumber(totalStart)}${unitSuffix} to ${formatAggregateNumber(totalEnd)}${unitSuffix}, which implies ${formatAggregateNumber(usedAmount)}${unitSuffix} used over that period [Telemetry History].`,
         ];
 
         if (dailyAverage != null && Number.isFinite(dailyAverage)) {
           output.push(
             '',
-            `Average daily ${fluidLabel} usage over that period was approximately ${this.formatAggregateNumber(dailyAverage)}${unitSuffix} per day.`,
+            `Average daily ${fluidLabel} usage over that period was approximately ${formatAggregateNumber(dailyAverage)}${unitSuffix} per day.`,
           );
         }
 
@@ -2349,7 +2212,7 @@ export class MetricsService implements OnModuleInit {
       }
 
       const output = [
-        `Based on tank-level telemetry from ${request.rangeLabel}, total ${fluidLabel} across the matched tanks moved from ${this.formatAggregateNumber(totalStart)}${unitSuffix} to ${this.formatAggregateNumber(totalEnd)}${unitSuffix} (${this.formatSignedAggregateNumber(netDelta)}${unitSuffix}) [Telemetry History].`,
+        `Based on tank-level telemetry from ${request.rangeLabel}, total ${fluidLabel} across the matched tanks moved from ${formatAggregateNumber(totalStart)}${unitSuffix} to ${formatAggregateNumber(totalEnd)}${unitSuffix} (${formatSignedAggregateNumber(netDelta)}${unitSuffix}) [Telemetry History].`,
         '',
         `A pure ${fluidLabel} usage figure cannot be inferred from net tank levels for that period because the onboard total did not decrease overall.`,
       ];
@@ -2362,7 +2225,7 @@ export class MetricsService implements OnModuleInit {
     }
 
     const output = [
-      `Based on tank-level telemetry from ${request.rangeLabel}, total ${fluidLabel} across the matched tanks moved from ${this.formatAggregateNumber(totalStart)}${unitSuffix} to ${this.formatAggregateNumber(totalEnd)}${unitSuffix} (${this.formatSignedAggregateNumber(netDelta)}${unitSuffix}) [Telemetry History].`,
+      `Based on tank-level telemetry from ${request.rangeLabel}, total ${fluidLabel} across the matched tanks moved from ${formatAggregateNumber(totalStart)}${unitSuffix} to ${formatAggregateNumber(totalEnd)}${unitSuffix} (${formatSignedAggregateNumber(netDelta)}${unitSuffix}) [Telemetry History].`,
     ];
 
     if (lines.length > 1) {
@@ -2394,7 +2257,7 @@ export class MetricsService implements OnModuleInit {
 
     if (!seriesSummary) {
       if (seriesError) {
-        if (this.isHistoricalQueryTimeout(seriesError)) {
+        if (isHistoricalQueryTimeout(seriesError)) {
           return [
             `I found matching historical telemetry metrics for ${request.rangeLabel}, but the sampled trend query timed out before a reliable series could be assembled.`,
             '',
@@ -2412,7 +2275,7 @@ export class MetricsService implements OnModuleInit {
     const unitSuffix = unit ? ` ${unit}` : '';
     const aggregateLabel =
       matchedEntries.length === 1
-        ? this.buildTelemetrySuggestionLabel(matchedEntries[0])
+        ? buildTelemetrySuggestionLabel(matchedEntries[0])
         : 'the total across the matched metrics';
 
     const output: string[] = [
@@ -2427,7 +2290,7 @@ export class MetricsService implements OnModuleInit {
       const rangeDelta =
         seriesSummary.highest.value - seriesSummary.lowest.value;
       if (
-        !this.isNegligibleHistoricalChange(
+        !isNegligibleHistoricalChange(
           rangeDelta,
           seriesSummary.lowest.value,
           seriesSummary.highest.value,
@@ -2435,7 +2298,7 @@ export class MetricsService implements OnModuleInit {
       ) {
         output.push(
           '',
-          `In the sampled trend (${seriesSummary.sampledEvery} resolution), the lowest observed ${matchedEntries.length === 1 ? 'value' : 'total'} was ${this.formatAggregateNumber(seriesSummary.lowest.value)}${unitSuffix} at ${this.formatHistoricalTimestamp(seriesSummary.lowest.time)}, and the highest was ${this.formatAggregateNumber(seriesSummary.highest.value)}${unitSuffix} at ${this.formatHistoricalTimestamp(seriesSummary.highest.time)}.`,
+          `In the sampled trend (${seriesSummary.sampledEvery} resolution), the lowest observed ${matchedEntries.length === 1 ? 'value' : 'total'} was ${formatAggregateNumber(seriesSummary.lowest.value)}${unitSuffix} at ${formatHistoricalTimestamp(seriesSummary.lowest.time)}, and the highest was ${formatAggregateNumber(seriesSummary.highest.value)}${unitSuffix} at ${formatHistoricalTimestamp(seriesSummary.highest.time)}.`,
         );
       }
     }
@@ -2451,11 +2314,11 @@ export class MetricsService implements OnModuleInit {
     } else if (seriesSummary.largestJump?.standout) {
       output.push(
         '',
-        `The sharpest sampled interval move was ${this.formatSignedAggregateNumber(
+        `The sharpest sampled interval move was ${formatSignedAggregateNumber(
           seriesSummary.largestJump.delta,
-        )}${unitSuffix} between ${this.formatHistoricalTimestamp(
+        )}${unitSuffix} between ${formatHistoricalTimestamp(
           seriesSummary.largestJump.fromTime,
-        )} and ${this.formatHistoricalTimestamp(
+        )} and ${formatHistoricalTimestamp(
           seriesSummary.largestJump.toTime,
         )}.`,
       );
@@ -2464,7 +2327,7 @@ export class MetricsService implements OnModuleInit {
     if (seriesSummary.deltas.length > 1) {
       const lines = seriesSummary.deltas.map(
         (item) =>
-          `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.fromValue)}${unitSuffix} -> ${this.formatAggregateNumber(item.toValue)}${unitSuffix} (${this.formatSignedAggregateNumber(item.delta)}${unitSuffix})`,
+          `- ${buildTelemetrySuggestionLabel(item.entry)}: ${formatAggregateNumber(item.fromValue)}${unitSuffix} -> ${formatAggregateNumber(item.toValue)}${unitSuffix} (${formatSignedAggregateNumber(item.delta)}${unitSuffix})`,
       );
       output.push(
         '',
@@ -2544,7 +2407,7 @@ export class MetricsService implements OnModuleInit {
   private getHistoricalTrendSeriesOptions(
     range: InfluxHistoricalQueryRange,
   ): Array<InfluxHistoricalSeriesOptions & { windowMs: number }> {
-    const durationMs = this.getHistoricalRangeDurationMs(range);
+    const durationMs = getHistoricalRangeDurationMs(range);
     if (durationMs == null) {
       return [{ windowEvery: '2h', windowMs: 2 * 60 * 60 * 1000 }];
     }
@@ -2633,7 +2496,7 @@ export class MetricsService implements OnModuleInit {
     >();
 
     for (const row of rows) {
-      const numericValue = this.parseHistoricalNumericValue(row.value);
+      const numericValue = parseHistoricalNumericValue(row.value);
       const pointTime = new Date(row.time);
       if (numericValue == null || Number.isNaN(pointTime.getTime())) {
         continue;
@@ -2688,7 +2551,7 @@ export class MetricsService implements OnModuleInit {
     >();
 
     for (const row of rows) {
-      const numericValue = this.parseHistoricalNumericValue(row.value);
+      const numericValue = parseHistoricalNumericValue(row.value);
       const pointTime = new Date(row.time);
       if (numericValue == null || Number.isNaN(pointTime.getTime())) {
         continue;
@@ -2753,7 +2616,7 @@ export class MetricsService implements OnModuleInit {
     const absoluteJumpSizes = jumps
       .map((jump) => Math.abs(jump.delta))
       .sort((left, right) => left - right);
-    const medianJumpSize = this.getMedianValue(absoluteJumpSizes);
+    const medianJumpSize = getMedianValue(absoluteJumpSizes);
     const values = points.map((point) => point.value);
     const observedRange = Math.max(...values) - Math.min(...values);
     const standoutThreshold = Math.max(
@@ -2778,20 +2641,20 @@ export class MetricsService implements OnModuleInit {
     }
 
     if (jump.standout) {
-      return `A standout sampled interval change was observed between ${this.formatHistoricalTimestamp(
+      return `A standout sampled interval change was observed between ${formatHistoricalTimestamp(
         jump.fromTime,
-      )} and ${this.formatHistoricalTimestamp(jump.toTime)}, when the sampled reading moved from ${this.formatAggregateNumber(
+      )} and ${formatHistoricalTimestamp(jump.toTime)}, when the sampled reading moved from ${formatAggregateNumber(
         jump.fromValue,
-      )}${unitSuffix} to ${this.formatAggregateNumber(
+      )}${unitSuffix} to ${formatAggregateNumber(
         jump.toValue,
-      )}${unitSuffix} (${this.formatSignedAggregateNumber(jump.delta)}${unitSuffix}) [Telemetry History].`;
+      )}${unitSuffix} (${formatSignedAggregateNumber(jump.delta)}${unitSuffix}) [Telemetry History].`;
     }
 
-    return `I did not find a clear standout abrupt change in the sampled trend. The largest sampled interval move was ${this.formatSignedAggregateNumber(
+    return `I did not find a clear standout abrupt change in the sampled trend. The largest sampled interval move was ${formatSignedAggregateNumber(
       jump.delta,
-    )}${unitSuffix} between ${this.formatHistoricalTimestamp(
+    )}${unitSuffix} between ${formatHistoricalTimestamp(
       jump.fromTime,
-    )} and ${this.formatHistoricalTimestamp(jump.toTime)} [Telemetry History].`;
+    )} and ${formatHistoricalTimestamp(jump.toTime)} [Telemetry History].`;
   }
 
   private describeHistoricalTrendMovement(
@@ -2799,17 +2662,17 @@ export class MetricsService implements OnModuleInit {
     toValue: number,
     delta: number,
   ): string {
-    if (this.isNegligibleHistoricalChange(delta, fromValue, toValue)) {
-      return `remained broadly flat, moving from ${this.formatAggregateNumber(
+    if (isNegligibleHistoricalChange(delta, fromValue, toValue)) {
+      return `remained broadly flat, moving from ${formatAggregateNumber(
         fromValue,
-      )} to ${this.formatAggregateNumber(toValue)} (${this.formatSignedAggregateNumber(
+      )} to ${formatAggregateNumber(toValue)} (${formatSignedAggregateNumber(
         delta,
       )})`;
     }
 
-    return `${delta >= 0 ? 'increased' : 'decreased'} from ${this.formatAggregateNumber(
+    return `${delta >= 0 ? 'increased' : 'decreased'} from ${formatAggregateNumber(
       fromValue,
-    )} to ${this.formatAggregateNumber(toValue)} (${this.formatSignedAggregateNumber(
+    )} to ${formatAggregateNumber(toValue)} (${formatSignedAggregateNumber(
       delta,
     )})`;
   }
@@ -2844,7 +2707,7 @@ export class MetricsService implements OnModuleInit {
     const values = matchedEntries
       .map((entry) => {
         const row = rowsByKey.get(entry.key);
-        const numericValue = this.parseHistoricalNumericValue(row?.value);
+        const numericValue = parseHistoricalNumericValue(row?.value);
         if (!row || numericValue == null) {
           return null;
         }
@@ -2879,11 +2742,11 @@ export class MetricsService implements OnModuleInit {
     };
     const lines = values.map(
       (item) =>
-        `- ${this.buildTelemetrySuggestionLabel(item.entry)}: ${this.formatAggregateNumber(item.value)}${unitSuffix}`,
+        `- ${buildTelemetrySuggestionLabel(item.entry)}: ${formatAggregateNumber(item.value)}${unitSuffix}`,
     );
 
     if (values.length === 1) {
-      return `Based on historical telemetry from ${request.rangeLabel}, the ${labelMap[operation]} ${this.buildTelemetrySuggestionLabel(values[0].entry)} was ${this.formatAggregateNumber(values[0].value)}${unitSuffix} [Telemetry History].`;
+      return `Based on historical telemetry from ${request.rangeLabel}, the ${labelMap[operation]} ${buildTelemetrySuggestionLabel(values[0].entry)} was ${formatAggregateNumber(values[0].value)}${unitSuffix} [Telemetry History].`;
     }
 
     const overallValue =
@@ -2899,7 +2762,7 @@ export class MetricsService implements OnModuleInit {
         : overallValue;
 
     return [
-      `Based on historical telemetry from ${request.rangeLabel}, the ${labelMap[operation]} across the matched metrics was ${this.formatAggregateNumber(overallText)}${unitSuffix} [Telemetry History].`,
+      `Based on historical telemetry from ${request.rangeLabel}, the ${labelMap[operation]} across the matched metrics was ${formatAggregateNumber(overallText)}${unitSuffix} [Telemetry History].`,
       '',
       ...lines,
     ].join('\n');
@@ -2917,8 +2780,8 @@ export class MetricsService implements OnModuleInit {
     const seen = new Set<string>();
 
     for (const entry of entries) {
-      const label = this.buildTelemetrySuggestionLabel(entry);
-      const normalizedLabel = this.normalizeTelemetryText(label);
+      const label = buildTelemetrySuggestionLabel(entry);
+      const normalizedLabel = normalizeTelemetryText(label);
       if (!label || seen.has(normalizedLabel)) {
         continue;
       }
@@ -2939,574 +2802,6 @@ export class MetricsService implements OnModuleInit {
     }
 
     return selected;
-  }
-
-  private parseHistoricalTelemetryRequest(
-    query: string,
-    resolvedSubjectQuery?: string,
-    normalizedQuery?: ChatNormalizedQuery,
-  ): ParsedHistoricalTelemetryRequest | null {
-    const searchSpace = `${query}\n${resolvedSubjectQuery ?? ''}`;
-    const normalized = this.normalizeTelemetryText(searchSpace);
-    const positionQuery = this.isTelemetryLocationQuery(normalized);
-    const operation = this.detectHistoricalOperation(
-      searchSpace,
-      positionQuery,
-      normalizedQuery,
-    );
-    const trendFocus =
-      operation === 'trend'
-        ? this.detectHistoricalTrendFocus(searchSpace)
-        : undefined;
-    const missingYearFragment = this.findHistoricalDateWithoutYear(searchSpace);
-    if (missingYearFragment) {
-      return {
-        metricQuery: this.sanitizeHistoricalMetricQuery(query),
-        operation,
-        range: { start: new Date(), stop: new Date() },
-        rangeLabel: '',
-        clarificationQuestion: `Which year do you mean for ${missingYearFragment}?`,
-        ...(trendFocus ? { trendFocus } : {}),
-      };
-    }
-
-    const relativeRange = this.parseRelativeHistoricalRange(searchSpace);
-    const explicitDate = this.parseExplicitHistoricalDate(searchSpace);
-    const explicitTime = this.parseHistoricalTimeOfDay(searchSpace);
-    const relativePointInTime = this.parseRelativeHistoricalPoint(
-      searchSpace,
-      normalizedQuery,
-    );
-    const implicitRange = this.buildImplicitHistoricalRange(
-      searchSpace,
-      operation,
-    );
-    const metricQuery = this.sanitizeHistoricalMetricQuery(
-      normalizedQuery?.subject?.trim()
-        ? normalizedQuery.subject
-        : resolvedSubjectQuery?.trim()
-          ? resolvedSubjectQuery
-          : query,
-    );
-
-    if (operation === 'event') {
-      const range = this.buildDefaultHistoricalEventRange();
-      return {
-        metricQuery: metricQuery || 'fuel tank',
-        operation,
-        range,
-        rangeLabel: this.formatHistoricalRange(range),
-        eventType:
-          normalizedQuery?.timeIntent.eventType ??
-          (/\b(bunkering|refill)\b/i.test(searchSpace)
-            ? 'bunkering'
-            : 'fuel_increase'),
-        ...(trendFocus ? { trendFocus } : {}),
-      };
-    }
-
-    if (
-      !relativeRange &&
-      !explicitDate &&
-      !relativePointInTime &&
-      !implicitRange
-    ) {
-      return null;
-    }
-
-    if (
-      relativeRange &&
-      !explicitDate &&
-      !explicitTime &&
-      this.isForecastPlanningHistoryQuery(searchSpace)
-    ) {
-      return null;
-    }
-
-    if (operation === 'point' || operation === 'position') {
-      if (relativePointInTime) {
-        return {
-          metricQuery,
-          operation,
-          range: {
-            start: relativePointInTime,
-            stop: relativePointInTime,
-          },
-          pointInTime: relativePointInTime,
-          rangeLabel: this.formatHistoricalTimestamp(relativePointInTime),
-          ...(trendFocus ? { trendFocus } : {}),
-        };
-      }
-
-      if (!explicitTime) {
-        if (operation === 'position') {
-          const singleDayRange = explicitDate
-            ? this.buildFullDayHistoricalRange(explicitDate)
-            : this.isSingleUtcDayRange(relativeRange)
-              ? relativeRange
-              : null;
-
-          if (singleDayRange) {
-            return {
-              metricQuery,
-              operation,
-              range: singleDayRange,
-              rangeLabel: this.formatHistoricalDayOrRange(singleDayRange),
-            };
-          }
-        }
-
-        return {
-          metricQuery,
-          operation,
-          range: { start: new Date(), stop: new Date() },
-          rangeLabel: '',
-          clarificationQuestion:
-            operation === 'position'
-              ? 'Please specify the exact time, or ask for a single day, for this historical position lookup.'
-              : 'Please specify the exact time for this historical telemetry lookup.',
-          ...(trendFocus ? { trendFocus } : {}),
-        };
-      }
-
-      const baseDate = explicitDate
-        ? explicitDate
-        : relativeRange
-          ? new Date(relativeRange.start)
-          : null;
-      if (!baseDate) {
-        return null;
-      }
-
-      const pointInTime = new Date(
-        Date.UTC(
-          baseDate.getUTCFullYear(),
-          baseDate.getUTCMonth(),
-          baseDate.getUTCDate(),
-          explicitTime.hours,
-          explicitTime.minutes,
-          0,
-          0,
-        ),
-      );
-
-      return {
-        metricQuery,
-        operation,
-        range: {
-          start: pointInTime,
-          stop: pointInTime,
-        },
-        pointInTime,
-        rangeLabel: this.formatHistoricalTimestamp(pointInTime),
-        ...(trendFocus ? { trendFocus } : {}),
-      };
-    }
-
-    if (relativePointInTime) {
-      return {
-        metricQuery,
-        operation,
-        range: {
-          start: relativePointInTime,
-          stop: relativePointInTime,
-        },
-        pointInTime: relativePointInTime,
-        rangeLabel: this.formatHistoricalTimestamp(relativePointInTime),
-        ...(trendFocus ? { trendFocus } : {}),
-      };
-    }
-
-    const range =
-      relativeRange ??
-      implicitRange ??
-      this.buildFullDayHistoricalRange(explicitDate!);
-    return {
-      metricQuery,
-      operation,
-      range,
-      rangeLabel:
-        implicitRange && !relativeRange && !explicitDate
-          ? 'the last 24 hours'
-          : this.formatHistoricalRange(range),
-      ...(trendFocus ? { trendFocus } : {}),
-    };
-  }
-
-  private isForecastPlanningHistoryQuery(query: string): boolean {
-    const normalized = this.normalizeTelemetryText(query);
-    return (
-      /\b(forecast|budget|need|order)\b/i.test(normalized) &&
-      /\b(next|coming|upcoming)\s+(month|week)\b/i.test(normalized)
-    );
-  }
-
-  private detectHistoricalOperation(
-    query: string,
-    positionQuery: boolean,
-    normalizedQuery?: ChatNormalizedQuery,
-  ):
-    | 'point'
-    | 'average'
-    | 'min'
-    | 'max'
-    | 'sum'
-    | 'trend'
-    | 'delta'
-    | 'position'
-    | 'event' {
-    if (positionQuery) {
-      return 'position';
-    }
-
-    if (normalizedQuery?.operation === 'event') {
-      return 'event';
-    }
-
-    if (normalizedQuery?.operation === 'trend') {
-      return 'trend';
-    }
-
-    const normalized = this.normalizeTelemetryText(query);
-    if (
-      /\b(last\s+bunkering|last\s+increase|fuel\s+last\s+increase|most\s+recent\s+refill|latest\s+refill)\b/i.test(
-        normalized,
-      )
-    ) {
-      return 'event';
-    }
-    if (/\b(average|avg|mean)\b/i.test(normalized)) {
-      return 'average';
-    }
-    if (/\b(min|minimum|lowest|smallest|least)\b/i.test(normalized)) {
-      return 'min';
-    }
-    if (/\b(max|maximum|highest|peak|largest|greatest)\b/i.test(normalized)) {
-      return 'max';
-    }
-    if (this.isHistoricalTrendQuery(normalized)) {
-      return 'trend';
-    }
-    if (
-      /\b(used|usage|consumed|consumption|difference|delta|increase|decrease)\b/i.test(
-        normalized,
-      )
-    ) {
-      return 'delta';
-    }
-    if (/\b(total|sum|overall|combined)\b/i.test(normalized)) {
-      return 'sum';
-    }
-
-    return 'point';
-  }
-
-  private isHistoricalTrendQuery(normalizedQuery: string): boolean {
-    return (
-      /\b(trend|trending|evolution|evolve|evolving|rise|rising|fall|falling|spike|spikes|jump|jumps|abrupt|abnormal|sudden|difference|different|diff|movement|moving)\b/i.test(
-        normalizedQuery,
-      ) ||
-      (/\b(change|changed|changes|changing|difference|different|diff|movement|moving)\b/i.test(
-        normalizedQuery,
-      ) &&
-        /\b(last|past|previous|over the last|history|historical)\b/i.test(
-          normalizedQuery,
-        ))
-    );
-  }
-
-  private detectHistoricalTrendFocus(
-    query: string,
-  ): 'general' | 'abrupt_change' {
-    const normalized = this.normalizeTelemetryText(query);
-    if (
-      /\b(spike|spikes|jump|jumps)\b/i.test(normalized) ||
-      (/\b(sharp|abrupt|abnormal|sudden)\b/i.test(normalized) &&
-        /\b(change|changes|movement|rise|drop|jump|spike)\b/i.test(normalized))
-    ) {
-      return 'abrupt_change';
-    }
-
-    return 'general';
-  }
-
-  private buildImplicitHistoricalRange(
-    query: string,
-    operation: ParsedHistoricalTelemetryRequest['operation'],
-  ): InfluxHistoricalQueryRange | null {
-    const normalized = this.normalizeTelemetryText(query);
-    if (
-      (operation !== 'delta' && operation !== 'trend') ||
-      !this.isImplicitDailyStoredFluidUsageQuery(normalized)
-    ) {
-      return null;
-    }
-
-    const stop = new Date();
-    const start = new Date(stop.getTime() - 24 * 60 * 60 * 1000);
-    return { start, stop };
-  }
-
-  private parseRelativeHistoricalRange(
-    query: string,
-  ): InfluxHistoricalQueryRange | null {
-    const now = new Date();
-    const normalized = this.normalizeTelemetryText(query);
-    const lastMatch = normalized.match(
-      /\b(?:last|past|previous|over the last)\s+(\d+)\s+(hour|hours|day|days|week|weeks|month|months)\b/i,
-    );
-    if (lastMatch) {
-      const amount = Number.parseInt(lastMatch[1], 10);
-      const unit = lastMatch[2].toLowerCase();
-      const start = new Date(now);
-      if (unit.startsWith('hour'))
-        start.setUTCHours(start.getUTCHours() - amount);
-      if (unit.startsWith('day')) start.setUTCDate(start.getUTCDate() - amount);
-      if (unit.startsWith('week'))
-        start.setUTCDate(start.getUTCDate() - amount * 7);
-      if (unit.startsWith('month'))
-        start.setUTCMonth(start.getUTCMonth() - amount);
-      return { start, stop: now };
-    }
-
-    const agoMatch = normalized.match(
-      /\b(\d+)\s+(hour|hours|day|days|week|weeks|month|months)\s+ago\b/i,
-    );
-    if (agoMatch) {
-      const amount = Number.parseInt(agoMatch[1], 10);
-      const unit = agoMatch[2].toLowerCase();
-      const pointInTime = new Date(now);
-      if (unit.startsWith('hour'))
-        pointInTime.setUTCHours(pointInTime.getUTCHours() - amount);
-      if (unit.startsWith('day'))
-        pointInTime.setUTCDate(pointInTime.getUTCDate() - amount);
-      if (unit.startsWith('week'))
-        pointInTime.setUTCDate(pointInTime.getUTCDate() - amount * 7);
-      if (unit.startsWith('month'))
-        pointInTime.setUTCMonth(pointInTime.getUTCMonth() - amount);
-      return {
-        start: this.startOfUtcDay(pointInTime),
-        stop: this.endOfUtcDay(pointInTime),
-      };
-    }
-
-    if (/\byesterday\b/i.test(normalized)) {
-      const start = this.startOfUtcDay(
-        new Date(now.getTime() - 24 * 60 * 60 * 1000),
-      );
-      const stop = this.endOfUtcDay(start);
-      return { start, stop };
-    }
-
-    if (/\btoday\b/i.test(normalized)) {
-      return { start: this.startOfUtcDay(now), stop: now };
-    }
-
-    if (/\bthis week\b/i.test(normalized)) {
-      return { start: this.startOfUtcWeek(now), stop: now };
-    }
-
-    if (/\blast week\b/i.test(normalized)) {
-      const endOfLastWeek = new Date(this.startOfUtcWeek(now).getTime() - 1);
-      return {
-        start: this.startOfUtcWeek(endOfLastWeek),
-        stop: this.endOfUtcDay(endOfLastWeek),
-      };
-    }
-
-    if (/\bthis month\b/i.test(normalized)) {
-      return { start: this.startOfUtcMonth(now), stop: now };
-    }
-
-    if (/\blast month\b/i.test(normalized)) {
-      const previousMonth = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
-      );
-      return {
-        start: this.startOfUtcMonth(previousMonth),
-        stop: this.endOfUtcMonth(previousMonth),
-      };
-    }
-
-    return null;
-  }
-
-  private parseRelativeHistoricalPoint(
-    query: string,
-    normalizedQuery?: ChatNormalizedQuery,
-  ): Date | null {
-    if (normalizedQuery?.timeIntent.kind !== 'historical_point') {
-      const normalized = this.normalizeTelemetryText(query);
-      if (
-        !/\b\d+\s+(hour|hours|day|days|week|weeks|month|months)\s+ago\b/i.test(
-          normalized,
-        )
-      ) {
-        return null;
-      }
-    }
-
-    const normalized = this.normalizeTelemetryText(query);
-    const agoMatch = normalized.match(
-      /\b(\d+)\s+(hour|hours|day|days|week|weeks|month|months)\s+ago\b/i,
-    );
-    if (!agoMatch) {
-      return null;
-    }
-
-    const amount = Number.parseInt(agoMatch[1], 10);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return null;
-    }
-
-    const unit = agoMatch[2].toLowerCase();
-    const pointInTime = new Date();
-    if (unit.startsWith('hour')) {
-      pointInTime.setUTCHours(pointInTime.getUTCHours() - amount);
-    }
-    if (unit.startsWith('day')) {
-      pointInTime.setUTCDate(pointInTime.getUTCDate() - amount);
-    }
-    if (unit.startsWith('week')) {
-      pointInTime.setUTCDate(pointInTime.getUTCDate() - amount * 7);
-    }
-    if (unit.startsWith('month')) {
-      pointInTime.setUTCMonth(pointInTime.getUTCMonth() - amount);
-    }
-
-    return pointInTime;
-  }
-
-  private buildDefaultHistoricalEventRange(): InfluxHistoricalQueryRange {
-    const stop = new Date();
-    const start = new Date(stop);
-    start.setUTCMonth(start.getUTCMonth() - 6);
-    return { start, stop };
-  }
-
-  private parseExplicitHistoricalDate(query: string): Date | null {
-    const isoMatch = query.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-    if (isoMatch) {
-      return new Date(
-        Date.UTC(
-          Number.parseInt(isoMatch[1], 10),
-          Number.parseInt(isoMatch[2], 10) - 1,
-          Number.parseInt(isoMatch[3], 10),
-        ),
-      );
-    }
-
-    const monthPattern =
-      /\b(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})\b/i;
-    const dayMonthMatch = query.match(monthPattern);
-    if (dayMonthMatch) {
-      return new Date(
-        Date.UTC(
-          Number.parseInt(dayMonthMatch[3], 10),
-          this.getHistoricalMonthIndex(dayMonthMatch[2]),
-          Number.parseInt(dayMonthMatch[1], 10),
-        ),
-      );
-    }
-
-    const monthDayPattern =
-      /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{4})\b/i;
-    const monthDayMatch = query.match(monthDayPattern);
-    if (monthDayMatch) {
-      return new Date(
-        Date.UTC(
-          Number.parseInt(monthDayMatch[3], 10),
-          this.getHistoricalMonthIndex(monthDayMatch[1]),
-          Number.parseInt(monthDayMatch[2], 10),
-        ),
-      );
-    }
-
-    return null;
-  }
-
-  private findHistoricalDateWithoutYear(query: string): string | null {
-    const match = query.match(
-      /\b(?:on\s+|from\s+|between\s+)?(\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))(?!\s+\d{4})\b/i,
-    );
-    if (match?.[1]) {
-      return match[1];
-    }
-
-    const reverseMatch = query.match(
-      /\b((?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2})(?!,?\s+\d{4})\b/i,
-    );
-    return reverseMatch?.[1] ?? null;
-  }
-
-  private parseHistoricalTimeOfDay(
-    query: string,
-  ): { hours: number; minutes: number } | null {
-    const atClockMatch = query.match(
-      /\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*utc)?\b/i,
-    );
-    const bareClockMatch = query.match(
-      /\b(\d{1,2}):(\d{2})\s*(am|pm)?(?:\s*utc)?\b/i,
-    );
-    const meridiemOnlyMatch = query.match(
-      /\b(\d{1,2})\s*(am|pm)(?:\s*utc)?\b/i,
-    );
-
-    const hoursText =
-      atClockMatch?.[1] ?? bareClockMatch?.[1] ?? meridiemOnlyMatch?.[1];
-    if (!hoursText) {
-      return null;
-    }
-
-    let hours = Number.parseInt(hoursText, 10);
-    const minutes = Number.parseInt(
-      atClockMatch?.[2] ?? bareClockMatch?.[2] ?? '0',
-      10,
-    );
-    const meridiem = (
-      atClockMatch?.[3] ??
-      bareClockMatch?.[3] ??
-      meridiemOnlyMatch?.[2]
-    )?.toLowerCase();
-    if (meridiem === 'pm' && hours < 12) {
-      hours += 12;
-    } else if (meridiem === 'am' && hours === 12) {
-      hours = 0;
-    }
-
-    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-      return null;
-    }
-
-    return { hours, minutes };
-  }
-
-  private sanitizeHistoricalMetricQuery(query: string): string {
-    const cleaned = query
-      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ')
-      .replace(/\b\d{4}\b/g, ' ')
-      .replace(
-        /\b\d+\s+(?:hour|hours|day|days|week|weeks|month|months)\b/gi,
-        ' ',
-      )
-      .replace(
-        /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/gi,
-        ' ',
-      )
-      .replace(/\b\d{1,2}:\d{2}\b/g, ' ')
-      .replace(
-        /\b(?:last|past|previous|over the last|today|yesterday|this week|last week|this month|last month|between|from|to|on|at|during|for)\b/gi,
-        ' ',
-      )
-      .replace(
-        /\b(?:what|was|were|is|the|please|show|give|tell|me|how|did|explain|there|any|trend|trending|history|historical|change|changed|changes|changing|difference|different|diff|movement|moving|sharp|abrupt|abnormal|sudden|jump|jumps|spike|spikes)\b/gi,
-        ' ',
-      )
-      .replace(/[?!,.:;()]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    return cleaned || query.trim();
   }
 
   private pickNearestHistoricalRows(
@@ -3542,36 +2837,13 @@ export class MetricsService implements OnModuleInit {
     entry: ShipTelemetryEntry,
     value: unknown,
   ): string {
-    const numericValue = this.parseHistoricalNumericValue(value);
+    const numericValue = parseHistoricalNumericValue(value);
     if (numericValue == null) {
       return typeof value === 'string' ? value : 'unavailable';
     }
 
     const unit = this.getTelemetryDisplayUnit(entry);
-    return `${this.formatAggregateNumber(numericValue)}${unit ? ` ${unit}` : ''}`;
-  }
-
-  private parseHistoricalNumericValue(value: unknown): number | null {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      const parsed = Number.parseFloat(value);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-
-    return null;
-  }
-
-  private isHistoricalQueryTimeout(error: Error): boolean {
-    const haystack = `${error.name} ${error.message}`;
-    return (
-      /RequestTimedOutError/i.test(haystack) ||
-      /\brequest timed out\b/i.test(haystack)
-    );
+    return `${formatAggregateNumber(numericValue)}${unit ? ` ${unit}` : ''}`;
   }
 
   private extractHistoricalCoordinatePair(rows: InfluxMetricValue[]): {
@@ -3590,8 +2862,8 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
-    const latitude = this.parseHistoricalNumericValue(latitudeRow.value);
-    const longitude = this.parseHistoricalNumericValue(longitudeRow.value);
+    const latitude = parseHistoricalNumericValue(latitudeRow.value);
+    const longitude = parseHistoricalNumericValue(longitudeRow.value);
     const latitudeTime = Date.parse(latitudeRow.time);
     const longitudeTime = Date.parse(longitudeRow.time);
     if (
@@ -3737,151 +3009,6 @@ export class MetricsService implements OnModuleInit {
     return 'gauge';
   }
 
-  private buildFullDayHistoricalRange(date: Date): InfluxHistoricalQueryRange {
-    return {
-      start: this.startOfUtcDay(date),
-      stop: this.endOfUtcDay(date),
-    };
-  }
-
-  private isSingleUtcDayRange(
-    range: InfluxHistoricalQueryRange | null,
-  ): range is InfluxHistoricalQueryRange {
-    if (!range) {
-      return false;
-    }
-
-    const start =
-      range.start instanceof Date ? range.start : new Date(range.start);
-    const stop = range.stop instanceof Date ? range.stop : new Date(range.stop);
-    return (
-      start.getUTCFullYear() === stop.getUTCFullYear() &&
-      start.getUTCMonth() === stop.getUTCMonth() &&
-      start.getUTCDate() === stop.getUTCDate()
-    );
-  }
-
-  private formatHistoricalTimestamp(date: Date): string {
-    return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
-  }
-
-  private formatHistoricalDay(date: Date): string {
-    return `${date.toISOString().slice(0, 10)} UTC`;
-  }
-
-  private formatHistoricalDayOrRange(
-    range: InfluxHistoricalQueryRange,
-  ): string {
-    const start =
-      range.start instanceof Date ? range.start : new Date(range.start);
-    const stop = range.stop instanceof Date ? range.stop : new Date(range.stop);
-    const fullDay =
-      start.getTime() === this.startOfUtcDay(start).getTime() &&
-      stop.getTime() === this.endOfUtcDay(start).getTime();
-
-    if (this.isSingleUtcDayRange(range) && fullDay) {
-      return this.formatHistoricalDay(start);
-    }
-
-    return this.formatHistoricalRange(range);
-  }
-
-  private formatHistoricalRange(range: InfluxHistoricalQueryRange): string {
-    const start =
-      range.start instanceof Date ? range.start : new Date(range.start);
-    const stop = range.stop instanceof Date ? range.stop : new Date(range.stop);
-    return `${this.formatHistoricalTimestamp(start)} to ${this.formatHistoricalTimestamp(stop)}`;
-  }
-
-  private startOfUtcDay(date: Date): Date {
-    return new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-    );
-  }
-
-  private endOfUtcDay(date: Date): Date {
-    return new Date(
-      this.startOfUtcDay(date).getTime() + 24 * 60 * 60 * 1000 - 1,
-    );
-  }
-
-  private startOfUtcWeek(date: Date): Date {
-    const start = this.startOfUtcDay(date);
-    const day = start.getUTCDay() || 7;
-    start.setUTCDate(start.getUTCDate() - (day - 1));
-    return start;
-  }
-
-  private startOfUtcMonth(date: Date): Date {
-    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-  }
-
-  private endOfUtcMonth(date: Date): Date {
-    return new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1) - 1,
-    );
-  }
-
-  private getHistoricalMonthIndex(monthName: string): number {
-    const months = [
-      'january',
-      'february',
-      'march',
-      'april',
-      'may',
-      'june',
-      'july',
-      'august',
-      'september',
-      'october',
-      'november',
-      'december',
-    ];
-    return Math.max(0, months.indexOf(monthName.trim().toLowerCase()));
-  }
-
-  private formatAggregateNumber(value: number): string {
-    return Number.isInteger(value)
-      ? value.toLocaleString('en-US')
-      : value.toLocaleString('en-US', {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 2,
-        });
-  }
-
-  private formatSignedAggregateNumber(value: number): string {
-    const formatted = this.formatAggregateNumber(Math.abs(value));
-    if (value > 0) {
-      return `+${formatted}`;
-    }
-    if (value < 0) {
-      return `-${formatted}`;
-    }
-    return formatted;
-  }
-
-  private isNegligibleHistoricalChange(
-    delta: number,
-    fromValue: number,
-    toValue: number,
-  ): boolean {
-    const scale = Math.max(Math.abs(fromValue), Math.abs(toValue), 1);
-    return Math.abs(delta) <= scale * 0.005;
-  }
-
-  private getMedianValue(values: number[]): number {
-    if (values.length === 0) {
-      return 0;
-    }
-
-    const middle = Math.floor(values.length / 2);
-    if (values.length % 2 === 1) {
-      return values[middle];
-    }
-
-    return (values[middle - 1] + values[middle]) / 2;
-  }
-
   private toTelemetryMap(
     entries: ShipTelemetryEntry[],
   ): Record<string, string | number | boolean | null> {
@@ -3983,7 +3110,7 @@ export class MetricsService implements OnModuleInit {
       return [];
     }
 
-    const uniqueEntries = this.uniqueTelemetryEntries(mergedEntries);
+    const uniqueEntries = uniqueTelemetryEntries(mergedEntries);
     return options?.limitResults === false
       ? uniqueEntries
       : uniqueEntries.slice(0, 24);
@@ -4030,7 +3157,7 @@ export class MetricsService implements OnModuleInit {
     const uniqueQueries: string[] = [];
     const seen = new Set<string>();
     for (const candidate of queries) {
-      const normalizedCandidate = this.normalizeTelemetryText(candidate);
+      const normalizedCandidate = normalizeTelemetryText(candidate);
       if (!normalizedCandidate || seen.has(normalizedCandidate)) {
         continue;
       }
@@ -4046,7 +3173,7 @@ export class MetricsService implements OnModuleInit {
     rawPart: string,
   ): TelemetryQueryComponent {
     const raw = rawPart.trim().replace(/^[,;:]+|[,;:]+$/g, '').trim();
-    const normalized = this.normalizeTelemetryText(raw);
+    const normalized = normalizeTelemetryText(raw);
     const orderedTokens = normalized.split(/\s+/).filter(Boolean);
     const tokenCount = orderedTokens.length;
     const measurementAnchorIndex =
@@ -4066,7 +3193,7 @@ export class MetricsService implements OnModuleInit {
       measurementAnchorIndex,
     );
     const measurementPhrase = measurementAnchorPhrase.trim();
-    const querySignals = this.buildTelemetryQuerySignals(raw);
+    const querySignals = buildTelemetryQuerySignals(raw);
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
     const queryKinds = this.extractTelemetryQueryMeasurementKinds(normalized);
     const subjectPhrase = [commonSubjectPhrase, entityPhrase]
@@ -4272,7 +3399,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isTelemetryMeasurementAnchorToken(token: string): boolean {
-    const normalizedToken = this.normalizeTelemetryToken(token);
+    const normalizedToken = normalizeTelemetryToken(token);
     return new Set([
       'temperature',
       'pressure',
@@ -4332,8 +3459,8 @@ export class MetricsService implements OnModuleInit {
     }
 
     const normalizedPreviousToken =
-      this.normalizeTelemetryToken(previousToken);
-    const normalizedAnchorToken = this.normalizeTelemetryToken(anchorToken);
+      normalizeTelemetryToken(previousToken);
+    const normalizedAnchorToken = normalizeTelemetryToken(anchorToken);
 
     if (normalizedAnchorToken === 'speed') {
       return new Set(['fan', 'wind']).has(normalizedPreviousToken);
@@ -4386,7 +3513,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isTelemetryQualifierPhrase(value: string): boolean {
-    const tokens = this.normalizeTelemetryText(value)
+    const tokens = normalizeTelemetryText(value)
       .split(/\s+/)
       .filter(Boolean)
       .filter((token) => !this.isTelemetryClauseFillerToken(token));
@@ -4428,7 +3555,7 @@ export class MetricsService implements OnModuleInit {
       return false;
     }
 
-    const normalized = this.normalizeTelemetryText(value);
+    const normalized = normalizeTelemetryText(value);
     if (this.isTelemetryQualifierPhrase(normalized)) {
       return true;
     }
@@ -4496,7 +3623,7 @@ export class MetricsService implements OnModuleInit {
       }
     }
 
-    const querySignals = this.buildTelemetryQuerySignals(
+    const querySignals = buildTelemetryQuerySignals(
       query,
       resolvedSubjectQuery,
     );
@@ -4628,7 +3755,7 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): boolean {
-    const searchSpace = this.normalizeTelemetryText(
+    const searchSpace = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
     if (!/\balarm|alarms\b/i.test(searchSpace)) {
@@ -4636,7 +3763,7 @@ export class MetricsService implements OnModuleInit {
     }
 
     const queryKinds = this.extractTelemetryQueryMeasurementKinds(searchSpace);
-    const telemetryListRequest = this.parseTelemetryListRequest(
+    const telemetryListRequest = parseTelemetryListRequest(
       query,
       resolvedSubjectQuery,
     );
@@ -4679,7 +3806,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private normalizeAlarmTelemetryFamilySegment(value: string): string {
-    return this.normalizeTelemetryText(value)
+    return normalizeTelemetryText(value)
       .replace(/\b([a-z]+)\d+\b/g, '$1')
       .replace(/\b\d+\b/g, ' ')
       .replace(/\s+/g, ' ')
@@ -4687,7 +3814,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private normalizeAlarmTelemetryFieldSegment(value: string): string {
-    return this.normalizeTelemetryText(value)
+    return normalizeTelemetryText(value)
       .replace(/\b\d+\b/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -4713,7 +3840,7 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): boolean {
-    const searchSpace = this.normalizeTelemetryText(
+    const searchSpace = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
     if (!this.isTelemetryLocationQuery(searchSpace)) {
@@ -4789,14 +3916,14 @@ export class MetricsService implements OnModuleInit {
       .sort((left, right) => left.index - right.index)
       .flatMap((group) => group.entries);
 
-    return this.uniqueTelemetryEntries(selected);
+    return uniqueTelemetryEntries(selected);
   }
 
   private detectNavigationMotionTelemetryIntent(
     query: string,
     resolvedSubjectQuery?: string,
   ): NavigationMotionTelemetryIntent | null {
-    const primarySearchSpace = this.normalizeTelemetryText(query);
+    const primarySearchSpace = normalizeTelemetryText(query);
     const primaryIntent =
       this.detectNavigationMotionTelemetryIntentInSearchSpace(
         primarySearchSpace,
@@ -4805,7 +3932,7 @@ export class MetricsService implements OnModuleInit {
       return primaryIntent;
     }
 
-    const searchSpace = this.normalizeTelemetryText(
+    const searchSpace = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
     if (!searchSpace || searchSpace === primarySearchSpace) {
@@ -4873,7 +4000,7 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): string {
-    const primarySearchSpace = this.normalizeTelemetryText(query);
+    const primarySearchSpace = normalizeTelemetryText(query);
     if (
       this.detectNavigationMotionTelemetryIntentInSearchSpace(
         primarySearchSpace,
@@ -4882,7 +4009,7 @@ export class MetricsService implements OnModuleInit {
       return primarySearchSpace;
     }
 
-    return this.normalizeTelemetryText(
+    return normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
   }
@@ -5016,7 +4143,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isCurrentVesselCoordinateEntry(entry: ShipTelemetryEntry): boolean {
-    const exactText = this.normalizeTelemetryText(
+    const exactText = normalizeTelemetryText(
       [entry.key, entry.label, entry.measurement, entry.field]
         .filter(Boolean)
         .join(' '),
@@ -5038,7 +4165,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private scoreCurrentVesselCoordinateEntry(entry: ShipTelemetryEntry): number {
-    const exactText = this.normalizeTelemetryText(
+    const exactText = normalizeTelemetryText(
       [entry.key, entry.label, entry.measurement, entry.field]
         .filter(Boolean)
         .join(' '),
@@ -5256,21 +4383,6 @@ export class MetricsService implements OnModuleInit {
     return score;
   }
 
-  private uniqueTelemetryEntries(
-    entries: ShipTelemetryEntry[],
-  ): ShipTelemetryEntry[] {
-    const selected: ShipTelemetryEntry[] = [];
-    const seen = new Set<string>();
-    for (const entry of entries) {
-      if (seen.has(entry.key)) {
-        continue;
-      }
-      selected.push(entry);
-      seen.add(entry.key);
-    }
-    return selected;
-  }
-
   private findAggregateTankTelemetryEntries(
     entries: ShipTelemetryEntry[],
     query: string,
@@ -5279,10 +4391,10 @@ export class MetricsService implements OnModuleInit {
       strictDedicatedTankStorage?: boolean;
     },
   ): ShipTelemetryEntry[] {
-    const searchSpace = this.normalizeTelemetryText(
+    const searchSpace = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
-    const subject = this.detectStoredFluidSubject(searchSpace);
+    const subject = detectStoredFluidSubject(searchSpace);
     if (!subject || !this.isAggregateStoredFluidQuery(searchSpace, subject)) {
       return [];
     }
@@ -5307,10 +4419,10 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): ShipTelemetryEntry[] {
-    const searchSpace = this.normalizeTelemetryText(
+    const searchSpace = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
-    const subject = this.detectStoredFluidSubject(searchSpace);
+    const subject = detectStoredFluidSubject(searchSpace);
     if (
       !subject ||
       !this.isDirectStoredFluidInventoryQuery(searchSpace, subject)
@@ -5334,14 +4446,14 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): ShipTelemetryEntry[] {
-    const searchSpace = this.normalizeTelemetryText(
+    const searchSpace = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
     if (!this.isTelemetryLocationQuery(searchSpace)) {
       return [];
     }
 
-    const querySignals = this.buildTelemetryQuerySignals(
+    const querySignals = buildTelemetryQuerySignals(
       query,
       resolvedSubjectQuery,
     );
@@ -5427,10 +4539,10 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): ShipTelemetryEntry[] {
-    const searchSpace = this.normalizeTelemetryText(
+    const searchSpace = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
-    const querySignals = this.buildTelemetryQuerySignals(
+    const querySignals = buildTelemetryQuerySignals(
       query,
       resolvedSubjectQuery,
     );
@@ -5471,288 +4583,25 @@ export class MetricsService implements OnModuleInit {
     return filtered.slice(0, 8);
   }
 
-  private parseTelemetryListRequest(
-    query: string,
-    resolvedSubjectQuery?: string,
-  ): TelemetryListRequest | null {
-    const normalized = this.normalizeTelemetryText(
-      `${query}\n${resolvedSubjectQuery ?? ''}`,
-    );
-    const asksForInventory =
-      /\b(show|display|give|return|output|write|provide|enumerate)\b/i.test(
-        normalized,
-      ) ||
-      /^\s*list\b/i.test(normalized) ||
-      /\b(?:can|could|would|will|please)\s+(?:you\s+)?list\b/i.test(
-        normalized,
-      ) ||
-      /\blist\s+of\b/i.test(normalized) ||
-      /\b(all|available|full|complete|entire|every|random|\d{1,2})\b/i.test(
-        normalized,
-      );
-    const mentionsTelemetryInventory =
-      /\b(metrics?|telemetry|readings?|values?|signals?|sensor(?:s)?)\b/i.test(
-        normalized,
-      ) ||
-      (/\b(alarms?|warnings?|faults?|trips?)\b/i.test(normalized) &&
-        asksForInventory);
-
-    if (!mentionsTelemetryInventory || !asksForInventory) {
-      return null;
-    }
-
-    const wantsSampleList = /\b(random|sample|some|few|selection)\b/i.test(
-      normalized,
-    );
-    const wantsFullList =
-      /\b(all|available|full|complete|entire|every)\b/i.test(normalized) &&
-      !wantsSampleList;
-    if (wantsFullList) {
-      return { mode: 'full' };
-    }
-
-    const countMatch = normalized.match(/\b(\d{1,2})\b/);
-    if (countMatch) {
-      const parsed = Number.parseInt(countMatch[1], 10);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return { mode: 'sample', limit: Math.min(parsed, 25) };
-      }
-    }
-
-    if (wantsSampleList) {
-      return { mode: 'sample', limit: 10 };
-    }
-
-    return { mode: 'full' };
-  }
-
-  private getRequestedTelemetrySampleSize(
-    query: string,
-    resolvedSubjectQuery?: string,
-  ): number | null {
-    const request = this.parseTelemetryListRequest(query, resolvedSubjectQuery);
-    return request?.mode === 'sample' ? (request.limit ?? 10) : null;
-  }
-
-  private buildTelemetryQuerySignals(
-    query: string,
-    resolvedSubjectQuery?: string,
-  ): {
-    normalizedQuery: string;
-    tokens: string[];
-    phrases: string[];
-  } {
-    const rawSearchSpace = `${query}\n${resolvedSubjectQuery ?? ''}`;
-    const normalizedQuery = this.normalizeTelemetryText(rawSearchSpace);
-    const explicitDirectionalTokens =
-      this.extractExplicitTelemetryDirectionalTokens(rawSearchSpace);
-    const stopWords = new Set([
-      'all',
-      'am',
-      'and',
-      'at',
-      'average',
-      'avg',
-      'be',
-      'been',
-      'combined',
-      'consumed',
-      'consumption',
-      'what',
-      'which',
-      'when',
-      'where',
-      'why',
-      'how',
-      'the',
-      'a',
-      'an',
-      'is',
-      'are',
-      'do',
-      'does',
-      'did',
-      'done',
-      'display',
-      'displayed',
-      'displaying',
-      'displays',
-      'find',
-      'get',
-      'got',
-      'has',
-      'have',
-      'had',
-      'historical',
-      'history',
-      'i',
-      'in',
-      'increase',
-      'into',
-      'it',
-      'its',
-      'last',
-      'list',
-      'lookup',
-      'many',
-      'max',
-      'maximum',
-      'me',
-      'mean',
-      'min',
-      'minimum',
-      'my',
-      'much',
-      'of',
-      'on',
-      'onboard',
-      'or',
-      'our',
-      'out',
-      'overall',
-      'output',
-      'over',
-      'past',
-      'period',
-      'previous',
-      'vessel',
-      'yacht',
-      'show',
-      'tell',
-      'give',
-      'return',
-      'provide',
-      'current',
-      'status',
-      'value',
-      'reading',
-      'please',
-      'for',
-      'to',
-      'ship',
-      'boat',
-      'sea',
-      'wolf',
-      'x',
-      'based',
-      'any',
-      'action',
-      'actions',
-      'according',
-      'recommended',
-      'recommendation',
-      'calculate',
-      'related',
-      'latest',
-      'metric',
-      'metrics',
-      'telemetry',
-      'readings',
-      'values',
-      'sum',
-      'total',
-      'active',
-      'connected',
-      'day',
-      'days',
-      'enabled',
-      'month',
-      'months',
-      'random',
-      'remaining',
-      'right',
-      'now',
-      'their',
-      'with',
-      'from',
-      'left',
-      'available',
-      'up',
-      'us',
-      'using',
-      'we',
-      'week',
-      'weeks',
-      'were',
-      'will',
-      'would',
-      'year',
-      'years',
-      'used',
-      'your',
-      'best',
-      'match',
-      'matches',
-      'this',
-      'that',
-    ]);
-
-    const baseTokens = [
-      ...new Set(
-        normalizedQuery
-          .split(/\s+/)
-          .map((token) => this.normalizeTelemetryToken(token.trim()))
-          .filter(Boolean)
-          .filter((token) => token.length >= 2)
-          .filter((token) => !/^\d+$/.test(token))
-          .filter((token) => !stopWords.has(token))
-          .filter(
-            (token) =>
-              !this.isTelemetryDirectionalToken(token) ||
-              explicitDirectionalTokens.has(token),
-          ),
-      ),
-    ];
-
-    const tokens = [
-      ...new Set(
-        baseTokens.flatMap((token) => this.expandTelemetryTokenVariants(token)),
-      ),
-    ];
-
-    const phrases = [
-      ...new Set(
-        baseTokens.flatMap((_, index) => {
-          const phrases: string[] = [];
-          const pair = baseTokens.slice(index, index + 2);
-          const triple = baseTokens.slice(index, index + 3);
-          if (pair.length === 2) phrases.push(pair.join(' '));
-          if (triple.length === 3) phrases.push(triple.join(' '));
-          return phrases;
-        }),
-      ),
-    ];
-
-    return {
-      normalizedQuery,
-      tokens,
-      phrases,
-    };
-  }
-
   private scoreTelemetryEntry(
     entry: ShipTelemetryEntry,
-    querySignals: {
-      normalizedQuery: string;
-      tokens: string[];
-      phrases: string[];
-    },
+    querySignals: TelemetryQuerySignals,
   ): number {
     const haystack = this.buildTelemetryHaystack(entry);
     const query = querySignals.normalizedQuery;
-    const normalizedField = this.normalizeTelemetryText(entry.field ?? '');
-    const normalizedLabel = this.normalizeTelemetryText(entry.label ?? '');
-    const normalizedMeasurement = this.normalizeTelemetryText(
+    const normalizedField = normalizeTelemetryText(entry.field ?? '');
+    const normalizedLabel = normalizeTelemetryText(entry.label ?? '');
+    const normalizedMeasurement = normalizeTelemetryText(
       entry.measurement ?? '',
     );
-    const normalizedDescription = this.normalizeTelemetryText(
+    const normalizedDescription = normalizeTelemetryText(
       entry.description ?? '',
     );
     const queryKinds = this.extractTelemetryQueryMeasurementKinds(query);
     const entryKinds = this.extractTelemetryEntryMeasurementKinds(entry);
     const subjectTokens = this.getTelemetrySubjectTokens(querySignals.tokens);
     const matchedSubjectTokens = subjectTokens.filter((token) =>
-      this.matchesTelemetrySubjectToken(haystack, token),
+      matchesTelemetrySubjectToken(haystack, token),
     );
     const matchedKinds = [...queryKinds].filter((kind) => entryKinds.has(kind));
 
@@ -5765,7 +4614,7 @@ export class MetricsService implements OnModuleInit {
         : '',
       entry.description,
     ]
-      .map((value) => this.normalizeTelemetryText(value ?? ''))
+      .map((value) => normalizeTelemetryText(value ?? ''))
       .filter(Boolean);
 
     for (const candidate of exactCandidates) {
@@ -5865,7 +4714,7 @@ export class MetricsService implements OnModuleInit {
     const seed = this.createTelemetrySampleSeed(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
-    const querySignals = this.buildTelemetryQuerySignals(
+    const querySignals = buildTelemetryQuerySignals(
       query,
       resolvedSubjectQuery,
     );
@@ -6050,13 +4899,13 @@ export class MetricsService implements OnModuleInit {
       entry.label ?? '',
       entry.description ?? '',
     ]
-      .map((value) => this.normalizeTelemetryText(value))
+      .map((value) => normalizeTelemetryText(value))
       .filter(Boolean);
     if (candidateTexts.length === 0) {
       return false;
     }
 
-    const normalizedSubject = this.normalizeTelemetryToken(subjectToken);
+    const normalizedSubject = normalizeTelemetryToken(subjectToken);
     const kindTokens = this.getTelemetryKindAssociationTokens(kind);
 
     return candidateTexts.some((text) =>
@@ -6077,7 +4926,7 @@ export class MetricsService implements OnModuleInit {
     secondToken: string,
     maxIntermediateTokens: number,
   ): boolean {
-    const tokens = this.normalizeTelemetryText(text)
+    const tokens = normalizeTelemetryText(text)
       .split(/\s+/)
       .filter(Boolean);
     if (tokens.length === 0) {
@@ -6085,11 +4934,11 @@ export class MetricsService implements OnModuleInit {
     }
 
     const firstVariants = new Set(
-      this.expandTelemetryTokenVariants(this.normalizeTelemetryToken(firstToken)),
+      expandTelemetryTokenVariants(normalizeTelemetryToken(firstToken)),
     );
     const secondVariants = new Set(
-      this.expandTelemetryTokenVariants(
-        this.normalizeTelemetryToken(secondToken),
+      expandTelemetryTokenVariants(
+        normalizeTelemetryToken(secondToken),
       ),
     );
 
@@ -6161,7 +5010,7 @@ export class MetricsService implements OnModuleInit {
       selected.map((candidate) => [candidate.entry.key, candidate]),
     );
     const subjectTokens = this.getTelemetrySubjectTokens(
-      this.buildTelemetryQuerySignals(normalizedQuery).tokens,
+      buildTelemetryQuerySignals(normalizedQuery).tokens,
     );
     const subjectScopedCandidates =
       subjectTokens.length > 0
@@ -6220,13 +5069,13 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): 'exact' | 'direct' | 'related' {
-    const normalizedQuery = this.normalizeTelemetryText(
+    const normalizedQuery = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
     const first = entries[0];
     if (!first) return 'related';
 
-    const aggregateFluid = this.detectStoredFluidSubject(normalizedQuery);
+    const aggregateFluid = detectStoredFluidSubject(normalizedQuery);
     if (
       aggregateFluid &&
       this.isAggregateStoredFluidQuery(normalizedQuery, aggregateFluid) &&
@@ -6257,7 +5106,7 @@ export class MetricsService implements OnModuleInit {
         : '',
       first.key,
     ]
-      .map((value) => this.normalizeTelemetryText(value ?? ''))
+      .map((value) => normalizeTelemetryText(value ?? ''))
       .filter(Boolean);
 
     if (exactCandidates.some((candidate) => candidate === normalizedQuery)) {
@@ -6278,7 +5127,7 @@ export class MetricsService implements OnModuleInit {
     const queryKinds =
       this.extractTelemetryQueryMeasurementKinds(normalizedQuery);
     const subjectTokens = this.getTelemetrySubjectTokens(
-      this.buildTelemetryQuerySignals(query, resolvedSubjectQuery).tokens,
+      buildTelemetryQuerySignals(query, resolvedSubjectQuery).tokens,
     );
     if (queryKinds.size === 0) {
       return 'direct';
@@ -6301,7 +5150,7 @@ export class MetricsService implements OnModuleInit {
       const haystack = this.buildTelemetryHaystack(entry);
       const entryKinds = this.extractTelemetryEntryMeasurementKinds(entry);
       const matchesSubject = subjectTokens.some((token) =>
-        this.matchesTelemetrySubjectToken(haystack, token),
+        matchesTelemetrySubjectToken(haystack, token),
       );
       return (
         matchesSubject && [...queryKinds].some((kind) => entryKinds.has(kind))
@@ -6326,17 +5175,14 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
-    const actions = this.buildTelemetryClarificationActions(entries, query);
+    const actions = buildTelemetryClarificationActions(entries, query);
     if (actions.length === 0) {
       return null;
     }
 
     return {
-      question:
-        forcedClarificationReason === 'ambiguous_tank_reading'
-          ? 'I found multiple current tank readings that could match this question. Which tank do you want to inspect?'
-          : "I couldn't find a direct telemetry metric that exactly measures the requested reading, but I did find related metrics for the same topic. Which one do you want to inspect?",
-      pendingQuery: this.buildTelemetryClarificationPendingQuery(query),
+      question: buildTelemetryClarificationQuestion(forcedClarificationReason),
+      pendingQuery: buildTelemetryClarificationPendingQuery(query),
       actions,
     };
   }
@@ -6355,11 +5201,11 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
-    const normalizedQuery = this.normalizeTelemetryText(
+    const normalizedQuery = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
 
-    const fluid = this.detectStoredFluidSubject(normalizedQuery);
+    const fluid = detectStoredFluidSubject(normalizedQuery);
     if (fluid && this.isAggregateStoredFluidQuery(normalizedQuery, fluid)) {
       return null;
     }
@@ -6373,7 +5219,7 @@ export class MetricsService implements OnModuleInit {
     query: string,
     resolvedSubjectQuery?: string,
   ): boolean {
-    if (this.parseTelemetryListRequest(query, resolvedSubjectQuery) != null) {
+    if (parseTelemetryListRequest(query, resolvedSubjectQuery) != null) {
       return false;
     }
 
@@ -6430,104 +5276,9 @@ export class MetricsService implements OnModuleInit {
     );
   }
 
-  private buildTelemetryClarificationActions(
-    entries: ShipTelemetryEntry[],
-    query: string,
-  ): NonNullable<ShipTelemetryContext['clarification']>['actions'] {
-    const selected: NonNullable<
-      ShipTelemetryContext['clarification']
-    >['actions'] = [];
-    const seen = new Set<string>();
-
-    for (const entry of entries) {
-      const label = this.buildTelemetrySuggestionLabel(entry);
-      const normalizedLabel = this.normalizeTelemetryText(label);
-      if (!label || seen.has(normalizedLabel)) {
-        continue;
-      }
-
-      seen.add(normalizedLabel);
-      selected.push({
-        label,
-        message: this.buildTelemetryClarificationActionMessage(query, entry),
-        kind: 'suggestion',
-      });
-
-      if (selected.length >= 4) {
-        break;
-      }
-    }
-
-    if (selected.length <= 1) {
-      return selected;
-    }
-
-    return [
-      ...selected,
-      {
-        label: 'All related',
-        message: this.buildTelemetryClarificationAllMessage(selected),
-        kind: 'all',
-      },
-    ];
-  }
-
-  private buildTelemetrySuggestionLabel(entry: ShipTelemetryEntry): string {
-    if (entry.measurement && entry.field) {
-      return `${entry.measurement}.${entry.field}`;
-    }
-
-    return entry.label || entry.key;
-  }
-
-  private buildTelemetryClarificationActionMessage(
-    query: string,
-    entry: ShipTelemetryEntry,
-  ): string {
-    const label = this.buildTelemetrySuggestionLabel(entry);
-    if (this.isTelemetryActionRecommendationQuery(query)) {
-      return `Based on the current value of ${label}, is any action recommended?`;
-    }
-
-    return `What is the current value of ${label}?`;
-  }
-
-  private buildTelemetryClarificationAllMessage(
-    actions: Array<{ label: string }>,
-  ): string {
-    const labels = actions
-      .map((action) => action.label.trim())
-      .filter(Boolean)
-      .slice(0, 4);
-
-    return `Show the current values of these related metrics: ${labels.join('; ')}.`;
-  }
-
-  private buildTelemetryClarificationPendingQuery(query: string): string {
-    if (this.isTelemetryActionRecommendationQuery(query)) {
-      return 'Based on the current value of';
-    }
-
-    return 'What is the current value of';
-  }
-
-  private isTelemetryActionRecommendationQuery(query: string): boolean {
-    return (
-      /\b(based\s+on|depending\s+on|according\s+to)\b[\s\S]{0,120}\b(current|reading|value|level|temperature|temp|pressure|voltage|load|rpm|speed|flow|rate|status)\b/i.test(
-        query,
-      ) ||
-      (/\b(what\s+should\s+i\s+do|what\s+do\s+i\s+do|is\s+any\s+action\s+recommended|any\s+action\s+recommended|next\s+step|next\s+steps)\b/i.test(
-        query,
-      ) &&
-        /\b(current|reading|value|level|temperature|temp|pressure|voltage|load|rpm|speed|flow|rate|status)\b/i.test(
-          query,
-        ))
-    );
-  }
-
   private extractTelemetryMeasurementKinds(value: string): Set<string> {
     const kinds = new Set<string>();
-    const normalized = this.normalizeTelemetryText(value);
+    const normalized = normalizeTelemetryText(value);
     const inventoryContextBlocked =
       /\b(used|consumed|consumption|usage|rate|flow|pressure|temp(?:erature)?|voltage|power|energy|frequency|status|state|alarm|warning|fault|trip)\b/i.test(
         normalized,
@@ -6640,7 +5391,7 @@ export class MetricsService implements OnModuleInit {
 
   private extractTelemetryQueryMeasurementKinds(value: string): Set<string> {
     const kinds = this.extractTelemetryMeasurementKinds(value);
-    const normalized = this.normalizeTelemetryText(value);
+    const normalized = normalizeTelemetryText(value);
     if (this.isNavigationLocationIntent(normalized)) {
       kinds.add('location');
     }
@@ -6653,7 +5404,7 @@ export class MetricsService implements OnModuleInit {
     if (this.isNavigationHeadingIntent(normalized)) {
       kinds.add('heading');
     }
-    const fluid = this.detectStoredFluidSubject(normalized);
+    const fluid = detectStoredFluidSubject(normalized);
     const treatsCurrentAsLiveQualifier =
       kinds.has('current') &&
       !this.isElectricalCurrentQuery(normalized) &&
@@ -6683,7 +5434,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private buildTelemetryHaystack(entry: ShipTelemetryEntry): string {
-    return this.normalizeTelemetryText(
+    return normalizeTelemetryText(
       [
         entry.key,
         entry.label,
@@ -6699,7 +5450,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private buildTelemetryIdentityHaystack(entry: ShipTelemetryEntry): string {
-    return this.normalizeTelemetryText(
+    return normalizeTelemetryText(
       [
         entry.key,
         entry.label,
@@ -6742,7 +5493,7 @@ export class MetricsService implements OnModuleInit {
 
     const haystack = this.buildTelemetryHaystack(entry);
     const matchedCount = subjectTokens.filter((token) =>
-      this.matchesTelemetrySubjectToken(haystack, token),
+      matchesTelemetrySubjectToken(haystack, token),
     ).length;
     const minimumMatches = Math.min(subjectTokens.length, 2);
     return matchedCount >= minimumMatches;
@@ -6760,63 +5511,12 @@ export class MetricsService implements OnModuleInit {
     return [...queryKinds].some((kind) => entryKinds.has(kind));
   }
 
-  private normalizeTelemetryText(value: string): string {
-    return value
-      .replace(/([a-z])([A-Z])/g, '$1 $2')
-      .replace(/[_./:-]+/g, ' ')
-      .replace(/[^a-zA-Z0-9\s]+/g, ' ')
-      .replace(/\btemps?\b/g, ' temperature ')
-      .replace(/\bvolt(s)?\b/g, ' voltage ')
-      .replace(/\bstbd\b/g, ' starboard ')
-      .replace(/\bsb\b/g, ' starboard ')
-      .replace(/\bps\b/g, ' port ')
-      .replace(/\bgenerator\s+set\b/g, ' genset ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-  }
-
-  private isTelemetryDirectionalToken(token: string): boolean {
-    return token === 'port' || token === 'starboard';
-  }
-
-  private extractExplicitTelemetryDirectionalTokens(
-    query: string,
-  ): Set<string> {
-    const normalized = query.toLowerCase();
-    const tokens = new Set<string>();
-    const directionalNouns =
-      '(side|engine|generator|genset|pump|tank|battery|charger|motor|gearbox|thruster|rudder|cabin|room|propeller)';
-
-    if (/\b(port|ps)\b/i.test(normalized)) {
-      tokens.add('port');
-    }
-
-    if (/\b(starboard|stbd|sb)\b/i.test(normalized)) {
-      tokens.add('starboard');
-    }
-
-    if (
-      new RegExp(`\\bleft\\b\\s+${directionalNouns}\\b`, 'i').test(normalized)
-    ) {
-      tokens.add('port');
-    }
-
-    if (
-      new RegExp(`\\bright\\b\\s+${directionalNouns}\\b`, 'i').test(normalized)
-    ) {
-      tokens.add('starboard');
-    }
-
-    return tokens;
-  }
-
   private getTelemetrySubjectTokens(tokens: string[]): string[] {
     return [
       ...new Set(
         tokens
           .filter((token) => !this.isTelemetryKindToken(token))
-          .map((token) => this.canonicalizeTelemetrySubjectToken(token)),
+          .map((token) => canonicalizeTelemetrySubjectToken(token)),
       ),
     ];
   }
@@ -6863,7 +5563,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isStrongTelemetryCandidate(candidate: string): boolean {
-    const normalized = this.normalizeTelemetryText(candidate);
+    const normalized = normalizeTelemetryText(candidate);
     if (!normalized) return false;
 
     const terms = normalized.split(/\s+/).filter(Boolean);
@@ -6886,109 +5586,6 @@ export class MetricsService implements OnModuleInit {
       'value',
       'active',
     ]).has(term);
-  }
-
-  private normalizeTelemetryToken(token: string): string {
-    if (!token) return '';
-
-    const normalized = token.toLowerCase();
-    const aliases: Record<string, string> = {
-      batteries: 'battery',
-      generators: 'generator',
-      gensets: 'genset',
-      right: 'starboard',
-      left: 'port',
-      stbd: 'starboard',
-      sb: 'starboard',
-      ps: 'port',
-      alarms: 'alarm',
-      warnings: 'warning',
-      faults: 'fault',
-      trips: 'trip',
-      status: 'status',
-      statuses: 'status',
-      states: 'state',
-      volts: 'voltage',
-      volt: 'voltage',
-      voltages: 'voltage',
-      pressures: 'pressure',
-      currents: 'current',
-      powers: 'power',
-      energies: 'energy',
-      loads: 'load',
-      flows: 'flow',
-      rates: 'rate',
-      temps: 'temperature',
-      temp: 'temperature',
-      readings: 'reading',
-      metrics: 'metric',
-      values: 'value',
-      ships: 'ship',
-    };
-
-    if (aliases[normalized]) {
-      return aliases[normalized];
-    }
-
-    if (normalized.endsWith('ies') && normalized.length > 4) {
-      return `${normalized.slice(0, -3)}y`;
-    }
-
-    if (
-      normalized.endsWith('s') &&
-      normalized.length > 4 &&
-      !normalized.endsWith('ss')
-    ) {
-      return normalized.slice(0, -1);
-    }
-
-    return normalized;
-  }
-
-  private expandTelemetryTokenVariants(token: string): string[] {
-    const variants = new Set([token]);
-    const aliasGroups = [
-      ['generator', 'genset'],
-      ['port', 'ps', 'left'],
-      ['starboard', 'sb', 'stbd', 'right'],
-      ['temperature', 'temp'],
-      ['latitude', 'lat'],
-      ['longitude', 'lon'],
-      ['location', 'position', 'coordinates', 'coordinate', 'gps'],
-    ];
-
-    for (const group of aliasGroups) {
-      if (group.includes(token)) {
-        group.forEach((variant) => variants.add(variant));
-      }
-    }
-
-    return [...variants];
-  }
-
-  private canonicalizeTelemetrySubjectToken(token: string): string {
-    switch (token) {
-      case 'genset':
-        return 'generator';
-      case 'ps':
-      case 'left':
-        return 'port';
-      case 'sb':
-      case 'stbd':
-      case 'right':
-        return 'starboard';
-      default:
-        return token;
-    }
-  }
-
-  private matchesTelemetrySubjectToken(
-    haystack: string,
-    token: string,
-  ): boolean {
-    return this.expandTelemetryTokenVariants(token).some((variant) =>
-      haystack.includes(variant),
-    );
   }
 
   private hasStrictTelemetryContext(normalizedQuery: string): boolean {
@@ -7049,11 +5646,11 @@ export class MetricsService implements OnModuleInit {
     }
 
     const requiredWaterQualifiers =
-      this.detectStoredFluidSubject(normalizedQuery)?.waterQualifiers ?? [];
+      detectStoredFluidSubject(normalizedQuery)?.waterQualifiers ?? [];
     if (
       requiredWaterQualifiers.length > 0 &&
       !requiredWaterQualifiers.some((qualifier) =>
-        this.matchesWaterQualifier(haystack, qualifier),
+        matchesWaterQualifier(haystack, qualifier),
       )
     ) {
       return false;
@@ -7063,141 +5660,15 @@ export class MetricsService implements OnModuleInit {
   }
 
   private containsLoosely(left: string, right: string): boolean {
-    return this.normalizeTelemetryText(left).includes(
-      this.normalizeTelemetryText(right),
+    return normalizeTelemetryText(left).includes(
+      normalizeTelemetryText(right),
     );
-  }
-
-  private detectWaterQualifiers(
-    normalizedQuery: string,
-  ): StoredFluidSubject['waterQualifiers'] {
-    const qualifiers = new Set<
-      NonNullable<StoredFluidSubject['waterQualifiers']>[number]
-    >();
-
-    if (/\bfresh\s*water\b/i.test(normalizedQuery)) {
-      qualifiers.add('fresh');
-    }
-    if (/\bsea\s*water\b|\bseawater\b/i.test(normalizedQuery)) {
-      qualifiers.add('sea');
-    }
-    if (
-      /\bblack(?:\s+and\s+grey|\s*&\s*grey)?\s+water\b/i.test(normalizedQuery)
-    ) {
-      qualifiers.add('black');
-      if (/\bgrey\b|\bgray\b/i.test(normalizedQuery)) {
-        qualifiers.add('grey');
-      }
-    } else if (/\bblack\s+water\b/i.test(normalizedQuery)) {
-      qualifiers.add('black');
-    }
-    if (/\bgrey\s+water\b|\bgray\s+water\b/i.test(normalizedQuery)) {
-      qualifiers.add('grey');
-    }
-    if (
-      /\bbilge\s+water\b|\bbilge\b[\s\S]{0,12}\btank\b/i.test(normalizedQuery)
-    ) {
-      qualifiers.add('bilge');
-    }
-
-    return qualifiers.size > 0 ? [...qualifiers] : undefined;
-  }
-
-  private matchesWaterQualifier(
-    haystack: string,
-    qualifier: NonNullable<StoredFluidSubject['waterQualifiers']>[number],
-  ): boolean {
-    switch (qualifier) {
-      case 'fresh':
-        return /\bfresh\s*water\b/i.test(haystack);
-      case 'sea':
-        return /\bsea\s*water\b|\bseawater\b/i.test(haystack);
-      case 'black':
-        return /\bblack\b[\s\S]{0,12}\bwater\b/i.test(haystack);
-      case 'grey':
-        return /\b(grey|gray)\b[\s\S]{0,12}\bwater\b/i.test(haystack);
-      case 'bilge':
-        return /\bbilge\b[\s\S]{0,12}\bwater\b|\bbilge\b[\s\S]{0,12}\btank\b/i.test(
-          haystack,
-        );
-      default:
-        return false;
-    }
-  }
-
-  private matchesStoredFluidSubject(
-    haystack: string,
-    subject: StoredFluidSubject,
-  ): boolean {
-    if (subject.fluid === 'water') {
-      if (!/\bwater\b/i.test(haystack)) {
-        return false;
-      }
-
-      if (!subject.waterQualifiers?.length) {
-        return true;
-      }
-
-      return subject.waterQualifiers.some((qualifier) =>
-        this.matchesWaterQualifier(haystack, qualifier),
-      );
-    }
-
-    if (subject.fluid === 'def') {
-      return /\b(def|urea)\b/i.test(haystack);
-    }
-
-    return new RegExp(`\\b${subject.fluid}\\b`, 'i').test(haystack);
-  }
-
-  private entryMatchesStoredFluidSubject(
-    entry: ShipTelemetryEntry,
-    subject: StoredFluidSubject,
-  ): boolean {
-    return this.matchesStoredFluidSubject(
-      this.buildTelemetryHaystack(entry),
-      subject,
-    );
-  }
-
-  private detectStoredFluidSubject(
-    normalizedQuery: string,
-  ): StoredFluidSubject | null {
-    if (/\bfuel\b/i.test(normalizedQuery)) return { fluid: 'fuel' };
-    if (/\boil\b/i.test(normalizedQuery)) return { fluid: 'oil' };
-    if (/\bcoolant\b/i.test(normalizedQuery)) return { fluid: 'coolant' };
-    if (/\b(def|urea)\b/i.test(normalizedQuery)) return { fluid: 'def' };
-    if (
-      /\b(water|fresh water|seawater|sea water|black water|grey water|gray water|bilge water)\b/i.test(
-        normalizedQuery,
-      )
-    ) {
-      const waterQualifiers = this.detectWaterQualifiers(normalizedQuery);
-      return (waterQualifiers?.length ?? 0) > 0
-        ? { fluid: 'water', waterQualifiers }
-        : { fluid: 'water' };
-    }
-    return null;
-  }
-
-  private describeStoredFluidSubject(subject: StoredFluidSubject): string {
-    if (subject.fluid !== 'water') {
-      return subject.fluid === 'def' ? 'DEF' : subject.fluid;
-    }
-
-    const qualifiers = subject.waterQualifiers ?? [];
-    if (qualifiers.includes('fresh')) return 'fresh water';
-    if (qualifiers.includes('sea')) return 'sea water';
-    if (qualifiers.includes('black')) return 'black water';
-    if (qualifiers.includes('grey')) return 'grey water';
-    if (qualifiers.includes('bilge')) return 'bilge water';
-    return 'water';
   }
 
   private isImplicitDailyStoredFluidUsageQuery(
     normalizedQuery: string,
   ): boolean {
-    const subject = this.detectStoredFluidSubject(normalizedQuery);
+    const subject = detectStoredFluidSubject(normalizedQuery);
     if (!subject) {
       return false;
     }
@@ -7324,7 +5795,7 @@ export class MetricsService implements OnModuleInit {
     }
 
     return (
-      this.matchesStoredFluidSubject(normalizedQuery, subject) &&
+      matchesStoredFluidSubject(normalizedQuery, subject) &&
       /\b(how much|how many|total|sum|overall|combined|together|left|remaining|available|onboard)\b/i.test(
         normalizedQuery,
       ) &&
@@ -7388,7 +5859,7 @@ export class MetricsService implements OnModuleInit {
 
     return (
       /\btank\b/i.test(haystack) &&
-      this.entryMatchesStoredFluidSubject(entry, subject) &&
+      matchesStoredFluidSubject(this.buildTelemetryHaystack(entry), subject) &&
       !/\b(used|consumed|consumption|rate|flow|pressure)\b/i.test(haystack)
     );
   }
@@ -7434,7 +5905,7 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
-    const fieldText = this.normalizeTelemetryText(rawField);
+    const fieldText = normalizeTelemetryText(rawField);
     if (!fieldText || !/\btank\b/i.test(fieldText)) {
       return null;
     }
@@ -7462,14 +5933,14 @@ export class MetricsService implements OnModuleInit {
     entry: ShipTelemetryEntry,
     subject: StoredFluidSubject,
   ): boolean {
-    const fieldText = this.normalizeTelemetryText(
+    const fieldText = normalizeTelemetryText(
       this.getDedicatedTankFieldText(entry) ?? '',
     );
     if (!fieldText) {
       return false;
     }
 
-    if (!this.matchesStoredFluidSubject(fieldText, subject)) {
+    if (!matchesStoredFluidSubject(fieldText, subject)) {
       return false;
     }
 
@@ -7511,7 +5982,7 @@ export class MetricsService implements OnModuleInit {
   }
 
   private isDedicatedTankTemperatureEntry(entry: ShipTelemetryEntry): boolean {
-    const semanticText = this.normalizeTelemetryText(
+    const semanticText = normalizeTelemetryText(
       [
         entry.description ?? '',
         entry.unit ?? '',
@@ -7557,7 +6028,7 @@ export class MetricsService implements OnModuleInit {
       }
     }
 
-    const semanticText = this.normalizeTelemetryText(entry.description ?? '');
+    const semanticText = normalizeTelemetryText(entry.description ?? '');
     return /\b(level|quantity|volume|contents?|capacity|liter|litre|percent|percentage|onboard)\b/i.test(
       semanticText,
     );
@@ -7657,9 +6128,9 @@ export class MetricsService implements OnModuleInit {
           .map(
             (entry) =>
               this.getDedicatedTankDisplayLabel(entry) ??
-              this.buildTelemetrySuggestionLabel(entry),
+              buildTelemetrySuggestionLabel(entry),
           )
-          .map((label) => this.normalizeTelemetryText(label))
+          .map((label) => normalizeTelemetryText(label))
           .filter((label) => /\btank\b/i.test(label)),
       ),
     ];
@@ -7680,14 +6151,14 @@ export class MetricsService implements OnModuleInit {
       return null;
     }
 
-    const normalizedQuery = this.normalizeTelemetryText(
+    const normalizedQuery = normalizeTelemetryText(
       `${query}\n${resolvedSubjectQuery ?? ''}`,
     );
     if (!this.shouldForceTankTelemetryClarification(entries, normalizedQuery)) {
       return null;
     }
 
-    const fluid = this.detectStoredFluidSubject(normalizedQuery);
+    const fluid = detectStoredFluidSubject(normalizedQuery);
     if (fluid && this.isAggregateStoredFluidQuery(normalizedQuery, fluid)) {
       return null;
     }
@@ -7700,9 +6171,9 @@ export class MetricsService implements OnModuleInit {
 
     const uniqueCandidates = new Map<string, ShipTelemetryEntry>();
     for (const entry of tankCandidates) {
-      const label = this.normalizeTelemetryText(
+      const label = normalizeTelemetryText(
         this.getDedicatedTankDisplayLabel(entry) ??
-          this.buildTelemetrySuggestionLabel(entry),
+          buildTelemetrySuggestionLabel(entry),
       );
       if (!label || uniqueCandidates.has(label)) {
         continue;
@@ -7718,8 +6189,8 @@ export class MetricsService implements OnModuleInit {
           return orderDiff;
         }
 
-        return this.buildTelemetrySuggestionLabel(left).localeCompare(
-          this.buildTelemetrySuggestionLabel(right),
+        return buildTelemetrySuggestionLabel(left).localeCompare(
+          buildTelemetrySuggestionLabel(right),
         );
       })
       .slice(0, 8);
@@ -7745,7 +6216,7 @@ export class MetricsService implements OnModuleInit {
   private getExplicitTelemetryCoordinateKinds(
     entry: ShipTelemetryEntry,
   ): Set<'latitude' | 'longitude'> {
-    const exactText = this.normalizeTelemetryText(
+    const exactText = normalizeTelemetryText(
       [entry.key, entry.label, entry.measurement, entry.field]
         .filter(Boolean)
         .join(' '),

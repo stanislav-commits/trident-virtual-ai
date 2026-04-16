@@ -7,7 +7,7 @@ import { MetricDescriptionService } from './metric-description.service';
 import { MetricsSyncScheduler } from './metrics-sync.scheduler';
 import { MetricsController } from './metrics.controller';
 import { MetricsService } from './metrics.service';
-import { TelemetryQuerySemanticNormalizerService } from './telemetry-query-semantic-normalizer.service';
+import { TelemetryQuerySemanticNormalizerService } from './live-telemetry/telemetry-query-semantic-normalizer.service';
 
 @Module({
   imports: [InfluxdbModule, GrafanaLlmModule, TagsModule, SemanticModule],
