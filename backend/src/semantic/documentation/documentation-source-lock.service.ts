@@ -3,14 +3,14 @@ import type {
   ChatCitation,
   ChatHistoryMessage,
   ChatNormalizedQuery,
-} from '../chat/chat.types';
-import { SEMANTIC_PROFILE_SCHEMA_VERSION } from './semantic.constants';
+} from '../../chat/chat.types';
+import { SEMANTIC_PROFILE_SCHEMA_VERSION } from '../contracts/semantic.constants';
 import type {
   DocumentationFollowUpState,
   DocumentationSemanticCandidate,
   DocumentationSemanticQuery,
-} from './semantic.types';
-import { parseDocumentationFollowUpState } from './semantic.validators';
+} from '../contracts/semantic.types';
+import { parseDocumentationFollowUpState } from '../contracts/semantic.validators';
 
 export interface DocumentationSourceLockDecision {
   active: boolean;

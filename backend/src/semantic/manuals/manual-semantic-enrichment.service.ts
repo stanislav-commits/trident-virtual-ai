@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { RagflowService } from '../ragflow/ragflow.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RagflowService } from '../../ragflow/ragflow.service';
 import {
   MANUAL_SEMANTIC_ENRICHMENT_MAX_CHARS,
   MANUAL_SEMANTIC_ENRICHMENT_MAX_CHUNKS,
@@ -10,21 +10,21 @@ import {
   MANUAL_SEMANTIC_PROFILE_MAX_SECTIONS,
   SEMANTIC_PROFILE_SCHEMA_VERSION,
   SEMANTIC_SOURCE_CATEGORIES,
-} from './semantic.constants';
-import { MANUAL_SEMANTIC_PROFILE_SCHEMA } from './semantic.schemas';
+} from '../contracts/semantic.constants';
+import { MANUAL_SEMANTIC_PROFILE_SCHEMA } from '../contracts/semantic.schemas';
 import type {
   ConceptCandidate,
   ConceptDefinition,
   ManualSemanticProfile,
   SemanticIntent,
   SemanticSourceCategory,
-} from './semantic.types';
+} from '../contracts/semantic.types';
 import {
   parseManualSemanticProfile,
   serializeConceptCatalogEntry,
-} from './semantic.validators';
-import { ConceptCatalogService } from './concept-catalog.service';
-import { SemanticLlmService } from './semantic-llm.service';
+} from '../contracts/semantic.validators';
+import { ConceptCatalogService } from '../catalog/concept-catalog.service';
+import { SemanticLlmService } from '../llm/semantic-llm.service';
 
 type RagflowChunk = Awaited<
   ReturnType<RagflowService['listDocumentChunks']>

@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import type {
   ConceptCandidate,
   ConceptDefinition,
   SemanticConceptFamily,
-} from './semantic.types';
+} from '../contracts/semantic.types';
 
 const STATIC_CONCEPTS: ConceptDefinition[] = [
   {

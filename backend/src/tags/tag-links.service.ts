@@ -8,7 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
 import { TagMatcherService, type MatchableTag } from './tag-matcher.service';
-import { parseManualSemanticProfile } from '../semantic/semantic.validators';
+import { parseManualSemanticProfile } from '../semantic/contracts/semantic.validators';
 import {
   inferStoredFluidInventoryTagMatches,
   type QueryTagMatch,

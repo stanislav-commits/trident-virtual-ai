@@ -1,4 +1,4 @@
-import type { DocumentationSemanticCandidate } from '../semantic.types';
+import type { DocumentationSemanticCandidate } from '../../contracts/semantic.types';
 
 export interface SearchableSemanticManual {
   id: string;

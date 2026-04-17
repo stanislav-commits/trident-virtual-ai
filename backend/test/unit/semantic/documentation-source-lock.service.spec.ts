@@ -1,4 +1,4 @@
-import { DocumentationSourceLockService } from '../../../src/semantic/documentation-source-lock.service';
+import { DocumentationSourceLockService } from '../../../src/semantic/documentation/documentation-source-lock.service';
 
 describe('DocumentationSourceLockService', () => {
   const service = new DocumentationSourceLockService();

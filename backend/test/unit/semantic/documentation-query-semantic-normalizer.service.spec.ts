@@ -1,6 +1,6 @@
-import { ConceptCatalogService } from '../../../src/semantic/concept-catalog.service';
-import { DocumentationQuerySemanticNormalizerService } from '../../../src/semantic/documentation-query-semantic-normalizer.service';
-import { SemanticLlmService } from '../../../src/semantic/semantic-llm.service';
+import { ConceptCatalogService } from '../../../src/semantic/catalog/concept-catalog.service';
+import { DocumentationQuerySemanticNormalizerService } from '../../../src/semantic/documentation/documentation-query-semantic-normalizer.service';
+import { SemanticLlmService } from '../../../src/semantic/llm/semantic-llm.service';
 
 describe('DocumentationQuerySemanticNormalizerService', () => {
   const buildService = (semanticLlmResult: Record<string, unknown>) => {

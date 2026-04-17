@@ -5,20 +5,20 @@ import {
 } from '../../common/certificate-expiry.utils';
 import { ChatContextService } from '../retrieval/chat-context.service';
 import { TagLinksService } from '../../tags/tag-links.service';
-import { DocumentationQuerySemanticNormalizerService } from '../../semantic/documentation-query-semantic-normalizer.service';
+import { DocumentationQuerySemanticNormalizerService } from '../../semantic/documentation/documentation-query-semantic-normalizer.service';
 import {
   DocumentationSourceLockService,
   type DocumentationSourceLockDecision,
-} from '../../semantic/documentation-source-lock.service';
-import { ManualSemanticMatcherService } from '../../semantic/manual-semantic-matcher.service';
-import { PageAwareManualRetrieverService } from '../../semantic/page-aware-manual-retriever.service';
+} from '../../semantic/documentation/documentation-source-lock.service';
+import { ManualSemanticMatcherService } from '../../semantic/manuals/manual-semantic-matcher.service';
+import { PageAwareManualRetrieverService } from '../../semantic/manuals/page-aware-manual-retriever.service';
 import type {
   DocumentationFollowUpState,
   DocumentationRetrievalTrace,
   DocumentationSemanticCandidate,
   DocumentationSemanticQuery,
   SemanticSourceCategory,
-} from '../../semantic/semantic.types';
+} from '../../semantic/contracts/semantic.types';
 import {
   ChatCitation,
   ChatDocumentationContext,

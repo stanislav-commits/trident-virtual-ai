@@ -1,4 +1,4 @@
-import { ConceptCatalogService } from '../../../src/semantic/concept-catalog.service';
+import { ConceptCatalogService } from '../../../src/semantic/catalog/concept-catalog.service';
 
 describe('ConceptCatalogService', () => {
   it('treats helm station control transfer as a manual control-system concept', async () => {

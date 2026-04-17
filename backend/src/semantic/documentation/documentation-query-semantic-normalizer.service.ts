@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { ChatNormalizedQuery } from '../chat/chat.types';
-import { ChatQueryPlannerService } from '../chat/query/chat-query-planner.service';
+import type { ChatNormalizedQuery } from '../../chat/chat.types';
+import { ChatQueryPlannerService } from '../../chat/query/chat-query-planner.service';
 import {
   SEMANTIC_QUERY_CLARIFICATION_THRESHOLD,
   SEMANTIC_PROFILE_SCHEMA_VERSION,
-} from './semantic.constants';
-import { DOCUMENTATION_SEMANTIC_QUERY_SCHEMA } from './semantic.schemas';
+} from '../contracts/semantic.constants';
+import { DOCUMENTATION_SEMANTIC_QUERY_SCHEMA } from '../contracts/semantic.schemas';
 import type {
   ConceptCandidate,
   ConceptDefinition,
@@ -15,13 +15,13 @@ import type {
   SemanticConceptFamily,
   SemanticIntent,
   SemanticSourceCategory,
-} from './semantic.types';
+} from '../contracts/semantic.types';
 import {
   parseDocumentationSemanticQuery,
   serializeConceptCatalogEntry,
-} from './semantic.validators';
-import { ConceptCatalogService } from './concept-catalog.service';
-import { SemanticLlmService } from './semantic-llm.service';
+} from '../contracts/semantic.validators';
+import { ConceptCatalogService } from '../catalog/concept-catalog.service';
+import { SemanticLlmService } from '../llm/semantic-llm.service';
 
 @Injectable()
 export class DocumentationQuerySemanticNormalizerService {

@@ -1,5 +1,5 @@
-import { ManualSemanticMatcherService } from '../../../src/semantic/manual-semantic-matcher.service';
-import type { DocumentationSemanticQuery } from '../../../src/semantic/semantic.types';
+import { ManualSemanticMatcherService } from '../../../src/semantic/manuals/manual-semantic-matcher.service';
+import type { DocumentationSemanticQuery } from '../../../src/semantic/contracts/semantic.types';
 
 describe('ManualSemanticMatcherService', () => {
   it('scores procedure profiles by semantic profile text instead of filename alone', async () => {

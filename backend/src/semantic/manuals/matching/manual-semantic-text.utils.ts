@@ -1,4 +1,4 @@
-import type { ManualSemanticProfile } from '../semantic.types';
+import type { ManualSemanticProfile } from '../../contracts/semantic.types';
 import { PROFILE_MATCH_STOP_WORDS } from './manual-semantic-stop-words.constants';
 
 export function buildManualProfileAnchorText(

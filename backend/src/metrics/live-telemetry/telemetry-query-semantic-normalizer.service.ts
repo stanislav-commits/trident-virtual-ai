@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { SemanticLlmService } from '../../semantic/semantic-llm.service';
+import { SemanticLlmService } from '../../semantic/llm/semantic-llm.service';
 
 export interface TelemetrySemanticQuery {
   schemaVersion: string;

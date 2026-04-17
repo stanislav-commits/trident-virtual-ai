@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { ChatCitation } from '../chat/chat.types';
-import { PrismaService } from '../prisma/prisma.service';
-import { RagflowService } from '../ragflow/ragflow.service';
+import type { ChatCitation } from '../../chat/chat.types';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RagflowService } from '../../ragflow/ragflow.service';
 
 type RagflowChunk = Awaited<
   ReturnType<RagflowService['listDocumentChunks']>

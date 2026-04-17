@@ -2,7 +2,7 @@ import type {
   DocumentationFollowUpState,
   DocumentationRetrievalTrace,
   DocumentationSemanticQuery,
-} from '../semantic/semantic.types';
+} from '../semantic/contracts/semantic.types';
 
 export interface ChatCitation {
   shipManualId?: string;

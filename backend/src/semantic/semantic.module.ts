@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RagflowModule } from '../ragflow/ragflow.module';
-import { ConceptCatalogService } from './concept-catalog.service';
-import { DocumentationQuerySemanticNormalizerService } from './documentation-query-semantic-normalizer.service';
-import { DocumentationSourceLockService } from './documentation-source-lock.service';
-import { ManualSemanticEnrichmentService } from './manual-semantic-enrichment.service';
-import { ManualSemanticMatcherService } from './manual-semantic-matcher.service';
-import { PageAwareManualRetrieverService } from './page-aware-manual-retriever.service';
-import { SemanticLlmService } from './semantic-llm.service';
+import { ConceptCatalogService } from './catalog/concept-catalog.service';
+import { DocumentationQuerySemanticNormalizerService } from './documentation/documentation-query-semantic-normalizer.service';
+import { DocumentationSourceLockService } from './documentation/documentation-source-lock.service';
+import { ManualSemanticEnrichmentService } from './manuals/manual-semantic-enrichment.service';
+import { ManualSemanticMatcherService } from './manuals/manual-semantic-matcher.service';
+import { PageAwareManualRetrieverService } from './manuals/page-aware-manual-retriever.service';
+import { SemanticLlmService } from './llm/semantic-llm.service';
 
 @Module({
   imports: [PrismaModule, RagflowModule],

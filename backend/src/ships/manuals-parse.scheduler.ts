@@ -2,7 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
-import { ManualSemanticEnrichmentService } from '../semantic/manual-semantic-enrichment.service';
+import { ManualSemanticEnrichmentService } from '../semantic/manuals/manual-semantic-enrichment.service';
 import { TagLinksService } from '../tags/tag-links.service';
 
 @Injectable()

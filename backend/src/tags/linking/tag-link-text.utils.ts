@@ -1,4 +1,4 @@
-import type { ManualSemanticProfile } from '../../semantic/semantic.types';
+import type { ManualSemanticProfile } from '../../semantic/contracts/semantic.types';
 import { normalizeTagQueryText } from './tag-link-normalization.utils';
 
 export interface MetricTagMatchTextInput {

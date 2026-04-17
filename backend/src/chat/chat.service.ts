@@ -31,7 +31,7 @@ import {
   localizeApproximateDuration,
   localizeChatText,
 } from './conversation/chat-language.utils';
-import type { DocumentationSemanticQuery } from '../semantic/semantic.types';
+import type { DocumentationSemanticQuery } from '../semantic/contracts/semantic.types';
 import {
   ChatQueryPlan,
   ChatQueryPlannerService,
@@ -43,6 +43,15 @@ import {
   ChatSessionService,
 } from './session/chat-session.service';
 import { formatMessageResponse as formatChatMessageResponse } from './session/chat-session.formatters';
+import {
+  DeterministicContactEntry,
+  dedupeDeterministicContactEntries,
+  extractDeterministicContactEntries,
+  extractDeterministicRoleInventory,
+  filterDeterministicContactEntriesForQuery,
+  normalizeDeterministicContactText,
+  preferDeterministicContactSourceEntries,
+} from './answers/contact-entry-parser';
 
 interface TelemetryClarificationAction {
   label: string;
@@ -57,14 +66,6 @@ interface TelemetryClarification {
 }
 
 type TelemetryMatchMode = 'none' | 'sample' | 'exact' | 'direct' | 'related';
-
-interface DeterministicContactEntry {
-  name: string;
-  role?: string;
-  email?: string;
-  phone?: string;
-  citation: ChatCitation;
-}
 
 interface DeterministicTankCapacityEntry {
   label: string;
@@ -2391,16 +2392,16 @@ export class ChatService {
     }
 
     const allEntries = citations.flatMap((citation) =>
-      this.extractDeterministicContactEntries(citation),
+      extractDeterministicContactEntries(citation),
     );
     if (allEntries.length === 0) {
       return null;
     }
 
-    const dedupedEntries = this.dedupeDeterministicContactEntries(allEntries);
+    const dedupedEntries = dedupeDeterministicContactEntries(allEntries);
 
     if (this.documentationQueryService.isRoleInventoryQuery(userQuery)) {
-      const roleInventory = this.extractDeterministicRoleInventory(
+      const roleInventory = extractDeterministicRoleInventory(
         dedupedEntries,
       ).slice(0, 12);
       if (roleInventory.length === 0) {
@@ -2425,9 +2426,12 @@ export class ChatService {
       };
     }
 
-    const matchingEntries = this.filterDeterministicContactEntriesForQuery(
+    const anchorTerms =
+      this.documentationQueryService.extractContactAnchorTerms(directoryQuery);
+    const matchingEntries = filterDeterministicContactEntriesForQuery(
       directoryQuery,
       dedupedEntries,
+      anchorTerms,
     );
     if (matchingEntries.length === 0) {
       return null;
@@ -2437,10 +2441,11 @@ export class ChatService {
       /\b(list\s+all|all\s+contacts|all\s+managers|all\s+directors|all\s+roles|everyone|everybody)\b/i.test(
         userQuery,
       );
-    const sourceScopedEntries = this.preferDeterministicContactSourceEntries(
+    const sourceScopedEntries = preferDeterministicContactSourceEntries(
       directoryQuery,
       matchingEntries,
       wantsExhaustiveList,
+      anchorTerms,
     );
     const maxEntries = wantsExhaustiveList ? 12 : 6;
     const selectedEntries = sourceScopedEntries.slice(0, maxEntries);
@@ -2517,157 +2522,6 @@ export class ChatService {
     };
   }
 
-  private preferDeterministicContactSourceEntries(
-    userQuery: string,
-    entries: DeterministicContactEntry[],
-    wantsExhaustiveList: boolean,
-  ): DeterministicContactEntry[] {
-    if (entries.length <= 1) {
-      return entries;
-    }
-
-    const groups = this.groupDeterministicContactEntriesBySource(entries);
-    if (groups.length <= 1) {
-      return entries;
-    }
-
-    const explicitDirectoryRequest =
-      /\b(contact\s+details\s+document|company\s+contact|contact\s+sheet|directory|crew\s+list)\b/i.test(
-        userQuery,
-      );
-    const anchorTerms =
-      this.documentationQueryService.extractContactAnchorTerms(userQuery);
-    const rankedGroups = groups
-      .map((group) => ({
-        ...group,
-        profile: this.buildDeterministicContactSourceProfile(
-          group.entries,
-          anchorTerms,
-        ),
-      }))
-      .sort(
-        (left, right) => right.profile.totalScore - left.profile.totalScore,
-      );
-    const [bestGroup, secondGroup] = rankedGroups;
-    if (!bestGroup) {
-      return entries;
-    }
-
-    const secondScore =
-      secondGroup?.profile.totalScore ?? Number.NEGATIVE_INFINITY;
-    const strongLead =
-      bestGroup.profile.totalScore >= secondScore + 15 ||
-      bestGroup.profile.directoryScore >
-        (secondGroup?.profile.directoryScore ?? 0);
-    const shouldPreferSingleSource =
-      wantsExhaustiveList ||
-      explicitDirectoryRequest ||
-      bestGroup.profile.directoryScore > 0 ||
-      bestGroup.profile.anchorCoverage >
-        (secondGroup?.profile.anchorCoverage ?? 0);
-
-    return strongLead && shouldPreferSingleSource ? bestGroup.entries : entries;
-  }
-
-  private groupDeterministicContactEntriesBySource(
-    entries: DeterministicContactEntry[],
-  ): Array<{ sourceKey: string; entries: DeterministicContactEntry[] }> {
-    const grouped = new Map<string, DeterministicContactEntry[]>();
-
-    for (const entry of entries) {
-      const sourceKey = (entry.citation.sourceTitle ?? '').trim().toLowerCase();
-      const bucket = grouped.get(sourceKey) ?? [];
-      bucket.push(entry);
-      grouped.set(sourceKey, bucket);
-    }
-
-    return [...grouped.entries()].map(([sourceKey, groupedEntries]) => ({
-      sourceKey,
-      entries: groupedEntries,
-    }));
-  }
-
-  private buildDeterministicContactSourceProfile(
-    entries: DeterministicContactEntry[],
-    anchorTerms: string[],
-  ): {
-    totalScore: number;
-    directoryScore: number;
-    anchorCoverage: number;
-  } {
-    const sourceTitle = entries[0]?.citation.sourceTitle ?? '';
-    const normalizedTitle = sourceTitle.toLowerCase();
-    const directoryScore =
-      /\b(contact\s+details|company\s+contact|directory|crew\s+list)\b/i.test(
-        normalizedTitle,
-      )
-        ? 4
-        : /\b(contact|email|phone)\b/i.test(normalizedTitle)
-          ? 2
-          : 0;
-    const noisePenalty =
-      /\b(ntvrp|response|plan|appendix|checklist|procedure|manual|guide|instruction)\b/i.test(
-        normalizedTitle,
-      )
-        ? 3
-        : 0;
-    const anchorCoverage = anchorTerms.filter((term) =>
-      entries.some((entry) =>
-        [entry.name, entry.role ?? '', entry.email ?? '', entry.phone ?? '']
-          .join('\n')
-          .toLowerCase()
-          .includes(term),
-      ),
-    ).length;
-    const roleCount = entries.filter((entry) => entry.role).length;
-    const contactPointCount = entries.filter(
-      (entry) => entry.email || entry.phone,
-    ).length;
-    const totalScore =
-      directoryScore * 30 +
-      anchorCoverage * 8 +
-      roleCount * 4 +
-      contactPointCount * 2 +
-      entries.length * 6 -
-      noisePenalty * 25;
-
-    return {
-      totalScore,
-      directoryScore,
-      anchorCoverage,
-    };
-  }
-
-  private extractDeterministicRoleInventory(
-    entries: DeterministicContactEntry[],
-  ): Array<{ role: string; citation: ChatCitation }> {
-    const roles = new Map<string, { role: string; citation: ChatCitation }>();
-
-    for (const entry of entries) {
-      const role = entry.role?.trim();
-      if (!role) {
-        continue;
-      }
-
-      const normalizedRole = this.normalizeDeterministicContactText(role)
-        .toLowerCase()
-        .replace(/\s+/g, ' ');
-      const existing = roles.get(normalizedRole);
-      if (
-        !existing ||
-        (entry.citation.score ?? 0) > (existing.citation.score ?? 0)
-      ) {
-        roles.set(normalizedRole, {
-          role,
-          citation: entry.citation,
-        });
-      }
-    }
-
-    return [...roles.values()].sort((left, right) =>
-      left.role.localeCompare(right.role),
-    );
-  }
 
   private buildDeterministicCertificateStatusAnswer(
     userQuery: string,
@@ -2851,510 +2705,7 @@ export class ChatService {
     return null;
   }
 
-  private extractDeterministicContactEntries(
-    citation: ChatCitation,
-  ): DeterministicContactEntry[] {
-    const snippet = citation.snippet?.trim();
-    if (!snippet) {
-      return [];
-    }
 
-    const normalized = this.normalizeDeterministicContactText(snippet);
-    const nameAnchoredEntries = this.extractNameAnchoredContactEntries(
-      normalized,
-      citation,
-    );
-    if (nameAnchoredEntries.length > 0) {
-      return nameAnchoredEntries;
-    }
-
-    return this.extractEmailAnchoredContactEntries(normalized, citation);
-  }
-
-  private extractNameAnchoredContactEntries(
-    normalized: string,
-    citation: ChatCitation,
-  ): DeterministicContactEntry[] {
-    const anchors = this.extractDeterministicContactAnchors(normalized);
-    if (anchors.length === 0) {
-      return [];
-    }
-
-    return anchors
-      .map((anchor, index) => {
-        const segment = normalized
-          .slice(anchor.index, anchors[index + 1]?.index ?? normalized.length)
-          .trim();
-        const entry = this.buildDeterministicContactEntry(
-          segment,
-          anchor.name,
-          citation,
-        );
-        if (!entry) {
-          return null;
-        }
-
-        return {
-          ...entry,
-          order: anchor.index,
-        };
-      })
-      .filter(
-        (
-          entry,
-        ): entry is DeterministicContactEntry & {
-          order: number;
-        } => Boolean(entry),
-      )
-      .sort((left, right) => left.order - right.order)
-      .map(({ order: _order, ...entry }) => entry);
-  }
-
-  private extractEmailAnchoredContactEntries(
-    normalized: string,
-    citation: ChatCitation,
-  ): DeterministicContactEntry[] {
-    const emailMatches = [
-      ...normalized.matchAll(this.getContactEmailPattern()),
-    ];
-    if (emailMatches.length === 0) {
-      return [];
-    }
-
-    return emailMatches
-      .map((match) => {
-        const emailIndex = match.index ?? 0;
-        const windowStart = Math.max(0, emailIndex - 180);
-        const windowEnd = Math.min(
-          normalized.length,
-          emailIndex + match[0].length + 180,
-        );
-        const segment = normalized.slice(windowStart, windowEnd).trim();
-        const anchors = this.extractDeterministicContactAnchors(segment);
-        const anchor =
-          anchors.length > 0 ? anchors[anchors.length - 1] : undefined;
-        const name =
-          anchor?.name ?? this.extractDeterministicContactName(segment);
-
-        return this.buildDeterministicContactEntry(segment, name, citation);
-      })
-      .filter((entry): entry is DeterministicContactEntry => Boolean(entry));
-  }
-
-  private buildDeterministicContactEntry(
-    segment: string,
-    name: string | null,
-    citation: ChatCitation,
-  ): DeterministicContactEntry | null {
-    if (!name) {
-      return null;
-    }
-
-    const email = this.extractDeterministicContactEmail(segment);
-    const phone = this.extractDeterministicContactPhone(segment) ?? undefined;
-    const role =
-      this.extractDeterministicContactRole(segment, name) ?? undefined;
-
-    if (!email && !phone && !role) {
-      return null;
-    }
-
-    return {
-      name,
-      role,
-      email: email ?? undefined,
-      phone,
-      citation,
-    };
-  }
-
-  private extractDeterministicContactAnchors(
-    normalized: string,
-  ): Array<{ index: number; name: string }> {
-    const anchors: Array<{ index: number; name: string }> = [];
-    const pattern = this.getContactNameAnchorPattern();
-    let lastAcceptedEnd = -1;
-
-    for (const match of normalized.matchAll(pattern)) {
-      const name = match[1]?.trim();
-      const index = match.index ?? 0;
-      if (index < lastAcceptedEnd) {
-        continue;
-      }
-      if (!name || !this.isLikelyDeterministicContactName(name)) {
-        continue;
-      }
-
-      const existing = anchors[anchors.length - 1];
-      if (existing?.index === index && existing.name === name) {
-        continue;
-      }
-
-      anchors.push({ index, name });
-      lastAcceptedEnd = index + name.length + 24;
-    }
-
-    return anchors;
-  }
-
-  private dedupeDeterministicContactEntries(
-    entries: DeterministicContactEntry[],
-  ): DeterministicContactEntry[] {
-    const deduped = new Map<string, DeterministicContactEntry>();
-
-    for (const entry of entries) {
-      const key = this.buildDeterministicContactEntryKey(entry);
-
-      const existing = deduped.get(key);
-      if (!existing) {
-        deduped.set(key, entry);
-        continue;
-      }
-
-      deduped.set(
-        key,
-        this.selectPreferredDeterministicContactEntry(existing, entry),
-      );
-    }
-
-    const mergedBySourceAndName = new Map<string, DeterministicContactEntry>();
-    for (const entry of deduped.values()) {
-      const key = this.buildDeterministicContactSourceScopedNameKey(entry);
-      const existing = mergedBySourceAndName.get(key);
-      if (!existing) {
-        mergedBySourceAndName.set(key, entry);
-        continue;
-      }
-
-      mergedBySourceAndName.set(
-        key,
-        this.mergeDeterministicContactEntries(existing, entry),
-      );
-    }
-
-    return [...mergedBySourceAndName.values()];
-  }
-
-  private buildDeterministicContactEntryKey(
-    entry: DeterministicContactEntry,
-  ): string {
-    return [
-      this.normalizeDeterministicContactText(entry.name).toLowerCase(),
-      entry.email?.toLowerCase() ?? '',
-      (entry.phone ?? '').replace(/\D+/g, ''),
-    ].join('::');
-  }
-
-  private buildDeterministicContactSourceScopedNameKey(
-    entry: DeterministicContactEntry,
-  ): string {
-    return [
-      this.normalizeDeterministicContactText(entry.name).toLowerCase(),
-      this.normalizeDeterministicContactText(
-        entry.citation.sourceTitle ?? '',
-      ).toLowerCase(),
-    ].join('::');
-  }
-
-  private selectPreferredDeterministicContactEntry(
-    existing: DeterministicContactEntry,
-    next: DeterministicContactEntry,
-  ): DeterministicContactEntry {
-    const existingCompleteness =
-      this.getDeterministicContactEntryCompleteness(existing);
-    const nextCompleteness =
-      this.getDeterministicContactEntryCompleteness(next);
-    if (nextCompleteness !== existingCompleteness) {
-      return nextCompleteness > existingCompleteness ? next : existing;
-    }
-
-    const existingScore = existing.citation.score ?? 0;
-    const nextScore = next.citation.score ?? 0;
-    if (nextScore !== existingScore) {
-      return nextScore > existingScore ? next : existing;
-    }
-
-    return this.getDeterministicContactEntryTextLength(next) >
-      this.getDeterministicContactEntryTextLength(existing)
-      ? next
-      : existing;
-  }
-
-  private mergeDeterministicContactEntries(
-    left: DeterministicContactEntry,
-    right: DeterministicContactEntry,
-  ): DeterministicContactEntry {
-    const primary = this.selectPreferredDeterministicContactEntry(left, right);
-    const secondary = primary === left ? right : left;
-
-    return {
-      name:
-        primary.name.length >= secondary.name.length
-          ? primary.name
-          : secondary.name,
-      role: this.choosePreferredDeterministicContactField(
-        primary.role,
-        secondary.role,
-      ),
-      email: this.choosePreferredDeterministicContactField(
-        primary.email,
-        secondary.email,
-      ),
-      phone: this.choosePreferredDeterministicContactField(
-        primary.phone,
-        secondary.phone,
-      ),
-      citation:
-        (primary.citation.score ?? 0) >= (secondary.citation.score ?? 0)
-          ? primary.citation
-          : secondary.citation,
-    };
-  }
-
-  private choosePreferredDeterministicContactField(
-    primary?: string,
-    secondary?: string,
-  ): string | undefined {
-    if (!primary) {
-      return secondary ?? undefined;
-    }
-    if (!secondary) {
-      return primary;
-    }
-
-    return secondary.length > primary.length ? secondary : primary;
-  }
-
-  private getDeterministicContactEntryCompleteness(
-    entry: DeterministicContactEntry,
-  ): number {
-    let score = 0;
-    if (entry.role) {
-      score += 2;
-    }
-    if (entry.email) {
-      score += 3;
-    }
-    if (entry.phone) {
-      score += 3;
-    }
-
-    return score;
-  }
-
-  private getDeterministicContactEntryTextLength(
-    entry: DeterministicContactEntry,
-  ): number {
-    return [
-      entry.name,
-      entry.role ?? '',
-      entry.email ?? '',
-      entry.phone ?? '',
-    ].join(' ').length;
-  }
-
-  private filterDeterministicContactEntriesForQuery(
-    userQuery: string,
-    entries: DeterministicContactEntry[],
-  ): DeterministicContactEntry[] {
-    const anchorTerms =
-      this.documentationQueryService.extractContactAnchorTerms(userQuery);
-    const wantsEmail = /\bemails?\b/.test(userQuery.toLowerCase());
-    const wantsPhone = /\b(phone|telephone|mobile|number|numbers)\b/i.test(
-      userQuery,
-    );
-
-    const matched = entries.filter((entry) => {
-      const haystack = [
-        entry.name,
-        entry.role ?? '',
-        entry.email ?? '',
-        entry.phone ?? '',
-      ]
-        .join('\n')
-        .toLowerCase();
-
-      if (wantsEmail && !entry.email) {
-        return false;
-      }
-      if (wantsPhone && !entry.phone) {
-        return false;
-      }
-      if (anchorTerms.length === 0) {
-        return true;
-      }
-
-      return anchorTerms.every((term) => haystack.includes(term));
-    });
-
-    if (matched.length > 0) {
-      return matched.sort((left, right) => {
-        const leftRoleMatch =
-          anchorTerms.length > 0 &&
-          anchorTerms.every((term) =>
-            (left.role ?? '').toLowerCase().includes(term),
-          )
-            ? 1
-            : 0;
-        const rightRoleMatch =
-          anchorTerms.length > 0 &&
-          anchorTerms.every((term) =>
-            (right.role ?? '').toLowerCase().includes(term),
-          )
-            ? 1
-            : 0;
-        if (leftRoleMatch !== rightRoleMatch) {
-          return rightRoleMatch - leftRoleMatch;
-        }
-
-        return (right.citation.score ?? 0) - (left.citation.score ?? 0);
-      });
-    }
-
-    return [];
-  }
-
-  private normalizeDeterministicContactText(value: string): string {
-    return value
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/([a-z])([A-Z])/g, '$1 $2')
-      .replace(/[–—−]/g, '-')
-      .replace(/[’]/g, "'")
-      .replace(/\s*@\s*/g, '@')
-      .replace(/\s*\.\s*/g, '.')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  private extractDeterministicContactName(segment: string): string | null {
-    const anchor = this.extractDeterministicContactAnchors(segment)[0];
-    if (anchor?.name) {
-      return anchor.name;
-    }
-
-    const nameWithLocationMatch = segment.match(
-      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*[-–]\s*[A-Z][A-Za-z.\s]{2,40}\b/,
-    );
-    if (nameWithLocationMatch?.[1]) {
-      return nameWithLocationMatch[1].trim();
-    }
-
-    const fallbackMatch = segment.match(
-      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/,
-    );
-    return fallbackMatch?.[1]?.trim() ?? null;
-  }
-
-  private extractDeterministicContactRole(
-    segment: string,
-    name: string,
-  ): string | null {
-    const cleaned = this.normalizeDeterministicContactText(
-      segment
-        .replace(this.getContactEmailPattern(), ' ')
-        .replace(/\+\s*\d[\d\s()./-]{5,}\d\b/g, ' ')
-        .replace(
-          new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
-          ' ',
-        )
-        .replace(/\(\s*(?:m|o|work m|personal m)\s*\)/gi, ' '),
-    );
-    const keywordMatch = cleaned.match(
-      /\b(?:Compliance|Founder|Director|Manager|Captain|Master|DPA|CSO)\b/i,
-    );
-    if (!keywordMatch || keywordMatch.index === undefined) {
-      return null;
-    }
-
-    let startIndex = keywordMatch.index;
-    const prefix = cleaned.slice(0, startIndex);
-    const precedingTokenMatch = prefix.match(/([A-Z][A-Za-z/&]+,?)\s*$/);
-    if (precedingTokenMatch) {
-      startIndex = prefix.lastIndexOf(precedingTokenMatch[1]);
-    }
-
-    const role = cleaned
-      .slice(startIndex)
-      .replace(/^[-,\s]+/, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    const sanitizedRole = this.sanitizeDeterministicContactRole(role);
-
-    return sanitizedRole || null;
-  }
-
-  private sanitizeDeterministicContactRole(role: string): string | null {
-    let sanitized = role;
-    const sectionMarkers = [
-      /\bJMs?\s+Yachting\s+Company\s+Contact\s+Details\b/i,
-      /\bGlobalHSQE\b/i,
-      /\bOps\s+Team\s*\d+\b/i,
-      /\bWebsite\s*\/?\s*I[t1]\b/i,
-    ];
-
-    for (const marker of sectionMarkers) {
-      const match = sanitized.match(marker);
-      if (!match || match.index === undefined || match.index === 0) {
-        continue;
-      }
-
-      sanitized = sanitized.slice(0, match.index).trim();
-    }
-
-    sanitized = sanitized
-      .replace(/\s+/g, ' ')
-      .replace(/^[-,\s]+|[-,\s]+$/g, '');
-
-    return sanitized || null;
-  }
-
-  private extractDeterministicContactPhone(segment: string): string | null {
-    const match = segment.match(/\+\s*\d[\d\s()./-]{5,}\d\b/);
-    return match?.[0]?.replace(/\s+/g, ' ').trim() ?? null;
-  }
-
-  private extractDeterministicContactEmail(segment: string): string | null {
-    const match = segment.match(this.getContactEmailPattern());
-    return match?.[0] ? this.normalizeContactEmail(match[0]) : null;
-  }
-
-  private isLikelyDeterministicContactName(value: string): boolean {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) {
-      return false;
-    }
-
-    const forbiddenTerms = [
-      'company',
-      'contact',
-      'details',
-      'yachting',
-      'ops',
-      'team',
-      'website',
-      'careers',
-      'head',
-      'globalhsqe',
-      'founder',
-      'director',
-      'manager',
-    ];
-
-    return !forbiddenTerms.some((term) => normalized.includes(term));
-  }
-
-  private normalizeContactEmail(value: string): string {
-    return value.replace(/\s+/g, '').trim();
-  }
-
-  private getContactNameAnchorPattern(): RegExp {
-    return /(?=([A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+){1,2})\s*-\s*[A-Z][A-Za-z'.,&]+(?:[\s,]+[A-Z][A-Za-z'.,&]+){0,3})/g;
-  }
-
-  private getContactEmailPattern(): RegExp {
-    return /\b[a-z0-9._%+-]+\s*@\s*[a-z0-9.-]+\s*\.\s*[a-z]{2,}\b/gi;
-  }
 
   private isDeterministicCertificateExpiryEvidence(
     citation: ChatCitation,
@@ -4071,7 +3422,7 @@ export class ChatService {
       citation,
       userQuery,
     );
-    const normalized = this.normalizeDeterministicContactText(
+    const normalized = normalizeDeterministicContactText(
       citation.snippet ?? '',
     );
     if (!normalized) {
@@ -4147,7 +3498,7 @@ export class ChatService {
 
     return blocks.flatMap((block) => {
       const normalizedBlock =
-        this.normalizeDeterministicContactText(block).toLowerCase();
+        normalizeDeterministicContactText(block).toLowerCase();
       if (
         requiresFuel &&
         !/\b(fuel|fueloil|fuel\s+oil|diesel)\b/i.test(normalizedBlock)
@@ -4164,10 +3515,10 @@ export class ChatService {
       const unit = this.extractDeterministicTankCapacityHeaderUnit(block);
       return [...block.matchAll(rowPattern)]
         .map((match) => {
-          const identifier = this.normalizeDeterministicContactText(
+          const identifier = normalizeDeterministicContactText(
             match[1] ?? '',
           );
-          const labelText = this.normalizeDeterministicContactText(
+          const labelText = normalizeDeterministicContactText(
             match[2] ?? '',
           );
           const numericValue = (match[3] ?? '').replace(/\s+/g, ' ').trim();
@@ -4194,7 +3545,7 @@ export class ChatService {
   private extractDeterministicTankCapacityHeaderUnit(
     rawSnippet: string,
   ): string | null {
-    const normalized = this.normalizeDeterministicContactText(rawSnippet);
+    const normalized = normalizeDeterministicContactText(rawSnippet);
     const headerUnit = normalized.match(/\bcapacity\s*\(([^)]+)\)/i)?.[1];
     if (!headerUnit) {
       return null;

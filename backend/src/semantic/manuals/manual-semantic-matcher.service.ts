@@ -1,25 +1,25 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import type {
   DocumentationSemanticCandidate,
   DocumentationSemanticQuery,
   ManualSemanticProfile,
-} from './semantic.types';
-import { parseManualSemanticProfile } from './semantic.validators';
+} from '../contracts/semantic.types';
+import { parseManualSemanticProfile } from '../contracts/semantic.validators';
 import {
   CONCEPT_TEXT_STOP_WORDS,
   GENERIC_EXPLICIT_SOURCE_TOKENS,
   PROFILE_TEXT_QUERY_STOP_WORDS,
   QUERY_ANCHOR_STOP_WORDS,
   QUERY_SUBJECT_BOUNDARY_STOP_WORDS,
-} from './manual-matching/manual-semantic-stop-words.constants';
+} from './matching/manual-semantic-stop-words.constants';
 import type {
   ConcreteSubjectSignal,
   DistinctiveQueryAnchor,
   SearchableSemanticManual,
   SpecificSubjectCandidateRank,
   SpecificSubjectPhrase,
-} from './manual-matching/manual-semantic-matching.types';
+} from './matching/manual-semantic-matching.types';
 import {
   buildManualProfileAnchorText,
   collapseManualMatchText,
@@ -29,14 +29,14 @@ import {
   normalizeManualMatchToken,
   tokenizeManualMatchText,
   truncateManualSemanticLogValue,
-} from './manual-matching/manual-semantic-text.utils';
+} from './matching/manual-semantic-text.utils';
 import {
   extractManualIdentifierAnchors,
   scoreManualArrayOverlap,
   scoreManualSourcePreference,
   scoreManualStructuredPhraseOverlap,
   tokenizeManualStructuredPhrase,
-} from './manual-matching/manual-semantic-scoring.utils';
+} from './matching/manual-semantic-scoring.utils';
 
 @Injectable()
 export class ManualSemanticMatcherService {
