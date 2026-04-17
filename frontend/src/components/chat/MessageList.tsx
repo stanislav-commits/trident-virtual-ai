@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { ChatMessageDto } from "../../types/chat";
+import type { ChatContextReferenceDto, ChatMessageDto } from "../../types/chat";
 import { MessageBubble } from "./MessageBubble";
 
 interface MessageListProps {
@@ -8,6 +8,7 @@ interface MessageListProps {
   onCopy?: (content: string) => void;
   onRegenerate?: (messageId: string) => void;
   onSendMessage?: (text: string) => void;
+  onOpenSourcesPanel?: (citations: ChatContextReferenceDto[]) => void;
   actionsDisabled?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function MessageList({
   onCopy,
   onRegenerate,
   onSendMessage,
+  onOpenSourcesPanel,
   actionsDisabled = false,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -49,6 +51,7 @@ export function MessageList({
             onCopy={onCopy}
             onRegenerate={onRegenerate}
             onSendMessage={onSendMessage}
+            onOpenSourcesPanel={onOpenSourcesPanel}
             actionsDisabled={actionsDisabled}
           />
         ))

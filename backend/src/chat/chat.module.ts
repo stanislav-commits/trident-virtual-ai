@@ -3,6 +3,7 @@ import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { LlmService } from './llm/llm.service';
 import { ChatQueryPlannerService } from './query/chat-query-planner.service';
+import { ChatTurnContextService } from './context/chat-turn-context.service';
 import { ChatSessionService } from './session/chat-session.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RagflowModule } from '../ragflow/ragflow.module';
@@ -25,12 +26,14 @@ import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
   controllers: [ChatController],
   providers: [
     ChatService,
+    ChatTurnContextService,
     ChatQueryPlannerService,
     ChatSessionService,
     LlmService,
   ],
   exports: [
     ChatService,
+    ChatTurnContextService,
     ChatSessionService,
     KnowledgeBaseModule,
     ChatQueryPlannerService,

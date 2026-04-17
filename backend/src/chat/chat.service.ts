@@ -11,6 +11,7 @@ import { isCurrentInventoryTelemetryQuery as matchesCurrentInventoryTelemetryQue
 import { PrismaService } from '../prisma/prisma.service';
 import { LlmGeneratedResponse, LlmService } from './llm/llm.service';
 import { MetricsService } from '../metrics/metrics.service';
+import { ChatTurnContextService } from './context/chat-turn-context.service';
 import { CreateChatSessionDto } from './dto/create-chat-session.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import {
@@ -26,7 +27,6 @@ import {
   ChatNormalizedQuery,
 } from './chat.types';
 import {
-  buildConversationalReply,
   detectChatResponseLanguage,
   localizeApproximateDuration,
   localizeChatText,
@@ -80,6 +80,7 @@ export class ChatService {
   private readonly documentationQueryService: ChatDocumentationQueryService;
   private readonly queryNormalizationService: ChatQueryNormalizationService;
   private readonly chatSessionService: ChatSessionService;
+  private readonly chatTurnContextService: ChatTurnContextService;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -89,6 +90,7 @@ export class ChatService {
     @Optional() chatSessionService?: ChatSessionService,
     @Optional() queryPlanner?: ChatQueryPlannerService,
     @Optional() documentationQueryService?: ChatDocumentationQueryService,
+    @Optional() chatTurnContextService?: ChatTurnContextService,
   ) {
     // ChatSessionService owns CRUD over chat sessions/messages and the title
     // auto-generation side effect. We accept it as an optional constructor
@@ -103,6 +105,9 @@ export class ChatService {
     this.queryNormalizationService = new ChatQueryNormalizationService(
       this.documentationQueryService,
     );
+    this.chatTurnContextService =
+      chatTurnContextService ??
+      new ChatTurnContextService(prisma, this.documentationQueryService);
   }
 
   // ---------- session/message CRUD: thin delegation to ChatSessionService ----------
@@ -281,51 +286,16 @@ export class ChatService {
       contextReferences: ChatCitation[];
     } | null = null;
     try {
-      const session = await this.prisma.chatSession.findUnique({
-        where: { id: sessionId },
-        include: {
-          messages: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'desc' },
-            take: 20,
-            include: {
-              contextReferences: {
-                include: {
-                  shipManual: { select: { shipId: true, category: true } },
-                },
-              },
-            },
-          },
-        },
+      const {
+        messageHistory,
+        normalizedQuery,
+        previousQuestionReply,
+        conversationalReply,
+      } = await this.chatTurnContextService.buildTurnContext({
+        sessionId,
+        userQuery,
       });
 
-      const messageHistory = [...(session?.messages ?? [])]
-        .reverse()
-        .map((message) => ({
-          role: message.role,
-          content: message.content,
-          ragflowContext: message.ragflowContext ?? undefined,
-          contextReferences: (message.contextReferences || []).map(
-            (reference) => ({
-              shipManualId: reference.shipManualId ?? undefined,
-              chunkId: reference.chunkId ?? undefined,
-              score: reference.score ?? undefined,
-              pageNumber: reference.pageNumber ?? undefined,
-              snippet: reference.snippet ?? undefined,
-              sourceTitle: reference.sourceTitle ?? undefined,
-              sourceCategory: reference.shipManual?.category ?? undefined,
-              sourceUrl: reference.sourceUrl ?? undefined,
-            }),
-          ),
-        }));
-      const normalizedQuery = this.queryNormalizationService.normalizeTurn({
-        userQuery,
-        messageHistory,
-      });
-      const previousQuestionReply = this.buildPreviousQuestionReply(
-        userQuery,
-        messageHistory,
-      );
       if (previousQuestionReply) {
         return this.addRoutedAssistantMessage({
           sessionId,
@@ -345,7 +315,6 @@ export class ChatService {
         });
       }
 
-      const conversationalReply = buildConversationalReply(userQuery);
       if (conversationalReply) {
         return this.addRoutedAssistantMessage({
           sessionId,
@@ -1114,7 +1083,7 @@ export class ChatService {
         telemetryPrefiltered: llmTelemetryContext.telemetryPrefiltered,
         telemetryMatchMode: llmTelemetryContext.telemetryMatchMode,
         chatHistory: messageHistory?.map((message) => ({
-          role: message.role,
+          role: this.toLlmChatHistoryRole(message.role),
           content: message.content,
         })),
       });
@@ -1841,6 +1810,16 @@ export class ChatService {
     }
 
     return response;
+  }
+
+  private toLlmChatHistoryRole(
+    role: string,
+  ): 'user' | 'assistant' | 'system' {
+    if (role === 'assistant' || role === 'system') {
+      return role;
+    }
+
+    return 'user';
   }
 
   private getLatestLlmResponseIdFromRecentAssistant(
@@ -4798,38 +4777,4 @@ export class ChatService {
     return asksLatitude !== asksLongitude && !asksLocationSummary;
   }
 
-  private buildPreviousQuestionReply(
-    userQuery: string,
-    messageHistory: Array<{ role: string; content: string }>,
-  ): string | null {
-    if (!this.isPreviousQuestionQuery(userQuery)) {
-      return null;
-    }
-
-    const normalizedCurrentQuery = this.normalizeConversationMemoryText(userQuery);
-    const previousUserMessage = [...messageHistory]
-      .reverse()
-      .filter((message) => message.role === 'user')
-      .find(
-        (message) =>
-          this.normalizeConversationMemoryText(message.content) !==
-          normalizedCurrentQuery,
-      );
-
-    if (!previousUserMessage?.content?.trim()) {
-      return "I don't have a previous user question in this chat yet.";
-    }
-
-    return `Your previous question was: "${previousUserMessage.content.trim()}".`;
-  }
-
-  private isPreviousQuestionQuery(userQuery: string): boolean {
-    return /\b(?:what|which)\s+was\s+(?:the\s+)?(?:previous|last)\s+(?:question|query|thing\s+i\s+asked)\b/i.test(
-      userQuery.trim(),
-    );
-  }
-
-  private normalizeConversationMemoryText(value: string): string {
-    return value.replace(/\s+/g, ' ').trim().toLowerCase();
-  }
 }

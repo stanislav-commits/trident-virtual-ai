@@ -5,6 +5,13 @@ import type {
   ChatSessionListDto,
 } from "../types/chat";
 
+const CHAT_API_BASE = import.meta.env.VITE_CHAT_API_BASE ?? "chat-v2";
+
+const chatApiPath = (path: string = "") =>
+  [CHAT_API_BASE.replace(/^\/+|\/+$/g, ""), path.replace(/^\/+/, "")]
+    .filter(Boolean)
+    .join("/");
+
 export async function getChatSessions(
   token: string,
   params?: {
@@ -25,8 +32,8 @@ export async function getChatSessions(
   }
 
   const path = searchParams.size
-    ? `chat/sessions?${searchParams.toString()}`
-    : "chat/sessions";
+    ? chatApiPath(`sessions?${searchParams.toString()}`)
+    : chatApiPath("sessions");
   const res = await fetchWithAuth(path, { token });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -39,7 +46,9 @@ export async function getChatSession(
   sessionId: string,
   token: string,
 ): Promise<ChatSessionDto> {
-  const res = await fetchWithAuth(`chat/sessions/${sessionId}`, { token });
+  const res = await fetchWithAuth(chatApiPath(`sessions/${sessionId}`), {
+    token,
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to fetch chat session");
@@ -58,7 +67,7 @@ export async function createChatSession(
   };
   if (shipId != null) body.shipId = shipId;
 
-  const res = await fetchWithAuth("chat/sessions", {
+  const res = await fetchWithAuth(chatApiPath("sessions"), {
     token,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -76,12 +85,15 @@ export async function sendChatMessage(
   content: string,
   token: string,
 ): Promise<ChatMessageDto> {
-  const res = await fetchWithAuth(`chat/sessions/${sessionId}/messages`, {
-    token,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: content.trim() }),
-  });
+  const res = await fetchWithAuth(
+    chatApiPath(`sessions/${sessionId}/messages`),
+    {
+      token,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: content.trim() }),
+    },
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to send message");
@@ -93,9 +105,10 @@ export async function getChatMessages(
   sessionId: string,
   token: string,
 ): Promise<ChatMessageDto[]> {
-  const res = await fetchWithAuth(`chat/sessions/${sessionId}/messages`, {
-    token,
-  });
+  const res = await fetchWithAuth(
+    chatApiPath(`sessions/${sessionId}/messages`),
+    { token },
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to fetch messages");
@@ -108,7 +121,7 @@ export async function renameChatSession(
   title: string,
   token: string,
 ): Promise<ChatSessionDto> {
-  const res = await fetchWithAuth(`chat/sessions/${sessionId}`, {
+  const res = await fetchWithAuth(chatApiPath(`sessions/${sessionId}`), {
     token,
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -126,7 +139,7 @@ export async function setChatSessionPinned(
   isPinned: boolean,
   token: string,
 ): Promise<ChatSessionDto> {
-  const res = await fetchWithAuth(`chat/sessions/${sessionId}/pin`, {
+  const res = await fetchWithAuth(chatApiPath(`sessions/${sessionId}/pin`), {
     token,
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -143,7 +156,7 @@ export async function deleteChatSession(
   sessionId: string,
   token: string,
 ): Promise<void> {
-  const res = await fetchWithAuth(`chat/sessions/${sessionId}`, {
+  const res = await fetchWithAuth(chatApiPath(`sessions/${sessionId}`), {
     token,
     method: "DELETE",
   });
@@ -159,7 +172,7 @@ export async function deleteChatMessage(
   token: string,
 ): Promise<void> {
   const res = await fetchWithAuth(
-    `chat/sessions/${sessionId}/messages/${messageId}`,
+    chatApiPath(`sessions/${sessionId}/messages/${messageId}`),
     { token, method: "DELETE" },
   );
   if (!res.ok) {
@@ -172,10 +185,13 @@ export async function regenerateChatResponse(
   sessionId: string,
   token: string,
 ): Promise<ChatMessageDto> {
-  const res = await fetchWithAuth(`chat/sessions/${sessionId}/regenerate`, {
-    token,
-    method: "POST",
-  });
+  const res = await fetchWithAuth(
+    chatApiPath(`sessions/${sessionId}/regenerate`),
+    {
+      token,
+      method: "POST",
+    },
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to regenerate response");

@@ -14,8 +14,18 @@ const RUSSIAN_MARKERS =
 const ITALIAN_MARKERS =
   /\b(ciao|salve|buongiorno|buonasera|grazie|prego|certificato|scade|scadenza|modulo|tipo|della|delle|degli|dati|documento|quale|questo|questa|esatto)\b/iu;
 
+const GREETING_TRAILING_FILLER =
+  '(?:\\s+(?:there|team|all|everyone|everybody|guys|friend|friends))?';
+
 const GREETING_PATTERNS = [
-  /^\s*(?:hi|hello|hey|good\s+morning|good\s+afternoon|good\s+evening)\s*[!.?]*\s*$/iu,
+  new RegExp(
+    `^\\s*(?:hi|hello|hey)${GREETING_TRAILING_FILLER}\\s*[!.?]*\\s*$`,
+    'iu',
+  ),
+  new RegExp(
+    `^\\s*good\\s+(?:morning|afternoon|evening)${GREETING_TRAILING_FILLER}\\s*[!.?]*\\s*$`,
+    'iu',
+  ),
   /^\s*(?:привіт|вітаю|доброго\s+дня|добрий\s+день|доброго\s+ранку|добрий\s+вечір)\s*[!.?]*\s*$/iu,
   /^\s*(?:привет|здравствуйте|добрый\s+день|доброе\s+утро|добрый\s+вечер)\s*[!.?]*\s*$/iu,
   /^\s*(?:ciao|salve|buongiorno|buonasera)\s*[!.?]*\s*$/iu,

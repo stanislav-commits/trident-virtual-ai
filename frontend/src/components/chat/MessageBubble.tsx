@@ -17,6 +17,7 @@ interface MessageBubbleProps {
   onCopy?: (content: string) => void;
   onRegenerate?: (messageId: string) => void;
   onSendMessage?: (text: string) => void;
+  onOpenSourcesPanel?: (citations: ChatContextReferenceDto[]) => void;
   actionsDisabled?: boolean;
 }
 
@@ -165,6 +166,7 @@ export function MessageBubble({
   onCopy,
   onRegenerate,
   onSendMessage,
+  onOpenSourcesPanel,
   actionsDisabled = false,
 }: MessageBubbleProps) {
   const { token, user } = useAuth();
@@ -297,7 +299,10 @@ export function MessageBubble({
         contextReferences &&
         contextReferences.length > 0 && (
           <div className="chat-message__sources">
-            <SourceCitations citations={contextReferences} />
+            <SourceCitations
+              citations={contextReferences}
+              onOpenPanel={onOpenSourcesPanel}
+            />
           </div>
         )}
 

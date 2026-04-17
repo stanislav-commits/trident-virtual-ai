@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
@@ -10,10 +10,12 @@ import {
 } from "../api/chatApi";
 import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
+import { ChatSourcesPanel } from "../components/chat/ChatSourcesPanel";
 import { MessageInput } from "../components/chat/MessageInput";
 import { MessageList } from "../components/chat/MessageList";
 import logoImg from "../assets/logo-home.png";
 import { appRoutes } from "../utils/routes";
+import type { ChatContextReferenceDto } from "../types/chat";
 
 export function ChatPage() {
   const { user, token } = useAuth();
@@ -49,6 +51,13 @@ export function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sourcesPanelCitations, setSourcesPanelCitations] = useState<
+    ChatContextReferenceDto[] | null
+  >(null);
+
+  useEffect(() => {
+    setSourcesPanelCitations(null);
+  }, [activeSessionId]);
 
   const pollForResponse = useCallback(
     async (currentSessionId: string, userMessageId: string) => {
@@ -218,6 +227,17 @@ export function ChatPage() {
     [navigate],
   );
 
+  const handleOpenSourcesPanel = useCallback(
+    (citations: ChatContextReferenceDto[]) => {
+      setSourcesPanelCitations(citations);
+    },
+    [],
+  );
+
+  const handleCloseSourcesPanel = useCallback(() => {
+    setSourcesPanelCitations(null);
+  }, []);
+
   const hasError = sessionsError || messagesError || sendError;
   const isDisabled = isSending || isWaitingForResponse || isLoadingSessions;
 
@@ -254,23 +274,34 @@ export function ChatPage() {
         )}
 
         {activeSessionId ? (
-          <>
+          <div
+            className={`chat-main__workspace${sourcesPanelCitations ? " chat-main__workspace--with-panel" : ""}`}
+          >
             <div className="chat-main__stars" aria-hidden />
-            <MessageList
-              messages={messages}
-              isLoadingResponse={isWaitingForResponse || isLoadingMessages}
-              onRegenerate={handleRegenerate}
-              onSendMessage={(text) => handleSend(text)}
-              actionsDisabled={isDisabled}
-            />
-            <MessageInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSend={() => handleSend()}
-              disabled={isDisabled}
-              placeholder="Type a message..."
-            />
-          </>
+            <section className="chat-main__conversation">
+              <MessageList
+                messages={messages}
+                isLoadingResponse={isWaitingForResponse || isLoadingMessages}
+                onRegenerate={handleRegenerate}
+                onSendMessage={(text) => handleSend(text)}
+                onOpenSourcesPanel={handleOpenSourcesPanel}
+                actionsDisabled={isDisabled}
+              />
+              <MessageInput
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={() => handleSend()}
+                disabled={isDisabled}
+                placeholder="Type a message..."
+              />
+            </section>
+            {sourcesPanelCitations && (
+              <ChatSourcesPanel
+                citations={sourcesPanelCitations}
+                onClose={handleCloseSourcesPanel}
+              />
+            )}
+          </div>
         ) : (
           <div className="chat-main__welcome-wrap">
             <div className="chat-welcome">

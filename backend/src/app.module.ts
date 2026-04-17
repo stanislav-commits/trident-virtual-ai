@@ -10,6 +10,7 @@ import { SystemPromptModule } from './system-prompt/system-prompt.module';
 import { TagsModule } from './tags/tags.module';
 import { UsersModule } from './users/users.module';
 import { ChatModule } from './chat/chat.module';
+import { ChatV2Module } from './chat-v2/chat-v2.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ChatModule } from './chat/chat.module';
     SystemPromptModule,
     TagsModule,
     ChatModule,
+    ChatV2Module,
   ],
   controllers: [AppController],
   providers: [AppService],
