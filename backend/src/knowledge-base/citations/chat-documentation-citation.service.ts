@@ -4,13 +4,13 @@ import {
   isBroadCertificateSoonQuery,
   parseCertificateDateToken,
 } from '../../common/certificate-expiry.utils';
-import { ChatCitation } from '../../chat/chat.types';
+import { ChatCitation } from '../../chat-shared/chat.types';
 import { ChatDocumentationQueryService } from '../documentation/chat-documentation-query.service';
 import {
   ChatQueryPlan,
   ChatQueryPlannerService,
   ChatSourceCategory,
-} from '../../chat/query/chat-query-planner.service';
+} from '../../chat-shared/query/chat-query-planner.service';
 
 interface SourceEvidenceProfile {
   sourceKey: string;

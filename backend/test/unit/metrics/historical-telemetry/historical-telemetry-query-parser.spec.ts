@@ -1,4 +1,4 @@
-import { parseHistoricalTelemetryRequest } from '../../../../src/metrics/historical-telemetry/historical-telemetry-query-parser';
+import { parseHistoricalTelemetryRequest } from '../../../../src/telemetry-catalog/historical-telemetry/historical-telemetry-query-parser';
 
 const parse = (
   query: string,

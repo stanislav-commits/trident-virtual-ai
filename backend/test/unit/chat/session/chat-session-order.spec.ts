@@ -1,4 +1,4 @@
-import { sortChatSessions } from '../../../../src/chat/session/chat-session-order';
+import { sortChatSessions } from '../../../../src/chat-shared/session/chat-session-order';
 
 describe('sortChatSessions', () => {
   it('places pinned sessions first and sorts them by most recent pin time', () => {

@@ -1,4 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { AssistantCanonicalCopyService } from '../../assistant-text/assistant-canonical-copy.service';
+import { AssistantTextLocalizerService } from '../../assistant-text/assistant-text-localizer.service';
 import OpenAI from 'openai';
 import { ChatV2TurnClassification } from '../chat-v2.types';
 import { ChatV2TurnContext } from '../context/chat-v2-turn-context.types';
@@ -8,7 +10,10 @@ export class ChatV2ChatHistorySummaryResponderService {
   private readonly client: OpenAI | null;
   private readonly model: string;
 
-  constructor() {
+  constructor(
+    private readonly copy: AssistantCanonicalCopyService,
+    private readonly localizer: AssistantTextLocalizerService,
+  ) {
     const apiKey = process.env.OPENAI_API_KEY;
     this.client = apiKey ? new OpenAI({ apiKey }) : null;
     this.model =
@@ -25,7 +30,11 @@ export class ChatV2ChatHistorySummaryResponderService {
 
     if (turnContext.previousMessages.length === 0) {
       return {
-        content: this.buildEmptySummaryResponse(classification.language),
+        content: await this.localizer.localize({
+          language: classification.language,
+          canonicalText: this.copy.t('chat_history.summary_empty'),
+          userQuery: turnContext.userQuery,
+        }),
       };
     }
 
@@ -77,20 +86,5 @@ export class ChatV2ChatHistorySummaryResponderService {
       .filter((message) => message.content.trim())
       .map((message) => `${message.role}: ${message.content.trim()}`)
       .join('\n');
-  }
-
-  private buildEmptySummaryResponse(language: ChatV2TurnClassification['language']): string {
-    switch (language) {
-      case 'uk':
-        return 'У цьому чаті ще немає попередніх повідомлень, які можна підсумувати.';
-      case 'ru':
-        return 'В этом чате пока нет предыдущих сообщений, которые можно кратко пересказать.';
-      case 'it':
-        return 'In questa chat non ci sono ancora messaggi precedenti da riassumere.';
-      case 'en':
-      case 'unknown':
-      default:
-        return 'There are no earlier messages in this chat to summarize yet.';
-    }
   }
 }

@@ -1,7 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import OpenAI from 'openai';
-import { ChatCitation } from '../../chat/chat.types';
-import { ChatV2Language } from '../chat-v2.types';
+import { ChatCitation } from '../../chat-shared/chat.types';
 import {
   ChatV2WebSearchProvider,
   ChatV2WebSearchResult,
@@ -30,10 +29,9 @@ export class ChatV2OpenAiWebSearchProvider extends ChatV2WebSearchProvider {
   async search(params: {
     query: string;
     originalUserQuery: string;
-    language: ChatV2Language;
+    language?: string | null;
   }): Promise<ChatV2WebSearchResult> {
     const { query, originalUserQuery, language } = params;
-    const responseLanguage = this.getResponseLanguageInstruction(language);
 
     try {
       const response = await this.client.responses.create({
@@ -43,8 +41,11 @@ export class ChatV2OpenAiWebSearchProvider extends ChatV2WebSearchProvider {
         instructions:
           'You are Trident Intelligence. The user asked a non-ship general question that requires current web information. ' +
           'Always use web search before answering. ' +
-          `You must respond strictly in ${responseLanguage}. ` +
-          `Preferred language signal: ${language}. ` +
+          'Respond in the same language as the original user question. ' +
+          'If the original user question is mixed-language, follow the dominant language of that question. ' +
+          (language?.trim()
+            ? `Non-authoritative language hint from the classifier: ${language.trim()}. `
+            : '') +
           'Keep the answer concise, grounded in the search results, and include time-sensitive framing when relevant. ' +
           'Do not dump raw URLs, tracking links, or a source list inside the body text. ' +
           'If you mention sources in the answer, refer to them by publisher name only because clickable links are rendered separately in the UI.',
@@ -60,8 +61,7 @@ export class ChatV2OpenAiWebSearchProvider extends ChatV2WebSearchProvider {
             role: 'user',
             content:
               `Original user question: ${originalUserQuery}\n` +
-              `Web search query: ${query}\n` +
-              `Final answer language: ${responseLanguage}`,
+              `Web search query: ${query}`,
           },
         ],
       });
@@ -149,20 +149,5 @@ export class ChatV2OpenAiWebSearchProvider extends ChatV2WebSearchProvider {
     }
 
     return [...citations.values()];
-  }
-
-  private getResponseLanguageInstruction(language: ChatV2Language): string {
-    switch (language) {
-      case 'uk':
-        return 'Ukrainian';
-      case 'ru':
-        return 'Russian';
-      case 'it':
-        return 'Italian';
-      case 'en':
-      case 'unknown':
-      default:
-        return 'English';
-    }
   }
 }

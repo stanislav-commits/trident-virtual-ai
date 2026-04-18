@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ChatModule } from '../chat/chat.module';
+import { AssistantTextModule } from '../assistant-text/assistant-text.module';
+import { ChatSharedModule } from '../chat-shared/chat-shared.module';
 import { ChatV2Controller } from './chat-v2.controller';
 import { ChatV2Service } from './chat-v2.service';
+import { ChatV2ClarificationContinuationService } from './clarification/chat-v2-clarification-continuation.service';
 import { ChatV2TurnContextService } from './context/chat-v2-turn-context.service';
 import { ChatV2TurnClassifierService } from './intake/chat-v2-turn-classifier.service';
 import { ChatV2ResponseOrchestratorService } from './orchestration/chat-v2-response-orchestrator.service';
@@ -11,14 +13,16 @@ import { ChatV2GeneralWebResponderService } from './responders/chat-v2-general-w
 import { ChatV2SmallTalkResponderService } from './responders/chat-v2-small-talk-responder.service';
 import { ChatV2UnsupportedShipTaskResponderService } from './responders/chat-v2-unsupported-ship-task-responder.service';
 import { ChatV2TaskRouterService } from './routing/chat-v2-task-router.service';
+import { MetricsV2Module } from '../metrics-v2/metrics-v2.module';
 import { ChatV2OpenAiWebSearchProvider } from './web/chat-v2-openai-web-search.provider';
 import { ChatV2WebSearchProvider } from './web/chat-v2-web-search.provider';
 
 @Module({
-  imports: [ChatModule],
+  imports: [ChatSharedModule, AssistantTextModule, MetricsV2Module],
   controllers: [ChatV2Controller],
   providers: [
     ChatV2Service,
+    ChatV2ClarificationContinuationService,
     ChatV2TurnContextService,
     ChatV2TurnClassifierService,
     ChatV2TaskRouterService,

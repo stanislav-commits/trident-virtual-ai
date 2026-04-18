@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AssistantTextModule } from '../assistant-text/assistant-text.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RagflowModule } from '../ragflow/ragflow.module';
 import { SemanticModule } from '../semantic/semantic.module';
@@ -11,7 +12,13 @@ import { ChatContextService } from './retrieval/chat-context.service';
 import { ChatDocumentationScanService } from './retrieval/chat-documentation-scan.service';
 
 @Module({
-  imports: [PrismaModule, RagflowModule, SemanticModule, TagsModule],
+  imports: [
+    PrismaModule,
+    RagflowModule,
+    SemanticModule,
+    TagsModule,
+    AssistantTextModule,
+  ],
   providers: [
     ChatContextService,
     ChatDocumentationService,

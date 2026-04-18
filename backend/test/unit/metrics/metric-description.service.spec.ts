@@ -1,4 +1,4 @@
-import { MetricDescriptionService } from '../../../src/metrics/metric-description.service';
+import { MetricDescriptionService } from '../../../src/telemetry-catalog/metric-description.service';
 import { GrafanaLlmService } from '../../../src/grafana-llm/grafana-llm.service';
 
 describe('MetricDescriptionService', () => {
@@ -46,6 +46,24 @@ describe('MetricDescriptionService', () => {
         label: 'Tanks-Temperatures.Fuel_Tank_1P',
       }),
     ).resolves.toBe('Displays the current reading for Fuel Tank 1P.');
+  });
+
+  it('builds clean deterministic display names for user-facing tank labels', () => {
+    const service = new MetricDescriptionService({
+      isConfigured: () => false,
+      createChatCompletion: jest.fn(),
+    } as unknown as GrafanaLlmService);
+
+    expect(
+      service.getDefaultLabel({
+        key: 'Trending::Tanks-Temperatures::BILGE WATER TANK 21P LITERS',
+        bucket: 'Trending',
+        measurement: 'Tanks-Temperatures',
+        field: 'BILGE WATER TANK 21P LITERS',
+        label: 'Tanks-Temperatures.BILGE WATER TANK 21P LITERS',
+        unit: 'Liters',
+      }),
+    ).toBe('Bilge Water Tank 21P');
   });
 
   it('builds deterministic coordinate descriptions from field names', async () => {

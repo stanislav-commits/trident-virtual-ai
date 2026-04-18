@@ -10,9 +10,9 @@ import {
   parseShipManualCategory,
   type ShipManualCategory,
 } from '../../ships/manual-category';
-import { ChatCitation } from '../../chat/chat.types';
+import { ChatCitation } from '../../chat-shared/chat.types';
 import { ChatDocumentationQueryService } from '../documentation/chat-documentation-query.service';
-import { type ChatDocumentSourceCategory } from '../../chat/query/chat-query-planner.service';
+import { type ChatDocumentSourceCategory } from '../../chat-shared/query/chat-query-planner.service';
 import { ChatReferenceExtractionService } from '../documentation/chat-reference-extraction.service';
 import {
   buildNarrativeIntervalMaintenanceSnippetFromChunks,

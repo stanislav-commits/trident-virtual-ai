@@ -1,14 +1,49 @@
 import { ChatV2ChatHistoryResponderService } from '../../../src/chat-v2/responders/chat-v2-chat-history-responder.service';
+import { AssistantCanonicalCopyService } from '../../../src/assistant-text/assistant-canonical-copy.service';
 
 describe('ChatV2ChatHistoryResponderService', () => {
   let service: ChatV2ChatHistoryResponderService;
 
   beforeEach(() => {
-    service = new ChatV2ChatHistoryResponderService();
+    const localizer = {
+      localize: jest.fn(async ({ canonicalText }: { canonicalText: string }) => {
+        if (
+          canonicalText ===
+          'There are no earlier messages from you in this chat yet.'
+        ) {
+          return 'У цьому чаті ще немає твоїх попередніх повідомлень.';
+        }
+        if (canonicalText.startsWith('Your previous message was: "')) {
+          const message = canonicalText.slice(
+            'Your previous message was: "'.length,
+            -2,
+          );
+          return `Твоє попереднє повідомлення було: "${message}".`;
+        }
+        if (canonicalText.startsWith('My previous reply was: "')) {
+          const message = canonicalText.slice(
+            'My previous reply was: "'.length,
+            -2,
+          );
+          return `Моя попередня відповідь була: "${message}".`;
+        }
+
+        return canonicalText;
+      }),
+    };
+    const fallbackWriter = {
+      write: jest.fn(async () => 'Потрібне невелике уточнення по історії чату.'),
+    };
+
+    service = new ChatV2ChatHistoryResponderService(
+      new AssistantCanonicalCopyService(),
+      localizer as any,
+      fallbackWriter as any,
+    );
   });
 
-  it('returns no-prior-message text when there is no earlier user message', () => {
-    const result = service.respond({
+  it('returns no-prior-message text when there is no earlier user message', async () => {
+    const result = await service.respond({
       turnContext: {
         sessionId: 'session-1',
         userQuery: 'яке було моє останнє повідомлення',
@@ -29,8 +64,8 @@ describe('ChatV2ChatHistoryResponderService', () => {
     expect(result.content).toContain('ще немає твоїх попередніх повідомлень');
   });
 
-  it('returns the previous user message from chat history', () => {
-    const result = service.respond({
+  it('returns the previous user message from chat history', async () => {
+    const result = await service.respond({
       turnContext: {
         sessionId: 'session-1',
         userQuery: 'яке було моє останнє повідомлення',
@@ -57,8 +92,8 @@ describe('ChatV2ChatHistoryResponderService', () => {
     );
   });
 
-  it('returns the previous assistant reply when asked', () => {
-    const result = service.respond({
+  it('returns the previous assistant reply when asked', async () => {
+    const result = await service.respond({
       turnContext: {
         sessionId: 'session-1',
         userQuery: 'що ти щойно сказав',

@@ -1,17 +1,17 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.service';
-import { CreateChatSessionDto } from '../chat/dto/create-chat-session.dto';
+import { CreateChatSessionDto } from '../chat-shared/dto/create-chat-session.dto';
 import {
   ChatMessageResponseDto,
   ChatSessionListResponseDto,
   ChatSessionResponseDto,
-} from '../chat/dto/chat-response.dto';
-import { SendMessageDto } from '../chat/dto/send-message.dto';
-import { SetChatSessionPinDto } from '../chat/dto/set-chat-session-pin.dto';
+} from '../chat-shared/dto/chat-response.dto';
+import { SendMessageDto } from '../chat-shared/dto/send-message.dto';
+import { SetChatSessionPinDto } from '../chat-shared/dto/set-chat-session-pin.dto';
 import {
   ChatSessionListParams,
   ChatSessionService,
-} from '../chat/session/chat-session.service';
+} from '../chat-shared/session/chat-session.service';
 import {
   ChatV2AssistantDraft,
   ChatV2AnswerRoute,
@@ -151,7 +151,7 @@ export class ChatV2Service {
         classification: {
           kind: 'task_request',
           confidence: 0,
-          language: 'unknown',
+          language: null,
           reason: 'Classification did not complete before the error',
           userTask: userQuery,
         },
@@ -180,8 +180,8 @@ export class ChatV2Service {
         sourceOfTruth: draft.sourceOfTruth,
         usedLlm: draft.usedLlm,
         usedDocumentation: false,
-        usedCurrentTelemetry: false,
-        usedHistoricalTelemetry: false,
+        usedCurrentTelemetry: draft.usedCurrentTelemetry ?? false,
+        usedHistoricalTelemetry: draft.usedHistoricalTelemetry ?? false,
         usedChatHistory: draft.usedChatHistory ?? false,
         usedWebSearch: draft.usedWebSearch ?? false,
         usedChatHistorySummary: draft.usedChatHistorySummary ?? false,

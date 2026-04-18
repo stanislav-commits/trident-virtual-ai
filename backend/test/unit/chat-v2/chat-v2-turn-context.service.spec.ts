@@ -40,4 +40,73 @@ describe('ChatV2TurnContextService', () => {
     );
     expect(context.latestAssistantLlmResponseId).toBe('resp_1');
   });
+
+  it('extracts active pending clarification from the latest assistant message', async () => {
+    const prisma = {
+      chatSession: {
+        findUnique: jest.fn().mockResolvedValue({
+          messages: [
+            {
+              role: 'user',
+              content: 'які ти знайшов',
+              ragflowContext: null,
+            },
+            {
+              role: 'assistant',
+              content: 'Я знайшов кілька схожих метрик...',
+              ragflowContext: {
+                pendingClarification: {
+                  id: 'clar-1',
+                  domain: 'metrics_v2',
+                  kind: 'ambiguous_metrics',
+                  language: 'uk',
+                  question: 'Яку саме ти маєш на увазі?',
+                  originalUserQuery: 'Яка швидкість поточна яхти',
+                  createdAtIso: '2026-04-17T18:00:00.000Z',
+                  options: [
+                    {
+                      id: 'opt-1',
+                      label: 'Speed Over Ground',
+                      metricKey: 'nav.sog',
+                      source: 'current',
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              role: 'user',
+              content: 'Яка швидкість поточна яхти',
+              ragflowContext: null,
+            },
+          ],
+        }),
+      },
+    } as any;
+
+    const service = new ChatV2TurnContextService(prisma);
+
+    const context = await service.buildTurnContext({
+      sessionId: 'session-1',
+      userQuery: 'які ти знайшов',
+    });
+
+    expect(context.activeClarification).toEqual({
+      id: 'clar-1',
+      domain: 'metrics_v2',
+      kind: 'ambiguous_metrics',
+      language: 'uk',
+      question: 'Яку саме ти маєш на увазі?',
+      originalUserQuery: 'Яка швидкість поточна яхти',
+      createdAtIso: '2026-04-17T18:00:00.000Z',
+      options: [
+        {
+          id: 'opt-1',
+          label: 'Speed Over Ground',
+          metricKey: 'nav.sog',
+          source: 'current',
+        },
+      ],
+    });
+  });
 });

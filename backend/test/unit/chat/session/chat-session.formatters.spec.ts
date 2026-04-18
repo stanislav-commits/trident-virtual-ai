@@ -6,7 +6,7 @@ import {
   formatSessionResponse,
   normalizeSessionPageSize,
   parseSessionCursor,
-} from '../../../../src/chat/session/chat-session.formatters';
+} from '../../../../src/chat-shared/session/chat-session.formatters';
 
 describe('chat-session formatters', () => {
   describe('formatSessionResponse', () => {

@@ -1,5 +1,5 @@
-import { ChatQueryPlannerService } from '../../../../src/chat/query/chat-query-planner.service';
-import { ChatQueryNormalizationService } from '../../../../src/chat/query/chat-query-normalization.service';
+import { ChatQueryPlannerService } from '../../../../src/chat-shared/query/chat-query-planner.service';
+import { ChatQueryNormalizationService } from '../../../../src/chat-shared/query/chat-query-normalization.service';
 
 describe('ChatQueryPlannerService', () => {
   const service = new ChatQueryPlannerService();

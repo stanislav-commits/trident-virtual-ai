@@ -1,5 +1,4 @@
-import { ChatCitation } from '../../chat/chat.types';
-import { ChatV2Language } from '../chat-v2.types';
+import { ChatCitation } from '../../chat-shared/chat.types';
 
 export interface ChatV2WebSearchResult {
   content: string;
@@ -13,6 +12,6 @@ export abstract class ChatV2WebSearchProvider {
   abstract search(params: {
     query: string;
     originalUserQuery: string;
-    language: ChatV2Language;
+    language?: string | null;
   }): Promise<ChatV2WebSearchResult>;
 }

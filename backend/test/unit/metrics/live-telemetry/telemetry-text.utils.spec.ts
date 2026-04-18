@@ -4,7 +4,7 @@ import {
   matchesTelemetrySubjectToken,
   normalizeTelemetryText,
   normalizeTelemetryToken,
-} from '../../../../src/metrics/live-telemetry/telemetry-text.utils';
+} from '../../../../src/telemetry-catalog/live-telemetry/telemetry-text.utils';
 
 describe('telemetry text utils', () => {
   it('normalizes telemetry text consistently', () => {

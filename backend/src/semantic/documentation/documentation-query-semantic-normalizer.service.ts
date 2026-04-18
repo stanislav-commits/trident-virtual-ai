@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { ChatNormalizedQuery } from '../../chat/chat.types';
-import { ChatQueryPlannerService } from '../../chat/query/chat-query-planner.service';
+import type { ChatNormalizedQuery } from '../../chat-shared/chat.types';
+import { ChatQueryPlannerService } from '../../chat-shared/query/chat-query-planner.service';
 import {
   SEMANTIC_QUERY_CLARIFICATION_THRESHOLD,
   SEMANTIC_PROFILE_SCHEMA_VERSION,

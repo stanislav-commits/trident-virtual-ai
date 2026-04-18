@@ -9,7 +9,7 @@ import {
   parseHistoricalNumericValue,
   parseHistoricalTimeOfDay,
   parseRelativeHistoricalRange,
-} from '../../../../src/metrics/historical-telemetry/historical-telemetry.utils';
+} from '../../../../src/telemetry-catalog/historical-telemetry/historical-telemetry.utils';
 
 describe('historical telemetry utils', () => {
   beforeAll(() => {

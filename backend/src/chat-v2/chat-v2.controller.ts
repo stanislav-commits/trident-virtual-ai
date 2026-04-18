@@ -18,10 +18,10 @@ import {
   ChatMessageResponseDto,
   ChatSessionListResponseDto,
   ChatSessionResponseDto,
-} from '../chat/dto/chat-response.dto';
-import { CreateChatSessionDto } from '../chat/dto/create-chat-session.dto';
-import { SendMessageDto } from '../chat/dto/send-message.dto';
-import { SetChatSessionPinDto } from '../chat/dto/set-chat-session-pin.dto';
+} from '../chat-shared/dto/chat-response.dto';
+import { CreateChatSessionDto } from '../chat-shared/dto/create-chat-session.dto';
+import { SendMessageDto } from '../chat-shared/dto/send-message.dto';
+import { SetChatSessionPinDto } from '../chat-shared/dto/set-chat-session-pin.dto';
 import { ChatV2Service } from './chat-v2.service';
 
 @Controller('chat-v2')

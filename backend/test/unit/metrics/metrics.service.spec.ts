@@ -1,4 +1,4 @@
-import { MetricsService } from '../../../src/metrics/metrics.service';
+import { MetricsService } from '../../../src/telemetry-catalog/metrics.service';
 
 describe('MetricsService telemetry matching', () => {
   const buildService = (

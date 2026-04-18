@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
-import { ChatCitation, ChatSuggestionAction } from '../../chat/chat.types';
+import { ChatCitation, ChatSuggestionAction } from '../../chat-shared/chat.types';
 
 interface MaintenanceRowContext {
   referenceId: string;

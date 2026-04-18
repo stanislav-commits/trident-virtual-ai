@@ -3,7 +3,7 @@ import type {
   ChatCitation,
   ChatHistoryMessage,
   ChatNormalizedQuery,
-} from '../../chat/chat.types';
+} from '../../chat-shared/chat.types';
 import { SEMANTIC_PROFILE_SCHEMA_VERSION } from '../contracts/semantic.constants';
 import type {
   DocumentationFollowUpState,

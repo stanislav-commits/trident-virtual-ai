@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ChatV2Language } from '../chat-v2.types';
 import { ChatV2TaskRoute } from '../routing/chat-v2-task-route.types';
 import {
   ChatV2WebSearchProvider,
@@ -16,7 +15,7 @@ export class ChatV2GeneralWebResponderService {
   respond(params: {
     route: ChatV2TaskRoute;
     userQuery: string;
-    language: ChatV2Language;
+    language?: string | null;
   }): Promise<ChatV2WebSearchResult> {
     const { route, userQuery, language } = params;
 

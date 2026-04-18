@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { AssistantTextLocalizerService } from '../../assistant-text/assistant-text-localizer.service';
 import {
   extractCertificateExpiryTimestamps,
   isBroadCertificateSoonQuery,
@@ -25,8 +26,7 @@ import {
   ChatHistoryMessage,
   ChatNormalizedQuery,
   ChatSuggestionAction,
-} from '../../chat/chat.types';
-import { localizeChatText } from '../../chat/conversation/chat-language.utils';
+} from '../../chat-shared/chat.types';
 import { ChatDocumentationCitationService } from '../citations/chat-documentation-citation.service';
 import { ChatDocumentationQueryService } from './chat-documentation-query.service';
 import { ChatDocumentationScanService } from '../retrieval/chat-documentation-scan.service';
@@ -34,7 +34,7 @@ import { ChatReferenceExtractionService } from './chat-reference-extraction.serv
 import {
   ChatDocumentSourceCategory,
   ChatQueryPlannerService,
-} from '../../chat/query/chat-query-planner.service';
+} from '../../chat-shared/query/chat-query-planner.service';
 
 type ChatScanExpansion = (
   shipId: string | null,
@@ -66,6 +66,8 @@ export class ChatDocumentationService {
     private readonly sourceLockService?: DocumentationSourceLockService,
     @Optional()
     private readonly pageAwareRetriever?: PageAwareManualRetrieverService,
+    @Optional()
+    private readonly localizer?: AssistantTextLocalizerService,
   ) {
     this.queryPlanner = queryPlanner ?? new ChatQueryPlannerService();
   }
@@ -138,8 +140,10 @@ export class ChatDocumentationService {
         normalizedQuery,
         citations,
         needsClarification: true,
-        clarificationQuestion:
+        clarificationQuestion: await this.localizeForUser(
+          userQuery,
           this.queryService.buildClarificationQuestion(userQuery),
+        ),
         clarificationReason: 'underspecified_query',
         pendingClarificationQuery: userQuery.trim(),
         clarificationState: this.queryService.buildClarificationState({
@@ -289,7 +293,7 @@ export class ChatDocumentationService {
         shortlistedManualIds: semanticManualIds,
         sourceLockDecision,
       });
-      const sourceClarification = this.buildSemanticSourceClarification({
+      const sourceClarification = await this.buildSemanticSourceClarification({
         userQuery: effectiveUserQuery,
         retrievalQuery,
         semanticQuery,
@@ -344,8 +348,10 @@ export class ChatDocumentationService {
           sourceLockActive: false,
           citations,
           needsClarification: true,
-          clarificationQuestion:
+          clarificationQuestion: await this.localizeForUser(
+            userQuery,
             this.queryService.buildClarificationQuestion(userQuery),
+          ),
           clarificationReason:
             semanticQuery.clarificationReason ?? 'semantic_low_confidence',
           pendingClarificationQuery: userQuery.trim(),
@@ -1729,18 +1735,18 @@ export class ChatDocumentationService {
     return [...coveredManualIds];
   }
 
-  private buildSemanticSourceClarification(params: {
+  private async buildSemanticSourceClarification(params: {
     userQuery: string;
     retrievalQuery: string;
     semanticQuery?: DocumentationSemanticQuery;
     semanticCandidates: DocumentationSemanticCandidate[];
     sourceLockDecision: DocumentationSourceLockDecision;
     followUpState?: DocumentationFollowUpState | null;
-  }): {
+  }): Promise<{
     question: string;
     reason: string;
     actions: ChatSuggestionAction[];
-  } | null {
+  } | null> {
     if (
       !params.semanticQuery ||
       params.sourceLockDecision.active ||
@@ -1759,12 +1765,10 @@ export class ChatDocumentationService {
     );
     if (contextualSourceReference && !params.followUpState?.lockedManualId) {
       return {
-        question: localizeChatText(params.userQuery, {
-          en: 'I found several possible documents for "this manual". Which one should I use?',
-          uk: 'Я знайшов кілька можливих документів для "цього мануалу". Який саме використати?',
-          it: 'Ho trovato diversi documenti possibili per "questo manuale". Quale devo usare?',
-          ru: 'Я нашёл несколько возможных документов для "этого мануала". Какой именно использовать?',
-        }),
+        question: await this.localizeForUser(
+          params.userQuery,
+          'I found several possible documents for "this manual". Which one should I use?',
+        ),
         reason: 'semantic_context_source_ambiguous',
         actions: this.buildSourceCandidateActions(
           candidates.slice(0, 4),
@@ -1812,6 +1816,16 @@ export class ChatDocumentationService {
     }
 
     return null;
+  }
+
+  private localizeForUser(
+    userQuery: string,
+    canonicalText: string,
+  ): Promise<string> {
+    return this.localizer?.localize({
+      canonicalText,
+      userQuery,
+    }) ?? Promise.resolve(canonicalText);
   }
 
   private buildSourceCandidateActions(

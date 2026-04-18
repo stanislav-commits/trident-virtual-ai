@@ -28,11 +28,18 @@ export interface ManualSemanticTagFragment {
 }
 
 export function buildMetricMatchText(metric: MetricTagMatchTextInput): string {
+  const rawLabel =
+    metric.measurement && metric.field
+      ? `${metric.measurement}.${metric.field}`
+      : null;
+  const preferredLabel =
+    metric.label && metric.label !== rawLabel
+      ? metric.label
+      : metric.field ?? metric.label;
+
   return [
-    metric.key,
-    metric.label,
+    preferredLabel,
     metric.bucket,
-    metric.measurement,
     metric.field,
     metric.description,
     metric.unit,

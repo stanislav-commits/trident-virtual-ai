@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "audit:metric-metadata": "node -r dotenv/config -r ts-node/register -r tsconfig-paths/register scripts/audit-metric-metadata.ts",
     "build": "nest build",
     "hash-password": "node scripts/hash-password.js",
     "generate-jwt": "node scripts/generate-jwt.js",

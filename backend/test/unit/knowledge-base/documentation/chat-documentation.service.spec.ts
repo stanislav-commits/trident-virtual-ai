@@ -2,12 +2,12 @@ import { ChatDocumentationCitationService } from '../../../../src/knowledge-base
 import { ChatDocumentationQueryService } from '../../../../src/knowledge-base/documentation/chat-documentation-query.service';
 import { ChatDocumentationScanService } from '../../../../src/knowledge-base/retrieval/chat-documentation-scan.service';
 import { ChatDocumentationService } from '../../../../src/knowledge-base/documentation/chat-documentation.service';
-import { ChatQueryNormalizationService } from '../../../../src/chat/query/chat-query-normalization.service';
+import { ChatQueryNormalizationService } from '../../../../src/chat-shared/query/chat-query-normalization.service';
 import { ChatReferenceExtractionService } from '../../../../src/knowledge-base/documentation/chat-reference-extraction.service';
-import { ChatCitation } from '../../../../src/chat/chat.types';
+import { ChatCitation } from '../../../../src/chat-shared/chat.types';
 
 describe('ChatDocumentationService', () => {
-  it('does not ask which semantic source to use when top document candidates are tied', () => {
+  it('does not ask which semantic source to use when top document candidates are tied', async () => {
     const service = new ChatDocumentationService(
       {} as never,
       new ChatDocumentationQueryService(),
@@ -21,7 +21,7 @@ describe('ChatDocumentationService', () => {
       {} as never,
     );
 
-    const clarification = (service as any).buildSemanticSourceClarification({
+    const clarification = await (service as any).buildSemanticSourceClarification({
       userQuery:
         'How should I acknowledge an engine alarm and find the corrective action?',
       retrievalQuery:
@@ -337,7 +337,7 @@ describe('ChatDocumentationService', () => {
     ).toEqual(['manual-1', 'manual-2', 'manual-3']);
   });
 
-  it('does not ask for semantic source clarification when the top candidate has stronger direct source-match evidence', () => {
+  it('does not ask for semantic source clarification when the top candidate has stronger direct source-match evidence', async () => {
     const service = new ChatDocumentationService(
       {} as never,
       new ChatDocumentationQueryService(),
@@ -351,7 +351,7 @@ describe('ChatDocumentationService', () => {
       {} as never,
     );
 
-    const clarification = (service as any).buildSemanticSourceClarification({
+    const clarification = await (service as any).buildSemanticSourceClarification({
       userQuery: 'list all 500-hour maintenance items for the diesel generator',
       retrievalQuery:
         'list all 500-hour maintenance items for the diesel generator',
@@ -405,7 +405,7 @@ describe('ChatDocumentationService', () => {
     expect(clarification).toBeNull();
   });
 
-  it('does not ask for semantic source clarification when the top candidate has stronger structured asset overlap', () => {
+  it('does not ask for semantic source clarification when the top candidate has stronger structured asset overlap', async () => {
     const service = new ChatDocumentationService(
       {} as never,
       new ChatDocumentationQueryService(),
@@ -419,7 +419,7 @@ describe('ChatDocumentationService', () => {
       {} as never,
     );
 
-    const clarification = (service as any).buildSemanticSourceClarification({
+    const clarification = await (service as any).buildSemanticSourceClarification({
       userQuery: 'what is included in the 500-hour diesel generator maintenance?',
       retrievalQuery:
         'what is included in the 500-hour diesel generator maintenance?',
@@ -473,7 +473,7 @@ describe('ChatDocumentationService', () => {
     expect(clarification).toBeNull();
   });
 
-  it('does not ask for semantic source clarification for interval-maintenance queries when one candidate clearly leads', () => {
+  it('does not ask for semantic source clarification for interval-maintenance queries when one candidate clearly leads', async () => {
     const service = new ChatDocumentationService(
       {} as never,
       new ChatDocumentationQueryService(),
@@ -487,7 +487,7 @@ describe('ChatDocumentationService', () => {
       {} as never,
     );
 
-    const clarification = (service as any).buildSemanticSourceClarification({
+    const clarification = await (service as any).buildSemanticSourceClarification({
       userQuery: 'what maintenance is listed as needed for the diesel generator?',
       retrievalQuery:
         'what maintenance is listed as needed for the diesel generator?',

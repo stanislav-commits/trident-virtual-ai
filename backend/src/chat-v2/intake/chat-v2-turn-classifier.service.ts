@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import {
-  ChatV2Language,
+  ChatV2LanguageHint,
   ChatV2TurnClassification,
   ChatV2TurnKind,
 } from '../chat-v2.types';
@@ -36,7 +36,7 @@ export class ChatV2TurnClassifierService {
       return {
         kind: 'small_talk',
         confidence: 1,
-        language: 'unknown',
+        language: null,
         reason: 'The message is empty.',
       };
     }
@@ -54,7 +54,7 @@ export class ChatV2TurnClassifierService {
       return {
         kind: 'task_request',
         confidence: 0,
-        language: 'unknown',
+        language: null,
         reason:
           'LLM classification failed. Routed as task_request to avoid losing a real user request.',
         userTask: rawQuery,
@@ -73,10 +73,11 @@ export class ChatV2TurnClassifierService {
       max_output_tokens: 260,
       instructions:
         'Classify a single user chat message for Trident Intelligence.\n' +
-        'Return ONLY valid JSON with this shape: {"kind":"small_talk"|"task_request","confidence":0..1,"language":"en"|"uk"|"ru"|"it"|"unknown","reason":"short reason","userTask":string|null}.\n' +
+        'Return ONLY valid JSON with this shape: {"kind":"small_talk"|"task_request","confidence":0..1,"language":string|null,"reason":"short reason","userTask":string|null}.\n' +
         'Definitions:\n' +
         '- small_talk: casual conversation only, greetings, thanks, social check-ins, jokes, or friendly non-operational conversation. No useful action or information retrieval is requested.\n' +
         '- task_request: the user asks for any useful action, answer, lookup, calculation, chat-history recall, vessel data, manuals, metrics, regulations, certificates, procedures, or troubleshooting.\n' +
+        '- language: best-effort language name or BCP-47 code detected from the user message. Use null if unsure.\n' +
         'Important examples:\n' +
         '- "hi there" => small_talk\n' +
         '- "How are you doing today?" => small_talk\n' +
@@ -158,17 +159,12 @@ export class ChatV2TurnClassifierService {
     return Math.max(0, Math.min(1, confidence));
   }
 
-  private parseLanguage(value: unknown): ChatV2Language {
-    if (
-      value === 'en' ||
-      value === 'uk' ||
-      value === 'ru' ||
-      value === 'it' ||
-      value === 'unknown'
-    ) {
-      return value;
+  private parseLanguage(value: unknown): ChatV2LanguageHint {
+    if (typeof value !== 'string') {
+      return null;
     }
 
-    return 'unknown';
+    const language = value.trim();
+    return language ? language : null;
   }
 }

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { MetricsModule } from '../metrics/metrics.module';
+import { MetricsModule } from '../telemetry-catalog/metrics.module';
 import { RagflowModule } from '../ragflow/ragflow.module';
 import { SemanticModule } from '../semantic/semantic.module';
 import { TagsModule } from '../tags/tags.module';

@@ -1,4 +1,4 @@
-import { ChatQueryNormalizationService } from '../../../../src/chat/query/chat-query-normalization.service';
+import { ChatQueryNormalizationService } from '../../../../src/chat-shared/query/chat-query-normalization.service';
 
 describe('ChatQueryNormalizationService', () => {
   const service = new ChatQueryNormalizationService();

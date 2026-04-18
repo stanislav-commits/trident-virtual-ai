@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { ChatCitation } from '../../chat/chat.types';
+import type { ChatCitation } from '../../chat-shared/chat.types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RagflowService } from '../../ragflow/ragflow.service';
 

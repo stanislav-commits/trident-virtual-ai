@@ -1,4 +1,4 @@
-import { TelemetryQuerySemanticNormalizerService } from '../../../../src/metrics/live-telemetry/telemetry-query-semantic-normalizer.service';
+import { TelemetryQuerySemanticNormalizerService } from '../../../../src/telemetry-catalog/live-telemetry/telemetry-query-semantic-normalizer.service';
 
 describe('TelemetryQuerySemanticNormalizerService', () => {
   it('maps conversational vessel whereabouts and pace wording to location and speed fallback hints', async () => {

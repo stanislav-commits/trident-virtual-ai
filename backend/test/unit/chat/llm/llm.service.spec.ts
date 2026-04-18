@@ -1,5 +1,5 @@
-import { LlmService } from '../../../../src/chat/llm/llm.service';
-import { IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT } from '../../../../src/chat/conversation/chat-core-system-prompt.constants';
+import { LlmService } from '../../../../src/chat-shared/llm/llm.service';
+import { IMMUTABLE_CHAT_CORE_SYSTEM_PROMPT } from '../../../../src/chat-shared/conversation/chat-core-system-prompt.constants';
 
 describe('LlmService maintenance calculation guard', () => {
   const originalModel = process.env.LLM_MODEL;
@@ -129,7 +129,7 @@ describe('LlmService maintenance calculation guard', () => {
     );
   });
 
-  it('reinforces the detected user language even when citations use another language', () => {
+  it('tells the model to answer in the same language as the latest user message even when citations use another language', () => {
     const service = new LlmService();
 
     const prompt = (service as any).buildUserPrompt({
@@ -144,8 +144,10 @@ describe('LlmService maintenance calculation guard', () => {
       ],
     });
 
-    expect(prompt).toContain('Detected user language: English');
-    expect(prompt).toContain('Write the entire answer in English');
+    expect(prompt).toContain(
+      "Write the entire answer in the same language as the user's latest message",
+    );
+    expect(prompt).not.toContain('Detected user language:');
   });
 
   it('uses max_output_tokens for Responses API generation', async () => {

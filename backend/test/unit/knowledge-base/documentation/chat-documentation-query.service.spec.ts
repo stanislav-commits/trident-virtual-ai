@@ -11,13 +11,13 @@ describe('ChatDocumentationQueryService', () => {
     jest.useRealTimers();
   });
 
-  it('skips documentation retrieval for Ukrainian greeting-only turns', () => {
-    expect(service.shouldSkipDocumentationRetrieval('привіт')).toBe(true);
+  it('does not skip documentation retrieval for greeting-only turns anymore', () => {
+    expect(service.shouldSkipDocumentationRetrieval('привіт')).toBe(false);
   });
 
-  it('builds clarification questions in Ukrainian for Ukrainian queries', () => {
+  it('builds canonical clarification questions without localizing them here', () => {
     expect(service.buildClarificationQuestion('Що це?')).toContain(
-      'Для чого саме це',
+      'Which exact component, system, task, or reference ID',
     );
   });
 

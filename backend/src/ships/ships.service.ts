@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagflowService } from '../ragflow/ragflow.service';
-import { MetricsService } from '../metrics/metrics.service';
+import { MetricsService } from '../telemetry-catalog/metrics.service';
 import { CreateShipDto } from './dto/create-ship.dto';
 import { UpdateShipDto } from './dto/update-ship.dto';
 

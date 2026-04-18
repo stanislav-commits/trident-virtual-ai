@@ -1,6 +1,6 @@
 import { ChatDocumentationQueryService } from '../../../../src/knowledge-base/documentation/chat-documentation-query.service';
 import { ChatReferenceExtractionService } from '../../../../src/knowledge-base/documentation/chat-reference-extraction.service';
-import { ChatCitation } from '../../../../src/chat/chat.types';
+import { ChatCitation } from '../../../../src/chat-shared/chat.types';
 
 describe('ChatReferenceExtractionService', () => {
   const service = new ChatReferenceExtractionService(

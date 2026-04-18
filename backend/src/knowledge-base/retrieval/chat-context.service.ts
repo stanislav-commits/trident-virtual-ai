@@ -8,7 +8,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { RagflowService } from '../../ragflow/ragflow.service';
 import { TagLinksService } from '../../tags/tag-links.service';
-import type { ChatDocumentSourceCategory } from '../../chat/query/chat-query-planner.service';
+import type { ChatDocumentSourceCategory } from '../../chat-shared/query/chat-query-planner.service';
 
 const DEFAULT_RAGFLOW_CONTEXT_TOP_K = (() => {
   const parsed = Number.parseInt(process.env.RAGFLOW_CONTEXT_TOP_K ?? '', 10);
