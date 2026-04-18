@@ -24,7 +24,6 @@ export class MetricsV2CapabilityPlanService {
   private enhanceVesselPositionRequest(
     request: MetricsV2MetricRequestPlan,
   ): MetricsV2MetricRequestPlan {
-    const explicitCoordinateAxis = this.hasExplicitCoordinateAxisHint(request);
     const entityHints = this.uniqueStrings([
       ...request.entityHints,
       'position',
@@ -42,7 +41,7 @@ export class MetricsV2CapabilityPlanService {
       'gps',
     ]);
 
-    if (explicitCoordinateAxis) {
+    if (request.shape === 'single') {
       return {
         ...request,
         systemDomain: 'navigation',
@@ -67,20 +66,6 @@ export class MetricsV2CapabilityPlanService {
       entityHints,
       metricHints,
     };
-  }
-
-  private hasExplicitCoordinateAxisHint(
-    request: MetricsV2MetricRequestPlan,
-  ): boolean {
-    const haystack = [
-      request.concept,
-      ...request.entityHints,
-      ...request.metricHints,
-    ]
-      .join('\n')
-      .toLowerCase();
-
-    return /\b(latitude|longitude|lat|lon|lng)\b/.test(haystack);
   }
 
   private uniqueStrings(values: string[]): string[] {

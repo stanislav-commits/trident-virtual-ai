@@ -94,14 +94,52 @@ export class MetricsV2DerivedAnswerService {
       .join('\n')
       .toLowerCase();
 
-    if (/\b(latitude|lat)\b/.test(haystack)) {
+    if (
+      this.hasTokenishValue(haystack, 'latitude') ||
+      this.hasTokenishValue(haystack, 'lat')
+    ) {
       return 'latitude';
     }
 
-    if (/\b(longitude|lon|lng)\b/.test(haystack)) {
+    if (
+      this.hasTokenishValue(haystack, 'longitude') ||
+      this.hasTokenishValue(haystack, 'lon') ||
+      this.hasTokenishValue(haystack, 'lng')
+    ) {
       return 'longitude';
     }
 
     return null;
+  }
+
+  private hasTokenishValue(haystack: string, value: string): boolean {
+    return this.tokenize(haystack).includes(value);
+  }
+
+  private tokenize(value: string): string[] {
+    const tokens: string[] = [];
+    let current = '';
+
+    for (const character of value) {
+      const code = character.charCodeAt(0);
+      const isAsciiLetter = code >= 97 && code <= 122;
+      const isAsciiDigit = code >= 48 && code <= 57;
+
+      if (isAsciiLetter || isAsciiDigit) {
+        current += character;
+        continue;
+      }
+
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+    }
+
+    if (current) {
+      tokens.push(current);
+    }
+
+    return tokens;
   }
 }

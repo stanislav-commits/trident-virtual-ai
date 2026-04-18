@@ -11,8 +11,6 @@ import {
 } from '../metrics-v2.types';
 import {
   isMetricsV2BusinessConceptCompatible,
-  isMetricsV2InventoryBusinessConcept,
-  isMetricsV2StrictInventoryRequest,
 } from '../semantic';
 
 @Injectable()
@@ -156,33 +154,7 @@ export class MetricsV2MetricResolverService {
         .some((existing) => existing.key === entry.key);
     });
 
-    if (plan.businessConcept === 'vessel_position') {
-      const coordinateEntries = uniqueEntries.filter((entry) =>
-        this.isCoordinateAxisEntry(entry),
-      );
-
-      if (coordinateEntries.length >= 2) {
-        return coordinateEntries.slice(0, 4);
-      }
-
-      if (coordinateEntries.length > 0) {
-        return coordinateEntries;
-      }
-    }
-
     return uniqueEntries.slice(0, 12);
-  }
-
-  private isCoordinateAxisEntry(entry: MetricsV2CatalogEntry): boolean {
-    const haystack = [
-      entry.key,
-      entry.label,
-      entry.field ?? '',
-    ]
-      .join('\n')
-      .toLowerCase();
-
-    return /\b(latitude|longitude|lat|lon|lng)\b/.test(haystack);
   }
 
   private evaluateEntry(
@@ -212,7 +184,7 @@ export class MetricsV2MetricResolverService {
     }
 
     const score = this.scoreEntry(entry, plan);
-    if (score <= 0) {
+    if (score <= 1) {
       return {
         entry,
         score,
@@ -417,16 +389,11 @@ export class MetricsV2MetricResolverService {
     }
 
     if (
-      isMetricsV2StrictInventoryRequest(plan) &&
-      entry.measurementKind === 'unknown'
-    ) {
-      reasons.push('strict_inventory_requires_known_measurement_kind');
-    }
-
-    if (
       plan.fluidType &&
       plan.fluidType !== 'unknown' &&
-      (entry.fluidType == null || entry.fluidType !== plan.fluidType)
+      entry.fluidType &&
+      entry.fluidType !== 'unknown' &&
+      entry.fluidType !== plan.fluidType
     ) {
       reasons.push('fluid_type_mismatch');
     }
@@ -434,57 +401,65 @@ export class MetricsV2MetricResolverService {
     if (
       plan.assetType &&
       plan.assetType !== 'unknown' &&
-      (entry.assetType == null || entry.assetType !== plan.assetType)
+      entry.assetType &&
+      entry.assetType !== 'unknown' &&
+      entry.assetType !== plan.assetType
     ) {
       reasons.push('asset_type_mismatch');
     }
 
-    if (plan.groupTarget === 'storage_tanks' && entry.assetType !== 'storage_tank') {
+    if (
+      plan.groupTarget === 'storage_tanks' &&
+      entry.assetType &&
+      entry.assetType !== 'unknown' &&
+      entry.assetType !== 'storage_tank'
+    ) {
       reasons.push('group_target_requires_storage_tank');
     }
 
-    if (plan.groupTarget === 'engines' && entry.assetType !== 'engine') {
+    if (
+      plan.groupTarget === 'engines' &&
+      entry.assetType &&
+      entry.assetType !== 'unknown' &&
+      entry.assetType !== 'engine'
+    ) {
       reasons.push('group_target_requires_engine');
     }
 
-    if (plan.groupTarget === 'generators' && entry.assetType !== 'generator') {
+    if (
+      plan.groupTarget === 'generators' &&
+      entry.assetType &&
+      entry.assetType !== 'unknown' &&
+      entry.assetType !== 'generator'
+    ) {
       reasons.push('group_target_requires_generator');
     }
 
-    if (plan.groupTarget === 'batteries' && entry.assetType !== 'battery') {
+    if (
+      plan.groupTarget === 'batteries' &&
+      entry.assetType &&
+      entry.assetType !== 'unknown' &&
+      entry.assetType !== 'battery'
+    ) {
       reasons.push('group_target_requires_battery');
     }
 
-    if (plan.groupTarget === 'chargers' && entry.assetType !== 'charger') {
+    if (
+      plan.groupTarget === 'chargers' &&
+      entry.assetType &&
+      entry.assetType !== 'unknown' &&
+      entry.assetType !== 'charger'
+    ) {
       reasons.push('group_target_requires_charger');
     }
 
-    if (plan.groupTarget === 'navigation' && entry.assetType !== 'navigation') {
+    if (
+      plan.groupTarget === 'navigation' &&
+      entry.assetType &&
+      entry.assetType !== 'unknown' &&
+      entry.assetType !== 'navigation'
+    ) {
       reasons.push('group_target_requires_navigation');
-    }
-
-    if (isMetricsV2StrictInventoryRequest(plan)) {
-      if (!isMetricsV2InventoryBusinessConcept(entry.businessConcept)) {
-        reasons.push('strict_inventory_requires_inventory_business_concept');
-      }
-      if (entry.assetType !== 'storage_tank') {
-        reasons.push('strict_inventory_requires_storage_tank');
-      }
-      if (
-        !(
-          entry.measurementKind === 'level' ||
-          entry.measurementKind === 'volume' ||
-          entry.measurementKind === 'quantity'
-        )
-      ) {
-        reasons.push('strict_inventory_requires_level_or_volume');
-      }
-      if (entry.unitKind !== 'volume') {
-        reasons.push('strict_inventory_requires_volume_unit');
-      }
-      if (!entry.aggregationCompatibility.includes('sum_total_onboard')) {
-        reasons.push('strict_inventory_requires_sum_compatibility');
-      }
     }
 
     return [...new Set(reasons)];
@@ -506,7 +481,7 @@ export class MetricsV2MetricResolverService {
       if (haystack.includes(normalizedHint)) {
         score += normalizedHint.length > 6 ? 4 : 2;
       } else {
-        const tokens = normalizedHint.split(/\s+/g).filter(Boolean);
+        const tokens = this.tokenize(normalizedHint);
         score += tokens.filter((token) => haystack.includes(token)).length;
       }
     }
@@ -583,14 +558,6 @@ export class MetricsV2MetricResolverService {
       score += 5;
     }
 
-    if (
-      isMetricsV2StrictInventoryRequest(plan) &&
-      entry.groupFamily &&
-      entry.aggregationCompatibility.includes('sum_total_onboard')
-    ) {
-      score += 8;
-    }
-
     if (plan.fluidType && plan.fluidType === entry.fluidType) {
       score += 4;
     }
@@ -613,5 +580,32 @@ export class MetricsV2MetricResolverService {
     }
 
     return score;
+  }
+
+  private tokenize(value: string): string[] {
+    const tokens: string[] = [];
+    let current = '';
+
+    for (const character of value) {
+      const code = character.charCodeAt(0);
+      const isAsciiLetter = code >= 97 && code <= 122;
+      const isAsciiDigit = code >= 48 && code <= 57;
+
+      if (isAsciiLetter || isAsciiDigit) {
+        current += character;
+        continue;
+      }
+
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+    }
+
+    if (current) {
+      tokens.push(current);
+    }
+
+    return tokens;
   }
 }

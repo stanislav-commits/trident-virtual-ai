@@ -19,7 +19,7 @@ import {
   MetricsV2TimeRange,
 } from '../metrics-v2.types';
 import {
-  inferPlanBusinessConcept,
+  parseMetricsV2BusinessConcept,
   parseMetricsV2MeasuredSubject,
   parseMetricsV2MotionReference,
   parseMetricsV2SignalRole,
@@ -217,16 +217,6 @@ export class MetricsV2QueryPlannerService {
         : 'metric_reading';
     const businessConcept = this.parseBusinessConcept({
       rawBusinessConcept: raw.businessConcept,
-      concept: rawConcept,
-      measurementKind,
-      systemDomain: rawSystemDomain,
-      measuredSubject: rawMeasuredSubject,
-      signalRole: rawSignalRole,
-      fluidType,
-      assetType,
-      groupTarget,
-      shape,
-      hints: [...entityHints, ...metricHints],
     });
     const normalizedShape = this.normalizeShape(shape, businessConcept);
     const normalizedPresentation =
@@ -361,30 +351,8 @@ export class MetricsV2QueryPlannerService {
 
   private parseBusinessConcept(params: {
     rawBusinessConcept: unknown;
-    concept: string;
-    measurementKind: MetricsV2MeasurementKind;
-    systemDomain?: MetricsV2SystemDomain;
-    measuredSubject?: MetricsV2MeasuredSubject;
-    signalRole?: MetricsV2SignalRole;
-    fluidType?: MetricsV2FluidType;
-    assetType?: MetricsV2AssetType;
-    groupTarget?: MetricsV2GroupTarget;
-    shape: 'single' | 'group';
-    hints: string[];
   }): MetricsV2BusinessConcept {
-    return inferPlanBusinessConcept({
-      rawBusinessConcept: params.rawBusinessConcept,
-      concept: params.concept,
-      measurementKind: params.measurementKind,
-      systemDomain: params.systemDomain,
-      measuredSubject: params.measuredSubject,
-      signalRole: params.signalRole,
-      fluidType: params.fluidType,
-      assetType: params.assetType,
-      groupTarget: params.groupTarget,
-      shape: params.shape,
-      hints: params.hints,
-    });
+    return parseMetricsV2BusinessConcept(params.rawBusinessConcept);
   }
 
   private parseSystemDomain(value: unknown): MetricsV2SystemDomain {
@@ -413,18 +381,11 @@ export class MetricsV2QueryPlannerService {
       return params.systemDomain;
     }
 
-    const haystack = params.hints.join('\n').toLowerCase();
     switch (params.businessConcept) {
       case 'vessel_speed':
       case 'vessel_position':
         return 'navigation';
       case 'component_speed':
-        if (/\b(hvac|fan|blower)\b/.test(haystack)) {
-          return 'hvac';
-        }
-        if (/\bpump\b/.test(haystack)) {
-          return 'pump';
-        }
         return params.assetType === 'engine' ||
           params.assetType === 'generator' ||
           params.assetType === 'pump' ||
@@ -472,19 +433,12 @@ export class MetricsV2QueryPlannerService {
       return params.measuredSubject;
     }
 
-    const haystack = params.hints.join('\n').toLowerCase();
     switch (params.businessConcept) {
       case 'vessel_speed':
         return 'vessel_motion';
       case 'vessel_position':
         return 'vessel_position';
       case 'component_speed':
-        if (/\b(hvac|fan|blower)\b/.test(haystack)) {
-          return 'fan_rotation';
-        }
-        if (/\bpump\b/.test(haystack)) {
-          return 'pump_operation';
-        }
         return null;
       case 'environmental_speed':
         return 'wind';
@@ -584,8 +538,6 @@ export class MetricsV2QueryPlannerService {
       return params.motionReference;
     }
 
-    const haystack = params.hints.join('\n').toLowerCase();
-
     if (
       params.businessConcept === 'route_progress_speed' ||
       params.measuredSubject === 'route_progress' ||
@@ -612,22 +564,6 @@ export class MetricsV2QueryPlannerService {
 
     if (params.measurementKind !== 'speed') {
       return null;
-    }
-
-    if (
-      /\b(speed\s*through\s*water|speedthroughwater|stw|through water)\b/.test(
-        haystack,
-      )
-    ) {
-      return 'through_water';
-    }
-
-    if (
-      /\b(speed\s*over\s*ground|speedoverground|sog|gps speed|gps-based speed|over ground)\b/.test(
-        haystack,
-      )
-    ) {
-      return 'over_ground';
     }
 
     return null;

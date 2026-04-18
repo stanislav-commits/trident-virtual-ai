@@ -43,14 +43,6 @@ export class MetricsV2CurrentProvider {
       return null;
     }
 
-    if (
-      !request.entries.every((entry) =>
-        entry.aggregationCompatibility.includes('sum_total_onboard'),
-      )
-    ) {
-      return null;
-    }
-
     if (!this.pickCommonUnit(items)) {
       return null;
     }

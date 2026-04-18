@@ -1,102 +1,10 @@
 import {
-  MetricsV2AssetType,
   MetricsV2BusinessConcept,
-  MetricsV2FluidType,
-  MetricsV2GroupTarget,
   MetricsV2MeasuredSubject,
-  MetricsV2MeasurementKind,
   MetricsV2MotionReference,
   MetricsV2SignalRole,
   MetricsV2SystemDomain,
 } from '../metrics-v2.types';
-
-export function inferPlanBusinessConcept(params: {
-  rawBusinessConcept: unknown;
-  concept: string;
-  measurementKind: MetricsV2MeasurementKind;
-  systemDomain?: MetricsV2SystemDomain;
-  measuredSubject?: MetricsV2MeasuredSubject;
-  signalRole?: MetricsV2SignalRole;
-  fluidType?: MetricsV2FluidType;
-  assetType?: MetricsV2AssetType;
-  groupTarget?: MetricsV2GroupTarget;
-  shape: 'single' | 'group';
-  hints: string[];
-}): MetricsV2BusinessConcept {
-  const direct = parseMetricsV2BusinessConcept(params.rawBusinessConcept);
-  if (direct !== 'unknown') {
-    return direct;
-  }
-
-  const haystack = [params.concept, ...params.hints].join('\n').toLowerCase();
-
-  if (
-    params.shape === 'group' &&
-    params.groupTarget === 'storage_tanks' &&
-    params.fluidType === 'fuel' &&
-    isInventoryMeasurementKind(params.measurementKind)
-  ) {
-    return 'fuel_onboard_inventory';
-  }
-  if (
-    params.shape === 'group' &&
-    params.groupTarget === 'storage_tanks' &&
-    params.fluidType === 'oil' &&
-    isInventoryMeasurementKind(params.measurementKind)
-  ) {
-    return 'oil_onboard_inventory';
-  }
-  if (
-    params.shape === 'group' &&
-    params.groupTarget === 'storage_tanks' &&
-    params.fluidType === 'water' &&
-    isInventoryMeasurementKind(params.measurementKind)
-  ) {
-    return 'water_onboard_inventory';
-  }
-  if (
-    params.shape === 'group' &&
-    params.groupTarget === 'storage_tanks' &&
-    params.fluidType === 'def' &&
-    isInventoryMeasurementKind(params.measurementKind)
-  ) {
-    return 'def_onboard_inventory';
-  }
-  if (params.measuredSubject === 'vessel_motion' && params.measurementKind === 'speed') {
-    return 'vessel_speed';
-  }
-  if (params.measuredSubject === 'route_progress' && params.measurementKind === 'speed') {
-    return 'route_progress_speed';
-  }
-  if (params.measuredSubject === 'vessel_position' || params.measurementKind === 'location') {
-    return 'vessel_position';
-  }
-  if (params.measuredSubject === 'fan_rotation' && params.measurementKind === 'speed') {
-    return 'component_speed';
-  }
-  if (params.measuredSubject === 'pump_operation' && params.measurementKind === 'speed') {
-    return 'component_speed';
-  }
-  if (params.measuredSubject === 'wind' && params.measurementKind === 'speed') {
-    return 'environmental_speed';
-  }
-  if (params.assetType === 'navigation' && params.measurementKind === 'speed') {
-    return 'vessel_speed';
-  }
-  if (params.assetType === 'storage_tank' && params.fluidType === 'fuel') {
-    if (/onboard|total fuel|fuel onboard/.test(haystack) && params.shape === 'group') {
-      return 'fuel_onboard_inventory';
-    }
-    if (params.measurementKind === 'temperature') {
-      return 'fuel_tank_temperature';
-    }
-    if (isInventoryMeasurementKind(params.measurementKind)) {
-      return 'fuel_tank_inventory_member';
-    }
-  }
-
-  return 'unknown';
-}
 
 export function parseMetricsV2BusinessConcept(
   value: unknown,
@@ -197,14 +105,4 @@ export function parseMetricsV2MotionReference(
     value === null
     ? (value as MetricsV2MotionReference)
     : null;
-}
-
-function isInventoryMeasurementKind(
-  measurementKind: MetricsV2MeasurementKind,
-): boolean {
-  return (
-    measurementKind === 'level' ||
-    measurementKind === 'volume' ||
-    measurementKind === 'quantity'
-  );
 }

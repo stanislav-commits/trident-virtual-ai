@@ -118,16 +118,8 @@ export class MetricsV2ResponseComposerService {
 
     const normalizedLabel = label.toLowerCase();
     const normalizedGroupMemberKey = groupMemberKey.toLowerCase();
-    const escapedGroupMemberKey = normalizedGroupMemberKey.replace(
-      /[.*+?^${}()|[\]\\]/g,
-      '\\$&',
-    );
-    const duplicateTokenPattern = new RegExp(
-      `(^|[^a-z0-9])${escapedGroupMemberKey}([^a-z0-9]|$)`,
-      'i',
-    );
 
-    if (duplicateTokenPattern.test(normalizedLabel)) {
+    if (normalizedLabel.includes(normalizedGroupMemberKey)) {
       return label;
     }
 

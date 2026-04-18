@@ -3,7 +3,7 @@ import { MetricsV2CatalogService } from '../../../src/metrics-v2/catalog/metrics
 describe('MetricsV2CatalogService', () => {
   const service = new MetricsV2CatalogService(null as never);
 
-  it('derives semantic meaning from field, unit, and description instead of a misleading measurement name', () => {
+  it('keeps catalog metadata literal and does not infer semantic meaning from regex', () => {
     const entry = (service as any).toCatalogEntry({
       metricKey: 'Trending::Wind-Speed::Fuel_Tank_1P',
       latestValue: 3291,
@@ -21,9 +21,13 @@ describe('MetricsV2CatalogService', () => {
     });
 
     expect(entry.label).toBe('Fuel_Tank_1P');
-    expect(entry.measurementKind).toBe('level');
-    expect(entry.businessConcept).toBe('fuel_tank_inventory_member');
+    expect(entry.measurementKind).toBe('unknown');
+    expect(entry.businessConcept).toBe('unknown');
+    expect(entry.assetType).toBeNull();
+    expect(entry.fluidType).toBeNull();
+    expect(entry.aggregationCompatibility).toEqual(['latest_point']);
     expect(entry.searchText).toContain('fuel_tank_1p');
-    expect(entry.searchText).not.toContain('wind-speed');
+    expect(entry.searchText).toContain('fuel oil level reading');
+    expect(entry.semanticConfidence).toBe(0);
   });
 });
