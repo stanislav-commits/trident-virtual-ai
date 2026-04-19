@@ -5,6 +5,9 @@ import { ChatMessageEntity } from '../../modules/chat/entities/chat-message.enti
 import { ChatSessionEntity } from '../../modules/chat/entities/chat-session.entity';
 import { UserEntity } from '../../modules/users/entities/user.entity';
 import { ShipEntity } from '../../modules/ships/entities/ship.entity';
+import { MetricConceptAliasEntity } from '../../modules/metrics/entities/metric-concept-alias.entity';
+import { MetricConceptEntity } from '../../modules/metrics/entities/metric-concept.entity';
+import { MetricConceptMemberEntity } from '../../modules/metrics/entities/metric-concept-member.entity';
 import { ShipMetricCatalogEntity } from '../../modules/metrics/entities/ship-metric-catalog.entity';
 import { InitAccessControlSchema20260418000100 } from './migrations/20260418000100-init-access-control-schema';
 import { RefineShipsRegistrySchema20260419000100 } from './migrations/20260419000100-refine-ships-registry-schema';
@@ -12,6 +15,7 @@ import { AddShipMetricCatalog20260419000200 } from './migrations/20260419000200-
 import { RemoveShipMetricCatalogMeasurement20260419000300 } from './migrations/20260419000300-remove-ship-metric-catalog-measurement';
 import { AddChatSchema20260419000400 } from './migrations/20260419000400-add-chat-schema';
 import { AddChatSessionMemory20260419000500 } from './migrations/20260419000500-add-chat-session-memory';
+import { AddMetricSemanticCatalog20260419000600 } from './migrations/20260419000600-add-metric-semantic-catalog';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -27,6 +31,9 @@ const dataSource = new DataSource({
     UserEntity,
     ShipEntity,
     ShipMetricCatalogEntity,
+    MetricConceptEntity,
+    MetricConceptAliasEntity,
+    MetricConceptMemberEntity,
     ChatSessionEntity,
     ChatMessageEntity,
     ChatSessionMemoryEntity,
@@ -38,6 +45,7 @@ const dataSource = new DataSource({
     RemoveShipMetricCatalogMeasurement20260419000300,
     AddChatSchema20260419000400,
     AddChatSessionMemory20260419000500,
+    AddMetricSemanticCatalog20260419000600,
   ],
   synchronize: false,
   ssl: db.ssl
