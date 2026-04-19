@@ -18,6 +18,7 @@ import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricAggregationRule } from './enums/metric-aggregation-rule.enum';
 import { MetricConceptType } from './enums/metric-concept-type.enum';
 import { MetricQueryTimeMode } from './enums/metric-query-time-mode.enum';
+import { buildMetricSemanticBlueprint } from './metrics-semantic-bootstrap.utils';
 import { MetricsSemanticCatalogService } from './metrics-semantic-catalog.service';
 
 interface MetricConceptRuntimeNode {
@@ -652,7 +653,7 @@ export class MetricsConceptExecutionService {
   }
 
   private buildMetricLabel(metric: ShipMetricCatalogEntity): string {
-    return metric.description?.trim() || metric.key;
+    return buildMetricSemanticBlueprint(metric).displayName;
   }
 
   private normalizeRole(role: string | null): string {

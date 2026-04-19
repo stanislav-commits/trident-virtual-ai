@@ -268,6 +268,11 @@ export class MetricsSemanticCatalogService {
         score: 100,
         reason: 'alias',
       })),
+      {
+        value: this.normalizeSearchValue(concept.description),
+        score: 80,
+        reason: 'description',
+      },
     ];
 
     let bestMatch:
@@ -290,19 +295,22 @@ export class MetricsSemanticCatalogService {
         break;
       }
 
-      if (
-        candidate.value.includes(normalizedQuery) ||
-        normalizedQuery.includes(candidate.value)
-      ) {
+      if (this.hasPhraseMatch(candidate.value, normalizedQuery)) {
         bestMatch = {
-          score: Math.max(candidate.score - 25, 1),
+          score: this.scorePhraseMatch(candidate.reason),
           reason: `partial_${candidate.reason}`,
         };
       }
     }
 
     if (!bestMatch) {
-      return null;
+      const semanticScore = this.scoreSemanticOverlap(concept, normalizedQuery);
+
+      if (semanticScore === null) {
+        return null;
+      }
+
+      bestMatch = semanticScore;
     }
 
     const scopedMembers = concept.members.filter((member) => {
@@ -553,7 +561,110 @@ export class MetricsSemanticCatalogService {
         .toLowerCase()
         .replace(/[_-]+/g, ' ')
         .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+        .replace(/\b(boat|ship|yacht)\b/gu, 'vessel')
         .replace(/\s+/g, ' ') ?? ''
     ).trim();
+  }
+
+  private scoreSemanticOverlap(
+    concept: MetricConceptEntity,
+    normalizedQuery: string,
+  ): {
+    score: number;
+    reason: string;
+  } | null {
+    const queryTokens = this.tokenizeSearchValue(normalizedQuery);
+
+    if (queryTokens.length === 0) {
+      return null;
+    }
+
+    const conceptText = this.normalizeSearchValue(
+      [
+        concept.displayName,
+        concept.description,
+        ...concept.aliases.map((alias) => alias.alias),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+    const conceptTokens = new Set(this.tokenizeSearchValue(conceptText));
+    let overlap = 0;
+
+    for (const token of queryTokens) {
+      if (conceptTokens.has(token)) {
+        overlap += 1;
+      }
+    }
+
+    if (overlap === 0) {
+      return null;
+    }
+
+    return {
+      score: 45 + overlap * 12,
+      reason: 'semantic_overlap',
+    };
+  }
+
+  private tokenizeSearchValue(value: string): string[] {
+    const stopWords = new Set([
+      'a',
+      'an',
+      'and',
+      'at',
+      'current',
+      'for',
+      'how',
+      'in',
+      'is',
+      'me',
+      'of',
+      'on',
+      'show',
+      'tell',
+      'the',
+      'this',
+      'to',
+      'what',
+      'was',
+    ]);
+
+    return value
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2 && !stopWords.has(token));
+  }
+
+  private hasPhraseMatch(candidateValue: string, normalizedQuery: string): boolean {
+    if (!candidateValue || !normalizedQuery) {
+      return false;
+    }
+
+    if (candidateValue.length < 4) {
+      return false;
+    }
+
+    const paddedCandidate = ` ${candidateValue} `;
+    const paddedQuery = ` ${normalizedQuery} `;
+
+    return (
+      paddedCandidate.includes(paddedQuery) || paddedQuery.includes(paddedCandidate)
+    );
+  }
+
+  private scorePhraseMatch(reason: string): number {
+    switch (reason) {
+      case 'exact_slug':
+        return 108;
+      case 'exact_display_name':
+        return 100;
+      case 'alias':
+        return 90;
+      case 'description':
+        return 72;
+      default:
+        return 70;
+    }
   }
 }

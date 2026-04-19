@@ -10,6 +10,7 @@ import { MetricDescriptionBackfillService } from './metric-description-backfill.
 import { MetricDescriptionService } from './metric-description.service';
 import { MetricsCatalogService } from './metrics-catalog.service';
 import { MetricsConceptExecutionService } from './metrics-concept-execution.service';
+import { MetricsSemanticBootstrapService } from './metrics-semantic-bootstrap.service';
 import { MetricsController } from './metrics.controller';
 import { MetricsSemanticCatalogService } from './metrics-semantic-catalog.service';
 import { MetricsService } from './metrics.service';
@@ -30,6 +31,7 @@ import { MetricsService } from './metrics.service';
     MetricsService,
     MetricsCatalogService,
     MetricsConceptExecutionService,
+    MetricsSemanticBootstrapService,
     MetricsSemanticCatalogService,
     MetricDescriptionService,
     MetricDescriptionBackfillService,
@@ -38,6 +40,7 @@ import { MetricsService } from './metrics.service';
     MetricsService,
     MetricsCatalogService,
     MetricsConceptExecutionService,
+    MetricsSemanticBootstrapService,
     MetricsSemanticCatalogService,
     MetricDescriptionService,
     MetricDescriptionBackfillService,

@@ -13,6 +13,7 @@ import {
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricDescriptionBackfillService } from './metric-description-backfill.service';
+import { MetricsSemanticBootstrapResultDto, MetricsSemanticBootstrapService } from './metrics-semantic-bootstrap.service';
 import {
   normalizeMetricDescription,
   shouldBackfillMetricDescription,
@@ -56,6 +57,10 @@ export interface ShipMetricCatalogSyncResultDto {
   descriptionsQueued: number;
   staleMetricsRemoved: number;
   syncedAt: string;
+  semanticBootstrap: Pick<
+    MetricsSemanticBootstrapResultDto,
+    'totalMetrics' | 'conceptsCreated' | 'conceptsUpdated' | 'aliasesAdded' | 'membersAdded' | 'skippedBindings'
+  > | null;
 }
 
 @Injectable()
@@ -69,6 +74,7 @@ export class MetricsCatalogService {
     private readonly shipMetricCatalogRepository: Repository<ShipMetricCatalogEntity>,
     private readonly influxService: InfluxService,
     private readonly metricDescriptionBackfillService: MetricDescriptionBackfillService,
+    private readonly metricsSemanticBootstrapService: MetricsSemanticBootstrapService,
   ) {}
 
   async discoverOrganizationMetrics(
@@ -182,6 +188,10 @@ export class MetricsCatalogService {
       `Synced ${uniqueMetrics.length} metrics for ship ${ship.id} (${organizationName}) across ${new Set(uniqueMetrics.map((metric) => metric.bucket)).size} buckets; descriptions queued: ${descriptionsQueued}`,
     );
 
+    const semanticBootstrap = await this.metricsSemanticBootstrapService.bootstrapShipCatalog(
+      ship.id,
+    );
+
     return {
       shipId: ship.id,
       shipName: ship.name,
@@ -192,6 +202,14 @@ export class MetricsCatalogService {
       descriptionsQueued,
       staleMetricsRemoved: staleMetricIds.length,
       syncedAt: syncedAt.toISOString(),
+      semanticBootstrap: {
+        totalMetrics: semanticBootstrap.totalMetrics,
+        conceptsCreated: semanticBootstrap.conceptsCreated,
+        conceptsUpdated: semanticBootstrap.conceptsUpdated,
+        aliasesAdded: semanticBootstrap.aliasesAdded,
+        membersAdded: semanticBootstrap.membersAdded,
+        skippedBindings: semanticBootstrap.skippedBindings,
+      },
     };
   }
 

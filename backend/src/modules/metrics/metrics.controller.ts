@@ -21,6 +21,7 @@ import { UpdateShipMetricDescriptionDto } from './dto/update-ship-metric-descrip
 import { UpdateMetricConceptDto } from './dto/update-metric-concept.dto';
 import { MetricsCatalogService } from './metrics-catalog.service';
 import { MetricsConceptExecutionService } from './metrics-concept-execution.service';
+import { MetricsSemanticBootstrapService } from './metrics-semantic-bootstrap.service';
 import { MetricsSemanticCatalogService } from './metrics-semantic-catalog.service';
 import { MetricsService } from './metrics.service';
 
@@ -31,6 +32,7 @@ export class MetricsController {
     private readonly metricsService: MetricsService,
     private readonly metricsCatalogService: MetricsCatalogService,
     private readonly metricsConceptExecutionService: MetricsConceptExecutionService,
+    private readonly metricsSemanticBootstrapService: MetricsSemanticBootstrapService,
     private readonly metricsSemanticCatalogService: MetricsSemanticCatalogService,
   ) {}
 
@@ -51,6 +53,13 @@ export class MetricsController {
   @Roles(UserRole.ADMIN)
   syncShipCatalog(@Param('shipId') shipId: string) {
     return this.metricsCatalogService.syncShipCatalog(shipId);
+  }
+
+  @Post('ships/:shipId/bootstrap-semantic-concepts')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  bootstrapSemanticConcepts(@Param('shipId') shipId: string) {
+    return this.metricsSemanticBootstrapService.bootstrapShipCatalog(shipId);
   }
 
   @Patch('catalog/:metricId')
