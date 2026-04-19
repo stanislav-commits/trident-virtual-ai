@@ -405,6 +405,11 @@
   min-width: 180px;
 }
 
+.admin-panel__input--compact {
+  min-width: 0;
+  padding: 7px 10px;
+}
+
 .admin-panel__select:hover,
 .admin-panel__input:hover {
   border-color: var(--chat-border-strong);
@@ -649,6 +654,10 @@
   border-radius: var(--chat-radius-card);
   border: 1px dashed var(--chat-border);
   color: var(--chat-text-subtle);
+}
+
+.admin-panel__state-box--compact {
+  padding: 18px 16px;
 }
 
 .admin-panel__ship-metric-cell {
@@ -1870,6 +1879,188 @@
   backdrop-filter: var(--glass-blur);
   padding: 24px;
   box-shadow: var(--shadow-md);
+}
+
+.admin-panel__semantic-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-panel__semantic-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.admin-panel__semantic-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.4fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.admin-panel__semantic-search {
+  margin-bottom: 12px;
+}
+
+.admin-panel__semantic-concept-list,
+.admin-panel__semantic-candidate-list,
+.admin-panel__semantic-member-list,
+.admin-panel__semantic-result-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-panel__semantic-concept-list {
+  max-height: 620px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.admin-panel__semantic-concept-item,
+.admin-panel__semantic-candidate-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.admin-panel__semantic-concept-item:hover,
+.admin-panel__semantic-candidate-item:hover {
+  border-color: var(--chat-border-strong);
+  background: var(--chat-surface-3);
+  transform: translateY(-1px);
+}
+
+.admin-panel__semantic-concept-item--active {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: rgba(59, 130, 246, 0.18);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.18);
+}
+
+.admin-panel__semantic-concept-item-top,
+.admin-panel__semantic-member-main,
+.admin-panel__semantic-result-line,
+.admin-panel__semantic-result-candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-panel__semantic-concept-item-top strong,
+.admin-panel__semantic-member-copy strong {
+  font-size: 0.9rem;
+}
+
+.admin-panel__semantic-concept-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--chat-text-subtle);
+}
+
+.admin-panel__semantic-members {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-panel__semantic-member-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+}
+
+.admin-panel__semantic-member-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-panel__semantic-member-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.admin-panel__semantic-adders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.admin-panel__semantic-actions {
+  margin-top: 18px;
+}
+
+.admin-panel__semantic-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 2px;
+  color: var(--chat-text);
+}
+
+.admin-panel__semantic-checkbox input {
+  accent-color: var(--accent);
+}
+
+.admin-panel__semantic-tester {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-panel__semantic-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.admin-panel__semantic-result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 160px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+}
+
+.admin-panel__semantic-result-line {
+  align-items: flex-start;
+}
+
+@media (max-width: 1180px) {
+  .admin-panel__semantic-grid,
+  .admin-panel__semantic-results,
+  .admin-panel__semantic-adders {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .admin-panel__form-card-title {

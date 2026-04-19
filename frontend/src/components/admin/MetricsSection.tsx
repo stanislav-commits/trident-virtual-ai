@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useShipMetricsAdminData } from "../../hooks/admin/useShipMetricsAdminData";
 import { MetricsIcon, ShipIcon } from "./AdminPanelIcons";
+import { MetricsSemanticConceptsPanel } from "./MetricsSemanticConceptsPanel";
 
 interface MetricsSectionProps {
   token: string | null;
@@ -68,6 +69,9 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     useState(ALL_BUCKETS_FILTER);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeView, setActiveView] = useState<"catalog" | "semantics">(
+    "catalog",
+  );
 
   useEffect(() => {
     if (!selectedShipId && availableShips.length > 0) {
@@ -81,6 +85,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     setEditingMetricId(null);
     setDraftDescription("");
     setSavingMetricId(null);
+    setActiveView("catalog");
   }, [selectedShipId]);
 
   useEffect(() => {
@@ -182,18 +187,42 @@ export function MetricsSection({ token }: MetricsSectionProps) {
         <div className="admin-panel__section-intro">
           <h2 className="admin-panel__section-title">Metrics</h2>
           <p className="admin-panel__section-subtitle">
-            Select a ship, filter its metric catalog by bucket, and edit metric
-            descriptions from one place.
+            Manage both the raw Influx metric catalog and the semantic concepts
+            that power chat resolution.
           </p>
         </div>
-        <button
-          type="button"
-          className="admin-panel__btn admin-panel__btn--primary"
-          onClick={() => void syncCatalog()}
-          disabled={!selectedShipId || syncing || shipsLoading}
-        >
-          {syncing ? "Syncing..." : "Sync from Influx"}
-        </button>
+        <div className="admin-panel__actions">
+          <button
+            type="button"
+            className={`admin-panel__btn ${
+              activeView === "catalog"
+                ? "admin-panel__btn--primary"
+                : "admin-panel__btn--ghost"
+            }`}
+            onClick={() => setActiveView("catalog")}
+          >
+            Raw catalog
+          </button>
+          <button
+            type="button"
+            className={`admin-panel__btn ${
+              activeView === "semantics"
+                ? "admin-panel__btn--primary"
+                : "admin-panel__btn--ghost"
+            }`}
+            onClick={() => setActiveView("semantics")}
+          >
+            Semantic layer
+          </button>
+          <button
+            type="button"
+            className="admin-panel__btn admin-panel__btn--primary"
+            onClick={() => void syncCatalog()}
+            disabled={!selectedShipId || syncing || shipsLoading}
+          >
+            {syncing ? "Syncing..." : "Sync from Influx"}
+          </button>
+        </div>
       </div>
 
       {activeError && (
@@ -260,7 +289,18 @@ export function MetricsSection({ token }: MetricsSectionProps) {
             </div>
           </div>
 
-          {(loading || syncing) && !catalog ? (
+          {activeView === "semantics" ? (
+            <MetricsSemanticConceptsPanel
+              token={token}
+              shipId={selectedShipId}
+              shipName={
+                availableShips.find((ship) => ship.id === selectedShipId)?.name ??
+                null
+              }
+              catalog={catalog}
+              syncMarker={lastSyncResult?.syncedAt ?? catalog?.syncedAt ?? null}
+            />
+          ) : (loading || syncing) && !catalog ? (
             <div className="admin-panel__state-box">
               <div className="admin-panel__spinner" />
               <span className="admin-panel__muted">Loading metrics...</span>

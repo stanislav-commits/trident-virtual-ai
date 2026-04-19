@@ -81,7 +81,7 @@ export class MetricsSemanticCatalogService {
     private readonly shipMetricCatalogRepository: Repository<ShipMetricCatalogEntity>,
   ) {}
 
-  async listConcepts(): Promise<MetricConceptResponseDto[]> {
+  async listConcepts(shipId?: string): Promise<MetricConceptResponseDto[]> {
     const concepts = await this.metricConceptRepository.find({
       relations: {
         aliases: true,
@@ -102,7 +102,48 @@ export class MetricsSemanticCatalogService {
       },
     });
 
-    return concepts.map((concept) => this.serializeConcept(concept));
+    if (!shipId) {
+      return concepts.map((concept) => this.serializeConcept(concept));
+    }
+
+    const conceptsById = new Map(concepts.map((concept) => [concept.id, concept]));
+    const scopedVisibility = new Map<string, boolean>();
+
+    const conceptHasShipMembers = (conceptId: string): boolean => {
+      const cached = scopedVisibility.get(conceptId);
+
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const concept = conceptsById.get(conceptId);
+
+      if (!concept) {
+        scopedVisibility.set(conceptId, false);
+        return false;
+      }
+
+      scopedVisibility.set(conceptId, false);
+
+      const hasMembers = (concept.members ?? []).some((member) => {
+        if (member.metricCatalog) {
+          return member.metricCatalog.shipId === shipId;
+        }
+
+        if (member.childConceptId) {
+          return conceptHasShipMembers(member.childConceptId);
+        }
+
+        return false;
+      });
+
+      scopedVisibility.set(conceptId, hasMembers);
+      return hasMembers;
+    };
+
+    return concepts
+      .filter((concept) => conceptHasShipMembers(concept.id))
+      .map((concept) => this.serializeConcept(concept, shipId, conceptsById, scopedVisibility));
   }
 
   async createConcept(
@@ -474,7 +515,30 @@ export class MetricsSemanticCatalogService {
 
   private serializeConcept(
     concept: MetricConceptEntity,
+    shipId?: string,
+    conceptsById?: Map<string, MetricConceptEntity>,
+    scopedVisibility?: Map<string, boolean>,
   ): MetricConceptResponseDto {
+    const scopedMembers = shipId
+      ? [...(concept.members ?? [])].filter((member) => {
+          if (member.metricCatalog) {
+            return member.metricCatalog.shipId === shipId;
+          }
+
+          if (member.childConceptId && conceptsById && scopedVisibility) {
+            const childVisible = scopedVisibility.get(member.childConceptId);
+            if (childVisible !== undefined) {
+              return childVisible;
+            }
+
+            const childConcept = conceptsById.get(member.childConceptId);
+            return Boolean(childConcept);
+          }
+
+          return !member.metricCatalog;
+        })
+      : [...(concept.members ?? [])];
+
     return {
       id: concept.id,
       slug: concept.slug,
@@ -488,7 +552,7 @@ export class MetricsSemanticCatalogService {
       aliases: [...(concept.aliases ?? [])]
         .map((alias) => alias.alias)
         .sort((left, right) => left.localeCompare(right)),
-      members: [...(concept.members ?? [])]
+      members: scopedMembers
         .sort((left, right) => left.sortOrder - right.sortOrder)
         .map((member) => ({
           id: member.id,

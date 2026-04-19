@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -78,8 +79,8 @@ export class MetricsController {
   @Get('concepts')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  listConcepts() {
-    return this.metricsSemanticCatalogService.listConcepts();
+  listConcepts(@Query('shipId') shipId?: string) {
+    return this.metricsSemanticCatalogService.listConcepts(shipId);
   }
 
   @Post('concepts')
