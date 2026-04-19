@@ -12,24 +12,23 @@ export class ChatInDevelopmentResponderService {
   async respond(
     input: ChatTurnResponderInput,
   ): Promise<ChatTurnResponderOutput> {
-    const content = await this.chatLlmService.generateUnavailableCapabilityReply(
-      {
-        capabilityLabel: input.plan.capabilityLabel,
-        responseLanguage: input.plan.responseLanguage,
-      },
-    );
+    const content = await this.chatLlmService.generateUnavailableCapabilityReply({
+      capabilityLabel: input.ask.capabilityLabel,
+      responseLanguage: input.plan.responseLanguage,
+    });
 
     return {
-      content,
-      ragflowContext: {
-        planner: {
-          intent: input.plan.intent,
-          responder: input.plan.responder,
-          reasoning: input.plan.reasoning,
-          capabilityEnabled: input.plan.capabilityEnabled,
-          capabilityLabel: input.plan.capabilityLabel,
-        },
+      askId: input.ask.id,
+      intent: input.ask.intent,
+      responder: input.ask.responder,
+      question: input.ask.question,
+      capabilityEnabled: input.ask.capabilityEnabled,
+      capabilityLabel: input.ask.capabilityLabel,
+      summary: content,
+      data: {
+        inDevelopment: true,
       },
+      contextReferences: [],
     };
   }
 }

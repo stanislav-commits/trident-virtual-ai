@@ -17,10 +17,12 @@ export class ChatWebSearchResponderService {
     input: ChatTurnResponderInput,
   ): Promise<ChatTurnResponderOutput> {
     const resolvedQuestion =
-      await this.chatContextQueryResolverService.resolveStandaloneQuestion(
-        input.context,
-        input.plan.responseLanguage,
-      );
+      input.plan.asks.length === 1
+        ? await this.chatContextQueryResolverService.resolveStandaloneQuestion(
+            input.context,
+            input.plan.responseLanguage,
+          )
+        : input.ask.question;
 
     const result = await this.webService.search({
       question: resolvedQuestion,
@@ -28,19 +30,18 @@ export class ChatWebSearchResponderService {
     });
 
     return {
-      content: result.summary,
-      ragflowContext: {
-        contextReferences: result.contextReferences,
-        planner: {
-          intent: input.plan.intent,
-          responder: input.plan.responder,
-          reasoning: input.plan.reasoning,
-          capabilityEnabled: input.plan.capabilityEnabled,
-          capabilityLabel: input.plan.capabilityLabel,
-        },
-        web: result.data,
+      askId: input.ask.id,
+      intent: input.ask.intent,
+      responder: input.ask.responder,
+      question: input.ask.question,
+      capabilityEnabled: input.ask.capabilityEnabled,
+      capabilityLabel: input.ask.capabilityLabel,
+      summary: result.summary,
+      data: {
+        ...result.data,
         resolvedQuestion,
       },
+      contextReferences: result.contextReferences,
     };
   }
 }

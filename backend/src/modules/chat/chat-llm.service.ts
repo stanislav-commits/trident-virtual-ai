@@ -5,6 +5,7 @@ import { ChatConversationContext } from './context/chat-conversation-context.typ
 import { ChatMessageRole } from './enums/chat-message-role.enum';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ChatSessionEntity } from './entities/chat-session.entity';
+import { ChatTurnAskResult } from './responders/interfaces/chat-turn-responder.types';
 
 interface GenerateChatReplyInput {
   session: ChatSessionEntity;
@@ -75,6 +76,40 @@ export class ChatLlmService {
     }
 
     return `The ${input.capabilityLabel} capability is still in development. I can already help with general conversation and public-information questions.`;
+  }
+
+  async composeAskResultsReply(input: {
+    context: ChatConversationContext;
+    responseLanguage: string | null;
+    askResults: ChatTurnAskResult[];
+  }): Promise<string> {
+    const reply = await this.completeText({
+      systemPrompt: [
+        'You are the Trident assistant.',
+        'Compose one final reply using only the structured ask results provided.',
+        'Do not invent metrics, timestamps, sources, facts, or conclusions that are not present in the ask results.',
+        'If one ask is unavailable or still in development, say that clearly and continue with the rest.',
+        'Keep the reply natural and concise.',
+        'Use the requested response language if it is provided.',
+      ].join(' '),
+      userPrompt: [
+        'Conversation context:',
+        formatConversationContext(input.context),
+        '',
+        `Preferred response language: ${input.responseLanguage ?? 'infer from conversation'}`,
+        '',
+        'Structured ask results:',
+        JSON.stringify(input.askResults, null, 2),
+      ].join('\n'),
+      temperature: 0.2,
+      maxTokens: 900,
+    });
+
+    if (reply) {
+      return reply;
+    }
+
+    return input.askResults.map((result) => result.summary).join('\n\n');
   }
 
   private buildConversationSystemPrompt(session: ChatSessionEntity): string {

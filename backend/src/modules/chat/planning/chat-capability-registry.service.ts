@@ -52,8 +52,8 @@ export class ChatCapabilityRegistryService {
       ChatTurnIntent.LIVE_METRICS,
       {
         intent: ChatTurnIntent.LIVE_METRICS,
-        enabled: false,
-        responder: ChatTurnResponderKind.IN_DEVELOPMENT,
+        enabled: true,
+        responder: ChatTurnResponderKind.METRICS,
         label: 'live metrics',
       },
     ],
@@ -61,8 +61,8 @@ export class ChatCapabilityRegistryService {
       ChatTurnIntent.HISTORICAL_METRICS,
       {
         intent: ChatTurnIntent.HISTORICAL_METRICS,
-        enabled: false,
-        responder: ChatTurnResponderKind.IN_DEVELOPMENT,
+        enabled: true,
+        responder: ChatTurnResponderKind.METRICS,
         label: 'historical metrics',
       },
     ],

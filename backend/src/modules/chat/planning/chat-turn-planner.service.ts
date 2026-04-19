@@ -14,17 +14,24 @@ export class ChatTurnPlannerService {
 
   async plan(context: ChatConversationContext): Promise<ChatTurnPlan> {
     const classification = await this.chatTurnClassifierService.classify(context);
-    const capability = this.chatCapabilityRegistryService.resolve(
-      classification.intent,
-    );
 
     return {
-      intent: capability.intent ?? ChatTurnIntent.SMALL_TALK,
-      responder: capability.responder,
+      asks: classification.asks.map((ask, index) => {
+        const capability = this.chatCapabilityRegistryService.resolve(ask.intent);
+
+        return {
+          id: `ask-${index + 1}`,
+          intent: capability.intent ?? ChatTurnIntent.SMALL_TALK,
+          responder: capability.responder,
+          question: ask.question,
+          capabilityEnabled: capability.enabled,
+          capabilityLabel: capability.label,
+          timeMode: ask.timeMode,
+          timestamp: ask.timestamp,
+        };
+      }),
       responseLanguage: classification.responseLanguage,
       reasoning: classification.reasoning,
-      capabilityEnabled: capability.enabled,
-      capabilityLabel: capability.label,
     };
   }
 }

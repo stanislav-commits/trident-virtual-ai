@@ -1,7 +1,15 @@
 import { ChatTurnIntent } from './chat-turn-intent.enum';
+import { ChatMetricsAskTimeMode } from './chat-metrics-ask-time-mode.enum';
+
+export interface ChatTurnClassificationAsk {
+  intent: ChatTurnIntent;
+  question: string;
+  timeMode: ChatMetricsAskTimeMode | null;
+  timestamp: string | null;
+}
 
 export interface ChatTurnClassification {
-  intent: ChatTurnIntent;
+  asks: ChatTurnClassificationAsk[];
   responseLanguage: string | null;
   reasoning: string;
 }

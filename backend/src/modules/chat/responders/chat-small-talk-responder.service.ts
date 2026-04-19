@@ -12,22 +12,21 @@ export class ChatSmallTalkResponderService {
   async respond(
     input: ChatTurnResponderInput,
   ): Promise<ChatTurnResponderOutput> {
-    const content = await this.chatLlmService.generateConversationReply({
+    const summary = await this.chatLlmService.generateConversationReply({
       session: input.session,
       context: input.context,
     });
 
     return {
-      content,
-      ragflowContext: {
-        planner: {
-          intent: input.plan.intent,
-          responder: input.plan.responder,
-          reasoning: input.plan.reasoning,
-          capabilityEnabled: input.plan.capabilityEnabled,
-          capabilityLabel: input.plan.capabilityLabel,
-        },
-      },
+      askId: input.ask.id,
+      intent: input.ask.intent,
+      responder: input.ask.responder,
+      question: input.ask.question,
+      capabilityEnabled: input.ask.capabilityEnabled,
+      capabilityLabel: input.ask.capabilityLabel,
+      summary,
+      data: null,
+      contextReferences: [],
     };
   }
 }
