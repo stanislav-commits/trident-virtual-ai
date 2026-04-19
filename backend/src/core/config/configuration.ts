@@ -1,0 +1,71 @@
+import { getDatabaseEnv } from '../database/database.config';
+
+function splitCsv(value?: string): string[] {
+  return value
+    ?.split(',')
+    .map((item) => item.trim())
+    .filter(Boolean) ?? [];
+}
+
+export default function configuration() {
+  const db = getDatabaseEnv();
+
+  return {
+    app: {
+      name: process.env.APP_NAME ?? 'trident-virtual-ai-backend',
+      environment: process.env.NODE_ENV ?? 'development',
+      port: Number.parseInt(process.env.PORT ?? '3000', 10),
+      corsOrigins: splitCsv(process.env.CORS_ORIGINS).length
+        ? splitCsv(process.env.CORS_ORIGINS)
+        : ['http://localhost:3000', 'http://localhost:5173'],
+    },
+    auth: {
+      jwtSecret: process.env.JWT_SECRET ?? 'change-me-in-production',
+      jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+    },
+    database: {
+      host: db.host,
+      port: db.port,
+      name: db.name,
+      user: db.user,
+      password: db.password,
+      ssl: db.ssl,
+      sslRejectUnauthorized: db.sslRejectUnauthorized,
+    },
+    integrations: {
+      postgres: {
+        host: db.host,
+        port: db.port,
+        name: db.name,
+        user: db.user,
+      },
+      influx: {
+        url: process.env.INFLUX_URL ?? '',
+        org: process.env.INFLUX_ORG ?? '',
+        token: process.env.INFLUX_TOKEN ?? '',
+        schemaLookback: process.env.INFLUX_SCHEMA_LOOKBACK ?? '-365d',
+      },
+      rag: {
+        provider: process.env.RAG_PROVIDER ?? 'local',
+        indexName: process.env.RAG_INDEX_NAME ?? '',
+      },
+      webSearch: {
+        baseUrl: process.env.WEB_SEARCH_BASE_URL ?? '',
+        apiKey: process.env.WEB_SEARCH_API_KEY ?? '',
+        model: process.env.WEB_SEARCH_MODEL ?? 'gpt-5.2',
+      },
+      llm: {
+        provider: process.env.LLM_PROVIDER ?? 'openai',
+        baseUrl: process.env.LLM_BASE_URL ?? '',
+        model: process.env.LLM_MODEL ?? 'gpt-4.1-mini',
+        apiKey: process.env.LLM_API_KEY ?? '',
+      },
+      grafanaLlm: {
+        baseUrl: process.env.GRAFANA_LLM_BASE_URL ?? '',
+        apiKey:
+          process.env.GRAFANA_LLM_API_KEY ?? process.env.GRAFANA_SA_TOKEN ?? '',
+        model: process.env.GRAFANA_LLM_MODEL ?? 'gpt-4o',
+      },
+    },
+  };
+}

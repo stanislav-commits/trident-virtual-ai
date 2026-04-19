@@ -1,12 +1,29 @@
 import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service';
+import { ConfigService } from '@nestjs/config';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly configService: ConfigService) {}
 
   @Get()
-  getHello(): string {
-    return this.appService.getHello();
+  getInfo() {
+    return {
+      name: this.configService.get<string>('app.name', 'trident-virtual-ai-backend'),
+      environment: this.configService.get<string>('app.environment', 'development'),
+      version: '0.1.0',
+      architecture: {
+        style: 'nest-monolith-modular',
+        modules: [
+          'chat',
+          'planner',
+          'composer',
+          'executors',
+          'metrics',
+          'documents',
+          'web',
+          'admin',
+        ],
+      },
+    };
   }
 }

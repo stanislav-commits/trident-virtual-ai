@@ -1,29 +1,43 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
+import { ConfigModule } from '@nestjs/config';
+import { AuthModule } from './core/auth/auth.module';
+import configuration from './core/config/configuration';
+import { validateEnvironment } from './core/config/validate-environment';
+import { DatabaseModule } from './core/database/database.module';
+import { HealthModule } from './core/health/health.module';
+import { LoggingModule } from './core/logging/logging.module';
+import { IntegrationsModule } from './integrations/integrations.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { DocumentsModule } from './modules/documents/documents.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
+import { ShipsModule } from './modules/ships/ships.module';
+import { UsersModule } from './modules/users/users.module';
+import { WebModule } from './modules/web/web.module';
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { AuthModule } from './auth/auth.module';
-import { MetricsModule } from './telemetry-catalog/metrics.module';
-import { PrismaModule } from './prisma/prisma.module';
-import { ShipsModule } from './ships/ships.module';
-import { SystemPromptModule } from './system-prompt/system-prompt.module';
-import { TagsModule } from './tags/tags.module';
-import { UsersModule } from './users/users.module';
-import { ChatV2Module } from './chat-v2/chat-v2.module';
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
-    PrismaModule,
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+      expandVariables: true,
+      load: [configuration],
+      validate: validateEnvironment,
+    }),
+    LoggingModule,
+    DatabaseModule,
+    IntegrationsModule,
     AuthModule,
+    HealthModule,
     UsersModule,
     ShipsModule,
     MetricsModule,
-    SystemPromptModule,
-    TagsModule,
-    ChatV2Module,
+    DocumentsModule,
+    WebModule,
+    ChatModule,
+    AdminModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}

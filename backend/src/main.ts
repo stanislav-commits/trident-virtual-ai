@@ -1,34 +1,36 @@
-import 'dotenv/config';
+import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-
-import { json } from 'express';
-
-function getAllowedOrigins(): (string | RegExp)[] {
-  const defaults = [
-    'https://trident-virtual.ai',
-    'https://www.trident-virtual.ai',
-    'http://localhost:3000',
-    'http://localhost:8081',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:8081',
-    /^https:\/\/.*\.expo\.go$/,
-  ];
-  const extra = process.env.CORS_ORIGINS?.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return extra?.length ? [...defaults, ...extra] : defaults;
-}
+import { AppLoggerService } from './core/logging/app-logger.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  app.use(json({ limit: '1mb' }));
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const logger = app.get(AppLoggerService);
+  const configService = app.get(ConfigService);
+  const port = configService.get<number>('app.port', 3000);
+  const corsOrigins = configService.get<string[]>('app.corsOrigins', [
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ]);
+
+  app.useLogger(logger);
+  app.setGlobalPrefix('api');
   app.enableCors({
-    origin: getAllowedOrigins(),
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    origin: corsOrigins.length === 1 && corsOrigins[0] === '*' ? true : corsOrigins,
     credentials: true,
   });
-  await app.listen(process.env.PORT ?? 3000);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  );
+
+  await app.listen(port);
+  logger.log(`Backend listening on http://localhost:${port}/api`, 'Bootstrap');
 }
-bootstrap();
+
+void bootstrap();

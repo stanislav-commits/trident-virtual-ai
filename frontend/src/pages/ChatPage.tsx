@@ -1,5 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useAdminShip } from "../context/AdminShipContext";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
 import { useChatMessages } from "../hooks/useChatMessages";
@@ -19,6 +20,7 @@ import type { ChatContextReferenceDto } from "../types/chat";
 
 export function ChatPage() {
   const { user, token } = useAuth();
+  const { sessionShipId } = useAdminShip();
   const navigate = useNavigate();
   const { sessionId } = useParams<{ sessionId: string }>();
   const activeSessionId = sessionId ?? null;
@@ -119,9 +121,7 @@ export function ChatPage() {
             return;
           }
 
-          const shipIdForSession =
-            user?.role === "admin" ? undefined : (user?.shipId ?? undefined);
-          const newSession = await createSession(shipIdForSession);
+          const newSession = await createSession(sessionShipId);
           currentSessionId = newSession.id;
           navigate(appRoutes.chatSession(currentSessionId), { replace: true });
         }
@@ -154,6 +154,7 @@ export function ChatPage() {
       navigate,
       pollForResponse,
       token,
+      sessionShipId,
       user,
     ],
   );

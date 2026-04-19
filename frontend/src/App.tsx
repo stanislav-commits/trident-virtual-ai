@@ -5,6 +5,7 @@ import {
   Routes,
   useLocation,
 } from "react-router-dom";
+import { AdminShipProvider } from "./context/AdminShipContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AdminPanelPage } from "./pages/AdminPanelPage";
@@ -113,7 +114,9 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppContent />
+        <AdminShipProvider>
+          <AppContent />
+        </AdminShipProvider>
       </AuthProvider>
     </ThemeProvider>
   );

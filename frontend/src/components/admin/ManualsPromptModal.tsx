@@ -10,8 +10,6 @@ import {
   uploadManual,
   deleteManual,
   bulkDeleteManuals,
-  getManualTags,
-  replaceManualTags,
   updateManual,
   getManualsStatus,
   fetchWithAuth,
@@ -26,7 +24,6 @@ import {
   getKnowledgeBaseCategoryConfig,
   type KnowledgeBaseCategory,
 } from "./knowledge-base";
-import { TagLinksEditorModal } from "./TagLinksEditorModal";
 
 const MANUALS_PAGE_SIZE_OPTIONS = [25, 50, 100];
 const DEFAULT_PAGE_SIZE = 25;
@@ -158,9 +155,6 @@ export function ManualsPromptModal({
   const [deletingManualId, setDeletingManualId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
-  const [tagEditingManual, setTagEditingManual] = useState<ManualStatusItem | null>(
-    null,
-  );
   const [manuals, setManuals] = useState<ManualStatusItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>(EMPTY_PAGINATION);
   const [page, setPage] = useState(1);
@@ -892,14 +886,6 @@ export function ManualsPromptModal({
                                 </button>
                                 <button
                                   type="button"
-                                  className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
-                                  onClick={() => setTagEditingManual(manual)}
-                                  disabled={deletingManualId === manual.id || bulkDeleting}
-                                >
-                                  Tags
-                                </button>
-                                <button
-                                  type="button"
                                   className="admin-panel__btn admin-panel__btn--danger admin-panel__btn--compact"
                                   onClick={() => setConfirmDeleteId(manual.id)}
                                   disabled={deletingManualId === manual.id || bulkDeleting}
@@ -1027,22 +1013,6 @@ export function ManualsPromptModal({
         </div>
       )}
 
-      {tagEditingManual && (
-        <TagLinksEditorModal
-          token={token}
-          title="Edit document tags"
-          entityLabel={tagEditingManual.filename}
-          selectionMode="multiple"
-          onClose={() => setTagEditingManual(null)}
-          onError={onError}
-          loadSelectedTags={() =>
-            getManualTags(shipId, tagEditingManual.id, token ?? "")
-          }
-          saveSelectedTags={(tagIds) =>
-            replaceManualTags(shipId, tagEditingManual.id, tagIds, token ?? "")
-          }
-        />
-      )}
     </div>
   );
 }

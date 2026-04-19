@@ -1,29 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  getUsers,
-  getShips,
-  getMetricDefinitions,
-  getOrganizations,
-  type UserListItem,
-  type ShipListItem,
-  type MetricDefinitionItem,
-} from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import logoImg from "../assets/logo-home.png";
 import {
   UsersIcon,
   ShipIcon,
-  TagIcon,
+  MetricsIcon,
   ChevronLeftIcon,
   MenuIcon,
   XIcon,
 } from "../components/admin/AdminPanelIcons";
+import { MetricsSection } from "../components/admin/MetricsSection";
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
-import { TagsSection } from "../components/admin/TagsSection";
-import { ManualsPromptModal } from "../components/admin/ManualsPromptModal";
-import { MetricsModal } from "../components/admin/MetricsModal";
+import { useShipsAdminData } from "../hooks/admin/useShipsAdminData";
+import { useUsersAdminData } from "../hooks/admin/useUsersAdminData";
 import { Toast } from "../components/layout/Toast";
 import {
   appRoutes,
@@ -34,7 +25,7 @@ import {
 const SECTION_TITLES: Record<AdminSectionRoute, string> = {
   users: "Users",
   ships: "Ships",
-  tags: "Tags",
+  metrics: "Metrics",
 };
 
 export function AdminPanelPage() {
@@ -47,175 +38,32 @@ export function AdminPanelPage() {
 
   // Navigation state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const usersAdmin = useUsersAdminData(token);
+  const shipsAdmin = useShipsAdminData(token, activeSection === "ships");
 
-  // Common state
-  const [error, setError] = useState("");
+  const activeError =
+    activeSection === "ships"
+      ? shipsAdmin.error
+      : activeSection === "users"
+        ? usersAdmin.error
+        : "";
 
-  // Users section state
-  const [users, setUsers] = useState<UserListItem[]>([]);
-  const [usersLoading, setUsersLoading] = useState(true);
-
-  // Ships section state
-  const [ships, setShips] = useState<ShipListItem[]>([]);
-  const [shipsLoading, setShipsLoading] = useState(false);
-  const [organizations, setOrganizations] = useState<string[]>([]);
-  const [organizationsLoading, setOrganizationsLoading] = useState(false);
-  const [metricDefinitions, setMetricDefinitions] = useState<
-    MetricDefinitionItem[]
-  >([]);
-
-  const [manualsPromptShip, setManualsPromptShip] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-
-  // Metrics modal state
-  const [metricsModalShip, setMetricsModalShip] = useState<ShipListItem | null>(
-    null,
-  );
-
-  // Load users
-  const loadUsers = useCallback(async () => {
-    if (!token) return;
-    setUsersLoading(true);
-    setError("");
-    try {
-      setUsers(await getUsers(token));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load users");
-    } finally {
-      setUsersLoading(false);
+  const clearActiveError = () => {
+    if (activeSection === "ships") {
+      shipsAdmin.setError("");
+      return;
     }
-  }, [token]);
 
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
-
-  // Load ships
-  const loadShips = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!token) return;
-      if (!options?.silent) {
-        setShipsLoading(true);
-        setOrganizationsLoading(true);
-        setError("");
-      }
-      try {
-        const [shipsList, metrics, usersList, organizationsResult] =
-          await Promise.allSettled([
-            getShips(token),
-            getMetricDefinitions(token),
-            getUsers(token),
-            getOrganizations(token),
-          ]);
-
-        if (
-          shipsList.status !== "fulfilled" ||
-          metrics.status !== "fulfilled" ||
-          usersList.status !== "fulfilled"
-        ) {
-          throw new Error("Failed to load ships");
-        }
-
-        setShips(shipsList.value);
-        setMetricDefinitions(metrics.value);
-        setUsers(usersList.value);
-
-        if (organizationsResult.status === "fulfilled") {
-          setOrganizations(organizationsResult.value);
-        } else {
-          if (!options?.silent) {
-            setOrganizations([]);
-            setError(
-              organizationsResult.reason instanceof Error
-                ? organizationsResult.reason.message
-                : "Failed to load organizations",
-            );
-          }
-        }
-      } catch (e) {
-        if (!options?.silent) {
-          setError(e instanceof Error ? e.message : "Failed to load ships");
-        }
-      } finally {
-        if (!options?.silent) {
-          setShipsLoading(false);
-          setOrganizationsLoading(false);
-        }
-      }
-    },
-    [token],
-  );
-
-  useEffect(() => {
-    if (activeSection === "ships") loadShips();
-  }, [activeSection, loadShips]);
+    if (activeSection === "users") {
+      usersAdmin.setError("");
+    }
+  };
 
   useEffect(() => {
     if (!isAdminSectionRoute(section)) {
       navigate(appRoutes.adminSection("users"), { replace: true });
     }
   }, [navigate, section]);
-
-  useEffect(() => {
-    if (!metricsModalShip) {
-      return;
-    }
-
-    const latestShip =
-      ships.find((ship) => ship.id === metricsModalShip.id) ?? null;
-    if (latestShip && latestShip !== metricsModalShip) {
-      setMetricsModalShip(latestShip);
-    }
-  }, [metricsModalShip, ships]);
-
-  const hasPendingMetricDescriptions = useMemo(() => {
-    if (!ships.length || !metricDefinitions.length) return false;
-
-    const definitionMap = new Map(
-      metricDefinitions.map((definition) => [definition.key, definition]),
-    );
-
-    return ships.some((ship) =>
-      ship.metricsConfig.some((config) => {
-        const description = definitionMap.get(config.metricKey)?.description;
-        return !description?.trim();
-      }),
-    );
-  }, [ships, metricDefinitions]);
-
-  const hasBackgroundShipSync = useMemo(
-    () =>
-      ships.some(
-        (ship) =>
-          ship.metricsSyncStatus === "pending" ||
-          ship.metricsSyncStatus === "running",
-      ),
-    [ships],
-  );
-
-  useEffect(() => {
-    if (
-      activeSection !== "ships" ||
-      !token ||
-      (!hasPendingMetricDescriptions && !hasBackgroundShipSync)
-    ) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      void loadShips({ silent: true });
-    }, 15000);
-
-    return () => window.clearInterval(intervalId);
-  }, [
-    activeSection,
-    hasBackgroundShipSync,
-    hasPendingMetricDescriptions,
-    loadShips,
-    token,
-  ]);
 
   const handleNavClick = (targetSection: AdminSectionRoute) => {
     navigate(appRoutes.adminSection(targetSection));
@@ -276,13 +124,13 @@ export function AdminPanelPage() {
           </button>
           <button
             type="button"
-            className={`admin-panel__nav-item ${activeSection === "tags" ? "admin-panel__nav-item--active" : ""}`}
-            onClick={() => handleNavClick("tags")}
+            className={`admin-panel__nav-item ${activeSection === "metrics" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("metrics")}
           >
             <span className="admin-panel__nav-icon">
-              <TagIcon />
+              <MetricsIcon />
             </span>
-            <span className="admin-panel__nav-label">Tags</span>
+            <span className="admin-panel__nav-label">Metrics</span>
           </button>
         </nav>
 
@@ -322,88 +170,37 @@ export function AdminPanelPage() {
             {activeSection === "users" && (
               <UsersSection
                 token={token}
-                users={users}
-                loading={usersLoading}
-                error={error}
-                onLoadUsers={loadUsers}
-                onError={setError}
+                users={usersAdmin.users}
+                loading={usersAdmin.isLoading}
+                error={usersAdmin.error}
+                onLoadUsers={usersAdmin.loadUsers}
+                onError={usersAdmin.setError}
               />
             )}
 
             {activeSection === "ships" && (
               <ShipsSection
                 token={token}
-                ships={ships}
-                users={users}
-                organizations={organizations}
-                organizationsLoading={organizationsLoading}
-                metricDefinitions={metricDefinitions}
-                loading={shipsLoading}
-                error={error}
-                onLoadShips={loadShips}
-                onError={setError}
-                onOpenManuals={(shipId, shipName) => {
-                  setManualsPromptShip({ id: shipId, name: shipName });
-                }}
-                onOpenMetrics={(ship) => setMetricsModalShip(ship)}
+                ships={shipsAdmin.ships}
+                organizations={shipsAdmin.organizations}
+                organizationsLoading={shipsAdmin.organizationsLoading}
+                loading={shipsAdmin.shipsLoading}
+                error={shipsAdmin.error}
+                onLoadShips={shipsAdmin.loadShips}
+                onError={shipsAdmin.setError}
               />
             )}
 
-            {activeSection === "tags" && (
-              <TagsSection
-                token={token}
-                error={error}
-                onError={setError}
-              />
-            )}
+            {activeSection === "metrics" && <MetricsSection token={token} />}
           </div>
         </main>
       </div>
 
-      {manualsPromptShip && (
-        <ManualsPromptModal
-          token={token}
-          shipId={manualsPromptShip.id}
-          shipName={manualsPromptShip.name}
-          onClose={() => {
-            setManualsPromptShip(null);
-          }}
-          onError={setError}
-        />
-      )}
-
-      {metricsModalShip && (
-        <MetricsModal
-          token={token}
-          shipId={metricsModalShip.id}
-          shipName={metricsModalShip.name}
-          metricsConfig={metricsModalShip.metricsConfig}
-          metricDefinitions={metricDefinitions}
-          onClose={() => setMetricsModalShip(null)}
-          onError={setError}
-          onShipUpdated={(updatedShip) => {
-            setShips((current) =>
-              current.map((ship) =>
-                ship.id === updatedShip.id ? updatedShip : ship,
-              ),
-            );
-            setMetricsModalShip(updatedShip);
-          }}
-          onDefinitionsChanged={() => {
-            if (token) {
-              getMetricDefinitions(token)
-                .then(setMetricDefinitions)
-                .catch(() => {});
-            }
-          }}
-        />
-      )}
-
       <Toast
-        message={error}
+        message={activeError}
         type="error"
         duration={6000}
-        onClose={() => setError("")}
+        onClose={clearActiveError}
       />
     </div>
   );

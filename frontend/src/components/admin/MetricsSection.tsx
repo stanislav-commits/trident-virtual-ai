@@ -1,495 +1,465 @@
-import { useState } from "react";
-import {
-  createMetric,
-  updateMetric,
-  deleteMetric,
-  type MetricDefinitionItem,
-} from "../../api/client";
-import { MetricsIcon, XIcon, PlusIcon } from "./AdminPanelIcons";
+import { useEffect, useState } from "react";
+import { useAdminShip } from "../../context/AdminShipContext";
+import { useShipMetricsAdminData } from "../../hooks/admin/useShipMetricsAdminData";
+import { MetricsIcon, ShipIcon } from "./AdminPanelIcons";
 
 interface MetricsSectionProps {
   token: string | null;
-  metrics: MetricDefinitionItem[];
-  loading: boolean;
-  error: string;
-  onLoadMetrics: () => Promise<void>;
-  onMetricDeleteSuccess?: () => void;
-  onError: (error: string) => void;
 }
 
-interface MetricForm {
+interface MetricsTableRow {
+  id: string;
+  bucket: string;
   key: string;
-  label: string;
-  description: string;
-  unit: string;
-  dataType: string;
+  field: string;
+  description: string | null;
 }
 
-interface DeleteConfirm {
-  key: string;
-  label: string;
+const syncDateFormatter = new Intl.DateTimeFormat(undefined, {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const ALL_BUCKETS_FILTER = "all";
+const METRICS_PAGE_SIZE_OPTIONS = [25, 50, 100];
+const DEFAULT_PAGE_SIZE = METRICS_PAGE_SIZE_OPTIONS[0];
+
+function formatSyncDate(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime())
+    ? "-"
+    : syncDateFormatter.format(parsedDate);
 }
 
-export function MetricsSection({
-  token,
-  metrics,
-  loading,
-  onLoadMetrics,
-  onMetricDeleteSuccess,
-  onError,
-}: MetricsSectionProps) {
-  const [metricForm, setMetricForm] = useState<MetricForm>({
-    key: "",
-    label: "",
-    description: "",
-    unit: "",
-    dataType: "numeric",
-  });
-  const [creatingMetric, setCreatingMetric] = useState(false);
-  const [editingMetricKey, setEditingMetricKey] = useState<string | null>(null);
-  const [metricDeleteConfirm, setMetricDeleteConfirm] =
-    useState<DeleteConfirm | null>(null);
-  const [deletingMetricKey, setDeletingMetricKey] = useState<string | null>(
-    null,
+export function MetricsSection({ token }: MetricsSectionProps) {
+  const {
+    availableShips,
+    selectedShipId,
+    setSelectedShipId,
+    isLoading: shipsLoading,
+    error: shipsError,
+  } = useAdminShip();
+  const {
+    catalog,
+    loading,
+    syncing,
+    error,
+    setError,
+    syncCatalog,
+    updateDescription,
+    lastSyncResult,
+  } = useShipMetricsAdminData(
+    token,
+    selectedShipId,
+    Boolean(token && selectedShipId),
   );
 
-  const handleMetricCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token || !metricForm.key.trim() || !metricForm.label.trim()) return;
-    setCreatingMetric(true);
-    onError("");
-    try {
-      await createMetric(
-        {
-          key: metricForm.key.trim(),
-          label: metricForm.label.trim(),
-          description: metricForm.description.trim() || undefined,
-          unit: metricForm.unit.trim() || undefined,
-          dataType: metricForm.dataType.trim() || "numeric",
-        },
-        token,
-      );
-      setMetricForm({
-        key: "",
-        label: "",
-        description: "",
-        unit: "",
-        dataType: "numeric",
-      });
-      await onLoadMetrics();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to create metric");
-    } finally {
-      setCreatingMetric(false);
+  const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
+  const [draftDescription, setDraftDescription] = useState("");
+  const [savingMetricId, setSavingMetricId] = useState<string | null>(null);
+  const [selectedBucketFilter, setSelectedBucketFilter] =
+    useState(ALL_BUCKETS_FILTER);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    if (!selectedShipId && availableShips.length > 0) {
+      setSelectedShipId(availableShips[0].id);
     }
-  };
+  }, [availableShips, selectedShipId, setSelectedShipId]);
 
-  const handleMetricEdit = (m: MetricDefinitionItem) => {
-    setEditingMetricKey(m.key);
-    setMetricForm({
-      key: m.key,
-      label: m.label,
-      description: m.description ?? "",
-      unit: m.unit ?? "",
-      dataType: m.dataType ?? "numeric",
-    });
-  };
+  useEffect(() => {
+    setSelectedBucketFilter(ALL_BUCKETS_FILTER);
+    setCurrentPage(1);
+    setEditingMetricId(null);
+    setDraftDescription("");
+    setSavingMetricId(null);
+  }, [selectedShipId]);
 
-  const handleMetricEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token || !editingMetricKey || !metricForm.label.trim()) return;
-    setCreatingMetric(true);
-    onError("");
-    try {
-      await updateMetric(
-        editingMetricKey,
-        {
-          label: metricForm.label.trim(),
-          description: metricForm.description.trim() || undefined,
-          unit: metricForm.unit.trim() || undefined,
-          dataType: metricForm.dataType.trim() || "numeric",
-        },
-        token,
-      );
-      setEditingMetricKey(null);
-      setMetricForm({
-        key: "",
-        label: "",
-        description: "",
-        unit: "",
-        dataType: "numeric",
-      });
-      await onLoadMetrics();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to update metric");
-    } finally {
-      setCreatingMetric(false);
+  useEffect(() => {
+    if (
+      selectedBucketFilter !== ALL_BUCKETS_FILTER &&
+      catalog &&
+      !catalog.buckets.some(
+        (bucketGroup) => bucketGroup.bucket === selectedBucketFilter,
+      )
+    ) {
+      setSelectedBucketFilter(ALL_BUCKETS_FILTER);
     }
+  }, [catalog, selectedBucketFilter]);
+
+  const handleStartEditing = (metricId: string, description: string | null) => {
+    setError("");
+    setEditingMetricId(metricId);
+    setDraftDescription(description ?? "");
   };
 
-  const handleMetricDeleteClick = (key: string, label: string) =>
-    setMetricDeleteConfirm({ key, label });
-  const handleMetricDeleteCancel = () => setMetricDeleteConfirm(null);
+  const handleCancelEditing = () => {
+    setEditingMetricId(null);
+    setDraftDescription("");
+  };
 
-  const handleMetricDeleteConfirm = async () => {
-    if (!token || !metricDeleteConfirm) return;
-    setDeletingMetricKey(metricDeleteConfirm.key);
-    onError("");
-    setMetricDeleteConfirm(null);
-    try {
-      await deleteMetric(metricDeleteConfirm.key, token);
-      await onLoadMetrics();
-      onMetricDeleteSuccess?.();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to delete metric");
-    } finally {
-      setDeletingMetricKey(null);
+  const handleSaveDescription = async (metricId: string) => {
+    setSavingMetricId(metricId);
+    const updatedMetric = await updateDescription(
+      metricId,
+      draftDescription.trim() || null,
+    );
+
+    if (updatedMetric) {
+      setEditingMetricId(null);
+      setDraftDescription("");
     }
+
+    setSavingMetricId(null);
   };
+
+  const activeError = error || shipsError || "";
+  const bucketOptions = catalog?.buckets ?? [];
+  const filteredMetrics: MetricsTableRow[] = [];
+
+  if (catalog) {
+    for (const bucketGroup of catalog.buckets) {
+      if (
+        selectedBucketFilter !== ALL_BUCKETS_FILTER &&
+        bucketGroup.bucket !== selectedBucketFilter
+      ) {
+        continue;
+      }
+
+      for (const metric of bucketGroup.metrics) {
+        filteredMetrics.push({
+          id: metric.id,
+          bucket: bucketGroup.bucket,
+          key: metric.key,
+          field: metric.field,
+          description: metric.description,
+        });
+      }
+    }
+  }
+
+  const totalFilteredMetrics = filteredMetrics.length;
+  const totalPages = Math.max(1, Math.ceil(totalFilteredMetrics / pageSize));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex =
+    totalFilteredMetrics === 0 ? 0 : (safeCurrentPage - 1) * pageSize;
+  const paginatedMetrics = filteredMetrics.slice(
+    pageStartIndex,
+    pageStartIndex + pageSize,
+  );
+  const visibleFrom = totalFilteredMetrics === 0 ? 0 : pageStartIndex + 1;
+  const visibleTo = Math.min(pageStartIndex + pageSize, totalFilteredMetrics);
+  const selectedBucketLabel =
+    selectedBucketFilter === ALL_BUCKETS_FILTER
+      ? "All buckets"
+      : selectedBucketFilter;
+  const syncStatusText = syncing
+    ? "Syncing catalog from Influx..."
+    : lastSyncResult
+      ? `Last sync updated ${lastSyncResult.metricsSynced} metrics across ${lastSyncResult.bucketCount} buckets.`
+      : catalog?.syncedAt
+        ? `Catalog loaded. Last sync: ${formatSyncDate(catalog.syncedAt)}.`
+        : "Catalog has not been synced yet.";
 
   return (
-    <>
-      <section className="admin-panel__section">
-        <div className="admin-panel__section-head">
-          <div>
-            <h2 className="admin-panel__section-title">Metrics</h2>
-            <p className="admin-panel__section-subtitle">
-              Define metric keys, display names and descriptions for ship
-              telemetry.
-            </p>
-          </div>
-          {editingMetricKey ? (
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--ghost"
-              onClick={() => {
-                setEditingMetricKey(null);
-                setMetricForm({
-                  key: "",
-                  label: "",
-                  description: "",
-                  unit: "",
-                  dataType: "numeric",
-                });
-              }}
-            >
-              Cancel edit
-            </button>
-          ) : null}
+    <section className="admin-panel__section">
+      <div className="admin-panel__section-head">
+        <div className="admin-panel__section-intro">
+          <h2 className="admin-panel__section-title">Metrics</h2>
+          <p className="admin-panel__section-subtitle">
+            Select a ship, filter its metric catalog by bucket, and edit metric
+            descriptions from one place.
+          </p>
         </div>
+        <button
+          type="button"
+          className="admin-panel__btn admin-panel__btn--primary"
+          onClick={() => void syncCatalog()}
+          disabled={!selectedShipId || syncing || shipsLoading}
+        >
+          {syncing ? "Syncing..." : "Sync from Influx"}
+        </button>
+      </div>
 
-        {editingMetricKey ? (
-          <div className="admin-panel__form-card">
-            <h3 className="admin-panel__form-card-title">Edit metric</h3>
-            <form
-              onSubmit={handleMetricEditSubmit}
-              className="admin-panel__ship-form"
-            >
+      {activeError && (
+        <div className="admin-panel__error" role="alert">
+          {activeError}
+        </div>
+      )}
+
+      {shipsLoading && !availableShips.length ? (
+        <div className="admin-panel__state-box">
+          <div className="admin-panel__spinner" />
+          <span className="admin-panel__muted">Loading ships...</span>
+        </div>
+      ) : availableShips.length === 0 ? (
+        <div className="admin-panel__state-box">
+          <ShipIcon />
+          <span className="admin-panel__muted">
+            Create at least one ship to sync its metrics.
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="admin-panel__form-card admin-panel__metrics-filter-card">
+            <div className="admin-panel__form-row">
               <div className="admin-panel__field">
-                <label className="admin-panel__field-label">
-                  Key (read-only)
-                </label>
-                <input
-                  type="text"
-                  value={metricForm.key}
-                  readOnly
-                  className="admin-panel__input admin-panel__input--readonly"
-                />
-              </div>
-              <div className="admin-panel__form-row">
-                <div className="admin-panel__field">
-                  <label className="admin-panel__field-label">
-                    Display name
-                  </label>
-                  <input
-                    type="text"
-                    value={metricForm.label}
-                    onChange={(e) =>
-                      setMetricForm((p) => ({
-                        ...p,
-                        label: e.target.value,
-                      }))
-                    }
-                    className="admin-panel__input"
-                    placeholder="e.g. Speed"
-                    required
-                    disabled={creatingMetric}
-                  />
-                </div>
-                <div className="admin-panel__field">
-                  <label className="admin-panel__field-label">Unit</label>
-                  <input
-                    type="text"
-                    value={metricForm.unit}
-                    onChange={(e) =>
-                      setMetricForm((p) => ({
-                        ...p,
-                        unit: e.target.value,
-                      }))
-                    }
-                    className="admin-panel__input"
-                    placeholder="e.g. knots"
-                    disabled={creatingMetric}
-                  />
-                </div>
-              </div>
-              <div className="admin-panel__field">
-                <label className="admin-panel__field-label">
-                  Description (what this metric means)
-                </label>
-                <textarea
-                  value={metricForm.description}
-                  onChange={(e) =>
-                    setMetricForm((p) => ({
-                      ...p,
-                      description: e.target.value,
-                    }))
+                <label className="admin-panel__field-label">Ship</label>
+                <select
+                  className="admin-panel__select"
+                  value={selectedShipId ?? ""}
+                  onChange={(event) =>
+                    setSelectedShipId(event.target.value || null)
                   }
-                  className="admin-panel__input admin-panel__textarea"
-                  placeholder="Optional description"
-                  rows={3}
-                  disabled={creatingMetric}
-                />
-              </div>
-              <div className="admin-panel__form-actions">
-                <button
-                  type="submit"
-                  className="admin-panel__btn admin-panel__btn--primary"
-                  disabled={creatingMetric}
                 >
-                  {creatingMetric ? "Saving…" : "Save changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        ) : (
-          <div className="admin-panel__form-card">
-            <h3 className="admin-panel__form-card-title">New metric</h3>
-            <form
-              onSubmit={handleMetricCreate}
-              className="admin-panel__ship-form"
-            >
-              <div className="admin-panel__form-row">
-                <div className="admin-panel__field">
-                  <label className="admin-panel__field-label">Key</label>
-                  <input
-                    type="text"
-                    value={metricForm.key}
-                    onChange={(e) =>
-                      setMetricForm((p) => ({
-                        ...p,
-                        key: e.target.value,
-                      }))
-                    }
-                    className="admin-panel__input"
-                    placeholder="e.g. speed_knots"
-                    required
-                    disabled={creatingMetric}
-                  />
-                </div>
-                <div className="admin-panel__field">
-                  <label className="admin-panel__field-label">
-                    Display name
-                  </label>
-                  <input
-                    type="text"
-                    value={metricForm.label}
-                    onChange={(e) =>
-                      setMetricForm((p) => ({
-                        ...p,
-                        label: e.target.value,
-                      }))
-                    }
-                    className="admin-panel__input"
-                    placeholder="e.g. Speed"
-                    required
-                    disabled={creatingMetric}
-                  />
-                </div>
+                  <option value="">Select a ship</option>
+                  {availableShips.map((ship) => (
+                    <option key={ship.id} value={ship.id}>
+                      {ship.name}
+                      {ship.organizationName
+                        ? ` — ${ship.organizationName}`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="admin-panel__field">
-                <label className="admin-panel__field-label">
-                  Description (what this metric means)
-                </label>
-                <textarea
-                  value={metricForm.description}
-                  onChange={(e) =>
-                    setMetricForm((p) => ({
-                      ...p,
-                      description: e.target.value,
-                    }))
-                  }
-                  className="admin-panel__input admin-panel__textarea"
-                  placeholder="Optional"
-                  rows={3}
-                  disabled={creatingMetric}
-                />
-              </div>
-              <div className="admin-panel__form-row">
-                <div className="admin-panel__field">
-                  <label className="admin-panel__field-label">Unit</label>
-                  <input
-                    type="text"
-                    value={metricForm.unit}
-                    onChange={(e) =>
-                      setMetricForm((p) => ({
-                        ...p,
-                        unit: e.target.value,
-                      }))
-                    }
-                    className="admin-panel__input"
-                    placeholder="e.g. knots"
-                    disabled={creatingMetric}
-                  />
-                </div>
-                <div className="admin-panel__field">
-                  <label className="admin-panel__field-label">Data type</label>
-                  <select
-                    value={metricForm.dataType}
-                    onChange={(e) =>
-                      setMetricForm((p) => ({
-                        ...p,
-                        dataType: e.target.value,
-                      }))
-                    }
-                    className="admin-panel__select"
-                    disabled={creatingMetric}
-                  >
-                    <option value="numeric">numeric</option>
-                    <option value="string">string</option>
-                    <option value="boolean">boolean</option>
-                  </select>
-                </div>
-              </div>
-              <div className="admin-panel__form-actions">
-                <button
-                  type="submit"
-                  className="admin-panel__btn admin-panel__btn--primary"
-                  disabled={creatingMetric}
+                <label className="admin-panel__field-label">Bucket</label>
+                <select
+                  className="admin-panel__select"
+                  value={selectedBucketFilter}
+                  onChange={(event) => {
+                    setSelectedBucketFilter(event.target.value);
+                    setCurrentPage(1);
+                  }}
+                  disabled={!catalog || bucketOptions.length === 0}
                 >
-                  <PlusIcon />
-                  {creatingMetric ? "Creating…" : "Create metric"}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="admin-panel__state-box">
-            <div className="admin-panel__spinner" />
-            <span className="admin-panel__muted">Loading metrics…</span>
-          </div>
-        ) : metrics.length === 0 ? (
-          <div className="admin-panel__state-box">
-            <MetricsIcon />
-            <span className="admin-panel__muted">No metrics yet.</span>
-          </div>
-        ) : (
-          <div className="admin-panel__card">
-            <table className="admin-panel__table">
-              <thead>
-                <tr>
-                  <th className="admin-panel__th">Key</th>
-                  <th className="admin-panel__th">Display name</th>
-                  <th className="admin-panel__th">Description</th>
-                  <th className="admin-panel__th">Unit</th>
-                  <th className="admin-panel__th">Type</th>
-                  <th className="admin-panel__th">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.map((m) => (
-                  <tr key={m.key} className="admin-panel__row">
-                    <td className="admin-panel__td admin-panel__td--key">
-                      <code className="admin-panel__code-inline">{m.key}</code>
-                    </td>
-                    <td className="admin-panel__td">{m.label}</td>
-                    <td className="admin-panel__td admin-panel__td--desc">
-                      {m.description ?? "—"}
-                    </td>
-                    <td className="admin-panel__td">{m.unit ?? "—"}</td>
-                    <td className="admin-panel__td">
-                      {m.dataType ?? "numeric"}
-                    </td>
-                    <td className="admin-panel__td">
-                      <div className="admin-panel__actions">
-                        <button
-                          type="button"
-                          className="admin-panel__btn admin-panel__btn--ghost"
-                          onClick={() => handleMetricEdit(m)}
-                          disabled={
-                            !!editingMetricKey || deletingMetricKey === m.key
-                          }
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-panel__btn admin-panel__btn--danger"
-                          onClick={() =>
-                            handleMetricDeleteClick(m.key, m.label)
-                          }
-                          disabled={
-                            !!editingMetricKey || deletingMetricKey === m.key
-                          }
-                        >
-                          {deletingMetricKey === m.key ? "…" : "Delete"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {metricDeleteConfirm && (
-          <div
-            className="admin-panel__modal-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="ap-metric-delete-title"
-          >
-            <div className="admin-panel__modal">
-              <div className="admin-panel__modal-icon admin-panel__modal-icon--danger">
-                <XIcon />
-              </div>
-              <h2
-                id="ap-metric-delete-title"
-                className="admin-panel__modal-title"
-              >
-                Delete this metric?
-              </h2>
-              <p className="admin-panel__modal-desc">
-                Metric{" "}
-                <code className="admin-panel__code">
-                  {metricDeleteConfirm.key}
-                </code>{" "}
-                ({metricDeleteConfirm.label}) will be removed. This cannot be
-                undone. It can only be deleted if no ship uses it.
-              </p>
-              <div className="admin-panel__modal-actions">
-                <button
-                  type="button"
-                  className="admin-panel__btn admin-panel__btn--ghost"
-                  onClick={handleMetricDeleteCancel}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="admin-panel__btn admin-panel__btn--danger"
-                  onClick={handleMetricDeleteConfirm}
-                >
-                  Delete
-                </button>
+                  <option value={ALL_BUCKETS_FILTER}>All buckets</option>
+                  {bucketOptions.map((bucketGroup) => (
+                    <option key={bucketGroup.bucket} value={bucketGroup.bucket}>
+                      {bucketGroup.bucket} ({bucketGroup.totalMetrics})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
-        )}
-      </section>
-    </>
+
+          {(loading || syncing) && !catalog ? (
+            <div className="admin-panel__state-box">
+              <div className="admin-panel__spinner" />
+              <span className="admin-panel__muted">Loading metrics...</span>
+            </div>
+          ) : !selectedShipId ? (
+            <div className="admin-panel__state-box">
+              <MetricsIcon />
+              <span className="admin-panel__muted">
+                Select a ship to view its metric catalog.
+              </span>
+            </div>
+          ) : !catalog || catalog.totalMetrics === 0 ? (
+            <div className="admin-panel__state-box">
+              <MetricsIcon />
+              <span className="admin-panel__muted">
+                No metrics were discovered for this ship yet.
+              </span>
+            </div>
+          ) : (
+            <div className="admin-panel__metrics-group-card">
+              <div className="admin-panel__metrics-group-header">
+                <div className="admin-panel__metrics-group-meta">
+                  <span className="admin-panel__metrics-bucket-badge admin-panel__metrics-bucket-badge--active">
+                    {selectedBucketLabel}
+                  </span>
+                  <span className="admin-panel__muted">
+                    Showing {visibleFrom}-{visibleTo} of {totalFilteredMetrics} metrics
+                  </span>
+                </div>
+
+                <div className="admin-panel__metrics-table-tools">
+                  <span className="admin-panel__muted">
+                    {syncStatusText}
+                  </span>
+                  <div className="admin-panel__manuals-pager">
+                    <div className="admin-panel__manuals-page-size">
+                      <span className="admin-panel__manuals-page-size-label">
+                        Rows
+                      </span>
+                      <select
+                        className="admin-panel__select admin-panel__select--compact"
+                        value={String(pageSize)}
+                        onChange={(event) => {
+                          setPageSize(Number(event.target.value));
+                          setCurrentPage(1);
+                        }}
+                      >
+                        {METRICS_PAGE_SIZE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                      onClick={() =>
+                        setCurrentPage((page) => Math.max(1, page - 1))
+                      }
+                      disabled={safeCurrentPage <= 1}
+                    >
+                      Previous
+                    </button>
+                    <span className="admin-panel__manuals-page-indicator">
+                      Page {safeCurrentPage} of {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                      onClick={() =>
+                        setCurrentPage((page) => Math.min(totalPages, page + 1))
+                      }
+                      disabled={safeCurrentPage >= totalPages}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="admin-panel__metrics-group-table-wrap">
+                <table className="admin-panel__table admin-panel__table--metrics">
+                  <colgroup>
+                    <col className="admin-panel__metrics-col admin-panel__metrics-col--bucket" />
+                    <col className="admin-panel__metrics-col admin-panel__metrics-col--key" />
+                    <col className="admin-panel__metrics-col admin-panel__metrics-col--field" />
+                    <col className="admin-panel__metrics-col admin-panel__metrics-col--description" />
+                    <col className="admin-panel__metrics-col admin-panel__metrics-col--action" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th className="admin-panel__th">Bucket</th>
+                      <th className="admin-panel__th">Full key</th>
+                      <th className="admin-panel__th">Field</th>
+                      <th className="admin-panel__th">Description</th>
+                      <th className="admin-panel__th">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedMetrics.length === 0 ? (
+                      <tr className="admin-panel__row">
+                        <td className="admin-panel__td" colSpan={5}>
+                          <span className="admin-panel__muted">
+                            No metrics match the current bucket filter.
+                          </span>
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedMetrics.map((metric) => {
+                        const isEditing = editingMetricId === metric.id;
+                        const isSaving = savingMetricId === metric.id;
+
+                        return (
+                          <tr key={metric.id} className="admin-panel__row">
+                            <td className="admin-panel__td">
+                              <span className="admin-panel__metrics-bucket-badge">
+                                {metric.bucket}
+                              </span>
+                            </td>
+                            <td className="admin-panel__td admin-panel__td--key">
+                              <code className="admin-panel__code-inline admin-panel__code-inline--metric">
+                                {metric.key}
+                              </code>
+                            </td>
+                            <td className="admin-panel__td admin-panel__td--field">
+                              {metric.field}
+                            </td>
+                            <td className="admin-panel__td admin-panel__td--desc">
+                              {isEditing ? (
+                                <textarea
+                                  className="admin-panel__input admin-panel__textarea"
+                                  rows={3}
+                                  value={draftDescription}
+                                  onChange={(event) =>
+                                    setDraftDescription(event.target.value)
+                                  }
+                                  disabled={isSaving}
+                                />
+                              ) : metric.description ? (
+                                <div className="admin-panel__metric-description-text">
+                                  {metric.description}
+                                </div>
+                              ) : (
+                                <span className="admin-panel__muted">
+                                  No description yet
+                                </span>
+                              )}
+                            </td>
+                            <td className="admin-panel__td">
+                              <div className="admin-panel__actions">
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="admin-panel__btn admin-panel__btn--primary admin-panel__btn--compact"
+                                      onClick={() =>
+                                        void handleSaveDescription(metric.id)
+                                      }
+                                      disabled={isSaving}
+                                    >
+                                      {isSaving ? "Saving..." : "Save"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                                      onClick={handleCancelEditing}
+                                      disabled={isSaving}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                                    onClick={() =>
+                                      handleStartEditing(
+                                        metric.id,
+                                        metric.description,
+                                      )
+                                    }
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }

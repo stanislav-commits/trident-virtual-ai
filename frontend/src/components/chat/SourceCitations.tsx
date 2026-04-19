@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { fetchWithAuth } from "../../api/client";
+import { fetchWithAuth } from "../../api/core";
 import type { ChatContextReferenceDto } from "../../types/chat";
 import "../../styles/chat.css";
 

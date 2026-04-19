@@ -5,27 +5,25 @@ import type {
   ShipMetricsConfigItem,
 } from "../../api/client";
 import {
-  getMetricTags,
-  replaceMetricTags,
   updateMetric,
   updateShipMetricActivity,
 } from "../../api/client";
 import {
   ChevronDownIcon,
   MetricsIcon,
+  MoreHorizontalIcon,
   SearchIcon,
   XIcon,
 } from "./AdminPanelIcons";
-import { TagLinksEditorModal } from "./TagLinksEditorModal";
 
 const ROW_BATCH_SIZE = 120;
 
 function parseMetricKey(key: string) {
   const parts = key.split("::");
   if (parts.length === 3) {
-    return { bucket: parts[0], measurement: parts[1], field: parts[2] };
+    return { bucket: parts[0], field: parts[2] };
   }
-  return { bucket: "-", measurement: key, field: "-" };
+  return { bucket: "-", field: key };
 }
 
 function createActivityMap(metricsConfig: ShipMetricsConfigItem[]) {
@@ -44,6 +42,7 @@ function getActivitySignature(activityMap: Record<string, boolean>) {
 function MetricsActionMenu({
   label,
   items,
+  variant = "default",
 }: {
   label: string;
   items: Array<{
@@ -51,6 +50,7 @@ function MetricsActionMenu({
     disabled?: boolean;
     onSelect: () => void;
   }>;
+  variant?: "default" | "compact";
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -75,12 +75,24 @@ function MetricsActionMenu({
     <div className="admin-panel__metrics-action-menu" ref={wrapRef}>
       <button
         type="button"
-        className="admin-panel__metrics-action-menu-trigger"
+        className={`admin-panel__metrics-action-menu-trigger ${
+          variant === "compact"
+            ? "admin-panel__metrics-action-menu-trigger--compact"
+            : ""
+        }`}
         onClick={() => setOpen((current) => !current)}
         disabled={!hasEnabledItems}
+        aria-label={label}
+        title={label}
       >
-        <span>{label}</span>
-        <ChevronDownIcon open={open} />
+        {variant === "compact" ? (
+          <MoreHorizontalIcon />
+        ) : (
+          <>
+            <span>{label}</span>
+            <ChevronDownIcon open={open} />
+          </>
+        )}
       </button>
 
       {open && (
@@ -138,10 +150,6 @@ export function MetricsModal({
   const [bucketSearch, setBucketSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(ROW_BATCH_SIZE);
   const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [tagEditingKey, setTagEditingKey] = useState<string | null>(null);
-  const [tagOverrides, setTagOverrides] = useState<
-    Record<string, MetricDefinitionItem["tag"] | undefined>
-  >({});
   const [editDesc, setEditDesc] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingActivity, setSavingActivity] = useState(false);
@@ -193,29 +201,22 @@ export function MetricsModal({
         .map((config) => {
           const definition = definitionMap.get(config.metricKey);
           const parsed = parseMetricKey(config.metricKey);
-          const hasTagOverride = Object.prototype.hasOwnProperty.call(
-            tagOverrides,
-            config.metricKey,
-          );
           return {
             key: config.metricKey,
             isActive: draftActivity[config.metricKey] ?? config.isActive,
             bucket: definition?.bucket ?? parsed.bucket,
-            measurement: definition?.measurement ?? parsed.measurement,
+            label: definition?.label ?? parsed.field,
             field: definition?.field ?? parsed.field,
             description: definition?.description ?? null,
-            tag: hasTagOverride
-              ? tagOverrides[config.metricKey] ?? null
-              : definition?.tag ?? null,
           };
         })
         .sort(
           (left, right) =>
             left.bucket.localeCompare(right.bucket) ||
-            left.measurement.localeCompare(right.measurement) ||
-            left.field.localeCompare(right.field),
+            left.label.localeCompare(right.label) ||
+            left.key.localeCompare(right.key),
         ),
-    [definitionMap, draftActivity, metricsConfig, tagOverrides],
+    [definitionMap, draftActivity, metricsConfig],
   );
 
   const searchRows = useMemo(() => {
@@ -226,13 +227,9 @@ export function MetricsModal({
 
       return (
         row.bucket.toLowerCase().includes(deferredSearch) ||
-        row.measurement.toLowerCase().includes(deferredSearch) ||
+        row.label.toLowerCase().includes(deferredSearch) ||
+        row.key.toLowerCase().includes(deferredSearch) ||
         row.field.toLowerCase().includes(deferredSearch) ||
-        (row.tag?.key.toLowerCase().includes(deferredSearch) ?? false) ||
-        (row.tag?.category.toLowerCase().includes(deferredSearch) ?? false) ||
-        (row.tag?.subcategory.toLowerCase().includes(deferredSearch) ??
-          false) ||
-        (row.tag?.item.toLowerCase().includes(deferredSearch) ?? false) ||
         (row.description?.toLowerCase().includes(deferredSearch) ?? false)
       );
     });
@@ -572,7 +569,7 @@ export function MetricsModal({
                 className="admin-panel__metrics-search-input"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search bucket, measurement, field, or description..."
+                placeholder="Search bucket, display name, raw key, or description..."
               />
             </div>
 
@@ -817,7 +814,7 @@ export function MetricsModal({
                     </div>
 
                     <MetricsActionMenu
-                      label="Actions"
+                      label="Bulk actions"
                       items={[
                         {
                           label: "Enable shown in bucket",
@@ -846,12 +843,11 @@ export function MetricsModal({
                   </div>
 
                   <div className="admin-panel__metrics-group-table-wrap">
-                    <table className="admin-panel__table">
+                    <table className="admin-panel__table admin-panel__table--metrics">
                       <colgroup>
                         <col className="admin-panel__metrics-col admin-panel__metrics-col--toggle" />
-                        <col className="admin-panel__metrics-col admin-panel__metrics-col--measurement" />
-                        <col className="admin-panel__metrics-col admin-panel__metrics-col--field" />
-                        <col className="admin-panel__metrics-col admin-panel__metrics-col--tag" />
+                        <col className="admin-panel__metrics-col admin-panel__metrics-col--name" />
+                        <col className="admin-panel__metrics-col admin-panel__metrics-col--key" />
                         <col className="admin-panel__metrics-col admin-panel__metrics-col--description" />
                         <col className="admin-panel__metrics-col admin-panel__metrics-col--action" />
                       </colgroup>
@@ -860,9 +856,8 @@ export function MetricsModal({
                           <th className="admin-panel__th admin-panel__th--toggle">
                             Active
                           </th>
-                          <th className="admin-panel__th">Measurement</th>
-                          <th className="admin-panel__th">Field</th>
-                          <th className="admin-panel__th">Tag</th>
+                          <th className="admin-panel__th">Display name</th>
+                          <th className="admin-panel__th">Raw key</th>
                           <th className="admin-panel__th">Description</th>
                           <th className="admin-panel__th">Action</th>
                         </tr>
@@ -882,63 +877,54 @@ export function MetricsModal({
                                   )
                                 }
                                 disabled={savingActivity}
-                                aria-label={`Toggle metric ${row.measurement} ${row.field}`}
+                                aria-label={`Toggle metric ${row.label}`}
                               />
                             </td>
-                            <td className="admin-panel__td">
-                              <code
-                                className="admin-panel__code-inline admin-panel__code-inline--metric"
-                                title={row.measurement}
+                            <td className="admin-panel__td admin-panel__td--metric-name">
+                              <div
+                                className="admin-panel__metric-name-cell"
+                                title={row.label}
                               >
-                                <span className="admin-panel__metric-name-text">
-                                  {row.measurement}
+                                <span className="admin-panel__metric-name-primary">
+                                  {row.label}
                                 </span>
-                              </code>
-                            </td>
-                            <td className="admin-panel__td">{row.field}</td>
-                            <td className="admin-panel__td admin-panel__td--muted admin-panel__td--metric-tag">
-                              {row.tag ? (
-                                <div className="admin-panel__metric-tag-cell">
-                                  <span
-                                    className="admin-panel__tag-link-pill admin-panel__tag-link-pill--metric"
-                                    title={row.tag.key}
-                                  >
-                                    <span className="admin-panel__metric-tag-key">
-                                      {row.tag.key}
-                                    </span>
+                                {row.field && row.field !== row.label ? (
+                                  <span className="admin-panel__metric-name-secondary">
+                                    {row.field}
                                   </span>
-                                </div>
-                              ) : (
-                                <span className="admin-panel__metric-tag-empty">
-                                  No tag
-                                </span>
-                              )}
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="admin-panel__td admin-panel__td--muted admin-panel__td--metric-key">
+                              <div
+                                className="admin-panel__metric-raw-key"
+                                title={row.key}
+                              >
+                                {row.key}
+                              </div>
                             </td>
                             <td className="admin-panel__td admin-panel__td--muted">
-                              <div className="admin-panel__metric-description-text">
+                              <div
+                                className="admin-panel__metric-description-text"
+                                title={row.description ?? "Pending"}
+                              >
                                 {row.description ?? "Pending"}
                               </div>
                             </td>
                             <td className="admin-panel__td admin-panel__td--metric-actions">
-                              <div className="admin-panel__actions admin-panel__actions--metric-row">
-                                <button
-                                  type="button"
-                                  className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
-                                  onClick={() => {
-                                    setEditingKey(row.key);
-                                    setEditDesc(row.description ?? "");
-                                  }}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
-                                  onClick={() => setTagEditingKey(row.key)}
-                                >
-                                  Tags
-                                </button>
-                              </div>
+                              <MetricsActionMenu
+                                label={`Actions for ${row.label}`}
+                                variant="compact"
+                                items={[
+                                  {
+                                    label: "Edit description",
+                                    onSelect: () => {
+                                      setEditingKey(row.key);
+                                      setEditDesc(row.description ?? "");
+                                    },
+                                  },
+                                ]}
+                              />
                             </td>
                           </tr>
                         ))}
@@ -1064,29 +1050,6 @@ export function MetricsModal({
         </div>
       )}
 
-      {tagEditingKey && (
-        <TagLinksEditorModal
-          token={token}
-          title="Edit metric tag"
-          entityLabel={tagEditingKey}
-          onClose={() => setTagEditingKey(null)}
-          onError={onError}
-          loadSelectedTags={() => getMetricTags(tagEditingKey, token ?? "")}
-          saveSelectedTags={async (tagIds) => {
-            const selected = await replaceMetricTags(
-              tagEditingKey,
-              tagIds,
-              token ?? "",
-            );
-            setTagOverrides((current) => ({
-              ...current,
-              [tagEditingKey]: selected[0] ?? null,
-            }));
-            onDefinitionsChanged?.();
-            return selected;
-          }}
-        />
-      )}
     </div>
   );
 }

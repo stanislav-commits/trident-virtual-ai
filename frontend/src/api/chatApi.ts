@@ -1,4 +1,4 @@
-import { fetchWithAuth } from "./client";
+import { fetchWithAuth } from "./core";
 import type {
   ChatSessionDto,
   ChatMessageDto,
@@ -56,7 +56,6 @@ export async function getChatSession(
   return res.json();
 }
 
-/** Omit shipId for admin (global RAG). */
 export async function createChatSession(
   shipId: string | undefined,
   token: string,

@@ -5,9 +5,9 @@ import {
   deleteUser,
   resetPassword,
   updateUserName,
-  getShips,
   type UserListItem,
-} from "../../api/client";
+} from "../../api/usersApi";
+import { getShips } from "../../api/shipsApi";
 import { UsersIcon, CopyIcon, XIcon, PlusIcon } from "./AdminPanelIcons";
 
 function EditableName({

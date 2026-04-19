@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { AuthUser } from '../types/auth';
-import { login as apiLogin } from '../api/client';
+import { login as apiLogin } from '../api/authApi';
 
 const STORAGE_KEY = 'trident_auth';
 

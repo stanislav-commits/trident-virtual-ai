@@ -471,16 +471,26 @@
 }
 
 .admin-panel__td--desc {
-  max-width: 260px;
+  min-width: 340px;
+  max-width: 46rem;
   font-size: 0.85rem;
   color: var(--chat-text-muted);
-  line-height: 1.4;
+  line-height: 1.55;
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
 
 .admin-panel__metric-description-text {
+  display: block;
+  max-width: 46rem;
   white-space: pre-line;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.55;
+}
+
+.admin-panel__td--field {
+  min-width: 180px;
   overflow-wrap: anywhere;
 }
 
@@ -1487,8 +1497,8 @@
 }
 
 .admin-panel__modal.admin-panel__metrics-modal {
-  width: min(1120px, calc(100vw - 48px));
-  max-width: min(1120px, calc(100vw - 48px));
+  width: min(1240px, calc(100vw - 40px));
+  max-width: min(1240px, calc(100vw - 40px));
 }
 
 .admin-panel__metrics-toolbar > .admin-panel__metrics-search {
@@ -1701,6 +1711,15 @@
     color var(--transition-fast);
 }
 
+.admin-panel__metrics-action-menu-trigger--compact {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 10px;
+}
+
 .admin-panel__metrics-action-menu-trigger:hover:not(:disabled) {
   border-color: var(--chat-border-strong);
   background: var(--chat-surface-3);
@@ -1715,6 +1734,11 @@
 .admin-panel__metrics-action-menu-trigger .admin-panel__picker-chevron {
   width: 14px;
   height: 14px;
+}
+
+.admin-panel__metrics-action-menu-trigger--compact svg {
+  width: 16px;
+  height: 16px;
 }
 
 .admin-panel__metrics-action-menu-panel {
@@ -1793,6 +1817,20 @@
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 10px;
+}
+
+.admin-panel__metrics-filter-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-panel__metrics-table-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .admin-panel__metrics-group-meta {
@@ -2254,36 +2292,40 @@
 }
 
 .admin-panel__metrics-group-table-wrap {
-  overflow-x: hidden;
+  overflow-x: auto;
   border-radius: 14px;
 }
 
 .admin-panel__metrics-group-table-wrap .admin-panel__table {
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .admin-panel__metrics-col--toggle {
-  width: 76px;
+  width: 72px;
 }
 
-.admin-panel__metrics-col--measurement {
-  width: 25%;
+.admin-panel__metrics-col--name {
+  width: 190px;
+}
+
+.admin-panel__metrics-col--bucket {
+  width: 120px;
+}
+
+.admin-panel__metrics-col--key {
+  width: 28%;
 }
 
 .admin-panel__metrics-col--field {
-  width: 11%;
-}
-
-.admin-panel__metrics-col--tag {
-  width: 21%;
+  width: 18%;
 }
 
 .admin-panel__metrics-col--description {
-  width: auto;
+  width: 44%;
 }
 
 .admin-panel__metrics-col--action {
-  width: 156px;
+  width: 96px;
 }
 
 .admin-panel__metrics-group-table-wrap
@@ -2293,6 +2335,56 @@
   .admin-panel__td:nth-child(2)
   .admin-panel__code-inline {
   max-width: min(100%, 22rem);
+}
+
+.admin-panel__table--metrics .admin-panel__th,
+.admin-panel__table--metrics .admin-panel__td {
+  min-width: 0;
+}
+
+.admin-panel__td--metric-name,
+.admin-panel__td--metric-key,
+.admin-panel__td--metric-actions {
+  vertical-align: top;
+}
+
+.admin-panel__metric-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.admin-panel__metric-name-primary {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--chat-text);
+  overflow-wrap: anywhere;
+}
+
+.admin-panel__metric-name-secondary {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--chat-text-subtle);
+  overflow-wrap: anywhere;
+}
+
+.admin-panel__metric-raw-key {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text-muted);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 [data-theme="light"] .admin-panel__metrics-group-card {
@@ -3708,6 +3800,7 @@
 
 .admin-panel__td--metric-actions {
   white-space: nowrap;
+  text-align: right;
 }
 
 .admin-panel__actions--metric-row {

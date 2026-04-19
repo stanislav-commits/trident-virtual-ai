@@ -58,8 +58,21 @@ export function MessageList({
       )}
 
       {isLoadingResponse && (
-        <div className="chat-message chat-message--assistant">
-          <div className="chat-message__loading">Generating response...</div>
+        <div
+          className="chat-message chat-message--assistant"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="chat-message__loading">
+            <span className="chat-message__loading-label">
+              Generating response
+            </span>
+            <span className="typing-dots" aria-hidden="true">
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+            </span>
+          </div>
         </div>
       )}
 

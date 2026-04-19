@@ -8,7 +8,7 @@ import type {
   ChatSuggestionActionDto,
 } from "../../types/chat";
 import { useAuth } from "../../context/AuthContext";
-import { fetchWithAuth } from "../../api/client";
+import { fetchWithAuth } from "../../api/core";
 import { SourceCitations } from "./SourceCitations";
 
 interface MessageBubbleProps {

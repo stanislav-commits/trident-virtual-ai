@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAdminShip } from "../context/AdminShipContext";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
 import { TopBar } from "../components/layout/TopBar";
@@ -10,6 +11,7 @@ import { appRoutes } from "../utils/routes";
 
 export function HomePage() {
   const { user, token } = useAuth();
+  const { sessionShipId } = useAdminShip();
   const navigate = useNavigate();
   const { createSession, isLoading, error } = useChatSessions(token);
 
@@ -27,10 +29,8 @@ export function HomePage() {
 
       setIsCreating(true);
       try {
-        const shipIdForSession =
-          user?.role === "admin" ? undefined : (user?.shipId ?? undefined);
         const newSession = await createSession(
-          shipIdForSession,
+          sessionShipId,
           inputValue.trim(),
         );
 
@@ -42,7 +42,7 @@ export function HomePage() {
         setIsCreating(false);
       }
     },
-    [inputValue, canCreateChat, user?.role, user?.shipId, createSession, navigate, isCreating],
+    [inputValue, canCreateChat, sessionShipId, createSession, navigate, isCreating],
   );
 
   const isDisabled =
