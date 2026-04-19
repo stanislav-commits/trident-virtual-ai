@@ -10,7 +10,13 @@ export class MetricsService {
   getCatalog() {
     return {
       status: 'scaffolded',
-      capabilities: ['current-values', 'historical-trends', 'comparisons', 'aggregations'],
+      capabilities: [
+        'semantic-concepts',
+        'snapshot-values',
+        'point-in-time-values',
+        'comparisons',
+        'aggregations',
+      ],
       integration: this.influxService.getStatus(),
     };
   }

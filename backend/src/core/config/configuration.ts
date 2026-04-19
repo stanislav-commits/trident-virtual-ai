@@ -44,6 +44,10 @@ export default function configuration() {
         org: process.env.INFLUX_ORG ?? '',
         token: process.env.INFLUX_TOKEN ?? '',
         schemaLookback: process.env.INFLUX_SCHEMA_LOOKBACK ?? '-365d',
+        queryLookback:
+          process.env.INFLUX_QUERY_LOOKBACK ??
+          process.env.INFLUX_SCHEMA_LOOKBACK ??
+          '-365d',
       },
       rag: {
         provider: process.env.RAG_PROVIDER ?? 'local',

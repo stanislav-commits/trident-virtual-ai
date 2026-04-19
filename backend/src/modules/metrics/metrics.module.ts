@@ -9,6 +9,7 @@ import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricDescriptionBackfillService } from './metric-description-backfill.service';
 import { MetricDescriptionService } from './metric-description.service';
 import { MetricsCatalogService } from './metrics-catalog.service';
+import { MetricsConceptExecutionService } from './metrics-concept-execution.service';
 import { MetricsController } from './metrics.controller';
 import { MetricsSemanticCatalogService } from './metrics-semantic-catalog.service';
 import { MetricsService } from './metrics.service';
@@ -28,6 +29,7 @@ import { MetricsService } from './metrics.service';
   providers: [
     MetricsService,
     MetricsCatalogService,
+    MetricsConceptExecutionService,
     MetricsSemanticCatalogService,
     MetricDescriptionService,
     MetricDescriptionBackfillService,
@@ -35,6 +37,7 @@ import { MetricsService } from './metrics.service';
   exports: [
     MetricsService,
     MetricsCatalogService,
+    MetricsConceptExecutionService,
     MetricsSemanticCatalogService,
     MetricDescriptionService,
     MetricDescriptionBackfillService,

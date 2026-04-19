@@ -20,6 +20,17 @@ export interface InfluxMetricDefinition {
   label: string;
 }
 
+export interface InfluxMetricSelector {
+  bucket: string;
+  measurement: string;
+  field: string;
+}
+
+export interface InfluxMetricSample extends InfluxMetricSelector {
+  timestamp: string;
+  value: string | number | boolean | null;
+}
+
 @Injectable()
 export class InfluxService {
   constructor(
@@ -122,6 +133,26 @@ export class InfluxService {
     return metrics;
   }
 
+  async queryLatestMetric(
+    orgName: string,
+    metric: InfluxMetricSelector,
+  ): Promise<InfluxMetricSample | null> {
+    return this.queryMetricSample(orgName, metric, {
+      start: this.getQueryLookback(),
+    });
+  }
+
+  async queryMetricAtTime(
+    orgName: string,
+    metric: InfluxMetricSelector,
+    timestamp: Date,
+  ): Promise<InfluxMetricSample | null> {
+    return this.queryMetricSample(orgName, metric, {
+      start: this.getQueryLookback(),
+      stop: this.toFluxAbsoluteTime(timestamp),
+    });
+  }
+
   getStatus(): IntegrationStatusDto {
     const hasConnectionConfig = Boolean(
       this.configService.get<string>('integrations.influx.url') &&
@@ -216,6 +247,59 @@ export class InfluxService {
     });
   }
 
+  private async queryMetricSample(
+    orgName: string,
+    metric: InfluxMetricSelector,
+    options: {
+      start: string;
+      stop?: string;
+    },
+  ): Promise<InfluxMetricSample | null> {
+    const flux = [
+      `from(bucket: ${this.toFluxString(metric.bucket)})`,
+      `|> range(start: ${this.toFluxTime(options.start)}${
+        options.stop ? `, stop: ${options.stop}` : ''
+      })`,
+      `|> filter(fn: (r) => r._measurement == ${this.toFluxString(
+        metric.measurement,
+      )} and r._field == ${this.toFluxString(metric.field)})`,
+      '|> group()',
+      '|> sort(columns: ["_time"], desc: true)',
+      '|> limit(n: 1)',
+    ].join('\n');
+
+    const rows = await this.queryRows(flux, orgName);
+    const row = rows[0];
+
+    if (!row) {
+      return null;
+    }
+
+    const timestamp = this.toText(row._time);
+
+    if (!timestamp) {
+      return null;
+    }
+
+    return {
+      bucket: metric.bucket,
+      measurement: metric.measurement,
+      field: metric.field,
+      timestamp,
+      value: this.normalizeSampleValue(row._value),
+    };
+  }
+
+  private getQueryLookback(): string {
+    return this.configService.get<string>(
+      'integrations.influx.queryLookback',
+      this.configService.get<string>(
+        'integrations.influx.schemaLookback',
+        '-365d',
+      ),
+    );
+  }
+
   private toFluxString(value: string): string {
     return JSON.stringify(value);
   }
@@ -228,6 +312,24 @@ export class InfluxService {
     }
 
     return normalizedValue;
+  }
+
+  private toFluxAbsoluteTime(value: Date): string {
+    return `time(v: ${JSON.stringify(value.toISOString())})`;
+  }
+
+  private normalizeSampleValue(
+    value: unknown,
+  ): string | number | boolean | null {
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
+      return value;
+    }
+
+    return null;
   }
 
   private toText(value: unknown): string {

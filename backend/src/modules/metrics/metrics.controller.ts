@@ -16,9 +16,11 @@ import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { QueryMetricsDto } from './dto/query-metrics.dto';
 import { CreateMetricConceptDto } from './dto/create-metric-concept.dto';
 import { ResolveMetricConceptDto } from './dto/resolve-metric-concept.dto';
+import { ExecuteMetricConceptDto } from './dto/execute-metric-concept.dto';
 import { UpdateShipMetricDescriptionDto } from './dto/update-ship-metric-description.dto';
 import { UpdateMetricConceptDto } from './dto/update-metric-concept.dto';
 import { MetricsCatalogService } from './metrics-catalog.service';
+import { MetricsConceptExecutionService } from './metrics-concept-execution.service';
 import { MetricsSemanticCatalogService } from './metrics-semantic-catalog.service';
 import { MetricsService } from './metrics.service';
 
@@ -28,6 +30,7 @@ export class MetricsController {
   constructor(
     private readonly metricsService: MetricsService,
     private readonly metricsCatalogService: MetricsCatalogService,
+    private readonly metricsConceptExecutionService: MetricsConceptExecutionService,
     private readonly metricsSemanticCatalogService: MetricsSemanticCatalogService,
   ) {}
 
@@ -92,6 +95,17 @@ export class MetricsController {
   @Roles(UserRole.ADMIN)
   resolveConcept(@Body() body: ResolveMetricConceptDto) {
     return this.metricsSemanticCatalogService.resolveConcept(body);
+  }
+
+  @Post('concepts/execute')
+  executeConcept(
+    @Body() body: ExecuteMetricConceptDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.metricsConceptExecutionService.execute({
+      ...body,
+      shipId: user.role === UserRole.ADMIN ? body.shipId : user.shipId ?? undefined,
+    });
   }
 
   @Post('query')
