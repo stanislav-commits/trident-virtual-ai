@@ -2,7 +2,6 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ShipEntity } from '../ships/entities/ship.entity';
-import { MetricConceptAliasEntity } from './entities/metric-concept-alias.entity';
 import { MetricConceptEntity } from './entities/metric-concept.entity';
 import { MetricConceptMemberEntity } from './entities/metric-concept-member.entity';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
@@ -19,13 +18,11 @@ export interface MetricsSemanticBootstrapResultDto {
   totalMetrics: number;
   conceptsCreated: number;
   conceptsUpdated: number;
-  aliasesAdded: number;
   membersAdded: number;
   skippedBindings: number;
   sampleConcepts: Array<{
     slug: string;
     displayName: string;
-    aliases: string[];
   }>;
 }
 
@@ -38,8 +35,6 @@ export class MetricsSemanticBootstrapService {
     private readonly shipMetricCatalogRepository: Repository<ShipMetricCatalogEntity>,
     @InjectRepository(MetricConceptEntity)
     private readonly metricConceptRepository: Repository<MetricConceptEntity>,
-    @InjectRepository(MetricConceptAliasEntity)
-    private readonly metricConceptAliasRepository: Repository<MetricConceptAliasEntity>,
     @InjectRepository(MetricConceptMemberEntity)
     private readonly metricConceptMemberRepository: Repository<MetricConceptMemberEntity>,
   ) {}
@@ -64,7 +59,6 @@ export class MetricsSemanticBootstrapService {
     });
     const concepts = await this.metricConceptRepository.find({
       relations: {
-        aliases: true,
         members: true,
       },
       order: {
@@ -73,16 +67,6 @@ export class MetricsSemanticBootstrapService {
     });
 
     const conceptsBySlug = new Map(concepts.map((concept) => [concept.slug, concept]));
-    const aliasesByConceptId = new Map(
-      concepts.map((concept) => [
-        concept.id,
-        new Set(
-          (concept.aliases ?? [])
-            .map((alias) => alias.alias.trim().toLowerCase())
-            .filter(Boolean),
-        ),
-      ]),
-    );
     const metricMembersByConceptId = new Map(
       concepts.map((concept) => [
         concept.id,
@@ -96,13 +80,11 @@ export class MetricsSemanticBootstrapService {
 
     let conceptsCreated = 0;
     let conceptsUpdated = 0;
-    let aliasesAdded = 0;
     let membersAdded = 0;
     let skippedBindings = 0;
     const sampleConcepts: Array<{
       slug: string;
       displayName: string;
-      aliases: string[];
     }> = [];
 
     for (const metric of metrics) {
@@ -124,10 +106,8 @@ export class MetricsSemanticBootstrapService {
         );
         conceptsBySlug.set(concept.slug, {
           ...concept,
-          aliases: [],
           members: [],
         });
-        aliasesByConceptId.set(concept.id, new Set());
         metricMembersByConceptId.set(concept.id, new Set());
         conceptsCreated += 1;
       } else {
@@ -139,14 +119,6 @@ export class MetricsSemanticBootstrapService {
         }
       }
 
-      const aliasSyncResult = await this.syncConceptAliases(
-        concept.id,
-        aliasesByConceptId.get(concept.id) ?? new Set<string>(),
-        blueprint.aliases,
-      );
-      aliasesByConceptId.set(concept.id, aliasSyncResult.normalizedAliases);
-      aliasesAdded += aliasSyncResult.aliasesAdded;
-
       const conceptMetricMemberSet =
         metricMembersByConceptId.get(concept.id) ?? new Set<string>();
 
@@ -157,7 +129,6 @@ export class MetricsSemanticBootstrapService {
           this.metricConceptMemberRepository.create({
             conceptId: concept.id,
             metricCatalogId: metric.id,
-            childConceptId: null,
             role: 'primary',
             sortOrder: 0,
           }),
@@ -171,7 +142,6 @@ export class MetricsSemanticBootstrapService {
         sampleConcepts.push({
           slug: blueprint.slug,
           displayName: blueprint.displayName,
-          aliases: blueprint.aliases.slice(0, 6),
         });
       }
     }
@@ -185,7 +155,6 @@ export class MetricsSemanticBootstrapService {
       totalMetrics: metrics.length,
       conceptsCreated,
       conceptsUpdated,
-      aliasesAdded,
       membersAdded,
       skippedBindings,
       sampleConcepts,
@@ -233,61 +202,5 @@ export class MetricsSemanticBootstrapService {
     }
 
     return changed;
-  }
-
-  private async syncConceptAliases(
-    conceptId: string,
-    existingAliases: Set<string>,
-    desiredAliases: string[],
-  ): Promise<{
-    aliasesAdded: number;
-    normalizedAliases: Set<string>;
-  }> {
-    const normalizedDesiredAliases = new Set(
-      desiredAliases.map((alias) => alias.trim().toLowerCase()).filter(Boolean),
-    );
-
-    if (this.areAliasSetsEqual(existingAliases, normalizedDesiredAliases)) {
-      return {
-        aliasesAdded: 0,
-        normalizedAliases: normalizedDesiredAliases,
-      };
-    }
-
-    await this.metricConceptAliasRepository.delete({ conceptId });
-
-    if (desiredAliases.length > 0) {
-      await this.metricConceptAliasRepository.save(
-        desiredAliases.map((alias) =>
-          this.metricConceptAliasRepository.create({
-            conceptId,
-            alias,
-          }),
-        ),
-      );
-    }
-
-    return {
-      aliasesAdded: [...normalizedDesiredAliases].filter((alias) => !existingAliases.has(alias))
-        .length,
-      normalizedAliases: normalizedDesiredAliases,
-    };
-  }
-
-  private areAliasSetsEqual(
-    left: Set<string>,
-    right: Set<string>,
-  ): boolean {
-    if (left.size !== right.size) {
-      return false;
-    }
-
-    for (const value of left) {
-      if (!right.has(value)) {
-        return false;
-      }
-    }
-
-    return true;
   }
 }

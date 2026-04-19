@@ -17,6 +17,72 @@ export interface ChatSuggestionActionDto {
   kind?: "suggestion" | "all";
 }
 
+export interface ChatMetricExecutionMemberDto {
+  memberId: string;
+  role?: string | null;
+  sourceType?: "metric";
+  metricCatalogId?: string;
+  label: string;
+  key?: string | null;
+  value: unknown;
+  unit?: string | null;
+  timestamp?: string | null;
+  description?: string | null;
+  result?: null;
+}
+
+export interface ChatMetricExecutionResultDto {
+  conceptId: string;
+  conceptSlug: string;
+  conceptDisplayName: string;
+  type: string;
+  aggregationRule: string;
+  value: unknown;
+  unit?: string | null;
+  timestamp?: string | null;
+  members: ChatMetricExecutionMemberDto[];
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface ChatMetricExecutionDto {
+  query?: string | null;
+  ship?: {
+    id: string;
+    name: string;
+    organizationName?: string | null;
+  };
+  concept: {
+    id: string;
+    slug: string;
+    displayName: string;
+    description?: string | null;
+    category?: string | null;
+    type: string;
+    aggregationRule: string;
+    unit?: string | null;
+  };
+  timeMode: string;
+  timestamp?: string | null;
+  queriedMetricCount: number;
+  result: ChatMetricExecutionResultDto;
+}
+
+export interface ChatTurnAskResultDto {
+  askId: string;
+  intent: string;
+  responder: string;
+  question: string;
+  capabilityEnabled: boolean;
+  capabilityLabel: string;
+  summary: string;
+  data?: {
+    execution?: ChatMetricExecutionDto;
+    status?: string;
+    error?: string;
+  } | null;
+  contextReferences?: ChatContextReferenceDto[];
+}
+
 export interface ChatRagflowContextDto {
   telemetryShips?: string[];
   noDocumentation?: boolean;
@@ -25,6 +91,7 @@ export interface ChatRagflowContextDto {
   clarificationReason?: string;
   clarificationActions?: ChatSuggestionActionDto[];
   resolvedSubjectQuery?: string;
+  askResults?: ChatTurnAskResultDto[];
 }
 
 // Message from backend ChatMessage

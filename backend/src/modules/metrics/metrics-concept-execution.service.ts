@@ -23,28 +23,21 @@ import { MetricsSemanticCatalogService } from './metrics-semantic-catalog.servic
 
 interface MetricConceptRuntimeNode {
   concept: MetricConceptEntity;
-  members: MetricConceptRuntimeMember[];
-}
-
-interface MetricConceptRuntimeMember {
-  member: MetricConceptMemberEntity;
-  metricCatalog: ShipMetricCatalogEntity | null;
-  childConcept: MetricConceptRuntimeNode | null;
+  members: MetricConceptMemberEntity[];
 }
 
 interface MetricConceptExecutionMemberDto {
   memberId: string;
   role: string | null;
-  sourceType: 'metric' | 'concept';
-  metricCatalogId: string | null;
-  childConceptId: string | null;
+  sourceType: 'metric';
+  metricCatalogId: string;
   label: string;
   key: string | null;
   value: unknown;
   unit: string | null;
   timestamp: string | null;
   description: string | null;
-  result: MetricConceptExecutionResultDto | null;
+  result: null;
 }
 
 interface MetricConceptExecutionResultDto {
@@ -203,7 +196,7 @@ export class MetricsConceptExecutionService {
       throw new BadRequestException('conceptId or query is required');
     }
 
-    return this.loadConceptTree(conceptId, shipId, []);
+    return this.loadConcept(conceptId, shipId);
   }
 
   private async resolveConceptIdFromQuery(
@@ -228,27 +221,18 @@ export class MetricsConceptExecutionService {
     return resolution.resolvedConcept.id;
   }
 
-  private async loadConceptTree(
+  private async loadConcept(
     conceptId: string,
     shipId: string,
-    lineage: string[],
   ): Promise<MetricConceptRuntimeNode> {
-    if (lineage.includes(conceptId)) {
-      throw new BadRequestException(
-        'Metric concept members contain a recursive child concept loop',
-      );
-    }
-
     const concept = await this.metricConceptRepository.findOne({
       where: {
         id: conceptId,
         isActive: true,
       },
       relations: {
-        aliases: true,
         members: {
           metricCatalog: true,
-          childConcept: true,
         },
       },
     });
@@ -258,40 +242,19 @@ export class MetricsConceptExecutionService {
     }
 
     const scopedMembers = [...(concept.members ?? [])]
-      .filter((member) => {
-        if (!member.metricCatalog) {
-          return true;
-        }
-
-        return member.metricCatalog.shipId === shipId;
-      })
+      .filter((member) => member.metricCatalog.shipId === shipId)
       .sort(
         (left, right) =>
           left.sortOrder - right.sortOrder ||
           left.createdAt.getTime() - right.createdAt.getTime(),
       );
 
-    const members: MetricConceptRuntimeMember[] = [];
-
-    for (const member of scopedMembers) {
-      members.push({
-        member,
-        metricCatalog: member.metricCatalog,
-        childConcept: member.childConceptId
-          ? await this.loadConceptTree(member.childConceptId, shipId, [
-              ...lineage,
-              conceptId,
-            ])
-          : null,
-      });
-    }
-
     return {
       concept: {
         ...concept,
         members: scopedMembers,
       },
-      members,
+      members: scopedMembers,
     };
   }
 
@@ -300,14 +263,7 @@ export class MetricsConceptExecutionService {
     bucket: Map<string, ShipMetricCatalogEntity> = new Map(),
   ): ShipMetricCatalogEntity[] {
     for (const member of node.members) {
-      if (member.metricCatalog) {
-        bucket.set(member.metricCatalog.id, member.metricCatalog);
-        continue;
-      }
-
-      if (member.childConcept) {
-        this.collectLeafMetrics(member.childConcept, bucket);
-      }
+      bucket.set(member.metricCatalog.id, member.metricCatalog);
     }
 
     return [...bucket.values()];
@@ -405,49 +361,23 @@ export class MetricsConceptExecutionService {
   }
 
   private buildExecutionMember(
-    member: MetricConceptRuntimeMember,
+    member: MetricConceptMemberEntity,
     samples: Map<string, InfluxMetricSample | null>,
   ): MetricConceptExecutionMemberDto {
-    if (member.metricCatalog) {
-      const sample = samples.get(member.metricCatalog.id) ?? null;
-
-      return {
-        memberId: member.member.id,
-        role: member.member.role,
-        sourceType: 'metric',
-        metricCatalogId: member.metricCatalog.id,
-        childConceptId: null,
-        label: this.buildMetricLabel(member.metricCatalog),
-        key: member.metricCatalog.key,
-        value: sample?.value ?? null,
-        unit: null,
-        timestamp: sample?.timestamp ?? null,
-        description: member.metricCatalog.description,
-        result: null,
-      };
-    }
-
-    if (!member.childConcept) {
-      throw new BadRequestException(
-        'Metric concept member must reference a metric or child concept',
-      );
-    }
-
-    const result = this.buildExecutionResult(member.childConcept, samples);
+    const sample = samples.get(member.metricCatalog.id) ?? null;
 
     return {
-      memberId: member.member.id,
-      role: member.member.role,
-      sourceType: 'concept',
-      metricCatalogId: null,
-      childConceptId: member.childConcept.concept.id,
-      label: member.childConcept.concept.displayName,
-      key: null,
-      value: result.value,
-      unit: result.unit,
-      timestamp: result.timestamp,
-      description: member.childConcept.concept.description,
-      result,
+      memberId: member.id,
+      role: member.role,
+      sourceType: 'metric',
+      metricCatalogId: member.metricCatalog.id,
+      label: this.buildMetricLabel(member.metricCatalog),
+      key: member.metricCatalog.key,
+      value: sample?.value ?? null,
+      unit: null,
+      timestamp: sample?.timestamp ?? null,
+      description: member.metricCatalog.description,
+      result: null,
     };
   }
 

@@ -8,7 +8,6 @@ interface MetricSemanticBlueprint {
   category: string | null;
   unit: string | null;
   description: string | null;
-  aliases: string[];
 }
 
 const GENERIC_FIELD_NAMES = new Set(['value', 'status', 'state', 'reading']);
@@ -35,20 +34,12 @@ export function buildMetricSemanticBlueprint(
   const displayName = deriveDisplayName(measurementSegments, field);
   const category = deriveCategory(metric.bucket, measurementSegments);
   const unit = extractUnitFromDescription(metric.description);
-  const aliases = deriveAliases({
-    displayName,
-    measurementSegments,
-    field,
-    description: metric.description,
-  });
-
   return {
     slug: buildConceptSlug(metric),
     displayName: truncate(displayName, 255) || 'Metric',
     category: truncate(category, 100),
     unit: truncate(unit, 50),
     description: truncate(metric.description?.trim() || null, 2000),
-    aliases: aliases.map((alias) => truncate(alias, 255)).filter(Boolean) as string[],
   };
 }
 
@@ -109,123 +100,6 @@ function buildConceptSlug(metric: ShipMetricCatalogEntity): string {
   }
 
   return rawSlug || `metric_${createHash('sha1').update(metric.key).digest('hex').slice(0, 8)}`;
-}
-
-function deriveAliases(input: {
-  displayName: string;
-  measurementSegments: string[];
-  field: string;
-  description: string | null;
-}): string[] {
-  const aliases = new Set<string>();
-  const displayName = input.displayName.trim();
-  const displayNameLower = displayName.toLowerCase();
-  const measurementPath = input.measurementSegments.join('.');
-  const fieldLower = input.field.trim().toLowerCase();
-
-  addAlias(aliases, displayNameLower);
-  addAlias(aliases, `current ${displayNameLower}`);
-  addAlias(aliases, humanizeSegment(measurementPath).toLowerCase());
-
-  const acronym = buildAcronym(displayName);
-  if (acronym.length >= 2) {
-    addAlias(aliases, acronym.toLowerCase());
-  }
-
-  const firstSentence = input.description?.split('\n')[0]?.trim();
-  if (firstSentence && firstSentence.length <= 120) {
-    addAlias(aliases, firstSentence.toLowerCase());
-  }
-
-  const normalizedPath = measurementPath.toLowerCase();
-  const parentSegment =
-    input.measurementSegments[input.measurementSegments.length - 2]?.toLowerCase() ?? '';
-  const isWindMetric = parentSegment === 'wind';
-  const isNavigationMetric = parentSegment === 'navigation' || normalizedPath.startsWith('navigation.');
-
-  if (normalizedPath.endsWith('speedoverground') && isNavigationMetric) {
-    [
-      'speed over ground',
-      'sog',
-      'vessel speed',
-      'boat speed',
-      'ship speed',
-      'current vessel speed',
-      'current boat speed',
-      'current speed of the boat',
-      'speed of the boat',
-      'speed of the vessel',
-    ].forEach((alias) => addAlias(aliases, alias));
-  }
-
-  if (normalizedPath.endsWith('speedthroughwater') && isNavigationMetric) {
-    [
-      'speed through water',
-      'stw',
-      'vessel speed through water',
-      'boat speed through water',
-      'current speed through water',
-    ].forEach((alias) => addAlias(aliases, alias));
-  }
-
-  if (normalizedPath.endsWith('speedoverground') && isWindMetric) {
-    [
-      'wind speed over ground',
-      'ground wind speed',
-      'wind sog',
-    ].forEach((alias) => addAlias(aliases, alias));
-  }
-
-  if (normalizedPath.endsWith('speedapparent') && isWindMetric) {
-    [
-      'apparent wind speed',
-      'aws',
-      'wind speed apparent',
-    ].forEach((alias) => addAlias(aliases, alias));
-  }
-
-  if (normalizedPath.endsWith('speedtrue') && isWindMetric) {
-    [
-      'true wind speed',
-      'tws',
-      'wind speed true',
-    ].forEach((alias) => addAlias(aliases, alias));
-  }
-
-  if (normalizedPath.endsWith('depth.belowkeel')) {
-    [
-      'depth below keel',
-      'current depth below keel',
-      'keel depth',
-      'boat depth below keel',
-      'vessel depth below keel',
-    ].forEach((alias) => addAlias(aliases, alias));
-  }
-
-  if (fieldLower.includes('fan speed')) {
-    addAlias(aliases, 'fan speed');
-  }
-
-  return [...aliases].sort((left, right) => left.localeCompare(right));
-}
-
-function buildAcronym(value: string): string {
-  return value
-    .split(/\s+/)
-    .map((segment) => segment.trim())
-    .filter(Boolean)
-    .map((segment) => segment[0])
-    .join('');
-}
-
-function addAlias(bucket: Set<string>, value?: string | null): void {
-  const normalized = value?.trim().toLowerCase();
-
-  if (!normalized || normalized.length < 2) {
-    return;
-  }
-
-  bucket.add(normalized);
 }
 
 function humanizeSegment(value: string): string {

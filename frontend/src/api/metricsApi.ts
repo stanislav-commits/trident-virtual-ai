@@ -42,7 +42,6 @@ export interface ShipMetricsSyncResult {
     totalMetrics: number;
     conceptsCreated: number;
     conceptsUpdated: number;
-    aliasesAdded: number;
     membersAdded: number;
     skippedBindings: number;
   } | null;
@@ -57,13 +56,11 @@ export interface MetricConceptBootstrapResult {
   totalMetrics: number;
   conceptsCreated: number;
   conceptsUpdated: number;
-  aliasesAdded: number;
   membersAdded: number;
   skippedBindings: number;
   sampleConcepts: Array<{
     slug: string;
     displayName: string;
-    aliases: string[];
   }>;
 }
 
@@ -92,8 +89,7 @@ export interface MetricConceptMember {
   id: string;
   role: string | null;
   sortOrder: number;
-  metricCatalogId: string | null;
-  childConceptId: string | null;
+  metricCatalogId: string;
   metric: {
     id: string;
     shipId: string;
@@ -101,12 +97,7 @@ export interface MetricConceptMember {
     bucket: string;
     field: string;
     description: string | null;
-  } | null;
-  childConcept: {
-    id: string;
-    slug: string;
-    displayName: string;
-  } | null;
+  };
 }
 
 export interface MetricConcept {
@@ -119,7 +110,6 @@ export interface MetricConcept {
   aggregationRule: MetricAggregationRule;
   unit: string | null;
   isActive: boolean;
-  aliases: string[];
   members: MetricConceptMember[];
   createdAt: string;
   updatedAt: string;
@@ -139,8 +129,7 @@ export interface MetricConceptResolutionResult {
 }
 
 export interface MetricConceptMemberInput {
-  metricCatalogId?: string;
-  childConceptId?: string;
+  metricCatalogId: string;
   role?: string;
   sortOrder?: number;
 }
@@ -154,7 +143,6 @@ export interface SaveMetricConceptInput {
   aggregationRule?: MetricAggregationRule;
   unit?: string | null;
   isActive?: boolean;
-  aliases?: string[];
   members?: MetricConceptMemberInput[];
 }
 
@@ -190,16 +178,15 @@ export interface MetricConceptExecutionResponse {
     members: Array<{
       memberId: string;
       role: string | null;
-      sourceType: "metric" | "concept";
-      metricCatalogId: string | null;
-      childConceptId: string | null;
+      sourceType: "metric";
+      metricCatalogId: string;
       label: string;
       key: string | null;
       value: unknown;
       unit: string | null;
       timestamp: string | null;
       description: string | null;
-      result: MetricConceptExecutionResponse["result"] | null;
+      result: null;
     }>;
     metadata: Record<string, unknown> | null;
   };

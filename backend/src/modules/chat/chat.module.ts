@@ -17,6 +17,7 @@ import { ChatSessionEntity } from './entities/chat-session.entity';
 import { ChatTurnOrchestratorService } from './orchestration/chat-turn-orchestrator.service';
 import { ChatCapabilityRegistryService } from './planning/chat-capability-registry.service';
 import { ChatTurnClassifierService } from './planning/chat-turn-classifier.service';
+import { ChatMetricsTimeNormalizerService } from './planning/chat-metrics-time-normalizer.service';
 import { ChatTurnPlannerService } from './planning/chat-turn-planner.service';
 import { ChatInDevelopmentResponderService } from './responders/chat-in-development-responder.service';
 import { ChatMetricsResponderService } from './responders/chat-metrics-responder.service';
@@ -45,6 +46,7 @@ import { ChatWebSearchResponderService } from './responders/chat-web-search-resp
     ChatContextQueryResolverService,
     ChatCapabilityRegistryService,
     ChatTurnClassifierService,
+    ChatMetricsTimeNormalizerService,
     ChatTurnPlannerService,
     ChatTurnOrchestratorService,
     ChatSmallTalkResponderService,

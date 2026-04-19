@@ -11,6 +11,8 @@ export interface ChatTurnPlanAsk {
   capabilityLabel: string;
   timeMode: ChatMetricsAskTimeMode | null;
   timestamp: string | null;
+  rangeStart: string | null;
+  rangeEnd: string | null;
 }
 
 export interface ChatTurnPlan {

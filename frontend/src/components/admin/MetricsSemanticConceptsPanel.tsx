@@ -23,13 +23,11 @@ interface MetricsSemanticConceptsPanelProps {
 
 type EditableConceptMember = {
   localId: string;
-  metricCatalogId?: string;
-  childConceptId?: string;
+  metricCatalogId: string;
   role: string;
   sortOrder: number;
   label: string;
   subtitle: string;
-  kind: "metric" | "concept";
 };
 
 interface ConceptDraft {
@@ -42,9 +40,14 @@ interface ConceptDraft {
   aggregationRule: MetricAggregationRule;
   unit: string;
   isActive: boolean;
-  aliasesText: string;
   members: EditableConceptMember[];
 }
+
+type ReadinessState = {
+  label: string;
+  tone: "ready" | "warning" | "inactive";
+  hint: string;
+};
 
 const CONCEPT_TYPE_OPTIONS: Array<{
   value: MetricConceptType;
@@ -73,6 +76,69 @@ const AGGREGATION_RULE_OPTIONS: Array<{
   { value: "trajectory", label: "Trajectory" },
 ];
 
+const SAMPLE_RESOLUTION_QUERIES = [
+  "speed of the boat",
+  "speed over ground",
+  "depth below keel",
+];
+
+const CONCEPT_TEMPLATES: Array<{
+  id: string;
+  label: string;
+  description: string;
+  displayName: string;
+  slugSuffix: string;
+  category: string;
+  type: MetricConceptType;
+  aggregationRule: MetricAggregationRule;
+  unit: string;
+}> = [
+  {
+    id: "single",
+    label: "Single metric",
+    description: "One raw metric with a friendly AI-facing name.",
+    displayName: "New Single Metric",
+    slugSuffix: "single_metric",
+    category: "general",
+    type: "single",
+    aggregationRule: "last",
+    unit: "",
+  },
+  {
+    id: "group",
+    label: "Metric group",
+    description: "A set of related metrics such as all tanks or all engines.",
+    displayName: "New Metric Group",
+    slugSuffix: "metric_group",
+    category: "general",
+    type: "group",
+    aggregationRule: "none",
+    unit: "",
+  },
+  {
+    id: "composite",
+    label: "Composite total",
+    description: "A calculated total or average built from several members.",
+    displayName: "New Composite Total",
+    slugSuffix: "composite_total",
+    category: "general",
+    type: "composite",
+    aggregationRule: "sum",
+    unit: "",
+  },
+  {
+    id: "paired",
+    label: "Lat / Lon pair",
+    description: "A paired concept like vessel location from latitude and longitude.",
+    displayName: "Vessel Location",
+    slugSuffix: "vessel_location",
+    category: "navigation",
+    type: "paired",
+    aggregationRule: "coordinate_pair",
+    unit: "coordinate pair",
+  },
+];
+
 function slugify(value: string): string {
   return value
     .trim()
@@ -95,30 +161,12 @@ function createEmptyDraft(shipName?: string | null): ConceptDraft {
     aggregationRule: "last",
     unit: "",
     isActive: true,
-    aliasesText: "",
     members: [],
   };
 }
 
-function parseAliases(aliasesText: string): string[] {
-  return [...new Set(
-    aliasesText
-      .split(/\n|,/)
-      .map((alias) => alias.trim())
-      .filter(Boolean),
-  )];
-}
-
 function formatMemberSubtitle(member: MetricConceptMember): string {
-  if (member.metric) {
-    return member.metric.key;
-  }
-
-  if (member.childConcept) {
-    return member.childConcept.slug;
-  }
-
-  return "Unknown member";
+  return member.metric.key;
 }
 
 function conceptToDraft(concept: MetricConcept): ConceptDraft {
@@ -132,18 +180,13 @@ function conceptToDraft(concept: MetricConcept): ConceptDraft {
     aggregationRule: concept.aggregationRule,
     unit: concept.unit ?? "",
     isActive: concept.isActive,
-    aliasesText: concept.aliases.join("\n"),
     members: concept.members.map((member, index) => ({
       localId: member.id,
-      metricCatalogId: member.metricCatalogId ?? undefined,
-      childConceptId: member.childConceptId ?? undefined,
+      metricCatalogId: member.metricCatalogId,
       role: member.role ?? "",
       sortOrder: member.sortOrder ?? index,
-      label: member.metric
-        ? humanizeMetricLabel(member.metric.key)
-        : member.childConcept?.displayName ?? "Nested concept",
+      label: humanizeMetricLabel(member.metric.key),
       subtitle: formatMemberSubtitle(member),
-      kind: member.metric ? "metric" : "concept",
     })),
   };
 }
@@ -197,6 +240,78 @@ function formatExecutionValue(result: MetricConceptExecutionResponse | null): st
   return String(value);
 }
 
+function getReadinessBadgeClass(tone: ReadinessState["tone"]): string {
+  if (tone === "ready") {
+    return "admin-panel__badge admin-panel__badge--manual-done";
+  }
+
+  if (tone === "inactive") {
+    return "admin-panel__badge admin-panel__badge--manual-cancel";
+  }
+
+  return "admin-panel__badge admin-panel__badge--manual-pending";
+}
+
+function evaluateReadiness(input: {
+  isActive: boolean;
+  type: MetricConceptType;
+  memberCount: number;
+  memberRoles: string[];
+}): ReadinessState {
+  if (!input.isActive) {
+    return {
+      label: "Inactive",
+      tone: "inactive",
+      hint: "Enable this concept before the chat planner can use it.",
+    };
+  }
+
+  if (input.memberCount === 0) {
+    return {
+      label: "Needs members",
+      tone: "warning",
+      hint: "Attach raw metrics so this concept can execute.",
+    };
+  }
+
+  if (input.type === "paired" && input.memberCount < 2) {
+    return {
+      label: "Needs pair",
+      tone: "warning",
+      hint: "A paired concept should contain two members such as latitude and longitude.",
+    };
+  }
+
+  if (
+    input.type === "paired" &&
+    !input.memberRoles.includes("latitude") &&
+    !input.memberRoles.includes("longitude")
+  ) {
+    return {
+      label: "Needs roles",
+      tone: "warning",
+      hint: "Add clear member roles like latitude and longitude for paired concepts.",
+    };
+  }
+
+  return {
+    label: "Ready",
+    tone: "ready",
+    hint: "This concept is ready for semantic testing in chat and in the validation panel.",
+  };
+}
+
+function getConceptReadiness(concept: MetricConcept): ReadinessState {
+  return evaluateReadiness({
+    isActive: concept.isActive,
+    type: concept.type,
+    memberCount: concept.members.length,
+    memberRoles: concept.members
+      .map((member) => member.role?.trim().toLowerCase())
+      .filter((role): role is string => Boolean(role)),
+  });
+}
+
 export function MetricsSemanticConceptsPanel({
   token,
   shipId,
@@ -219,12 +334,17 @@ export function MetricsSemanticConceptsPanel({
   } = useMetricConceptsAdminData(token, shipId, Boolean(token && shipId));
   const [conceptSearch, setConceptSearch] = useState("");
   const [metricSearch, setMetricSearch] = useState("");
-  const [childConceptSearch, setChildConceptSearch] = useState("");
   const [resolutionQuery, setResolutionQuery] = useState("");
   const [resolutionResult, setResolutionResult] =
     useState<MetricConceptResolutionResult | null>(null);
   const [executionResult, setExecutionResult] =
     useState<MetricConceptExecutionResponse | null>(null);
+  const [resolutionAttempted, setResolutionAttempted] = useState(false);
+  const [executionAttempted, setExecutionAttempted] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [resolutionError, setResolutionError] = useState("");
+  const [executionError, setExecutionError] = useState("");
   const [bootstrapResult, setBootstrapResult] =
     useState<MetricConceptBootstrapResult | null>(null);
   const [draft, setDraft] = useState<ConceptDraft>(() => createEmptyDraft(shipName));
@@ -244,6 +364,12 @@ export function MetricsSemanticConceptsPanel({
     setResolutionQuery("");
     setResolutionResult(null);
     setExecutionResult(null);
+    setResolutionAttempted(false);
+    setExecutionAttempted(false);
+    setResolving(false);
+    setExecuting(false);
+    setResolutionError("");
+    setExecutionError("");
     setBootstrapResult(null);
   }, [shipId, shipName]);
 
@@ -281,7 +407,6 @@ export function MetricsSemanticConceptsPanel({
         concept.category,
         concept.type,
         concept.aggregationRule,
-        ...concept.aliases,
       ]
         .filter(Boolean)
         .join(" ")
@@ -327,48 +452,83 @@ export function MetricsSemanticConceptsPanel({
       .slice(0, 16);
   }, [flatMetrics, metricSearch, selectedMetricIds]);
 
-  const selectedChildConceptIds = useMemo(
+  const resolveCandidates = resolutionResult?.candidates ?? [];
+  const draftReadiness = useMemo(
     () =>
-      new Set(
-        draft.members
-          .map((member) => member.childConceptId)
-          .filter((value): value is string => Boolean(value)),
-      ),
-    [draft.members],
+      evaluateReadiness({
+        isActive: draft.isActive,
+        type: draft.type,
+        memberCount: draft.members.length,
+        memberRoles: draft.members
+          .map((member) => member.role.trim().toLowerCase())
+          .filter(Boolean),
+      }),
+    [draft.isActive, draft.type, draft.members],
   );
+  const conceptHealthSummary = useMemo(() => {
+    return concepts.reduce(
+      (summary, concept) => {
+        const readiness = getConceptReadiness(concept);
 
-  const availableChildConceptCandidates = useMemo(() => {
-    const normalizedSearch = childConceptSearch.trim().toLowerCase();
-
-    return concepts
-      .filter((concept) => concept.id !== draft.id)
-      .filter((concept) => !selectedChildConceptIds.has(concept.id))
-      .filter((concept) => {
-        if (!normalizedSearch) {
-          return true;
+        if (readiness.tone === "ready") {
+          summary.ready += 1;
+        } else if (readiness.tone === "inactive") {
+          summary.inactive += 1;
+        } else {
+          summary.needsAttention += 1;
         }
 
-        const haystack = [
-          concept.displayName,
-          concept.slug,
-          concept.category,
-          ...concept.aliases,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+        return summary;
+      },
+      {
+        ready: 0,
+        needsAttention: 0,
+        inactive: 0,
+      },
+    );
+  }, [concepts]);
 
-        return haystack.includes(normalizedSearch);
-      })
-      .slice(0, 12);
-  }, [childConceptSearch, concepts, draft.id, selectedChildConceptIds]);
+  const applyTemplate = (templateId: string) => {
+    const template = CONCEPT_TEMPLATES.find((entry) => entry.id === templateId);
 
-  const resolveCandidates = resolutionResult?.candidates ?? [];
+    if (!template) {
+      return;
+    }
+
+    const shipSlug = slugify(shipName ?? "");
+    const nextSlug = shipSlug
+      ? `${shipSlug}_${template.slugSuffix}`
+      : template.slugSuffix;
+
+    setDraft({
+      id: null,
+      slug: nextSlug,
+      displayName: template.displayName,
+      description: template.description,
+      category: template.category,
+      type: template.type,
+      aggregationRule: template.aggregationRule,
+      unit: template.unit,
+      isActive: true,
+      members: [],
+    });
+    setExecutionResult(null);
+    setResolutionResult(null);
+    setResolutionAttempted(false);
+    setExecutionAttempted(false);
+    setResolutionError("");
+    setExecutionError("");
+    setError("");
+  };
 
   const handleSelectConcept = (concept: MetricConcept) => {
     setDraft(conceptToDraft(concept));
     setExecutionResult(null);
     setResolutionResult(null);
+    setResolutionAttempted(false);
+    setExecutionAttempted(false);
+    setResolutionError("");
+    setExecutionError("");
     setError("");
   };
 
@@ -376,6 +536,10 @@ export function MetricsSemanticConceptsPanel({
     setDraft(createEmptyDraft(shipName));
     setExecutionResult(null);
     setResolutionResult(null);
+    setResolutionAttempted(false);
+    setExecutionAttempted(false);
+    setResolutionError("");
+    setExecutionError("");
     setError("");
   };
 
@@ -423,31 +587,6 @@ export function MetricsSemanticConceptsPanel({
           sortOrder: current.members.length,
           label: metric.label,
           subtitle: metric.key,
-          kind: "metric",
-        },
-      ],
-    }));
-  };
-
-  const addChildConceptMember = (conceptId: string) => {
-    const concept = concepts.find((entry) => entry.id === conceptId);
-
-    if (!concept) {
-      return;
-    }
-
-    setDraft((current) => ({
-      ...current,
-      members: [
-        ...current.members,
-        {
-          localId: `concept-${concept.id}`,
-          childConceptId: concept.id,
-          role: "",
-          sortOrder: current.members.length,
-          label: concept.displayName,
-          subtitle: concept.slug,
-          kind: "concept",
         },
       ],
     }));
@@ -483,10 +622,8 @@ export function MetricsSemanticConceptsPanel({
     aggregationRule: draft.aggregationRule,
     unit: draft.unit.trim() || null,
     isActive: draft.isActive,
-    aliases: parseAliases(draft.aliasesText),
     members: draft.members.map((member, index) => ({
       metricCatalogId: member.metricCatalogId,
-      childConceptId: member.childConceptId,
       role: member.role.trim() || undefined,
       sortOrder: index,
     })),
@@ -511,11 +648,26 @@ export function MetricsSemanticConceptsPanel({
       return;
     }
 
+    setError("");
+    setResolutionAttempted(true);
+    setExecutionAttempted(false);
+    setResolutionError("");
+    setExecutionError("");
     setExecutionResult(null);
-    const result = await resolveQuery(resolutionQuery.trim());
+    setResolving(true);
 
-    if (result) {
+    try {
+      const result = await resolveQuery(resolutionQuery.trim());
       setResolutionResult(result);
+    } catch (resolveError) {
+      setResolutionResult(null);
+      setResolutionError(
+        resolveError instanceof Error
+          ? resolveError.message
+          : "Failed to resolve metric concept",
+      );
+    } finally {
+      setResolving(false);
     }
   };
 
@@ -527,13 +679,28 @@ export function MetricsSemanticConceptsPanel({
       return;
     }
 
-    const result = await executeConcept({
-      query,
-      timeMode: "snapshot",
-    });
+    setError("");
+    setExecutionAttempted(true);
+    setExecutionError("");
+    setExecuting(true);
 
-    if (result) {
-      setExecutionResult(result);
+    try {
+      const result = await executeConcept({
+        query,
+        timeMode: "snapshot",
+      });
+      if (result) {
+        setExecutionResult(result);
+      }
+    } catch (executeError) {
+      setExecutionResult(null);
+      setExecutionError(
+        executeError instanceof Error
+          ? executeError.message
+          : "Failed to execute metric concept",
+      );
+    } finally {
+      setExecuting(false);
     }
   };
 
@@ -545,13 +712,29 @@ export function MetricsSemanticConceptsPanel({
       return;
     }
 
-    const result = await executeConcept({
-      conceptId,
-      timeMode: "snapshot",
-    });
+    setError("");
+    setExecutionAttempted(true);
+    setExecutionError("");
+    setExecuting(true);
 
-    if (result) {
-      setExecutionResult(result);
+    try {
+      const result = await executeConcept({
+        conceptId,
+        timeMode: "snapshot",
+      });
+
+      if (result) {
+        setExecutionResult(result);
+      }
+    } catch (executeError) {
+      setExecutionResult(null);
+      setExecutionError(
+        executeError instanceof Error
+          ? executeError.message
+          : "Failed to execute metric concept",
+      );
+    } finally {
+      setExecuting(false);
     }
   };
 
@@ -591,7 +774,7 @@ export function MetricsSemanticConceptsPanel({
               onClick={() => void handleBootstrap()}
               disabled={!shipId || bootstrapping}
             >
-              {bootstrapping ? "Bootstrapping..." : "Bootstrap semantics"}
+              {bootstrapping ? "Generating..." : "Generate base concepts"}
             </button>
           </div>
         </div>
@@ -608,13 +791,48 @@ export function MetricsSemanticConceptsPanel({
               ? "Loading semantic concepts..."
               : `${concepts.length} concepts linked to this ship`}
           </span>
+          <div className="admin-panel__semantic-summary-chips">
+            <span className="admin-panel__semantic-stat admin-panel__semantic-stat--ready">
+              {conceptHealthSummary.ready} ready
+            </span>
+            <span className="admin-panel__semantic-stat admin-panel__semantic-stat--warning">
+              {conceptHealthSummary.needsAttention} need attention
+            </span>
+            <span className="admin-panel__semantic-stat">
+              {conceptHealthSummary.inactive} inactive
+            </span>
+          </div>
           {bootstrapResult ? (
             <span className="admin-panel__muted">
               Bootstrap: +{bootstrapResult.conceptsCreated} created,{" "}
-              {bootstrapResult.conceptsUpdated} updated,{" "}
-              {bootstrapResult.aliasesAdded} aliases added.
+              {bootstrapResult.conceptsUpdated} updated.
             </span>
           ) : null}
+        </div>
+      </div>
+
+      <div className="admin-panel__metrics-group-card">
+        <div className="admin-panel__metrics-group-header">
+          <div className="admin-panel__metrics-group-meta">
+            <span className="admin-panel__form-card-title">Quick start templates</span>
+            <span className="admin-panel__muted">
+              Start from a guided shape instead of an empty semantic form.
+            </span>
+          </div>
+        </div>
+
+        <div className="admin-panel__semantic-template-grid">
+          {CONCEPT_TEMPLATES.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              className="admin-panel__semantic-template-card"
+              onClick={() => applyTemplate(template.id)}
+            >
+              <strong>{template.label}</strong>
+              <span className="admin-panel__muted">{template.description}</span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -639,7 +857,7 @@ export function MetricsSemanticConceptsPanel({
               className="admin-panel__metrics-search-input"
               value={conceptSearch}
               onChange={(event) => setConceptSearch(event.target.value)}
-              placeholder="Search display name, slug, alias..."
+              placeholder="Search display name, slug, category..."
             />
           </label>
 
@@ -651,32 +869,42 @@ export function MetricsSemanticConceptsPanel({
                 </span>
               </div>
             ) : (
-              filteredConcepts.map((concept) => (
-                <button
-                  key={concept.id}
-                  type="button"
-                  className={`admin-panel__semantic-concept-item ${
-                    draft.id === concept.id
-                      ? "admin-panel__semantic-concept-item--active"
-                      : ""
-                  }`}
-                  onClick={() => handleSelectConcept(concept)}
-                >
-                  <div className="admin-panel__semantic-concept-item-top">
-                    <strong>{concept.displayName}</strong>
-                    <span className="admin-panel__badge admin-panel__badge--user">
-                      {formatConceptType(concept.type)}
-                    </span>
-                  </div>
-                  <div className="admin-panel__semantic-concept-item-meta">
-                    <code className="admin-panel__code-inline admin-panel__code-inline--metric">
-                      {concept.slug}
-                    </code>
-                    <span>{formatAggregationRule(concept.aggregationRule)}</span>
-                    <span>{concept.members.length} members</span>
-                  </div>
-                </button>
-              ))
+              filteredConcepts.map((concept) => {
+                const readiness = getConceptReadiness(concept);
+
+                return (
+                  <button
+                    key={concept.id}
+                    type="button"
+                    className={`admin-panel__semantic-concept-item ${
+                      draft.id === concept.id
+                        ? "admin-panel__semantic-concept-item--active"
+                        : ""
+                    }`}
+                    onClick={() => handleSelectConcept(concept)}
+                  >
+                    <div className="admin-panel__semantic-concept-item-top">
+                      <strong>{concept.displayName}</strong>
+                      <div className="admin-panel__semantic-concept-badges">
+                        <span className="admin-panel__badge admin-panel__badge--user">
+                          {formatConceptType(concept.type)}
+                        </span>
+                        <span className={getReadinessBadgeClass(readiness.tone)}>
+                          {readiness.label}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="admin-panel__semantic-concept-item-meta">
+                      <code className="admin-panel__code-inline admin-panel__code-inline--metric">
+                        {concept.slug}
+                      </code>
+                      <span>{formatAggregationRule(concept.aggregationRule)}</span>
+                      <span>{concept.members.length} members</span>
+                    </div>
+                    <span className="admin-panel__muted">{readiness.hint}</span>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
@@ -697,6 +925,23 @@ export function MetricsSemanticConceptsPanel({
                 Clear form
               </button>
             ) : null}
+          </div>
+
+          <div className="admin-panel__semantic-editor-summary">
+            <div className="admin-panel__semantic-editor-summary-top">
+              <span className={getReadinessBadgeClass(draftReadiness.tone)}>
+                {draftReadiness.label}
+              </span>
+              <div className="admin-panel__semantic-concept-badges">
+                <span className="admin-panel__badge admin-panel__badge--user">
+                  {formatConceptType(draft.type)}
+                </span>
+                <span className="admin-panel__semantic-stat">
+                  {draft.members.length} members
+                </span>
+              </div>
+            </div>
+            <span className="admin-panel__muted">{draftReadiness.hint}</span>
           </div>
 
           <div className="admin-panel__form-row">
@@ -813,29 +1058,13 @@ export function MetricsSemanticConceptsPanel({
             />
           </div>
 
-          <div className="admin-panel__field">
-            <label className="admin-panel__field-label">
-              Aliases (one per line or comma-separated)
-            </label>
-            <textarea
-              className="admin-panel__input admin-panel__textarea"
-              rows={4}
-              value={draft.aliasesText}
-              onChange={(event) =>
-                handleDraftChange("aliasesText", event.target.value)
-              }
-              placeholder="fuel on board&#10;remaining fuel&#10;кількість палива"
-            />
-          </div>
-
           <div className="admin-panel__semantic-members">
             <div className="admin-panel__field">
               <label className="admin-panel__field-label">Selected members</label>
               {draft.members.length === 0 ? (
                 <div className="admin-panel__state-box admin-panel__state-box--compact">
                   <span className="admin-panel__muted">
-                    Add metrics or nested concepts to define this semantic
-                    concept.
+                    Add raw metrics to define this semantic concept.
                   </span>
                 </div>
               ) : (
@@ -852,9 +1081,6 @@ export function MetricsSemanticConceptsPanel({
                             {member.subtitle}
                           </span>
                         </div>
-                        <span className="admin-panel__badge admin-panel__badge--user">
-                          {member.kind}
-                        </span>
                       </div>
                       <div className="admin-panel__semantic-member-controls">
                         <input
@@ -905,34 +1131,6 @@ export function MetricsSemanticConceptsPanel({
                   ))}
                 </div>
               </div>
-
-              <div className="admin-panel__field">
-                <label className="admin-panel__field-label">Add child concept</label>
-                <label className="admin-panel__metrics-search admin-panel__semantic-search">
-                  <SearchIcon />
-                  <input
-                    className="admin-panel__metrics-search-input"
-                    value={childConceptSearch}
-                    onChange={(event) =>
-                      setChildConceptSearch(event.target.value)
-                    }
-                    placeholder="Search existing concepts..."
-                  />
-                </label>
-                <div className="admin-panel__semantic-candidate-list">
-                  {availableChildConceptCandidates.map((concept) => (
-                    <button
-                      key={concept.id}
-                      type="button"
-                      className="admin-panel__semantic-candidate-item"
-                      onClick={() => addChildConceptMember(concept.id)}
-                    >
-                      <strong>{concept.displayName}</strong>
-                      <span className="admin-panel__muted">{concept.slug}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
 
@@ -942,16 +1140,36 @@ export function MetricsSemanticConceptsPanel({
               className="admin-panel__btn admin-panel__btn--primary"
               onClick={() => void handleSave()}
               disabled={saving || !shipId}
+              aria-busy={saving}
             >
-              {saving ? "Saving..." : draft.id ? "Save concept" : "Create concept"}
+              <span className="admin-panel__btn-content">
+                {saving ? (
+                  <span
+                    className="admin-panel__spinner admin-panel__spinner--inline"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <span>
+                  {saving ? "Saving..." : draft.id ? "Save concept" : "Create concept"}
+                </span>
+              </span>
             </button>
             <button
               type="button"
               className="admin-panel__btn admin-panel__btn--ghost"
               onClick={() => void handleExecuteDraft()}
-              disabled={!draft.id}
+              disabled={!draft.id || executing}
+              aria-busy={executing}
             >
-              Execute saved concept
+              <span className="admin-panel__btn-content">
+                {executing ? (
+                  <span
+                    className="admin-panel__spinner admin-panel__spinner--inline"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <span>{executing ? "Executing..." : "Execute saved concept"}</span>
+              </span>
             </button>
           </div>
         </div>
@@ -961,7 +1179,10 @@ export function MetricsSemanticConceptsPanel({
         <div className="admin-panel__metrics-group-header">
           <div className="admin-panel__metrics-group-meta">
             <span className="admin-panel__form-card-title">
-              Resolve and execute test
+              Validate how AI will understand this phrase
+            </span>
+            <span className="admin-panel__muted">
+              Test semantic matching and live execution without going back to chat.
             </span>
           </div>
         </div>
@@ -978,6 +1199,22 @@ export function MetricsSemanticConceptsPanel({
               onChange={(event) => setResolutionQuery(event.target.value)}
               placeholder="а кількість палива / where is the yacht now?"
             />
+            <span className="admin-panel__semantic-helper">
+              Type a real phrase to test how the resolver matches by concept
+              meaning, description, and member structure for the selected ship.
+            </span>
+            <div className="admin-panel__semantic-examples">
+              {SAMPLE_RESOLUTION_QUERIES.map((sample) => (
+                <button
+                  key={sample}
+                  type="button"
+                  className="admin-panel__semantic-example-chip"
+                  onClick={() => setResolutionQuery(sample)}
+                >
+                  {sample}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="admin-panel__actions">
@@ -985,24 +1222,56 @@ export function MetricsSemanticConceptsPanel({
               type="button"
               className="admin-panel__btn admin-panel__btn--ghost"
               onClick={() => void handleResolve()}
-              disabled={!resolutionQuery.trim()}
+              disabled={!resolutionQuery.trim() || resolving}
+              aria-busy={resolving}
             >
-              Resolve phrase
+              <span className="admin-panel__btn-content">
+                {resolving ? (
+                  <span
+                    className="admin-panel__spinner admin-panel__spinner--inline"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <span>{resolving ? "Resolving..." : "Resolve phrase"}</span>
+              </span>
             </button>
             <button
               type="button"
               className="admin-panel__btn admin-panel__btn--primary"
               onClick={() => void handleExecuteResolved()}
-              disabled={!resolutionQuery.trim()}
+              disabled={!resolutionQuery.trim() || executing}
+              aria-busy={executing}
             >
-              Execute snapshot
+              <span className="admin-panel__btn-content">
+                {executing ? (
+                  <span
+                    className="admin-panel__spinner admin-panel__spinner--inline"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <span>{executing ? "Executing..." : "Execute snapshot"}</span>
+              </span>
             </button>
           </div>
 
           <div className="admin-panel__semantic-results">
             <div className="admin-panel__semantic-result-card">
               <strong>Resolution result</strong>
-              {resolutionResult?.resolvedConcept ? (
+              {resolutionError ? (
+                <div className="admin-panel__semantic-result-note admin-panel__semantic-result-note--error">
+                  {resolutionError}
+                </div>
+              ) : resolving ? (
+                <div className="admin-panel__semantic-loading-state">
+                  <span
+                    className="admin-panel__spinner admin-panel__spinner--inline-card"
+                    aria-hidden="true"
+                  />
+                  <span className="admin-panel__muted">
+                    Resolving phrase against semantic concepts...
+                  </span>
+                </div>
+              ) : resolutionResult?.resolvedConcept ? (
                 <>
                   <div className="admin-panel__semantic-result-line">
                     <span>Resolved concept</span>
@@ -1028,6 +1297,33 @@ export function MetricsSemanticConceptsPanel({
                     ))}
                   </div>
                 </>
+              ) : resolutionAttempted && resolutionResult ? (
+                <>
+                  <div className="admin-panel__semantic-result-note">
+                    No matching concept was found for this phrase on the selected
+                    ship.
+                  </div>
+                  {resolveCandidates.length > 0 ? (
+                    <div className="admin-panel__semantic-result-candidates">
+                      {resolveCandidates.slice(0, 5).map((candidate) => (
+                        <div
+                          key={candidate.concept.id}
+                          className="admin-panel__semantic-result-candidate"
+                        >
+                          <span>{candidate.concept.displayName}</span>
+                          <span className="admin-panel__muted">
+                            {candidate.matchReason} · {candidate.score}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="admin-panel__muted">
+                      Create a concept with a clear name, description, and member
+                      structure if this phrase should be supported.
+                    </span>
+                  )}
+                </>
               ) : (
                 <span className="admin-panel__muted">
                   No phrase has been resolved yet.
@@ -1037,7 +1333,21 @@ export function MetricsSemanticConceptsPanel({
 
             <div className="admin-panel__semantic-result-card">
               <strong>Execution result</strong>
-              {executionResult ? (
+              {executionError ? (
+                <div className="admin-panel__semantic-result-note admin-panel__semantic-result-note--error">
+                  {executionError}
+                </div>
+              ) : executing ? (
+                <div className="admin-panel__semantic-loading-state">
+                  <span
+                    className="admin-panel__spinner admin-panel__spinner--inline-card"
+                    aria-hidden="true"
+                  />
+                  <span className="admin-panel__muted">
+                    Executing concept against live Influx data...
+                  </span>
+                </div>
+              ) : executionResult ? (
                 <>
                   <div className="admin-panel__semantic-result-line">
                     <span>Concept</span>
@@ -1067,6 +1377,10 @@ export function MetricsSemanticConceptsPanel({
                     ))}
                   </div>
                 </>
+              ) : executionAttempted ? (
+                <div className="admin-panel__semantic-result-note">
+                  Execution did not return a result for this test phrase.
+                </div>
               ) : (
                 <span className="admin-panel__muted">
                   No concept has been executed yet.

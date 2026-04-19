@@ -16,6 +16,7 @@ import { RemoveShipMetricCatalogMeasurement20260419000300 } from './migrations/2
 import { AddChatSchema20260419000400 } from './migrations/20260419000400-add-chat-schema';
 import { AddChatSessionMemory20260419000500 } from './migrations/20260419000500-add-chat-session-memory';
 import { AddMetricSemanticCatalog20260419000600 } from './migrations/20260419000600-add-metric-semantic-catalog';
+import { FlattenMetricConceptChildMembers20260420000100 } from './migrations/20260420000100-flatten-metric-concept-child-members';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -46,6 +47,7 @@ const dataSource = new DataSource({
     AddChatSchema20260419000400,
     AddChatSessionMemory20260419000500,
     AddMetricSemanticCatalog20260419000600,
+    FlattenMetricConceptChildMembers20260420000100,
   ],
   synchronize: false,
   ssl: db.ssl

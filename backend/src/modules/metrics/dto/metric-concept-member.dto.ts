@@ -1,20 +1,8 @@
-import {
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  Min,
-} from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class MetricConceptMemberDto {
-  @IsOptional()
   @IsUUID()
-  metricCatalogId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  childConceptId?: string;
+  metricCatalogId!: string;
 
   @IsOptional()
   @IsString()

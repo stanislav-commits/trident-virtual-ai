@@ -140,12 +140,12 @@ export function useMetricConceptsAdminData(
       try {
         return await resolveMetricConcept(query, token, shipId);
       } catch (resolveError) {
-        setError(
+        const message =
           resolveError instanceof Error
             ? resolveError.message
-            : "Failed to resolve metric concept",
-        );
-        return null;
+            : "Failed to resolve metric concept";
+        setError(message);
+        throw new Error(message);
       }
     },
     [enabled, shipId, token],
@@ -168,12 +168,12 @@ export function useMetricConceptsAdminData(
           shipId,
         });
       } catch (executeError) {
-        setError(
+        const message =
           executeError instanceof Error
             ? executeError.message
-            : "Failed to execute metric concept",
-        );
-        return null;
+            : "Failed to execute metric concept";
+        setError(message);
+        throw new Error(message);
       }
     },
     [enabled, shipId, token],

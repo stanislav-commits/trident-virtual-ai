@@ -46,6 +46,8 @@ export class ChatTurnClassifierService {
           question: fallbackQuestion,
           timeMode: null,
           timestamp: null,
+          rangeStart: null,
+          rangeEnd: null,
         },
       ],
       responseLanguage: null,
@@ -73,8 +75,9 @@ export class ChatTurnClassifierService {
       'If the user combines multiple requests in one message, split them into separate asks in the original order.',
       'Use small_talk only when the turn is general conversation and there is no specific source-backed ask to execute.',
       'For metrics asks, set timeMode to one of snapshot, point_in_time, or range.',
-      'For point_in_time metrics asks, provide an ISO timestamp if the user specified or implied a specific moment.',
-      'For non-metrics asks, set timeMode to null and timestamp to null.',
+      'For point_in_time metrics asks, provide an ISO timestamp only if you can infer it reliably; otherwise leave timestamp null.',
+      'For range metrics asks, provide ISO rangeStart and rangeEnd when you can infer them reliably; otherwise leave them null.',
+      'For non-metrics asks, set timeMode to null and timestamp/rangeStart/rangeEnd to null.',
       'Allowed intents:',
       capabilities,
       'Intent guidance:',
@@ -85,7 +88,7 @@ export class ChatTurnClassifierService {
       '- live_metrics: questions about current telemetry, current values, current vessel state, or live operational metrics.',
       '- historical_metrics: questions about trends, history, comparisons over time, aggregates, or metrics across a period.',
       'Return only raw JSON with this exact shape:',
-      '{"asks":[{"intent":"small_talk|web_search|documentation|manuals|live_metrics|historical_metrics","question":"standalone string","timeMode":"snapshot|point_in_time|range|null","timestamp":"ISO string or null"}],"responseLanguage":"string or null","reasoning":"short string"}',
+      '{"asks":[{"intent":"small_talk|web_search|documentation|manuals|live_metrics|historical_metrics","question":"standalone string","timeMode":"snapshot|point_in_time|range|null","timestamp":"ISO string or null","rangeStart":"ISO string or null","rangeEnd":"ISO string or null"}],"responseLanguage":"string or null","reasoning":"short string"}',
       'responseLanguage must be the language the assistant should use for the final reply, inferred from the user and conversation context.',
       'Do not wrap JSON in markdown.',
     ].join('\n');
@@ -170,12 +173,22 @@ export class ChatTurnClassifierService {
       typeof entry.timestamp === 'string' && entry.timestamp.trim().length > 0
         ? entry.timestamp.trim()
         : null;
+    const rangeStart =
+      typeof entry.rangeStart === 'string' && entry.rangeStart.trim().length > 0
+        ? entry.rangeStart.trim()
+        : null;
+    const rangeEnd =
+      typeof entry.rangeEnd === 'string' && entry.rangeEnd.trim().length > 0
+        ? entry.rangeEnd.trim()
+        : null;
 
     return {
       intent,
       question,
       timeMode: parsedTimeMode,
       timestamp,
+      rangeStart,
+      rangeEnd,
     };
   }
 

@@ -21,14 +21,6 @@ import { ShipMetricCatalogEntity } from './ship-metric-catalog.entity';
     where: '"metric_catalog_id" IS NOT NULL',
   },
 )
-@Index(
-  'IDX_metric_concept_members_concept_child',
-  ['conceptId', 'childConceptId'],
-  {
-    unique: true,
-    where: '"child_concept_id" IS NOT NULL',
-  },
-)
 export class MetricConceptMemberEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -43,25 +35,15 @@ export class MetricConceptMemberEntity {
   @JoinColumn({ name: 'concept_id' })
   concept!: MetricConceptEntity;
 
-  @Column({ name: 'metric_catalog_id', type: 'uuid', nullable: true })
-  metricCatalogId!: string | null;
+  @Column({ name: 'metric_catalog_id', type: 'uuid' })
+  metricCatalogId!: string;
 
   @ManyToOne(() => ShipMetricCatalogEntity, {
-    nullable: true,
+    nullable: false,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'metric_catalog_id' })
-  metricCatalog!: ShipMetricCatalogEntity | null;
-
-  @Column({ name: 'child_concept_id', type: 'uuid', nullable: true })
-  childConceptId!: string | null;
-
-  @ManyToOne(() => MetricConceptEntity, {
-    nullable: true,
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn({ name: 'child_concept_id' })
-  childConcept!: MetricConceptEntity | null;
+  metricCatalog!: ShipMetricCatalogEntity;
 
   @Column({ type: 'varchar', length: 120, nullable: true })
   role!: string | null;

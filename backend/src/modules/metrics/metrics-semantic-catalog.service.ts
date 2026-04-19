@@ -5,38 +5,30 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { LlmService } from '../../integrations/llm/llm.service';
+import { parseJsonObject } from '../chat/planning/chat-turn-json.utils';
 import { CreateMetricConceptDto } from './dto/create-metric-concept.dto';
 import { ResolveMetricConceptDto } from './dto/resolve-metric-concept.dto';
 import { UpdateMetricConceptDto } from './dto/update-metric-concept.dto';
-import { MetricConceptAliasEntity } from './entities/metric-concept-alias.entity';
 import { MetricConceptEntity } from './entities/metric-concept.entity';
 import { MetricConceptMemberEntity } from './entities/metric-concept-member.entity';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricAggregationRule } from './enums/metric-aggregation-rule.enum';
+import { buildMetricSemanticBlueprint } from './metrics-semantic-bootstrap.utils';
 
 interface MetricConceptMemberResponseDto {
   id: string;
   role: string | null;
   sortOrder: number;
-  metricCatalogId: string | null;
-  childConceptId: string | null;
-  metric:
-    | {
-        id: string;
-        shipId: string;
-        key: string;
-        bucket: string;
-        field: string;
-        description: string | null;
-      }
-    | null;
-  childConcept:
-    | {
-        id: string;
-        slug: string;
-        displayName: string;
-      }
-    | null;
+  metricCatalogId: string;
+  metric: {
+    id: string;
+    shipId: string;
+    key: string;
+    bucket: string;
+    field: string;
+    description: string | null;
+  };
 }
 
 export interface MetricConceptResponseDto {
@@ -49,7 +41,6 @@ export interface MetricConceptResponseDto {
   aggregationRule: MetricAggregationRule;
   unit: string | null;
   isActive: boolean;
-  aliases: string[];
   members: MetricConceptMemberResponseDto[];
   createdAt: string;
   updatedAt: string;
@@ -68,33 +59,68 @@ export interface MetricConceptResolutionDto {
   candidates: MetricConceptResolutionCandidateDto[];
 }
 
+interface MetricConceptScoredMatch {
+  concept: MetricConceptEntity;
+  score: number;
+  matchReason: string;
+}
+
+interface MetricConceptSearchProfile {
+  searchPhrases: string[];
+  requiredKeywords: string[];
+  optionalKeywords: string[];
+  categoryHints: string[];
+  preferredConceptTypes: string[];
+  preferredAggregationRules: string[];
+}
+
+const GENERIC_SEARCH_TOKENS = new Set([
+  'all',
+  'boat',
+  'current',
+  'data',
+  'info',
+  'information',
+  'latest',
+  'metric',
+  'metrics',
+  'now',
+  'overall',
+  'reading',
+  'readings',
+  'ship',
+  'show',
+  'status',
+  'tell',
+  'total',
+  'value',
+  'values',
+  'vessel',
+  'where',
+  'yacht',
+]);
+
 @Injectable()
 export class MetricsSemanticCatalogService {
   constructor(
     @InjectRepository(MetricConceptEntity)
     private readonly metricConceptRepository: Repository<MetricConceptEntity>,
-    @InjectRepository(MetricConceptAliasEntity)
-    private readonly metricConceptAliasRepository: Repository<MetricConceptAliasEntity>,
     @InjectRepository(MetricConceptMemberEntity)
     private readonly metricConceptMemberRepository: Repository<MetricConceptMemberEntity>,
     @InjectRepository(ShipMetricCatalogEntity)
     private readonly shipMetricCatalogRepository: Repository<ShipMetricCatalogEntity>,
+    private readonly llmService: LlmService,
   ) {}
 
   async listConcepts(shipId?: string): Promise<MetricConceptResponseDto[]> {
     const concepts = await this.metricConceptRepository.find({
       relations: {
-        aliases: true,
         members: {
           metricCatalog: true,
-          childConcept: true,
         },
       },
       order: {
         slug: 'ASC',
-        aliases: {
-          alias: 'ASC',
-        },
         members: {
           sortOrder: 'ASC',
           createdAt: 'ASC',
@@ -106,44 +132,13 @@ export class MetricsSemanticCatalogService {
       return concepts.map((concept) => this.serializeConcept(concept));
     }
 
-    const conceptsById = new Map(concepts.map((concept) => [concept.id, concept]));
-    const scopedVisibility = new Map<string, boolean>();
-
-    const conceptHasShipMembers = (conceptId: string): boolean => {
-      const cached = scopedVisibility.get(conceptId);
-
-      if (cached !== undefined) {
-        return cached;
-      }
-
-      const concept = conceptsById.get(conceptId);
-
-      if (!concept) {
-        scopedVisibility.set(conceptId, false);
-        return false;
-      }
-
-      scopedVisibility.set(conceptId, false);
-
-      const hasMembers = (concept.members ?? []).some((member) => {
-        if (member.metricCatalog) {
-          return member.metricCatalog.shipId === shipId;
-        }
-
-        if (member.childConceptId) {
-          return conceptHasShipMembers(member.childConceptId);
-        }
-
-        return false;
-      });
-
-      scopedVisibility.set(conceptId, hasMembers);
-      return hasMembers;
-    };
-
     return concepts
-      .filter((concept) => conceptHasShipMembers(concept.id))
-      .map((concept) => this.serializeConcept(concept, shipId, conceptsById, scopedVisibility));
+      .filter((concept) =>
+        (concept.members ?? []).some(
+          (member) => member.metricCatalog.shipId === shipId,
+        ),
+      )
+      .map((concept) => this.serializeConcept(concept, shipId));
   }
 
   async createConcept(
@@ -164,7 +159,6 @@ export class MetricsSemanticCatalogService {
     });
 
     const savedConcept = await this.metricConceptRepository.save(concept);
-    await this.replaceAliases(savedConcept.id, input.aliases ?? []);
     await this.replaceMembers(savedConcept.id, input.members ?? []);
     return this.getRequiredConcept(savedConcept.id);
   }
@@ -220,10 +214,6 @@ export class MetricsSemanticCatalogService {
 
     await this.metricConceptRepository.save(concept);
 
-    if (input.aliases !== undefined) {
-      await this.replaceAliases(concept.id, input.aliases);
-    }
-
     if (input.members !== undefined) {
       await this.replaceMembers(concept.id, input.members);
     }
@@ -243,36 +233,47 @@ export class MetricsSemanticCatalogService {
     const concepts = await this.metricConceptRepository.find({
       where: { isActive: true },
       relations: {
-        aliases: true,
         members: {
           metricCatalog: true,
-          childConcept: true,
         },
       },
       order: {
         slug: 'ASC',
       },
     });
+    const scopedConcepts = concepts
+      .map((concept) => this.scopeConceptForShip(concept, input.shipId))
+      .filter((concept): concept is MetricConceptEntity => concept !== null);
 
-    const candidates = concepts
-      .map((concept) => this.scoreConceptMatch(concept, normalizedQuery, input.shipId))
+    const deterministicCandidates = scopedConcepts
+      .map((concept) => this.scoreConceptMatch(concept, normalizedQuery))
       .filter(
-        (
-          candidate,
-        ): candidate is {
-          concept: MetricConceptEntity;
-          score: number;
-          matchReason: string;
-        } => candidate !== null,
+        (candidate): candidate is MetricConceptScoredMatch => candidate !== null,
       )
       .sort((left, right) => right.score - left.score || left.concept.slug.localeCompare(right.concept.slug))
       .slice(0, 10);
+    const resolvedCandidate = this.selectResolvedCandidate(
+      deterministicCandidates,
+      normalizedQuery,
+    );
+    const semanticResolution = resolvedCandidate
+      ? null
+      : await this.resolveConceptSemantically(
+          scopedConcepts,
+          input.query.trim(),
+          normalizedQuery,
+        );
+    const candidates = semanticResolution?.candidates.length
+      ? semanticResolution.candidates
+      : deterministicCandidates;
+    const finalResolvedCandidate =
+      resolvedCandidate ?? semanticResolution?.resolvedCandidate ?? null;
 
     return {
       query: input.query.trim(),
       normalizedQuery,
-      resolvedConcept: candidates[0]
-        ? this.serializeConcept(candidates[0].concept)
+      resolvedConcept: finalResolvedCandidate
+        ? this.serializeConcept(finalResolvedCandidate.concept)
         : null,
       candidates: candidates.map((candidate) => ({
         concept: this.serializeConcept(candidate.concept),
@@ -285,14 +286,7 @@ export class MetricsSemanticCatalogService {
   private scoreConceptMatch(
     concept: MetricConceptEntity,
     normalizedQuery: string,
-    shipId?: string,
-  ):
-    | {
-        concept: MetricConceptEntity;
-        score: number;
-        matchReason: string;
-      }
-    | null {
+  ): MetricConceptScoredMatch | null {
     const candidateValues = [
       {
         value: this.normalizeSearchValue(concept.slug),
@@ -304,11 +298,6 @@ export class MetricsSemanticCatalogService {
         score: 110,
         reason: 'exact_display_name',
       },
-      ...concept.aliases.map((alias) => ({
-        value: this.normalizeSearchValue(alias.alias),
-        score: 100,
-        reason: 'alias',
-      })),
       {
         value: this.normalizeSearchValue(concept.description),
         score: 80,
@@ -322,6 +311,7 @@ export class MetricsSemanticCatalogService {
           reason: string;
         }
       | null = null;
+    const queryTokens = this.tokenizeSearchValue(normalizedQuery);
 
     for (const candidate of candidateValues) {
       if (!candidate.value) {
@@ -336,7 +326,10 @@ export class MetricsSemanticCatalogService {
         break;
       }
 
-      if (this.hasPhraseMatch(candidate.value, normalizedQuery)) {
+      if (
+        this.hasPhraseMatch(candidate.value, normalizedQuery) &&
+        this.passesPhraseCoverage(candidate.value, queryTokens)
+      ) {
         bestMatch = {
           score: this.scorePhraseMatch(candidate.reason),
           reason: `partial_${candidate.reason}`,
@@ -354,30 +347,38 @@ export class MetricsSemanticCatalogService {
       bestMatch = semanticScore;
     }
 
-    const scopedMembers = concept.members.filter((member) => {
-      if (!shipId) {
-        return true;
-      }
-
-      if (!member.metricCatalog) {
-        return true;
-      }
-
-      return member.metricCatalog.shipId === shipId;
-    });
-
-    if (shipId && concept.members.length > 0 && scopedMembers.length === 0) {
+    if (
+      (bestMatch.reason.startsWith('partial_') ||
+        bestMatch.reason === 'semantic_overlap') &&
+      !this.passesConceptSpecificityGuard(concept, normalizedQuery)
+    ) {
       return null;
     }
 
     return {
-      concept: {
-        ...concept,
-        members: shipId ? scopedMembers : concept.members,
-      },
+      concept,
       score: bestMatch.score,
       matchReason: bestMatch.reason,
     };
+  }
+
+  private selectResolvedCandidate(
+    candidates: MetricConceptScoredMatch[],
+    normalizedQuery: string,
+  ): MetricConceptScoredMatch | null {
+    const topCandidate = candidates[0];
+
+    if (!topCandidate) {
+      return null;
+    }
+
+    if (this.isTrustedResolutionReason(topCandidate.matchReason)) {
+      return topCandidate;
+    }
+
+    return this.passesResolutionConfidenceGate(candidates, normalizedQuery)
+      ? topCandidate
+      : null;
   }
 
   private async getRequiredConcept(
@@ -386,16 +387,11 @@ export class MetricsSemanticCatalogService {
     const concept = await this.metricConceptRepository.findOne({
       where: { id: conceptId },
       relations: {
-        aliases: true,
         members: {
           metricCatalog: true,
-          childConcept: true,
         },
       },
       order: {
-        aliases: {
-          alias: 'ASC',
-        },
         members: {
           sortOrder: 'ASC',
           createdAt: 'ASC',
@@ -409,33 +405,6 @@ export class MetricsSemanticCatalogService {
 
     return this.serializeConcept(concept);
   }
-
-  private async replaceAliases(
-    conceptId: string,
-    aliases: string[],
-  ): Promise<void> {
-    await this.metricConceptAliasRepository.delete({ conceptId });
-
-    const normalizedAliases = [...new Set(
-      aliases
-        .map((alias) => this.normalizeOptionalText(alias))
-        .filter((alias): alias is string => Boolean(alias)),
-    )];
-
-    if (!normalizedAliases.length) {
-      return;
-    }
-
-    await this.metricConceptAliasRepository.save(
-      normalizedAliases.map((alias) =>
-        this.metricConceptAliasRepository.create({
-          conceptId,
-          alias,
-        }),
-      ),
-    );
-  }
-
   private async replaceMembers(
     conceptId: string,
     members: CreateMetricConceptDto['members'],
@@ -448,9 +417,6 @@ export class MetricsSemanticCatalogService {
 
     const metricCatalogIds = members
       .map((member) => member.metricCatalogId)
-      .filter((value): value is string => Boolean(value));
-    const childConceptIds = members
-      .map((member) => member.childConceptId)
       .filter((value): value is string => Boolean(value));
 
     if (metricCatalogIds.length > 0) {
@@ -466,45 +432,18 @@ export class MetricsSemanticCatalogService {
       }
     }
 
-    if (childConceptIds.length > 0) {
-      const childConcepts = await this.metricConceptRepository.find({
-        where: { id: In(childConceptIds) },
-        select: { id: true },
-      });
-
-      if (childConcepts.length !== new Set(childConceptIds).size) {
-        throw new BadRequestException(
-          'One or more childConceptId values do not exist',
-        );
-      }
-    }
-
     const preparedMembers = members.map((member, index) => {
-      const metricCatalogId = member.metricCatalogId ?? null;
-      const childConceptId = member.childConceptId ?? null;
+      const metricCatalogId = member.metricCatalogId?.trim();
 
-      if (!metricCatalogId && !childConceptId) {
+      if (!metricCatalogId) {
         throw new BadRequestException(
-          'Each metric concept member must reference metricCatalogId or childConceptId',
-        );
-      }
-
-      if (metricCatalogId && childConceptId) {
-        throw new BadRequestException(
-          'A metric concept member cannot reference both metricCatalogId and childConceptId',
-        );
-      }
-
-      if (childConceptId === conceptId) {
-        throw new BadRequestException(
-          'A metric concept cannot include itself as a child concept',
+          'Each metric concept member must reference metricCatalogId',
         );
       }
 
       return this.metricConceptMemberRepository.create({
         conceptId,
         metricCatalogId,
-        childConceptId,
         role: this.normalizeOptionalText(member.role),
         sortOrder: member.sortOrder ?? index,
       });
@@ -516,27 +455,11 @@ export class MetricsSemanticCatalogService {
   private serializeConcept(
     concept: MetricConceptEntity,
     shipId?: string,
-    conceptsById?: Map<string, MetricConceptEntity>,
-    scopedVisibility?: Map<string, boolean>,
   ): MetricConceptResponseDto {
     const scopedMembers = shipId
-      ? [...(concept.members ?? [])].filter((member) => {
-          if (member.metricCatalog) {
-            return member.metricCatalog.shipId === shipId;
-          }
-
-          if (member.childConceptId && conceptsById && scopedVisibility) {
-            const childVisible = scopedVisibility.get(member.childConceptId);
-            if (childVisible !== undefined) {
-              return childVisible;
-            }
-
-            const childConcept = conceptsById.get(member.childConceptId);
-            return Boolean(childConcept);
-          }
-
-          return !member.metricCatalog;
-        })
+      ? [...(concept.members ?? [])].filter(
+          (member) => member.metricCatalog.shipId === shipId,
+        )
       : [...(concept.members ?? [])];
 
     return {
@@ -549,9 +472,6 @@ export class MetricsSemanticCatalogService {
       aggregationRule: concept.aggregationRule,
       unit: concept.unit,
       isActive: concept.isActive,
-      aliases: [...(concept.aliases ?? [])]
-        .map((alias) => alias.alias)
-        .sort((left, right) => left.localeCompare(right)),
       members: scopedMembers
         .sort((left, right) => left.sortOrder - right.sortOrder)
         .map((member) => ({
@@ -559,24 +479,14 @@ export class MetricsSemanticCatalogService {
           role: member.role,
           sortOrder: member.sortOrder,
           metricCatalogId: member.metricCatalogId,
-          childConceptId: member.childConceptId,
-          metric: member.metricCatalog
-            ? {
-                id: member.metricCatalog.id,
-                shipId: member.metricCatalog.shipId,
-                key: member.metricCatalog.key,
-                bucket: member.metricCatalog.bucket,
-                field: member.metricCatalog.field,
-                description: member.metricCatalog.description,
-              }
-            : null,
-          childConcept: member.childConcept
-            ? {
-                id: member.childConcept.id,
-                slug: member.childConcept.slug,
-                displayName: member.childConcept.displayName,
-              }
-            : null,
+          metric: {
+            id: member.metricCatalog.id,
+            shipId: member.metricCatalog.shipId,
+            key: member.metricCatalog.key,
+            bucket: member.metricCatalog.bucket,
+            field: member.metricCatalog.field,
+            description: member.metricCatalog.description,
+          },
         })),
       createdAt: concept.createdAt.toISOString(),
       updatedAt: concept.updatedAt.toISOString(),
@@ -647,17 +557,24 @@ export class MetricsSemanticCatalogService {
       [
         concept.displayName,
         concept.description,
-        ...concept.aliases.map((alias) => alias.alias),
       ]
         .filter(Boolean)
         .join(' '),
     );
     const conceptTokens = new Set(this.tokenizeSearchValue(conceptText));
     let overlap = 0;
+    let specificOverlap = 0;
+    const specificQueryTokens = queryTokens.filter(
+      (token) => !GENERIC_SEARCH_TOKENS.has(token),
+    );
 
     for (const token of queryTokens) {
       if (conceptTokens.has(token)) {
         overlap += 1;
+
+        if (specificQueryTokens.includes(token)) {
+          specificOverlap += 1;
+        }
       }
     }
 
@@ -665,10 +582,51 @@ export class MetricsSemanticCatalogService {
       return null;
     }
 
+    if (
+      !this.passesTokenCoverage(
+        queryTokens,
+        specificQueryTokens,
+        specificOverlap,
+        overlap,
+      )
+    ) {
+      return null;
+    }
+
     return {
       score: 45 + overlap * 12,
       reason: 'semantic_overlap',
     };
+  }
+
+  private passesConceptSpecificityGuard(
+    concept: MetricConceptEntity,
+    normalizedQuery: string,
+  ): boolean {
+    const queryTokens = this.tokenizeSearchValue(normalizedQuery);
+    const specificQueryTokens = queryTokens.filter(
+      (token) => !GENERIC_SEARCH_TOKENS.has(token),
+    );
+
+    if (specificQueryTokens.length === 0) {
+      return false;
+    }
+
+    const identityVariants = [
+      concept.displayName,
+      concept.slug,
+    ]
+      .map((value) => this.normalizeSearchValue(value))
+      .filter(Boolean);
+
+    return identityVariants.some((variant) =>
+      this.variantPassesSpecificityGuard(
+        variant,
+        queryTokens,
+        specificQueryTokens,
+        normalizedQuery,
+      ),
+    );
   }
 
   private tokenizeSearchValue(value: string): string[] {
@@ -723,12 +681,462 @@ export class MetricsSemanticCatalogService {
         return 108;
       case 'exact_display_name':
         return 100;
-      case 'alias':
-        return 90;
       case 'description':
         return 72;
       default:
         return 70;
     }
+  }
+
+  private passesPhraseCoverage(
+    candidateValue: string,
+    queryTokens: string[],
+  ): boolean {
+    const candidateTokens = new Set(this.tokenizeSearchValue(candidateValue));
+    const specificQueryTokens = queryTokens.filter(
+      (token) => !GENERIC_SEARCH_TOKENS.has(token),
+    );
+    const overlap = queryTokens.filter((token) => candidateTokens.has(token)).length;
+    const specificOverlap = specificQueryTokens.filter((token) =>
+      candidateTokens.has(token),
+    ).length;
+
+    return this.passesTokenCoverage(
+      queryTokens,
+      specificQueryTokens,
+      specificOverlap,
+      overlap,
+    );
+  }
+
+  private passesTokenCoverage(
+    queryTokens: string[],
+    specificQueryTokens: string[],
+    specificOverlap: number,
+    overlap: number,
+  ): boolean {
+    if (queryTokens.length <= 1) {
+      return overlap > 0;
+    }
+
+    if (specificQueryTokens.length > 0) {
+      const requiredSpecificOverlap =
+        specificQueryTokens.length >= 2 ? 2 : specificQueryTokens.length;
+
+      return specificOverlap >= requiredSpecificOverlap;
+    }
+
+    return overlap >= 2;
+  }
+
+  private isTrustedResolutionReason(reason: string): boolean {
+    return (
+      reason === 'exact_slug' ||
+      reason === 'exact_display_name'
+    );
+  }
+
+  private passesResolutionConfidenceGate(
+    candidates: MetricConceptScoredMatch[],
+    normalizedQuery: string,
+  ): boolean {
+    const topCandidate = candidates[0];
+
+    if (!topCandidate) {
+      return false;
+    }
+
+    if (
+      topCandidate.matchReason === 'description' ||
+      topCandidate.matchReason === 'partial_description'
+    ) {
+      return false;
+    }
+
+    const queryTokens = this.tokenizeSearchValue(normalizedQuery);
+    const specificQueryTokens = queryTokens.filter(
+      (token) => !GENERIC_SEARCH_TOKENS.has(token),
+    );
+
+    if (specificQueryTokens.length === 0) {
+      return false;
+    }
+
+    if (specificQueryTokens.length === 1) {
+      return false;
+    }
+
+    if (topCandidate.score < 90) {
+      return false;
+    }
+
+    const secondCandidate = candidates[1];
+
+    if (!secondCandidate) {
+      return true;
+    }
+
+    const scoreLead = topCandidate.score - secondCandidate.score;
+    return scoreLead >= 8;
+  }
+
+  private variantPassesSpecificityGuard(
+    variant: string,
+    queryTokens: string[],
+    specificQueryTokens: string[],
+    normalizedQuery: string,
+  ): boolean {
+    if (!variant) {
+      return false;
+    }
+
+    if (variant === normalizedQuery) {
+      return true;
+    }
+
+    const variantTokens = this.tokenizeSearchValue(variant);
+    const specificVariantTokens = variantTokens.filter(
+      (token) => !GENERIC_SEARCH_TOKENS.has(token),
+    );
+    const unmatchedSpecificVariantTokens = specificVariantTokens.filter(
+      (token) => !queryTokens.includes(token),
+    );
+    const specificOverlap = specificQueryTokens.filter((token) =>
+      specificVariantTokens.includes(token),
+    ).length;
+
+    if (specificQueryTokens.length === 1) {
+      return unmatchedSpecificVariantTokens.length === 0 && specificOverlap === 1;
+    }
+
+    const allowedExtraSpecificTokens =
+      specificQueryTokens.length >= 3 ? 1 : 0;
+
+    return (
+      specificOverlap === specificQueryTokens.length &&
+      unmatchedSpecificVariantTokens.length <= allowedExtraSpecificTokens
+    );
+  }
+
+  private scopeConceptForShip(
+    concept: MetricConceptEntity,
+    shipId?: string,
+  ): MetricConceptEntity | null {
+    if (!shipId) {
+      return concept;
+    }
+
+    const scopedMembers = [...(concept.members ?? [])].filter((member) => {
+      if (!member.metricCatalog) {
+        return true;
+      }
+
+      return member.metricCatalog.shipId === shipId;
+    });
+
+    if ((concept.members?.length ?? 0) > 0 && scopedMembers.length === 0) {
+      return null;
+    }
+
+    return {
+      ...concept,
+      members: scopedMembers,
+    };
+  }
+
+  private async resolveConceptSemantically(
+    concepts: MetricConceptEntity[],
+    rawQuery: string,
+    normalizedQuery: string,
+  ): Promise<{
+    resolvedCandidate: MetricConceptScoredMatch | null;
+    candidates: MetricConceptScoredMatch[];
+  }> {
+    if (!this.llmService.isConfigured() || concepts.length === 0) {
+      return {
+        resolvedCandidate: null,
+        candidates: [],
+      };
+    }
+
+    const searchProfile = await this.buildSemanticSearchProfile(rawQuery);
+
+    if (!searchProfile) {
+      return {
+        resolvedCandidate: null,
+        candidates: [],
+      };
+    }
+
+    const recalledCandidates = concepts
+      .map((concept) => this.scoreConceptAgainstSemanticProfile(concept, searchProfile))
+      .filter((candidate): candidate is MetricConceptScoredMatch => candidate !== null)
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.concept.slug.localeCompare(right.concept.slug),
+      )
+      .slice(0, 40);
+
+    if (recalledCandidates.length === 0) {
+      return {
+        resolvedCandidate: null,
+        candidates: [],
+      };
+    }
+
+    const resolvedConceptId = await this.selectSemanticConceptWithLlm(
+      rawQuery,
+      normalizedQuery,
+      recalledCandidates,
+    );
+    const resolvedCandidate = resolvedConceptId
+      ? recalledCandidates.find((candidate) => candidate.concept.id === resolvedConceptId) ?? null
+      : null;
+
+    return {
+      resolvedCandidate: resolvedCandidate
+        ? {
+            ...resolvedCandidate,
+            score: Math.max(resolvedCandidate.score, 140),
+            matchReason: 'llm_semantic_match',
+          }
+        : null,
+      candidates: recalledCandidates.slice(0, 10).map((candidate) =>
+        resolvedCandidate && candidate.concept.id === resolvedCandidate.concept.id
+          ? {
+              ...candidate,
+              score: Math.max(candidate.score, 140),
+              matchReason: 'llm_semantic_match',
+            }
+          : candidate,
+      ),
+    };
+  }
+
+  private async buildSemanticSearchProfile(
+    rawQuery: string,
+  ): Promise<MetricConceptSearchProfile | null> {
+    const response = await this.llmService.createChatCompletion({
+      systemPrompt: [
+        'You normalize vessel telemetry questions into concept-search hints.',
+        'The user may write in any language.',
+        'Infer the underlying telemetry concept in English using semantic meaning, not aliases.',
+        'If the user asks for the total amount or current level of a resource on the vessel, prefer derived composite concepts over component sensors or consumption counters.',
+        'If the user asks where the vessel is, prefer location/coordinate concepts.',
+        'If the user asks for generic vessel speed, prefer navigation speed over ground unless the wording explicitly says speed through water.',
+        'Return JSON only with this exact shape:',
+        '{"searchPhrases":["..."],"requiredKeywords":["..."],"optionalKeywords":["..."],"categoryHints":["..."],"preferredConceptTypes":["single|group|composite|paired|comparison|trajectory"],"preferredAggregationRules":["none|sum|avg|min|max|last|coordinate_pair|compare|trajectory"]}',
+        'Keep arrays short and useful.',
+        'searchPhrases should be English canonical concept phrases.',
+        'requiredKeywords should be the must-have semantic words.',
+        'optionalKeywords should be helpful related words.',
+        'If the user asks for a grouped or derived metric, include that intent.',
+        'Do not include aliases from the user language.',
+        'Do not wrap JSON in markdown.',
+      ].join('\n'),
+      userPrompt: `User metric question:\n${rawQuery.trim()}`,
+      temperature: 0,
+      maxTokens: 220,
+    });
+    const parsed = parseJsonObject(response);
+
+    if (!parsed) {
+      return null;
+    }
+
+    return {
+      searchPhrases: this.parseStringArray(parsed.searchPhrases),
+      requiredKeywords: this.parseStringArray(parsed.requiredKeywords),
+      optionalKeywords: this.parseStringArray(parsed.optionalKeywords),
+      categoryHints: this.parseStringArray(parsed.categoryHints),
+      preferredConceptTypes: this.parseStringArray(parsed.preferredConceptTypes),
+      preferredAggregationRules: this.parseStringArray(parsed.preferredAggregationRules),
+    };
+  }
+
+  private scoreConceptAgainstSemanticProfile(
+    concept: MetricConceptEntity,
+    profile: MetricConceptSearchProfile,
+  ): MetricConceptScoredMatch | null {
+    const searchPhrases = profile.searchPhrases
+      .map((phrase) => this.normalizeSearchValue(phrase))
+      .filter(Boolean);
+    const requiredKeywords = profile.requiredKeywords
+      .map((keyword) => this.normalizeSearchValue(keyword))
+      .filter(Boolean);
+    const optionalKeywords = profile.optionalKeywords
+      .map((keyword) => this.normalizeSearchValue(keyword))
+      .filter(Boolean);
+    const categoryHints = new Set(
+      profile.categoryHints
+        .map((hint) => this.normalizeSearchValue(hint))
+        .filter(Boolean),
+    );
+    const preferredConceptTypes = new Set(
+      profile.preferredConceptTypes.map((value) => value.trim().toLowerCase()),
+    );
+    const preferredAggregationRules = new Set(
+      profile.preferredAggregationRules.map((value) => value.trim().toLowerCase()),
+    );
+    const document = this.buildConceptSemanticDocument(concept);
+    let score = 0;
+
+    for (const phrase of searchPhrases) {
+      if (this.hasPhraseMatch(document, phrase)) {
+        score += 28;
+      }
+    }
+
+    const requiredMatches = requiredKeywords.filter((keyword) =>
+      document.includes(keyword),
+    ).length;
+    const optionalMatches = optionalKeywords.filter((keyword) =>
+      document.includes(keyword),
+    ).length;
+
+    score += requiredMatches * 20;
+    score += optionalMatches * 6;
+
+    if (
+      concept.category &&
+      categoryHints.has(this.normalizeSearchValue(concept.category))
+    ) {
+      score += 20;
+    }
+
+    if (preferredConceptTypes.has(concept.type)) {
+      score += 18;
+    }
+
+    if (preferredAggregationRules.has(concept.aggregationRule)) {
+      score += 18;
+    }
+
+    if (score === 0) {
+      return null;
+    }
+
+    return {
+      concept,
+      score,
+      matchReason: 'semantic_profile_recall',
+    };
+  }
+
+  private async selectSemanticConceptWithLlm(
+    rawQuery: string,
+    normalizedQuery: string,
+    candidates: MetricConceptScoredMatch[],
+  ): Promise<string | null> {
+    const response = await this.llmService.createChatCompletion({
+      systemPrompt: [
+        'You choose the best telemetry concept for a user query.',
+        'Use concept meaning from display name, description, category, type, aggregation rule, and member summary.',
+        'Do not rely on aliases.',
+        'If no candidate clearly matches, return null.',
+        'Prefer precision over guessing.',
+        'If the user asks for the total amount or current level of a resource onboard, prefer composite totals over transfer pumps, used counters, voltages, or unrelated tank readings.',
+        'If the user asks for vessel speed in a generic way, prefer speed over ground over speed through water unless the query explicitly says otherwise.',
+        'Return JSON only with this exact shape:',
+        '{"matchedConceptId":"uuid or null","confidence":"high|medium|low","reasoning":"short string"}',
+        'Do not wrap JSON in markdown.',
+      ].join('\n'),
+      userPrompt: [
+        `User query: ${rawQuery}`,
+        `Normalized query: ${normalizedQuery}`,
+        '',
+        'Candidate concepts:',
+        JSON.stringify(
+          candidates.map((candidate) => ({
+            id: candidate.concept.id,
+            recallScore: candidate.score,
+            displayName: candidate.concept.displayName,
+            slug: candidate.concept.slug,
+            description: candidate.concept.description,
+            category: candidate.concept.category,
+            type: candidate.concept.type,
+            aggregationRule: candidate.concept.aggregationRule,
+            members: candidate.concept.members
+              .slice(0, 8)
+              .map((member) =>
+                member.role ?? member.metricCatalog?.key ?? null,
+              )
+              .filter(Boolean),
+          })),
+          null,
+          2,
+        ),
+      ].join('\n'),
+      temperature: 0,
+      maxTokens: 260,
+    });
+    const parsed = parseJsonObject(response);
+
+    if (!parsed) {
+      return null;
+    }
+
+    const matchedConceptId =
+      typeof parsed.matchedConceptId === 'string' &&
+      parsed.matchedConceptId.trim().length > 0
+        ? parsed.matchedConceptId.trim()
+        : null;
+    const confidence =
+      typeof parsed.confidence === 'string'
+        ? parsed.confidence.trim().toLowerCase()
+        : 'low';
+
+    if (!matchedConceptId || confidence === 'low') {
+      return null;
+    }
+
+    return candidates.some((candidate) => candidate.concept.id === matchedConceptId)
+      ? matchedConceptId
+      : null;
+  }
+
+  private buildConceptSemanticDocument(concept: MetricConceptEntity): string {
+    return this.normalizeSearchValue(
+      [
+        concept.displayName,
+        concept.description,
+        concept.category,
+        concept.type,
+        concept.aggregationRule,
+        ...concept.members.flatMap((member) => [
+          member.role,
+          this.buildMetricSearchDocument(member.metricCatalog),
+        ]),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+  }
+
+  private buildMetricSearchDocument(metric: ShipMetricCatalogEntity): string {
+    const blueprint = buildMetricSemanticBlueprint(metric);
+
+    return [
+      blueprint.displayName,
+      blueprint.description,
+      blueprint.category,
+      metric.key,
+      metric.bucket,
+      metric.field,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  private parseStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return [...new Set(
+      value
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter(Boolean),
+    )];
   }
 }

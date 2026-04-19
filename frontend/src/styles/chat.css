@@ -2453,6 +2453,102 @@
   margin-top: 10px;
 }
 
+.chat-metrics-breakdowns {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.chat-metrics-breakdown {
+  border: 1px solid var(--chat-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+    var(--chat-surface);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.16);
+}
+
+.chat-metrics-breakdown__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.chat-metrics-breakdown__eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--chat-text-subtle);
+  margin-bottom: 4px;
+}
+
+.chat-metrics-breakdown__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--chat-text);
+}
+
+.chat-metrics-breakdown__summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.chat-metrics-breakdown__summary-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--chat-text-subtle);
+}
+
+.chat-metrics-breakdown__summary-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--chat-text);
+}
+
+.chat-metrics-breakdown__timestamp {
+  font-size: 0.78rem;
+  color: var(--chat-text-muted);
+}
+
+.chat-metrics-breakdown__table-wrap {
+  overflow-x: auto;
+}
+
+.chat-metrics-breakdown__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.chat-metrics-breakdown__table th,
+.chat-metrics-breakdown__table td {
+  padding: 9px 10px;
+  border-top: 1px solid var(--chat-border);
+  text-align: left;
+}
+
+.chat-metrics-breakdown__table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--chat-text-subtle);
+}
+
+.chat-metrics-breakdown__table td:last-child,
+.chat-metrics-breakdown__table th:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* ── Loading / typing indicator ── */
 .chat-message__loading {
   color: var(--chat-text-muted);

@@ -59,7 +59,7 @@ export interface ShipMetricCatalogSyncResultDto {
   syncedAt: string;
   semanticBootstrap: Pick<
     MetricsSemanticBootstrapResultDto,
-    'totalMetrics' | 'conceptsCreated' | 'conceptsUpdated' | 'aliasesAdded' | 'membersAdded' | 'skippedBindings'
+    'totalMetrics' | 'conceptsCreated' | 'conceptsUpdated' | 'membersAdded' | 'skippedBindings'
   > | null;
 }
 
@@ -206,7 +206,6 @@ export class MetricsCatalogService {
         totalMetrics: semanticBootstrap.totalMetrics,
         conceptsCreated: semanticBootstrap.conceptsCreated,
         conceptsUpdated: semanticBootstrap.conceptsUpdated,
-        aliasesAdded: semanticBootstrap.aliasesAdded,
         membersAdded: semanticBootstrap.membersAdded,
         skippedBindings: semanticBootstrap.skippedBindings,
       },

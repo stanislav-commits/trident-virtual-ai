@@ -52,12 +52,6 @@ export class UpdateMetricConceptDto {
 
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(100)
-  @IsString({ each: true })
-  aliases?: string[];
-
-  @IsOptional()
-  @IsArray()
   @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => MetricConceptMemberDto)
