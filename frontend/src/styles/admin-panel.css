@@ -357,6 +357,156 @@
   line-height: 1.5;
 }
 
+/* ── Metrics head controls ── */
+.admin-panel__metrics-head-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Segmented control ── */
+.admin-panel__seg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--chat-surface-2);
+  border: 1px solid var(--chat-border);
+  gap: 0;
+  isolation: isolate;
+}
+
+.admin-panel__seg-indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 9px;
+  background: var(--chat-surface);
+  border: 1px solid var(--chat-border-strong);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.admin-panel__seg-indicator--right {
+  transform: translateX(100%);
+}
+
+.admin-panel__seg-btn {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--chat-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.2s ease;
+  user-select: none;
+  letter-spacing: 0.005em;
+}
+
+.admin-panel__seg-btn svg {
+  opacity: 0.5;
+  flex-shrink: 0;
+  transition: opacity 0.2s ease;
+}
+
+.admin-panel__seg-btn--active {
+  color: var(--chat-text);
+  font-weight: 600;
+}
+
+.admin-panel__seg-btn--active svg {
+  opacity: 0.85;
+}
+
+.admin-panel__seg-btn:hover:not(.admin-panel__seg-btn--active) {
+  color: var(--chat-text);
+}
+
+.admin-panel__seg-btn:hover:not(.admin-panel__seg-btn--active) svg {
+  opacity: 0.7;
+}
+
+/* ── Sync button ── */
+.admin-panel__sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.admin-panel__sync-btn:hover:not(:disabled) {
+  background: var(--chat-surface-3);
+  border-color: var(--chat-border-strong);
+  color: var(--chat-text);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.admin-panel__sync-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.admin-panel__sync-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.admin-panel__sync-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.admin-panel__sync-btn:hover:not(:disabled) .admin-panel__sync-icon {
+  opacity: 1;
+}
+
+.admin-panel__sync-icon--spin {
+  animation: ap-syncSpin 0.8s linear infinite;
+  opacity: 1;
+}
+
+@keyframes ap-syncSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ── Create bar ── */
 .admin-panel__create-bar {
   display: flex;
@@ -1512,6 +1662,13 @@
   flex-shrink: 0;
   opacity: 0.5;
 }
+
+.admin-panel__metrics-search--inline {
+  margin-bottom: 0;
+  min-height: 46px;
+  height: 46px;
+}
+
 .admin-panel__metrics-search-input {
   flex: 1;
   background: transparent;
@@ -1848,6 +2005,295 @@
   margin-bottom: 10px;
 }
 
+/* ── Metrics toolbar strip ── */
+.admin-panel__metrics-toolbar-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.admin-panel__metrics-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-panel__metrics-count {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--chat-text-subtle);
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+/* ── Metrics compact pager ── */
+.admin-panel__metrics-pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-panel__metrics-pager-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-panel__metrics-pager-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--chat-text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.admin-panel__metrics-pager-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--chat-surface-2);
+  border: 1px solid var(--chat-border);
+}
+
+.admin-panel__metrics-pager-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--chat-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.admin-panel__metrics-pager-btn:hover:not(:disabled) {
+  background: var(--chat-surface-3);
+  color: var(--chat-text);
+}
+
+.admin-panel__metrics-pager-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.admin-panel__metrics-pager-indicator {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--chat-text-muted);
+  min-width: 44px;
+  text-align: center;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+/* ── Sync status line ── */
+.admin-panel__metrics-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.74rem;
+  color: var(--chat-text-subtle);
+  border-radius: 8px;
+  background: var(--chat-surface-2);
+  border: 1px solid var(--chat-border);
+  line-height: 1.4;
+}
+
+.admin-panel__metrics-sync-status svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+/* ── Edit button ── */
+.admin-panel__metrics-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--chat-text-subtle);
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+  white-space: nowrap;
+}
+
+.admin-panel__metrics-edit-btn:hover {
+  background: var(--chat-surface-2);
+  color: var(--chat-text);
+}
+
+.admin-panel__metrics-edit-btn svg {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.admin-panel__metrics-edit-btn:hover svg {
+  opacity: 0.8;
+}
+
+/* ── Edit description modal ── */
+.admin-panel__metrics-edit-modal {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  padding: 22px 24px;
+  border-radius: 16px;
+  border: 1px solid var(--chat-border-strong);
+  background: var(--chat-surface);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  animation: ap-modalSlideIn 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes ap-modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.admin-panel__metrics-edit-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-panel__metrics-edit-modal-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-panel__metrics-edit-modal-title strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--chat-text);
+}
+
+.admin-panel__metrics-edit-modal-title .admin-panel__code-inline {
+  font-size: 0.72rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-panel__metrics-edit-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chat-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.admin-panel__metrics-edit-modal-close:hover {
+  background: var(--chat-surface-2);
+  color: var(--chat-text);
+}
+
+.admin-panel__metrics-edit-modal .admin-panel__textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.admin-panel__metrics-edit-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* ── Metrics table layout fix ── */
+.admin-panel__table--metrics {
+  table-layout: fixed;
+  min-width: 780px;
+}
+
+.admin-panel__table--metrics .admin-panel__th {
+  padding: 8px 12px;
+  font-size: 0.65rem;
+  background: var(--chat-surface-2);
+}
+
+.admin-panel__table--metrics .admin-panel__td {
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-panel__table--metrics .admin-panel__td--desc {
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-panel__table--metrics .admin-panel__metric-description-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.45;
+  max-height: 2.9em;
+  font-size: 0.78rem;
+  color: var(--chat-text-muted);
+}
+
+.admin-panel__table--metrics .admin-panel__td--key .admin-panel__code-inline {
+  max-width: 100%;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-panel__table--metrics .admin-panel__row:nth-child(even) .admin-panel__td {
+  background: var(--chat-surface-2);
+}
+
 .admin-panel__metrics-filter-card {
   display: flex;
   flex-direction: column;
@@ -1901,11 +2347,596 @@
   box-shadow: var(--shadow-md);
 }
 
+/* ══════════════════════════════════════════════════════════
+   SEMANTIC LAYER — 2-panel layout
+══════════════════════════════════════════════════════════ */
 .admin-panel__semantic-layout {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
+
+/* ── Toolbar strip ── */
+.admin-panel__semantic-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface);
+}
+
+.admin-panel__semantic-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.admin-panel__semantic-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.admin-panel__semantic-health-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-panel__semantic-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+/* ── New concept button ── */
+.admin-panel__semantic-new-wrap {
+  position: relative;
+}
+
+.admin-panel__semantic-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  /* Always use the accent colour so it looks good in dark AND light */
+  background: var(--chat-accent, #6c63ff);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.admin-panel__semantic-new-btn:hover {
+  background: hsl(from var(--chat-accent, #6c63ff) h s calc(l - 5%));
+  box-shadow: 0 4px 14px rgba(108, 99, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.admin-panel__semantic-new-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.admin-panel__semantic-template-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 200;
+  width: 256px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--chat-border-strong);
+  /* Explicit opaque backgrounds for both themes */
+  background: light-dark(#ffffff, #1e1e2e);
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.07),
+    0 12px 32px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+  animation: ap-modalSlideIn 0.15s ease;
+}
+
+.admin-panel__semantic-template-divider {
+  height: 1px;
+  background: var(--chat-border);
+  margin: 4px 6px;
+}
+
+.admin-panel__semantic-template-option--blank strong {
+  color: var(--chat-text-muted);
+}
+
+.admin-panel__semantic-template-dropdown-label {
+  display: block;
+  padding: 4px 10px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--chat-text-muted);
+}
+
+.admin-panel__semantic-template-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.admin-panel__semantic-template-option:hover {
+  background: var(--chat-surface-2);
+}
+
+.admin-panel__semantic-template-option strong {
+  font-size: 0.82rem;
+  color: var(--chat-text);
+}
+
+.admin-panel__semantic-template-option .admin-panel__muted {
+  font-size: 0.73rem;
+}
+
+/* ── Main 2-panel grid ── */
+.admin-panel__semantic-main-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-height: 0;
+}
+
+/* ── Shared panel base ── */
+.admin-panel__semantic-panel {
+  border-radius: 14px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface);
+  overflow: hidden;
+}
+
+.admin-panel__semantic-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+}
+
+/* ── Left panel — concept list ── */
+.admin-panel__semantic-panel--list {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 240px);
+  min-height: 400px;
+  position: sticky;
+  top: 0;
+}
+
+.admin-panel__semantic-panel--list .admin-panel__metrics-search {
+  margin: 10px 12px 0;
+}
+
+.admin-panel__semantic-concept-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-panel__semantic-list-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 12px 12px;
+}
+
+.admin-panel__semantic-list-sentinel {
+  width: 100%;
+  height: 1px;
+}
+
+/* ── Right panel — editor ── */
+.admin-panel__semantic-panel--editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-panel__semantic-hint-row {
+  padding: 6px 16px 0;
+  font-size: 0.75rem;
+}
+
+.admin-panel__semantic-editor-body {
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Save success toast ── */
+.admin-panel__semantic-save-toast {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 16px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  color: #22c55e;
+  font-size: 0.78rem;
+  font-weight: 600;
+  animation: ap-modalSlideIn 0.2s ease;
+}
+
+/* ── Members section ── */
+.admin-panel__semantic-members-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.admin-panel__semantic-member-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--chat-accent);
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.admin-panel__semantic-add-member-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px 5px 8px;
+  border: 1px solid var(--chat-border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chat-text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.admin-panel__semantic-add-member-btn:hover {
+  background: var(--chat-surface-2);
+  color: var(--chat-text);
+  border-color: var(--chat-accent);
+}
+
+.admin-panel__semantic-add-member-btn svg {
+  color: var(--chat-accent);
+  flex-shrink: 0;
+}
+
+.admin-panel__semantic-members-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 16px;
+  border: 1.5px dashed var(--chat-border);
+  border-radius: 10px;
+  color: var(--chat-text-muted);
+  font-size: 0.8rem;
+}
+
+.admin-panel__semantic-add-member-btn--inline {
+  font-size: 0.76rem;
+  border-color: var(--chat-accent);
+  color: var(--chat-accent);
+  background: transparent;
+}
+
+.admin-panel__semantic-member-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chat-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.admin-panel__semantic-member-remove:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+/* ── Inline validation tester ── */
+.admin-panel__semantic-inline-tester {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+}
+
+.admin-panel__semantic-inline-tester-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.admin-panel__semantic-tester-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-panel__semantic-inline-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* ── Member picker modal ── */
+.admin-panel__member-modal {
+  position: relative;
+  width: 100%;
+  max-width: 660px;
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  border: 1px solid var(--chat-border-strong);
+  /* Explicit opaque background — looks correct in both themes */
+  background: light-dark(#ffffff, #16161e);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.12),
+    0 24px 80px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+  animation: ap-modalSlideIn 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.admin-panel__member-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--chat-border);
+  background: light-dark(#f8f8fb, #1a1a28);
+}
+
+.admin-panel__member-modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--chat-text);
+  display: block;
+}
+
+.admin-panel__member-modal-sub {
+  font-size: 0.76rem;
+  display: block;
+  margin-top: 2px;
+}
+
+.admin-panel__member-modal-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 16px 0;
+  padding: 0 10px;
+  border: 1px solid var(--chat-border-strong);
+  border-radius: 10px;
+  background: light-dark(#f2f2f5, #1e1e2e);
+  flex-shrink: 0;
+}
+
+.admin-panel__member-modal-search svg {
+  flex-shrink: 0;
+  color: var(--chat-text-muted);
+}
+
+.admin-panel__member-modal-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: none;
+  background: transparent;
+  color: var(--chat-text);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.admin-panel__member-modal-search-input::placeholder {
+  color: var(--chat-text-muted);
+}
+
+.admin-panel__member-modal-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--chat-border);
+  color: var(--chat-text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.admin-panel__member-modal-search-clear:hover {
+  background: var(--chat-border-strong);
+}
+
+.admin-panel__member-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.admin-panel__member-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-panel__member-modal-section-label {
+  display: block;
+  margin-bottom: 4px;
+  padding: 2px 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--chat-text-muted);
+}
+
+.admin-panel__member-modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.admin-panel__member-modal-row:hover {
+  background: var(--chat-surface-2);
+}
+
+.admin-panel__member-modal-row:hover .admin-panel__member-modal-add-icon {
+  color: var(--chat-accent);
+  opacity: 1;
+}
+
+.admin-panel__member-modal-row--added {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.admin-panel__member-modal-row--added:hover {
+  background: transparent;
+}
+
+.admin-panel__member-modal-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-panel__member-modal-row-name {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--chat-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-panel__member-modal-row-key {
+  font-size: 0.71rem;
+  color: var(--chat-text-muted);
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+}
+
+.admin-panel__member-modal-row-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.admin-panel__member-modal-add-icon {
+  color: var(--chat-text-muted);
+  opacity: 0.5;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.admin-panel__member-modal-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--chat-text-muted);
+  font-size: 0.82rem;
+}
+
+.admin-panel__member-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--chat-border);
+  background: light-dark(#f8f8fb, #1a1a28);
+}
+
+
 
 .admin-panel__semantic-summary {
   display: flex;
@@ -2580,6 +3611,13 @@
   gap: 6px;
 }
 
+.admin-panel__field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .admin-panel__modal-field-row {
   display: flex;
   gap: 12px;
@@ -2601,6 +3639,97 @@
   border-radius: 12px;
   border: 1px solid var(--chat-border);
   background: var(--chat-surface);
+}
+
+.admin-panel__ship-crew-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--chat-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.admin-panel__ship-crew-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.admin-panel__ship-crew-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface);
+}
+
+.admin-panel__ship-crew-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-panel__ship-crew-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--chat-text);
+}
+
+.admin-panel__ship-crew-userid {
+  font-size: 0.8rem;
+  color: var(--chat-text-subtle);
+}
+
+.admin-panel__ship-crew-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-panel__ship-crew-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text-subtle);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.admin-panel__ship-crew-badge--success {
+  border-color: rgba(74, 222, 128, 0.28);
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+}
+
+.admin-panel__ship-crew-badge--accent {
+  border-color: rgba(96, 165, 250, 0.28);
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+}
+
+.admin-panel__ship-crew-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding-top: 4px;
+}
+
+.admin-panel__ship-crew-warning {
+  align-items: flex-start;
+  justify-content: flex-start;
 }
 
 /* ── File dropzone ── */

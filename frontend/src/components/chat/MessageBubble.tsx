@@ -9,7 +9,6 @@ import type {
 } from "../../types/chat";
 import { useAuth } from "../../context/AuthContext";
 import { fetchWithAuth } from "../../api/core";
-import { MetricsBreakdown } from "./MetricsBreakdown";
 import { SourceCitations } from "./SourceCitations";
 
 interface MessageBubbleProps {
@@ -245,15 +244,6 @@ export function MessageBubble({
     [token],
   );
   const mdComponents = useMdComponents(refs, handleOpenDocument);
-  const hasMetricsBreakdown =
-    Array.isArray(ragflowContext?.askResults) &&
-    ragflowContext.askResults.some(
-      (askResult) =>
-        Boolean(
-          askResult?.data?.execution?.result?.members?.length &&
-            askResult.data.execution.result.members.length > 1,
-        ),
-    );
 
   return (
     <div className={`chat-message chat-message--${role}`}>
@@ -284,10 +274,6 @@ export function MessageBubble({
           content.trim()
         )}
 
-        {role === "assistant" && (
-          <MetricsBreakdown ragflowContext={ragflowContext} />
-        )}
-
         {role === "assistant" && suggestionActions.length > 0 && (
             <div
               className="chat-message__suggestions"
@@ -311,8 +297,7 @@ export function MessageBubble({
       {/* Show citations for assistant messages that have them */}
       {role === "assistant" &&
         contextReferences &&
-        contextReferences.length > 0 &&
-        !hasMetricsBreakdown && (
+        contextReferences.length > 0 && (
           <div className="chat-message__sources">
             <SourceCitations
               citations={contextReferences}

@@ -5,12 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository, SelectQueryBuilder } from 'typeorm';
 import {
   InfluxMetricDefinition,
   InfluxService,
 } from '../../integrations/influx/influx.service';
 import { ShipEntity } from '../ships/entities/ship.entity';
+import { ListShipMetricCatalogQueryDto } from './dto/list-ship-metric-catalog-query.dto';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricDescriptionBackfillService } from './metric-description-backfill.service';
 import { MetricsSemanticBootstrapResultDto, MetricsSemanticBootstrapService } from './metrics-semantic-bootstrap.service';
@@ -36,6 +37,11 @@ export interface ShipMetricBucketGroupDto {
   totalMetrics: number;
 }
 
+export interface ShipMetricCatalogBucketOptionDto {
+  bucket: string;
+  totalMetrics: number;
+}
+
 export interface ShipMetricsCatalogDto {
   ship: {
     id: string;
@@ -45,6 +51,22 @@ export interface ShipMetricsCatalogDto {
   totalMetrics: number;
   syncedAt: string | null;
   buckets: ShipMetricBucketGroupDto[];
+}
+
+export interface ShipMetricCatalogPageDto {
+  ship: {
+    id: string;
+    name: string;
+    organizationName: string | null;
+  };
+  totalMetrics: number;
+  filteredMetrics: number;
+  syncedAt: string | null;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  buckets: ShipMetricCatalogBucketOptionDto[];
+  items: ShipMetricCatalogItemDto[];
 }
 
 export interface ShipMetricCatalogSyncResultDto {
@@ -262,6 +284,88 @@ export class MetricsCatalogService {
     };
   }
 
+  async listShipCatalogPage(
+    shipId: string,
+    query: ListShipMetricCatalogQueryDto,
+  ): Promise<ShipMetricCatalogPageDto> {
+    const ship = await this.findRequiredShip(shipId);
+    const bucketFilter = this.normalizeBucketFilter(query.bucket);
+    const searchQuery = query.search?.trim() ?? '';
+    const pageSize = query.pageSize ?? 25;
+    const requestedPage = query.page ?? 1;
+
+    const totalMetricsPromise = this.shipMetricCatalogRepository.count({
+      where: { shipId },
+    });
+    const filteredMetricsPromise = this.applyCatalogFilters(
+      this.shipMetricCatalogRepository.createQueryBuilder('entry'),
+      shipId,
+      {
+        bucket: bucketFilter,
+        search: searchQuery,
+      },
+    ).getCount();
+    const bucketOptionsPromise = this.shipMetricCatalogRepository
+      .createQueryBuilder('entry')
+      .select('entry.bucket', 'bucket')
+      .addSelect('COUNT(entry.id)', 'totalMetrics')
+      .where('entry.shipId = :shipId', { shipId })
+      .groupBy('entry.bucket')
+      .orderBy('entry.bucket', 'ASC')
+      .getRawMany<{ bucket: string; totalMetrics: string }>();
+    const latestSyncedAtPromise = this.shipMetricCatalogRepository
+      .createQueryBuilder('entry')
+      .select('MAX(entry.syncedAt)', 'syncedAt')
+      .where('entry.shipId = :shipId', { shipId })
+      .getRawOne<{ syncedAt: string | null }>();
+
+    const [totalMetrics, filteredMetrics, bucketOptionsRaw, latestSyncedAtRaw] =
+      await Promise.all([
+        totalMetricsPromise,
+        filteredMetricsPromise,
+        bucketOptionsPromise,
+        latestSyncedAtPromise,
+      ]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredMetrics / pageSize));
+    const page = Math.min(requestedPage, totalPages);
+    const entries = await this.applyCatalogFilters(
+      this.shipMetricCatalogRepository.createQueryBuilder('entry'),
+      shipId,
+      {
+        bucket: bucketFilter,
+        search: searchQuery,
+      },
+    )
+      .orderBy('entry.bucket', 'ASC')
+      .addOrderBy('entry.key', 'ASC')
+      .addOrderBy('entry.field', 'ASC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize)
+      .getMany();
+
+    return {
+      ship: {
+        id: ship.id,
+        name: ship.name,
+        organizationName: ship.organizationName,
+      },
+      totalMetrics,
+      filteredMetrics,
+      syncedAt: latestSyncedAtRaw?.syncedAt
+        ? new Date(latestSyncedAtRaw.syncedAt).toISOString()
+        : null,
+      page,
+      pageSize,
+      totalPages,
+      buckets: bucketOptionsRaw.map((bucketOption) => ({
+        bucket: bucketOption.bucket,
+        totalMetrics: Number(bucketOption.totalMetrics),
+      })),
+      items: entries.map((entry) => this.serializeEntry(entry)),
+    };
+  }
+
   async updateMetricDescription(
     metricId: string,
     description?: string | null,
@@ -288,6 +392,50 @@ export class MetricsCatalogService {
     }
 
     return ship;
+  }
+
+  private normalizeBucketFilter(bucket?: string): string | null {
+    const normalizedBucket = bucket?.trim();
+
+    if (!normalizedBucket || normalizedBucket.toLowerCase() === 'all') {
+      return null;
+    }
+
+    return normalizedBucket;
+  }
+
+  private applyCatalogFilters(
+    queryBuilder: SelectQueryBuilder<ShipMetricCatalogEntity>,
+    shipId: string,
+    filters: {
+      bucket: string | null;
+      search: string;
+    },
+  ): SelectQueryBuilder<ShipMetricCatalogEntity> {
+    queryBuilder.where('entry.shipId = :shipId', { shipId });
+
+    if (filters.bucket) {
+      queryBuilder.andWhere('entry.bucket = :bucket', {
+        bucket: filters.bucket,
+      });
+    }
+
+    if (filters.search) {
+      const search = `%${filters.search}%`;
+
+      queryBuilder.andWhere(
+        new Brackets((qb) => {
+          qb.where('entry.bucket ILIKE :search', { search })
+            .orWhere('entry.key ILIKE :search', { search })
+            .orWhere('entry.field ILIKE :search', { search })
+            .orWhere('COALESCE(entry.description, \'\') ILIKE :search', {
+              search,
+            });
+        }),
+      );
+    }
+
+    return queryBuilder;
   }
 
   private serializeEntry(

@@ -167,11 +167,6 @@ export class MetricsSemanticBootstrapService {
   ): boolean {
     let changed = false;
 
-    if (concept.displayName !== blueprint.displayName) {
-      concept.displayName = blueprint.displayName;
-      changed = true;
-    }
-
     if (!concept.description && blueprint.description) {
       concept.description = blueprint.description;
       changed = true;

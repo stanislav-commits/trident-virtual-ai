@@ -18,6 +18,8 @@ import { QueryMetricsDto } from './dto/query-metrics.dto';
 import { CreateMetricConceptDto } from './dto/create-metric-concept.dto';
 import { ResolveMetricConceptDto } from './dto/resolve-metric-concept.dto';
 import { ExecuteMetricConceptDto } from './dto/execute-metric-concept.dto';
+import { ListShipMetricCatalogQueryDto } from './dto/list-ship-metric-catalog-query.dto';
+import { ListMetricConceptsQueryDto } from './dto/list-metric-concepts-query.dto';
 import { UpdateShipMetricDescriptionDto } from './dto/update-ship-metric-description.dto';
 import { UpdateMetricConceptDto } from './dto/update-metric-concept.dto';
 import { MetricsCatalogService } from './metrics-catalog.service';
@@ -47,6 +49,16 @@ export class MetricsController {
   @Roles(UserRole.ADMIN)
   getShipCatalog(@Param('shipId') shipId: string) {
     return this.metricsCatalogService.listShipCatalog(shipId);
+  }
+
+  @Get('ships/:shipId/catalog/items')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getShipCatalogPage(
+    @Param('shipId') shipId: string,
+    @Query() query: ListShipMetricCatalogQueryDto,
+  ) {
+    return this.metricsCatalogService.listShipCatalogPage(shipId, query);
   }
 
   @Post('ships/:shipId/sync')
@@ -81,6 +93,13 @@ export class MetricsController {
   @Roles(UserRole.ADMIN)
   listConcepts(@Query('shipId') shipId?: string) {
     return this.metricsSemanticCatalogService.listConcepts(shipId);
+  }
+
+  @Get('concepts/items')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  listConceptsPage(@Query() query: ListMetricConceptsQueryDto) {
+    return this.metricsSemanticCatalogService.listConceptsPage(query);
   }
 
   @Post('concepts')

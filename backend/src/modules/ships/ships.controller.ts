@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
@@ -49,5 +60,13 @@ export class ShipsController {
   @Roles(UserRole.ADMIN)
   update(@Param('id') id: string, @Body() body: UpdateShipDto) {
     return this.shipsCommandService.update(id, body);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async remove(@Param('id') id: string) {
+    await this.shipsCommandService.remove(id);
   }
 }

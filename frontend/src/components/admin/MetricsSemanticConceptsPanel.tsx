@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type {
   MetricAggregationRule,
   MetricConcept,
@@ -16,7 +16,6 @@ import { useMetricConceptsAdminData } from "../../hooks/admin/useMetricConceptsA
 interface MetricsSemanticConceptsPanelProps {
   token: string | null;
   shipId: string | null;
-  shipName: string | null;
   catalog: ShipMetricsCatalog | null;
   syncMarker: string | null;
 }
@@ -32,7 +31,6 @@ type EditableConceptMember = {
 
 interface ConceptDraft {
   id: string | null;
-  slug: string;
   displayName: string;
   description: string;
   category: string;
@@ -87,7 +85,6 @@ const CONCEPT_TEMPLATES: Array<{
   label: string;
   description: string;
   displayName: string;
-  slugSuffix: string;
   category: string;
   type: MetricConceptType;
   aggregationRule: MetricAggregationRule;
@@ -98,7 +95,6 @@ const CONCEPT_TEMPLATES: Array<{
     label: "Single metric",
     description: "One raw metric with a friendly AI-facing name.",
     displayName: "New Single Metric",
-    slugSuffix: "single_metric",
     category: "general",
     type: "single",
     aggregationRule: "last",
@@ -109,7 +105,6 @@ const CONCEPT_TEMPLATES: Array<{
     label: "Metric group",
     description: "A set of related metrics such as all tanks or all engines.",
     displayName: "New Metric Group",
-    slugSuffix: "metric_group",
     category: "general",
     type: "group",
     aggregationRule: "none",
@@ -120,7 +115,6 @@ const CONCEPT_TEMPLATES: Array<{
     label: "Composite total",
     description: "A calculated total or average built from several members.",
     displayName: "New Composite Total",
-    slugSuffix: "composite_total",
     category: "general",
     type: "composite",
     aggregationRule: "sum",
@@ -131,7 +125,6 @@ const CONCEPT_TEMPLATES: Array<{
     label: "Lat / Lon pair",
     description: "A paired concept like vessel location from latitude and longitude.",
     displayName: "Vessel Location",
-    slugSuffix: "vessel_location",
     category: "navigation",
     type: "paired",
     aggregationRule: "coordinate_pair",
@@ -139,21 +132,9 @@ const CONCEPT_TEMPLATES: Array<{
   },
 ];
 
-function slugify(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .replace(/_+/g, "_");
-}
-
-function createEmptyDraft(shipName?: string | null): ConceptDraft {
-  const shipSlug = slugify(shipName ?? "");
-
+function createEmptyDraft(): ConceptDraft {
   return {
     id: null,
-    slug: shipSlug ? `${shipSlug}_` : "",
     displayName: "",
     description: "",
     category: "",
@@ -172,7 +153,6 @@ function formatMemberSubtitle(member: MetricConceptMember): string {
 function conceptToDraft(concept: MetricConcept): ConceptDraft {
   return {
     id: concept.id,
-    slug: concept.slug,
     displayName: concept.displayName,
     description: concept.description ?? "",
     category: concept.category ?? "",
@@ -194,7 +174,6 @@ function conceptToDraft(concept: MetricConcept): ConceptDraft {
 function humanizeMetricLabel(key: string): string {
   const parts = key.split("::");
   const measurement = parts[1] ?? parts[0] ?? key;
-
   return measurement
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[._-]+/g, " ")
@@ -204,51 +183,26 @@ function humanizeMetricLabel(key: string): string {
 }
 
 function formatConceptType(value: MetricConceptType): string {
-  return CONCEPT_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value;
+  return CONCEPT_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
 
 function formatAggregationRule(value: MetricAggregationRule): string {
-  return (
-    AGGREGATION_RULE_OPTIONS.find((option) => option.value === value)?.label ??
-    value
-  );
+  return AGGREGATION_RULE_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
 
 function formatExecutionValue(result: MetricConceptExecutionResponse | null): string {
-  if (!result) {
-    return "-";
-  }
-
+  if (!result) return "-";
   const { value, unit } = result.result;
-
-  if (typeof value === "number") {
+  if (typeof value === "number" || typeof value === "string")
     return `${value}${unit ? ` ${unit}` : ""}`;
-  }
-
-  if (typeof value === "string") {
-    return `${value}${unit ? ` ${unit}` : ""}`;
-  }
-
-  if (value && typeof value === "object") {
-    return JSON.stringify(value);
-  }
-
-  if (value === null || value === undefined) {
-    return "No data";
-  }
-
+  if (value && typeof value === "object") return JSON.stringify(value);
+  if (value === null || value === undefined) return "No data";
   return String(value);
 }
 
 function getReadinessBadgeClass(tone: ReadinessState["tone"]): string {
-  if (tone === "ready") {
-    return "admin-panel__badge admin-panel__badge--manual-done";
-  }
-
-  if (tone === "inactive") {
-    return "admin-panel__badge admin-panel__badge--manual-cancel";
-  }
-
+  if (tone === "ready") return "admin-panel__badge admin-panel__badge--manual-done";
+  if (tone === "inactive") return "admin-panel__badge admin-panel__badge--manual-cancel";
   return "admin-panel__badge admin-panel__badge--manual-pending";
 }
 
@@ -258,47 +212,19 @@ function evaluateReadiness(input: {
   memberCount: number;
   memberRoles: string[];
 }): ReadinessState {
-  if (!input.isActive) {
-    return {
-      label: "Inactive",
-      tone: "inactive",
-      hint: "Enable this concept before the chat planner can use it.",
-    };
-  }
-
-  if (input.memberCount === 0) {
-    return {
-      label: "Needs members",
-      tone: "warning",
-      hint: "Attach raw metrics so this concept can execute.",
-    };
-  }
-
-  if (input.type === "paired" && input.memberCount < 2) {
-    return {
-      label: "Needs pair",
-      tone: "warning",
-      hint: "A paired concept should contain two members such as latitude and longitude.",
-    };
-  }
-
+  if (!input.isActive)
+    return { label: "Inactive", tone: "inactive", hint: "Enable this concept before the chat planner can use it." };
+  if (input.memberCount === 0)
+    return { label: "Needs members", tone: "warning", hint: "Attach raw metrics so this concept can execute." };
+  if (input.type === "paired" && input.memberCount < 2)
+    return { label: "Needs pair", tone: "warning", hint: "A paired concept should contain two members." };
   if (
     input.type === "paired" &&
     !input.memberRoles.includes("latitude") &&
     !input.memberRoles.includes("longitude")
-  ) {
-    return {
-      label: "Needs roles",
-      tone: "warning",
-      hint: "Add clear member roles like latitude and longitude for paired concepts.",
-    };
-  }
-
-  return {
-    label: "Ready",
-    tone: "ready",
-    hint: "This concept is ready for semantic testing in chat and in the validation panel.",
-  };
+  )
+    return { label: "Needs roles", tone: "warning", hint: "Add latitude and longitude roles for paired concepts." };
+  return { label: "Ready", tone: "ready", hint: "This concept is ready for semantic testing." };
 }
 
 function getConceptReadiness(concept: MetricConcept): ReadinessState {
@@ -307,60 +233,227 @@ function getConceptReadiness(concept: MetricConcept): ReadinessState {
     type: concept.type,
     memberCount: concept.members.length,
     memberRoles: concept.members
-      .map((member) => member.role?.trim().toLowerCase())
-      .filter((role): role is string => Boolean(role)),
+      .map((m) => m.role?.trim().toLowerCase())
+      .filter((r): r is string => Boolean(r)),
   });
 }
 
+/* ─────────────────────────────────────────────────────────
+   Member Modal Component
+───────────────────────────────────────────────────────── */
+interface MemberModalProps {
+  allMetrics: Array<{ id: string; label: string; key: string; bucket: string; description: string | null }>;
+  selectedIds: Set<string>;
+  onAdd: (metricId: string) => void;
+  onClose: () => void;
+}
+
+function MemberModal({ allMetrics, selectedIds, onAdd, onClose }: MemberModalProps) {
+  const [search, setSearch] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allMetrics;
+    return allMetrics.filter((m) => {
+      const hay = [m.label, m.key, m.bucket, m.description ?? ""]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [allMetrics, search]);
+
+  const available = filtered.filter((m) => !selectedIds.has(m.id));
+  const added = filtered.filter((m) => selectedIds.has(m.id));
+
+  return (
+    <div className="admin-panel__modal-overlay" onClick={onClose}>
+      <div
+        className="admin-panel__member-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Add metric members"
+      >
+        {/* Header */}
+        <div className="admin-panel__member-modal-head">
+          <div>
+            <strong className="admin-panel__member-modal-title">Add metric members</strong>
+            <span className="admin-panel__muted admin-panel__member-modal-sub">
+              {available.length} available · {selectedIds.size} in concept
+            </span>
+          </div>
+          <button
+            type="button"
+            className="admin-panel__metrics-edit-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Search */}
+        <label className="admin-panel__member-modal-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            ref={inputRef}
+            className="admin-panel__member-modal-search-input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, key, or bucket…"
+          />
+          {search && (
+            <button
+              type="button"
+              className="admin-panel__member-modal-search-clear"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </label>
+
+        {/* Available list */}
+        <div className="admin-panel__member-modal-body">
+          {available.length === 0 && added.length === 0 ? (
+            <div className="admin-panel__member-modal-empty">
+              No metrics match "{search}"
+            </div>
+          ) : (
+            <>
+              {available.length > 0 && (
+                <div className="admin-panel__member-modal-section">
+                  <span className="admin-panel__member-modal-section-label">Available ({available.length})</span>
+                  {available.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className="admin-panel__member-modal-row"
+                      onClick={() => onAdd(m.id)}
+                    >
+                      <div className="admin-panel__member-modal-row-main">
+                        <span className="admin-panel__member-modal-row-name">{m.label}</span>
+                        <code className="admin-panel__member-modal-row-key">{m.key}</code>
+                      </div>
+                      <div className="admin-panel__member-modal-row-right">
+                        <span className="admin-panel__metrics-bucket-badge">{m.bucket}</span>
+                        <svg className="admin-panel__member-modal-add-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" />
+                        </svg>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {added.length > 0 && (
+                <div className="admin-panel__member-modal-section">
+                  <span className="admin-panel__member-modal-section-label">Already in concept ({added.length})</span>
+                  {added.map((m) => (
+                    <div key={m.id} className="admin-panel__member-modal-row admin-panel__member-modal-row--added">
+                      <div className="admin-panel__member-modal-row-main">
+                        <span className="admin-panel__member-modal-row-name">{m.label}</span>
+                        <code className="admin-panel__member-modal-row-key">{m.key}</code>
+                      </div>
+                      <div className="admin-panel__member-modal-row-right">
+                        <span className="admin-panel__metrics-bucket-badge">{m.bucket}</span>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-success, #4caf50)", opacity: 0.7 }}>
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="admin-panel__member-modal-footer">
+          <button type="button" className="admin-panel__btn admin-panel__btn--ghost" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Main Panel
+───────────────────────────────────────────────────────── */
 export function MetricsSemanticConceptsPanel({
   token,
   shipId,
-  shipName,
   catalog,
   syncMarker,
 }: MetricsSemanticConceptsPanelProps) {
+  const [conceptSearch, setConceptSearch] = useState("");
+  const deferredConceptSearch = useDeferredValue(conceptSearch.trim());
   const {
     concepts,
+    totalConcepts,
     loading,
+    loadingMore,
     saving,
     bootstrapping,
+    hasMore,
     error,
     setError,
     refreshConcepts,
+    loadMoreConcepts,
     bootstrapConcepts,
     saveConcept,
     resolveQuery,
     executeConcept,
-  } = useMetricConceptsAdminData(token, shipId, Boolean(token && shipId));
-  const [conceptSearch, setConceptSearch] = useState("");
-  const [metricSearch, setMetricSearch] = useState("");
+  } = useMetricConceptsAdminData(
+    token,
+    shipId,
+    deferredConceptSearch,
+    Boolean(token && shipId),
+  );
   const [resolutionQuery, setResolutionQuery] = useState("");
-  const [resolutionResult, setResolutionResult] =
-    useState<MetricConceptResolutionResult | null>(null);
-  const [executionResult, setExecutionResult] =
-    useState<MetricConceptExecutionResponse | null>(null);
+  const [resolutionResult, setResolutionResult] = useState<MetricConceptResolutionResult | null>(null);
+  const [executionResult, setExecutionResult] = useState<MetricConceptExecutionResponse | null>(null);
   const [resolutionAttempted, setResolutionAttempted] = useState(false);
   const [executionAttempted, setExecutionAttempted] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [resolutionError, setResolutionError] = useState("");
   const [executionError, setExecutionError] = useState("");
-  const [bootstrapResult, setBootstrapResult] =
-    useState<MetricConceptBootstrapResult | null>(null);
-  const [draft, setDraft] = useState<ConceptDraft>(() => createEmptyDraft(shipName));
+  const [bootstrapResult, setBootstrapResult] = useState<MetricConceptBootstrapResult | null>(null);
+  const [draft, setDraft] = useState<ConceptDraft>(() => createEmptyDraft());
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const templateMenuRef = useRef<HTMLDivElement>(null);
+  const conceptListRef = useRef<HTMLDivElement>(null);
+  const conceptListSentinelRef = useRef<HTMLDivElement>(null);
 
-  if (!shipId) {
-    return (
-      <div className="admin-panel__state-box">
-        <span className="admin-panel__muted">
-          Select a ship to manage its semantic concepts.
-        </span>
-      </div>
-    );
-  }
+  /* close template menu on outside click */
+  useEffect(() => {
+    if (!showTemplateMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (templateMenuRef.current && !templateMenuRef.current.contains(e.target as Node)) {
+        setShowTemplateMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showTemplateMenu]);
 
   useEffect(() => {
-    setDraft(createEmptyDraft(shipName));
+    setDraft(createEmptyDraft());
     setResolutionQuery("");
     setResolutionResult(null);
     setExecutionResult(null);
@@ -371,144 +464,113 @@ export function MetricsSemanticConceptsPanel({
     setResolutionError("");
     setExecutionError("");
     setBootstrapResult(null);
-  }, [shipId, shipName]);
+    setSaveSuccess(false);
+  }, [shipId]);
 
   useEffect(() => {
-    if (syncMarker) {
-      void refreshConcepts();
-    }
+    conceptListRef.current?.scrollTo({ top: 0 });
+  }, [deferredConceptSearch, shipId]);
+
+  useEffect(() => {
+    if (syncMarker) void refreshConcepts();
   }, [refreshConcepts, syncMarker]);
 
-  const flatMetrics = useMemo(() => {
-    if (!catalog) {
-      return [];
+  useEffect(() => {
+    const root = conceptListRef.current;
+    const target = conceptListSentinelRef.current;
+
+    if (!root || !target || !hasMore) {
+      return;
     }
 
-    return catalog.buckets.flatMap((bucketGroup) =>
-      bucketGroup.metrics.map((metric) => ({
-        ...metric,
-        bucket: bucketGroup.bucket,
-        label: humanizeMetricLabel(metric.key),
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadMoreConcepts();
+        }
+      },
+      {
+        root,
+        rootMargin: "180px 0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [concepts.length, hasMore, loadMoreConcepts]);
+
+  /* ── derived data ── */
+  const flatMetrics = useMemo(() => {
+    if (!catalog) return [];
+    return catalog.buckets.flatMap((g) =>
+      g.metrics.map((m) => ({
+        ...m,
+        bucket: g.bucket,
+        label: humanizeMetricLabel(m.key),
       })),
     );
   }, [catalog]);
 
-  const filteredConcepts = useMemo(() => {
-    const normalizedSearch = conceptSearch.trim().toLowerCase();
-
-    if (!normalizedSearch) {
-      return concepts;
-    }
-
-    return concepts.filter((concept) => {
-      const haystack = [
-        concept.displayName,
-        concept.slug,
-        concept.category,
-        concept.type,
-        concept.aggregationRule,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(normalizedSearch);
-    });
-  }, [conceptSearch, concepts]);
-
   const selectedMetricIds = useMemo(
-    () =>
-      new Set(
-        draft.members
-          .map((member) => member.metricCatalogId)
-          .filter((value): value is string => Boolean(value)),
-      ),
+    () => new Set(draft.members.map((m) => m.metricCatalogId).filter(Boolean)),
     [draft.members],
   );
 
-  const availableMetricCandidates = useMemo(() => {
-    const normalizedSearch = metricSearch.trim().toLowerCase();
-
-    return flatMetrics
-      .filter((metric) => !selectedMetricIds.has(metric.id))
-      .filter((metric) => {
-        if (!normalizedSearch) {
-          return true;
-        }
-
-        const haystack = [
-          metric.label,
-          metric.key,
-          metric.field,
-          metric.bucket,
-          metric.description,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return haystack.includes(normalizedSearch);
-      })
-      .slice(0, 16);
-  }, [flatMetrics, metricSearch, selectedMetricIds]);
-
-  const resolveCandidates = resolutionResult?.candidates ?? [];
   const draftReadiness = useMemo(
     () =>
       evaluateReadiness({
         isActive: draft.isActive,
         type: draft.type,
         memberCount: draft.members.length,
-        memberRoles: draft.members
-          .map((member) => member.role.trim().toLowerCase())
-          .filter(Boolean),
+        memberRoles: draft.members.map((m) => m.role.trim().toLowerCase()).filter(Boolean),
       }),
     [draft.isActive, draft.type, draft.members],
   );
-  const conceptHealthSummary = useMemo(() => {
-    return concepts.reduce(
-      (summary, concept) => {
-        const readiness = getConceptReadiness(concept);
 
-        if (readiness.tone === "ready") {
-          summary.ready += 1;
-        } else if (readiness.tone === "inactive") {
-          summary.inactive += 1;
-        } else {
-          summary.needsAttention += 1;
-        }
+  const conceptHealthSummary = useMemo(
+    () =>
+      concepts.reduce(
+        (acc, c) => {
+          const r = getConceptReadiness(c);
+          if (r.tone === "ready") acc.ready++;
+          else if (r.tone === "inactive") acc.inactive++;
+          else acc.needsAttention++;
+          return acc;
+        },
+        { ready: 0, needsAttention: 0, inactive: 0 },
+      ),
+    [concepts],
+  );
+  const loadedConceptStatusText =
+    totalConcepts > concepts.length
+      ? `Loaded ${concepts.length} of ${totalConcepts}`
+      : `${totalConcepts} loaded`;
 
-        return summary;
-      },
-      {
-        ready: 0,
-        needsAttention: 0,
-        inactive: 0,
-      },
-    );
-  }, [concepts]);
+  /* ── handlers ── */
+  const resetEditor = useCallback(() => {
+    setDraft(createEmptyDraft());
+    setExecutionResult(null);
+    setResolutionResult(null);
+    setResolutionAttempted(false);
+    setExecutionAttempted(false);
+    setResolutionError("");
+    setExecutionError("");
+    setError("");
+    setSaveSuccess(false);
+  }, [setError]);
 
   const applyTemplate = (templateId: string) => {
-    const template = CONCEPT_TEMPLATES.find((entry) => entry.id === templateId);
-
-    if (!template) {
-      return;
-    }
-
-    const shipSlug = slugify(shipName ?? "");
-    const nextSlug = shipSlug
-      ? `${shipSlug}_${template.slugSuffix}`
-      : template.slugSuffix;
-
+    const tpl = CONCEPT_TEMPLATES.find((t) => t.id === templateId);
+    if (!tpl) return;
     setDraft({
       id: null,
-      slug: nextSlug,
-      displayName: template.displayName,
-      description: template.description,
-      category: template.category,
-      type: template.type,
-      aggregationRule: template.aggregationRule,
-      unit: template.unit,
+      displayName: tpl.displayName,
+      description: tpl.description,
+      category: tpl.category,
+      type: tpl.type,
+      aggregationRule: tpl.aggregationRule,
+      unit: tpl.unit,
       isActive: true,
       members: [],
     });
@@ -519,6 +581,8 @@ export function MetricsSemanticConceptsPanel({
     setResolutionError("");
     setExecutionError("");
     setError("");
+    setSaveSuccess(false);
+    setShowTemplateMenu(false);
   };
 
   const handleSelectConcept = (concept: MetricConcept) => {
@@ -530,61 +594,25 @@ export function MetricsSemanticConceptsPanel({
     setResolutionError("");
     setExecutionError("");
     setError("");
+    setSaveSuccess(false);
   };
 
-  const handleCreateNew = () => {
-    setDraft(createEmptyDraft(shipName));
-    setExecutionResult(null);
-    setResolutionResult(null);
-    setResolutionAttempted(false);
-    setExecutionAttempted(false);
-    setResolutionError("");
-    setExecutionError("");
-    setError("");
-  };
-
-  const handleDraftChange = (
-    field: keyof Omit<ConceptDraft, "members">,
-    value: string | boolean,
-  ) => {
-    setDraft((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  };
-
-  const handleDisplayNameBlur = () => {
-    setDraft((current) => {
-      if (current.slug.trim()) {
-        return current;
-      }
-
-      const prefix = slugify(shipName ?? "");
-      const nextSlug = slugify(current.displayName);
-
-      return {
-        ...current,
-        slug: prefix && nextSlug ? `${prefix}_${nextSlug}` : nextSlug,
-      };
-    });
+  const handleDraftChange = (field: keyof Omit<ConceptDraft, "members">, value: string | boolean) => {
+    setDraft((prev) => ({ ...prev, [field]: value }));
   };
 
   const addMetricMember = (metricId: string) => {
-    const metric = flatMetrics.find((entry) => entry.id === metricId);
-
-    if (!metric) {
-      return;
-    }
-
-    setDraft((current) => ({
-      ...current,
+    const metric = flatMetrics.find((m) => m.id === metricId);
+    if (!metric) return;
+    setDraft((prev) => ({
+      ...prev,
       members: [
-        ...current.members,
+        ...prev.members,
         {
-          localId: `metric-${metric.id}`,
+          localId: `metric-${metricId}-${Date.now()}`,
           metricCatalogId: metric.id,
           role: "",
-          sortOrder: current.members.length,
+          sortOrder: prev.members.length,
           label: metric.label,
           subtitle: metric.key,
         },
@@ -593,28 +621,22 @@ export function MetricsSemanticConceptsPanel({
   };
 
   const removeMember = (localId: string) => {
-    setDraft((current) => ({
-      ...current,
-      members: current.members
-        .filter((member) => member.localId !== localId)
-        .map((member, index) => ({
-          ...member,
-          sortOrder: index,
-        })),
+    setDraft((prev) => ({
+      ...prev,
+      members: prev.members
+        .filter((m) => m.localId !== localId)
+        .map((m, i) => ({ ...m, sortOrder: i })),
     }));
   };
 
   const updateMemberRole = (localId: string, role: string) => {
-    setDraft((current) => ({
-      ...current,
-      members: current.members.map((member) =>
-        member.localId === localId ? { ...member, role } : member,
-      ),
+    setDraft((prev) => ({
+      ...prev,
+      members: prev.members.map((m) => (m.localId === localId ? { ...m, role } : m)),
     }));
   };
 
   const buildPayload = (): SaveMetricConceptInput => ({
-    slug: draft.slug.trim(),
     displayName: draft.displayName.trim(),
     description: draft.description.trim() || null,
     category: draft.category.trim() || null,
@@ -622,32 +644,29 @@ export function MetricsSemanticConceptsPanel({
     aggregationRule: draft.aggregationRule,
     unit: draft.unit.trim() || null,
     isActive: draft.isActive,
-    members: draft.members.map((member, index) => ({
-      metricCatalogId: member.metricCatalogId,
-      role: member.role.trim() || undefined,
-      sortOrder: index,
+    members: draft.members.map((m, i) => ({
+      metricCatalogId: m.metricCatalogId,
+      role: m.role.trim() || undefined,
+      sortOrder: i,
     })),
   });
 
   const handleSave = async () => {
-    if (!draft.slug.trim() || !draft.displayName.trim()) {
-      setError("Slug and display name are required.");
+    if (!draft.displayName.trim()) {
+      setError("Display name is required.");
       return;
     }
-
-    const savedConcept = await saveConcept(draft.id, buildPayload());
-
-    if (savedConcept) {
-      setDraft(conceptToDraft(savedConcept));
+    setSaveSuccess(false);
+    const saved = await saveConcept(draft.id, buildPayload());
+    if (saved) {
+      setDraft(conceptToDraft(saved));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
     }
   };
 
   const handleResolve = async () => {
-    if (!resolutionQuery.trim()) {
-      setError("Enter a phrase to test concept resolution.");
-      return;
-    }
-
+    if (!resolutionQuery.trim()) return;
     setError("");
     setResolutionAttempted(true);
     setExecutionAttempted(false);
@@ -655,200 +674,186 @@ export function MetricsSemanticConceptsPanel({
     setExecutionError("");
     setExecutionResult(null);
     setResolving(true);
-
     try {
-      const result = await resolveQuery(resolutionQuery.trim());
-      setResolutionResult(result);
-    } catch (resolveError) {
+      setResolutionResult(await resolveQuery(resolutionQuery.trim()));
+    } catch (e) {
       setResolutionResult(null);
-      setResolutionError(
-        resolveError instanceof Error
-          ? resolveError.message
-          : "Failed to resolve metric concept",
-      );
+      setResolutionError(e instanceof Error ? e.message : "Failed to resolve");
     } finally {
       setResolving(false);
     }
   };
 
   const handleExecuteResolved = async () => {
-    const query = resolutionQuery.trim();
-
-    if (!query) {
-      setError("Enter a phrase to execute.");
-      return;
-    }
-
+    const q = resolutionQuery.trim();
+    if (!q) return;
     setError("");
     setExecutionAttempted(true);
     setExecutionError("");
     setExecuting(true);
-
     try {
-      const result = await executeConcept({
-        query,
-        timeMode: "snapshot",
-      });
-      if (result) {
-        setExecutionResult(result);
-      }
-    } catch (executeError) {
+      const r = await executeConcept({ query: q, timeMode: "snapshot" });
+      if (r) setExecutionResult(r);
+    } catch (e) {
       setExecutionResult(null);
-      setExecutionError(
-        executeError instanceof Error
-          ? executeError.message
-          : "Failed to execute metric concept",
-      );
+      setExecutionError(e instanceof Error ? e.message : "Failed to execute");
     } finally {
       setExecuting(false);
     }
   };
 
   const handleExecuteDraft = async () => {
-    const conceptId = draft.id;
-
-    if (!conceptId) {
-      setError("Save the concept before executing it.");
-      return;
-    }
-
+    if (!draft.id) { setError("Save the concept before executing it."); return; }
     setError("");
     setExecutionAttempted(true);
     setExecutionError("");
     setExecuting(true);
-
     try {
-      const result = await executeConcept({
-        conceptId,
-        timeMode: "snapshot",
-      });
-
-      if (result) {
-        setExecutionResult(result);
-      }
-    } catch (executeError) {
+      const r = await executeConcept({ conceptId: draft.id, timeMode: "snapshot" });
+      if (r) setExecutionResult(r);
+    } catch (e) {
       setExecutionResult(null);
-      setExecutionError(
-        executeError instanceof Error
-          ? executeError.message
-          : "Failed to execute metric concept",
-      );
+      setExecutionError(e instanceof Error ? e.message : "Failed to execute");
     } finally {
       setExecuting(false);
     }
   };
 
   const handleBootstrap = async () => {
-    const result = await bootstrapConcepts();
-
-    if (result) {
-      setBootstrapResult(result);
-    }
+    const r = await bootstrapConcepts();
+    if (r) setBootstrapResult(r);
   };
+
+  const resolveCandidates = resolutionResult?.candidates ?? [];
+
+  /* ─────────────────────────────────────────────────────────
+     RENDER
+  ───────────────────────────────────────────────────────── */
+  if (!shipId) {
+    return (
+      <div className="admin-panel__state-box">
+        <span className="admin-panel__muted">
+          Select a ship to manage its semantic concepts.
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-panel__semantic-layout">
-      <div className="admin-panel__metrics-group-card">
-        <div className="admin-panel__metrics-group-header">
-          <div className="admin-panel__metrics-group-meta">
-            <span className="admin-panel__metrics-bucket-badge admin-panel__metrics-bucket-badge--active">
-              Semantic concepts
-            </span>
-            <span className="admin-panel__muted">
-              Build ship-aware concepts like fuel total, fuel tanks, or vessel
-              location on top of the raw Influx catalog.
-            </span>
-          </div>
-          <div className="admin-panel__actions">
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
-              onClick={() => void refreshConcepts()}
-              disabled={!shipId || loading}
-            >
-              Refresh concepts
-            </button>
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--primary admin-panel__btn--compact"
-              onClick={() => void handleBootstrap()}
-              disabled={!shipId || bootstrapping}
-            >
-              {bootstrapping ? "Generating..." : "Generate base concepts"}
-            </button>
-          </div>
-        </div>
 
-        {error ? (
-          <div className="admin-panel__error" role="alert">
-            {error}
-          </div>
-        ) : null}
-
-        <div className="admin-panel__semantic-summary">
-          <span className="admin-panel__muted">
-            {loading
-              ? "Loading semantic concepts..."
-              : `${concepts.length} concepts linked to this ship`}
-          </span>
-          <div className="admin-panel__semantic-summary-chips">
+      {/* ── Toolbar strip ── */}
+      <div className="admin-panel__semantic-toolbar">
+        <div className="admin-panel__semantic-toolbar-left">
+          <div className="admin-panel__semantic-health-chips">
             <span className="admin-panel__semantic-stat admin-panel__semantic-stat--ready">
+              <svg width="7" height="7" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="4" /></svg>
               {conceptHealthSummary.ready} ready
             </span>
             <span className="admin-panel__semantic-stat admin-panel__semantic-stat--warning">
+              <svg width="7" height="7" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="4" /></svg>
               {conceptHealthSummary.needsAttention} need attention
             </span>
+            {conceptHealthSummary.inactive > 0 && (
+              <span className="admin-panel__semantic-stat">
+                <svg width="7" height="7" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="4" /></svg>
+                {conceptHealthSummary.inactive} inactive
+              </span>
+            )}
             <span className="admin-panel__semantic-stat">
-              {conceptHealthSummary.inactive} inactive
+              <svg width="7" height="7" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="4" /></svg>
+              {loadedConceptStatusText}
             </span>
           </div>
-          {bootstrapResult ? (
-            <span className="admin-panel__muted">
-              Bootstrap: +{bootstrapResult.conceptsCreated} created,{" "}
-              {bootstrapResult.conceptsUpdated} updated.
+          {bootstrapResult && (
+            <span className="admin-panel__metrics-sync-status">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+              Bootstrap: +{bootstrapResult.conceptsCreated} created, {bootstrapResult.conceptsUpdated} updated
             </span>
-          ) : null}
+          )}
+        </div>
+        <div className="admin-panel__semantic-toolbar-right">
+          <button
+            type="button"
+            className="admin-panel__metrics-pager-btn admin-panel__semantic-refresh-btn"
+            onClick={() => void refreshConcepts()}
+            disabled={loading}
+            title="Refresh concepts"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+          </button>
+          <button
+            type="button"
+            className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+            onClick={() => void handleBootstrap()}
+            disabled={bootstrapping}
+          >
+            {bootstrapping ? "Generating…" : "Generate base"}
+          </button>
+          {/* New concept with template dropdown */}
+          <div className="admin-panel__semantic-new-wrap" ref={templateMenuRef}>
+              <button
+                type="button"
+                className="admin-panel__semantic-new-btn"
+                onClick={() => setShowTemplateMenu((v) => !v)}
+                aria-expanded={showTemplateMenu}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                New concept
+                <svg
+                  width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ opacity: 0.7, transition: "transform 0.2s ease", transform: showTemplateMenu ? "rotate(180deg)" : "rotate(0deg)" }}
+                  aria-hidden="true"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+            {showTemplateMenu && (
+              <div className="admin-panel__semantic-template-dropdown">
+                <span className="admin-panel__semantic-template-dropdown-label">Choose a starting point</span>
+                <button
+                  type="button"
+                  className="admin-panel__semantic-template-option admin-panel__semantic-template-option--blank"
+                  onClick={() => { resetEditor(); setShowTemplateMenu(false); }}
+                >
+                  <strong>Blank concept</strong>
+                  <span className="admin-panel__muted">Start from an empty form with no pre-filled values.</span>
+                </button>
+                <div className="admin-panel__semantic-template-divider" />
+                {CONCEPT_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    className="admin-panel__semantic-template-option"
+                    onClick={() => applyTemplate(tpl.id)}
+                  >
+                    <strong>{tpl.label}</strong>
+                    <span className="admin-panel__muted">{tpl.description}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="admin-panel__metrics-group-card">
-        <div className="admin-panel__metrics-group-header">
-          <div className="admin-panel__metrics-group-meta">
-            <span className="admin-panel__form-card-title">Quick start templates</span>
-            <span className="admin-panel__muted">
-              Start from a guided shape instead of an empty semantic form.
+      {error && <div className="admin-panel__error" role="alert">{error}</div>}
+
+      {/* ── Main 2-panel grid ── */}
+      <div className="admin-panel__semantic-main-grid">
+
+        {/* LEFT — concept list */}
+        <div className="admin-panel__semantic-panel admin-panel__semantic-panel--list">
+          <div className="admin-panel__semantic-panel-head">
+            <span className="admin-panel__form-card-title">
+              {loading
+                ? "Loading…"
+                : totalConcepts > concepts.length
+                  ? `${concepts.length} of ${totalConcepts} concepts`
+                  : `${totalConcepts} concepts`}
             </span>
-          </div>
-        </div>
-
-        <div className="admin-panel__semantic-template-grid">
-          {CONCEPT_TEMPLATES.map((template) => (
-            <button
-              key={template.id}
-              type="button"
-              className="admin-panel__semantic-template-card"
-              onClick={() => applyTemplate(template.id)}
-            >
-              <strong>{template.label}</strong>
-              <span className="admin-panel__muted">{template.description}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="admin-panel__semantic-grid">
-        <div className="admin-panel__metrics-group-card">
-          <div className="admin-panel__metrics-group-header">
-            <div className="admin-panel__metrics-group-meta">
-              <span className="admin-panel__form-card-title">Concepts</span>
-            </div>
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
-              onClick={handleCreateNew}
-            >
-              New concept
-            </button>
           </div>
 
           <label className="admin-panel__metrics-search admin-panel__semantic-search">
@@ -856,31 +861,32 @@ export function MetricsSemanticConceptsPanel({
             <input
               className="admin-panel__metrics-search-input"
               value={conceptSearch}
-              onChange={(event) => setConceptSearch(event.target.value)}
-              placeholder="Search display name, slug, category..."
+              onChange={(e) => setConceptSearch(e.target.value)}
+              placeholder="Search name, category, description…"
             />
           </label>
 
-          <div className="admin-panel__semantic-concept-list">
-            {filteredConcepts.length === 0 ? (
+          <div
+            ref={conceptListRef}
+            className="admin-panel__semantic-concept-list"
+          >
+            {!loading && concepts.length === 0 ? (
               <div className="admin-panel__state-box">
                 <span className="admin-panel__muted">
-                  No semantic concepts found for this ship.
+                  {deferredConceptSearch
+                    ? "No semantic concepts match this search."
+                    : "No semantic concepts found."}
                 </span>
               </div>
             ) : (
-              filteredConcepts.map((concept) => {
+              concepts.map((concept) => {
                 const readiness = getConceptReadiness(concept);
-
+                const isActive = draft.id === concept.id;
                 return (
                   <button
                     key={concept.id}
                     type="button"
-                    className={`admin-panel__semantic-concept-item ${
-                      draft.id === concept.id
-                        ? "admin-panel__semantic-concept-item--active"
-                        : ""
-                    }`}
+                    className={`admin-panel__semantic-concept-item ${isActive ? "admin-panel__semantic-concept-item--active" : ""}`}
                     onClick={() => handleSelectConcept(concept)}
                   >
                     <div className="admin-panel__semantic-concept-item-top">
@@ -895,208 +901,225 @@ export function MetricsSemanticConceptsPanel({
                       </div>
                     </div>
                     <div className="admin-panel__semantic-concept-item-meta">
-                      <code className="admin-panel__code-inline admin-panel__code-inline--metric">
-                        {concept.slug}
-                      </code>
+                      {concept.category && <span>{concept.category}</span>}
                       <span>{formatAggregationRule(concept.aggregationRule)}</span>
                       <span>{concept.members.length} members</span>
                     </div>
-                    <span className="admin-panel__muted">{readiness.hint}</span>
                   </button>
                 );
               })
             )}
+            {loadingMore && (
+              <div className="admin-panel__semantic-list-status">
+                <div className="admin-panel__spinner" />
+                <span className="admin-panel__muted">Loading more concepts…</span>
+              </div>
+            )}
+            {!loading && concepts.length > 0 && (
+              <div
+                ref={conceptListSentinelRef}
+                className="admin-panel__semantic-list-sentinel"
+                aria-hidden="true"
+              />
+            )}
+            {!loading && concepts.length > 0 && (
+              <div className="admin-panel__semantic-list-status">
+                <span className="admin-panel__muted">
+                  {hasMore
+                    ? `Loaded ${concepts.length} of ${totalConcepts}. Scroll to load more.`
+                    : `Showing all ${totalConcepts} concepts.`}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="admin-panel__metrics-group-card">
-          <div className="admin-panel__metrics-group-header">
-            <div className="admin-panel__metrics-group-meta">
-              <span className="admin-panel__form-card-title">
-                {draft.id ? "Edit concept" : "Create concept"}
-              </span>
-            </div>
-            {draft.id ? (
-              <button
-                type="button"
-                className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
-                onClick={handleCreateNew}
-              >
-                Clear form
-              </button>
-            ) : null}
-          </div>
+        {/* RIGHT — editor + validation */}
+        <div className="admin-panel__semantic-panel admin-panel__semantic-panel--editor">
 
-          <div className="admin-panel__semantic-editor-summary">
-            <div className="admin-panel__semantic-editor-summary-top">
+          {/* Editor head */}
+          <div className="admin-panel__semantic-panel-head">
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span className="admin-panel__form-card-title">
+                {draft.id ? "Edit concept" : "New concept"}
+              </span>
               <span className={getReadinessBadgeClass(draftReadiness.tone)}>
                 {draftReadiness.label}
               </span>
-              <div className="admin-panel__semantic-concept-badges">
-                <span className="admin-panel__badge admin-panel__badge--user">
-                  {formatConceptType(draft.type)}
-                </span>
-                <span className="admin-panel__semantic-stat">
-                  {draft.members.length} members
-                </span>
-              </div>
             </div>
+            {draft.id && (
+              <button
+                type="button"
+                className="admin-panel__metrics-edit-btn"
+                onClick={resetEditor}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Save success toast */}
+          {saveSuccess && (
+            <div className="admin-panel__semantic-save-toast">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+              Concept saved successfully
+            </div>
+          )}
+
+          {/* Hint */}
+          <div className="admin-panel__semantic-hint-row">
             <span className="admin-panel__muted">{draftReadiness.hint}</span>
           </div>
 
-          <div className="admin-panel__form-row">
-            <div className="admin-panel__field">
-              <label className="admin-panel__field-label">Slug</label>
-              <input
-                className="admin-panel__input"
-                value={draft.slug}
-                onChange={(event) => handleDraftChange("slug", event.target.value)}
-                placeholder="x_wolf_fuel_total"
-              />
-            </div>
+          {/* Form */}
+          <div className="admin-panel__semantic-editor-body">
+            {/* Display name */}
             <div className="admin-panel__field">
               <label className="admin-panel__field-label">Display name</label>
               <input
                 className="admin-panel__input"
                 value={draft.displayName}
-                onBlur={handleDisplayNameBlur}
-                onChange={(event) =>
-                  handleDraftChange("displayName", event.target.value)
-                }
+                onChange={(e) => handleDraftChange("displayName", e.target.value)}
                 placeholder="Fuel Total"
               />
             </div>
-          </div>
 
-          <div className="admin-panel__form-row">
-            <div className="admin-panel__field">
-              <label className="admin-panel__field-label">Type</label>
-              <select
-                className="admin-panel__select"
-                value={draft.type}
-                onChange={(event) =>
-                  handleDraftChange(
-                    "type",
-                    event.target.value as MetricConceptType,
-                  )
-                }
-              >
-                {CONCEPT_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="admin-panel__field">
-              <label className="admin-panel__field-label">Aggregation</label>
-              <select
-                className="admin-panel__select"
-                value={draft.aggregationRule}
-                onChange={(event) =>
-                  handleDraftChange(
-                    "aggregationRule",
-                    event.target.value as MetricAggregationRule,
-                  )
-                }
-              >
-                {AGGREGATION_RULE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="admin-panel__field">
-              <label className="admin-panel__field-label">Unit</label>
-              <input
-                className="admin-panel__input"
-                value={draft.unit}
-                onChange={(event) => handleDraftChange("unit", event.target.value)}
-                placeholder="knots / liters / coordinate"
-              />
-            </div>
-          </div>
-
-          <div className="admin-panel__form-row">
-            <div className="admin-panel__field">
-              <label className="admin-panel__field-label">Category</label>
-              <input
-                className="admin-panel__input"
-                value={draft.category}
-                onChange={(event) =>
-                  handleDraftChange("category", event.target.value)
-                }
-                placeholder="navigation / fuel / engine"
-              />
-            </div>
-            <div className="admin-panel__field">
-              <label className="admin-panel__field-label">Status</label>
-              <label className="admin-panel__semantic-checkbox">
+            {/* Type / Aggregation / Unit */}
+            <div className="admin-panel__form-row">
+              <div className="admin-panel__field">
+                <label className="admin-panel__field-label">Type</label>
+                <select
+                  className="admin-panel__select"
+                  value={draft.type}
+                  onChange={(e) => handleDraftChange("type", e.target.value as MetricConceptType)}
+                >
+                  {CONCEPT_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="admin-panel__field">
+                <label className="admin-panel__field-label">Aggregation</label>
+                <select
+                  className="admin-panel__select"
+                  value={draft.aggregationRule}
+                  onChange={(e) => handleDraftChange("aggregationRule", e.target.value as MetricAggregationRule)}
+                >
+                  {AGGREGATION_RULE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="admin-panel__field">
+                <label className="admin-panel__field-label">Unit</label>
                 <input
-                  type="checkbox"
-                  checked={draft.isActive}
-                  onChange={(event) =>
-                    handleDraftChange("isActive", event.target.checked)
-                  }
+                  className="admin-panel__input"
+                  value={draft.unit}
+                  onChange={(e) => handleDraftChange("unit", e.target.value)}
+                  placeholder="knots / liters"
                 />
-                <span>Concept is active</span>
-              </label>
+              </div>
             </div>
-          </div>
 
-          <div className="admin-panel__field">
-            <label className="admin-panel__field-label">Description</label>
-            <textarea
-              className="admin-panel__input admin-panel__textarea"
-              rows={3}
-              value={draft.description}
-              onChange={(event) =>
-                handleDraftChange("description", event.target.value)
-              }
-              placeholder="Short explanation of what this concept means."
-            />
-          </div>
+            {/* Category / Active */}
+            <div className="admin-panel__form-row">
+              <div className="admin-panel__field">
+                <label className="admin-panel__field-label">Category</label>
+                <input
+                  className="admin-panel__input"
+                  value={draft.category}
+                  onChange={(e) => handleDraftChange("category", e.target.value)}
+                  placeholder="navigation / fuel / engine"
+                />
+              </div>
+              <div className="admin-panel__field">
+                <label className="admin-panel__field-label">Status</label>
+                <label className="admin-panel__semantic-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={draft.isActive}
+                    onChange={(e) => handleDraftChange("isActive", e.target.checked)}
+                  />
+                  <span>Concept is active</span>
+                </label>
+              </div>
+            </div>
 
-          <div className="admin-panel__semantic-members">
+            {/* Description */}
             <div className="admin-panel__field">
-              <label className="admin-panel__field-label">Selected members</label>
+              <label className="admin-panel__field-label">Description</label>
+              <textarea
+                className="admin-panel__input admin-panel__textarea"
+                rows={2}
+                value={draft.description}
+                onChange={(e) => handleDraftChange("description", e.target.value)}
+                placeholder="Short explanation of what this concept means."
+              />
+            </div>
+
+            {/* Members */}
+            <div className="admin-panel__field">
+              <div className="admin-panel__semantic-members-head">
+                <label className="admin-panel__field-label" style={{ marginBottom: 0 }}>
+                  Metric members
+                  {draft.members.length > 0 && (
+                    <span className="admin-panel__semantic-member-count">{draft.members.length}</span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  className="admin-panel__semantic-add-member-btn"
+                  onClick={() => setShowMemberModal(true)}
+                  title="Add metric members"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v8M8 12h8" />
+                  </svg>
+                  Add members
+                </button>
+              </div>
+
               {draft.members.length === 0 ? (
-                <div className="admin-panel__state-box admin-panel__state-box--compact">
-                  <span className="admin-panel__muted">
-                    Add raw metrics to define this semantic concept.
-                  </span>
+                <div className="admin-panel__semantic-members-empty">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+                    <circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" />
+                  </svg>
+                  <span>No metric members yet.</span>
+                  <button
+                    type="button"
+                    className="admin-panel__semantic-add-member-btn admin-panel__semantic-add-member-btn--inline"
+                    onClick={() => setShowMemberModal(true)}
+                  >
+                    + Add metrics
+                  </button>
                 </div>
               ) : (
                 <div className="admin-panel__semantic-member-list">
                   {draft.members.map((member) => (
-                    <div
-                      key={member.localId}
-                      className="admin-panel__semantic-member-item"
-                    >
+                    <div key={member.localId} className="admin-panel__semantic-member-item">
                       <div className="admin-panel__semantic-member-main">
                         <div className="admin-panel__semantic-member-copy">
                           <strong>{member.label}</strong>
-                          <span className="admin-panel__muted">
-                            {member.subtitle}
-                          </span>
+                          <span className="admin-panel__muted">{member.subtitle}</span>
                         </div>
                       </div>
                       <div className="admin-panel__semantic-member-controls">
                         <input
                           className="admin-panel__input admin-panel__input--compact"
                           value={member.role}
-                          onChange={(event) =>
-                            updateMemberRole(member.localId, event.target.value)
-                          }
-                          placeholder="role (latitude, longitude, primary...)"
+                          onChange={(e) => updateMemberRole(member.localId, e.target.value)}
+                          placeholder="role (latitude, primary…)"
                         />
                         <button
                           type="button"
-                          className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                          className="admin-panel__semantic-member-remove"
                           onClick={() => removeMember(member.localId)}
+                          title="Remove"
                         >
-                          Remove
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
                         </button>
                       </div>
                     </div>
@@ -1105,291 +1128,171 @@ export function MetricsSemanticConceptsPanel({
               )}
             </div>
 
-            <div className="admin-panel__semantic-adders">
-              <div className="admin-panel__field">
-                <label className="admin-panel__field-label">Add metric member</label>
-                <label className="admin-panel__metrics-search admin-panel__semantic-search">
-                  <SearchIcon />
-                  <input
-                    className="admin-panel__metrics-search-input"
-                    value={metricSearch}
-                    onChange={(event) => setMetricSearch(event.target.value)}
-                    placeholder="Search bucket, key, or description..."
-                  />
-                </label>
-                <div className="admin-panel__semantic-candidate-list">
-                  {availableMetricCandidates.map((metric) => (
-                    <button
-                      key={metric.id}
-                      type="button"
-                      className="admin-panel__semantic-candidate-item"
-                      onClick={() => addMetricMember(metric.id)}
-                    >
-                      <strong>{metric.label}</strong>
-                      <span className="admin-panel__muted">{metric.key}</span>
-                    </button>
-                  ))}
-                </div>
+            {/* Save / Execute actions */}
+            <div className="admin-panel__semantic-actions">
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--primary"
+                onClick={() => void handleSave()}
+                disabled={saving || !shipId}
+              >
+                <span className="admin-panel__btn-content">
+                  {saving && <span className="admin-panel__spinner admin-panel__spinner--inline" aria-hidden="true" />}
+                  <span>{saving ? "Saving…" : draft.id ? "Save concept" : "Create concept"}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--ghost"
+                onClick={() => void handleExecuteDraft()}
+                disabled={!draft.id || executing}
+              >
+                <span className="admin-panel__btn-content">
+                  {executing && <span className="admin-panel__spinner admin-panel__spinner--inline" aria-hidden="true" />}
+                  <span>{executing ? "Executing…" : "Execute saved concept"}</span>
+                </span>
+              </button>
+            </div>
+
+            {/* ── Inline validation tester ── */}
+            <div className="admin-panel__semantic-inline-tester">
+              <div className="admin-panel__semantic-inline-tester-head">
+                <span className="admin-panel__form-card-title" style={{ fontSize: "0.82rem" }}>
+                  Validate phrase
+                </span>
+                <span className="admin-panel__muted" style={{ fontSize: "0.74rem" }}>
+                  Test AI resolution without leaving this panel
+                </span>
               </div>
-            </div>
-          </div>
 
-          <div className="admin-panel__actions admin-panel__semantic-actions">
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--primary"
-              onClick={() => void handleSave()}
-              disabled={saving || !shipId}
-              aria-busy={saving}
-            >
-              <span className="admin-panel__btn-content">
-                {saving ? (
-                  <span
-                    className="admin-panel__spinner admin-panel__spinner--inline"
-                    aria-hidden="true"
-                  />
-                ) : null}
-                <span>
-                  {saving ? "Saving..." : draft.id ? "Save concept" : "Create concept"}
-                </span>
-              </span>
-            </button>
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--ghost"
-              onClick={() => void handleExecuteDraft()}
-              disabled={!draft.id || executing}
-              aria-busy={executing}
-            >
-              <span className="admin-panel__btn-content">
-                {executing ? (
-                  <span
-                    className="admin-panel__spinner admin-panel__spinner--inline"
-                    aria-hidden="true"
-                  />
-                ) : null}
-                <span>{executing ? "Executing..." : "Execute saved concept"}</span>
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
+              <div className="admin-panel__semantic-examples">
+                {SAMPLE_RESOLUTION_QUERIES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="admin-panel__semantic-example-chip"
+                    onClick={() => setResolutionQuery(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
 
-      <div className="admin-panel__metrics-group-card">
-        <div className="admin-panel__metrics-group-header">
-          <div className="admin-panel__metrics-group-meta">
-            <span className="admin-panel__form-card-title">
-              Validate how AI will understand this phrase
-            </span>
-            <span className="admin-panel__muted">
-              Test semantic matching and live execution without going back to chat.
-            </span>
-          </div>
-        </div>
+              <textarea
+                className="admin-panel__input admin-panel__textarea"
+                rows={2}
+                value={resolutionQuery}
+                onChange={(e) => setResolutionQuery(e.target.value)}
+                placeholder="Type a natural-language phrase…"
+              />
 
-        <div className="admin-panel__semantic-tester">
-          <div className="admin-panel__field">
-            <label className="admin-panel__field-label">
-              Natural-language phrase
-            </label>
-            <textarea
-              className="admin-panel__input admin-panel__textarea"
-              rows={3}
-              value={resolutionQuery}
-              onChange={(event) => setResolutionQuery(event.target.value)}
-              placeholder="а кількість палива / where is the yacht now?"
-            />
-            <span className="admin-panel__semantic-helper">
-              Type a real phrase to test how the resolver matches by concept
-              meaning, description, and member structure for the selected ship.
-            </span>
-            <div className="admin-panel__semantic-examples">
-              {SAMPLE_RESOLUTION_QUERIES.map((sample) => (
+              <div className="admin-panel__semantic-tester-actions">
                 <button
-                  key={sample}
                   type="button"
-                  className="admin-panel__semantic-example-chip"
-                  onClick={() => setResolutionQuery(sample)}
+                  className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                  onClick={() => void handleResolve()}
+                  disabled={!resolutionQuery.trim() || resolving}
                 >
-                  {sample}
+                  <span className="admin-panel__btn-content">
+                    {resolving && <span className="admin-panel__spinner admin-panel__spinner--inline" aria-hidden="true" />}
+                    <span>{resolving ? "Resolving…" : "Resolve phrase"}</span>
+                  </span>
                 </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="admin-panel__actions">
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--ghost"
-              onClick={() => void handleResolve()}
-              disabled={!resolutionQuery.trim() || resolving}
-              aria-busy={resolving}
-            >
-              <span className="admin-panel__btn-content">
-                {resolving ? (
-                  <span
-                    className="admin-panel__spinner admin-panel__spinner--inline"
-                    aria-hidden="true"
-                  />
-                ) : null}
-                <span>{resolving ? "Resolving..." : "Resolve phrase"}</span>
-              </span>
-            </button>
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--primary"
-              onClick={() => void handleExecuteResolved()}
-              disabled={!resolutionQuery.trim() || executing}
-              aria-busy={executing}
-            >
-              <span className="admin-panel__btn-content">
-                {executing ? (
-                  <span
-                    className="admin-panel__spinner admin-panel__spinner--inline"
-                    aria-hidden="true"
-                  />
-                ) : null}
-                <span>{executing ? "Executing..." : "Execute snapshot"}</span>
-              </span>
-            </button>
-          </div>
-
-          <div className="admin-panel__semantic-results">
-            <div className="admin-panel__semantic-result-card">
-              <strong>Resolution result</strong>
-              {resolutionError ? (
-                <div className="admin-panel__semantic-result-note admin-panel__semantic-result-note--error">
-                  {resolutionError}
-                </div>
-              ) : resolving ? (
-                <div className="admin-panel__semantic-loading-state">
-                  <span
-                    className="admin-panel__spinner admin-panel__spinner--inline-card"
-                    aria-hidden="true"
-                  />
-                  <span className="admin-panel__muted">
-                    Resolving phrase against semantic concepts...
+                <button
+                  type="button"
+                  className="admin-panel__btn admin-panel__btn--primary admin-panel__btn--compact"
+                  onClick={() => void handleExecuteResolved()}
+                  disabled={!resolutionQuery.trim() || executing}
+                >
+                  <span className="admin-panel__btn-content">
+                    {executing && <span className="admin-panel__spinner admin-panel__spinner--inline" aria-hidden="true" />}
+                    <span>{executing ? "Executing…" : "Execute snapshot"}</span>
                   </span>
-                </div>
-              ) : resolutionResult?.resolvedConcept ? (
-                <>
-                  <div className="admin-panel__semantic-result-line">
-                    <span>Resolved concept</span>
-                    <strong>{resolutionResult.resolvedConcept.displayName}</strong>
-                  </div>
-                  <div className="admin-panel__semantic-result-line">
-                    <span>Slug</span>
-                    <code className="admin-panel__code-inline admin-panel__code-inline--metric">
-                      {resolutionResult.resolvedConcept.slug}
-                    </code>
-                  </div>
-                  <div className="admin-panel__semantic-result-candidates">
-                    {resolveCandidates.slice(0, 5).map((candidate) => (
-                      <div
-                        key={candidate.concept.id}
-                        className="admin-panel__semantic-result-candidate"
-                      >
-                        <span>{candidate.concept.displayName}</span>
-                        <span className="admin-panel__muted">
-                          {candidate.matchReason} · {candidate.score}
-                        </span>
+                </button>
+              </div>
+
+              {/* Inline results — 2 col */}
+              {(resolutionAttempted || executionAttempted) && (
+                <div className="admin-panel__semantic-inline-results">
+                  {/* Resolution */}
+                  <div className="admin-panel__semantic-result-card">
+                    <strong>Resolution</strong>
+                    {resolutionError ? (
+                      <div className="admin-panel__semantic-result-note admin-panel__semantic-result-note--error">{resolutionError}</div>
+                    ) : resolving ? (
+                      <div className="admin-panel__semantic-loading-state">
+                        <span className="admin-panel__spinner admin-panel__spinner--inline-card" aria-hidden="true" />
+                        <span className="admin-panel__muted">Resolving…</span>
                       </div>
-                    ))}
-                  </div>
-                </>
-              ) : resolutionAttempted && resolutionResult ? (
-                <>
-                  <div className="admin-panel__semantic-result-note">
-                    No matching concept was found for this phrase on the selected
-                    ship.
-                  </div>
-                  {resolveCandidates.length > 0 ? (
-                    <div className="admin-panel__semantic-result-candidates">
-                      {resolveCandidates.slice(0, 5).map((candidate) => (
-                        <div
-                          key={candidate.concept.id}
-                          className="admin-panel__semantic-result-candidate"
-                        >
-                          <span>{candidate.concept.displayName}</span>
-                          <span className="admin-panel__muted">
-                            {candidate.matchReason} · {candidate.score}
-                          </span>
+                    ) : resolutionResult?.resolvedConcept ? (
+                      <>
+                        <div className="admin-panel__semantic-result-line">
+                          <span>Matched</span>
+                          <strong>{resolutionResult.resolvedConcept.displayName}</strong>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="admin-panel__muted">
-                      Create a concept with a clear name, description, and member
-                      structure if this phrase should be supported.
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="admin-panel__muted">
-                  No phrase has been resolved yet.
-                </span>
-              )}
-            </div>
+                        <div className="admin-panel__semantic-result-candidates">
+                          {resolveCandidates.slice(0, 4).map((c) => (
+                            <div key={c.concept.id} className="admin-panel__semantic-result-candidate">
+                              <span>{c.concept.displayName}</span>
+                              <span className="admin-panel__muted">{c.matchReason} · {c.score}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : resolutionAttempted ? (
+                      <span className="admin-panel__muted">No match found.</span>
+                    ) : (
+                      <span className="admin-panel__muted">–</span>
+                    )}
+                  </div>
 
-            <div className="admin-panel__semantic-result-card">
-              <strong>Execution result</strong>
-              {executionError ? (
-                <div className="admin-panel__semantic-result-note admin-panel__semantic-result-note--error">
-                  {executionError}
-                </div>
-              ) : executing ? (
-                <div className="admin-panel__semantic-loading-state">
-                  <span
-                    className="admin-panel__spinner admin-panel__spinner--inline-card"
-                    aria-hidden="true"
-                  />
-                  <span className="admin-panel__muted">
-                    Executing concept against live Influx data...
-                  </span>
-                </div>
-              ) : executionResult ? (
-                <>
-                  <div className="admin-panel__semantic-result-line">
-                    <span>Concept</span>
-                    <strong>{executionResult.concept.displayName}</strong>
-                  </div>
-                  <div className="admin-panel__semantic-result-line">
-                    <span>Value</span>
-                    <strong>{formatExecutionValue(executionResult)}</strong>
-                  </div>
-                  <div className="admin-panel__semantic-result-line">
-                    <span>Timestamp</span>
-                    <span>{executionResult.result.timestamp ?? "-"}</span>
-                  </div>
-                  <div className="admin-panel__semantic-result-candidates">
-                    {executionResult.result.members.slice(0, 6).map((member) => (
-                      <div
-                        key={member.memberId}
-                        className="admin-panel__semantic-result-candidate"
-                      >
-                        <span>{member.label}</span>
-                        <span className="admin-panel__muted">
-                          {member.key
-                            ? `${member.key}: ${String(member.value)}`
-                            : String(member.value)}
-                        </span>
+                  {/* Execution */}
+                  <div className="admin-panel__semantic-result-card">
+                    <strong>Execution</strong>
+                    {executionError ? (
+                      <div className="admin-panel__semantic-result-note admin-panel__semantic-result-note--error">{executionError}</div>
+                    ) : executing ? (
+                      <div className="admin-panel__semantic-loading-state">
+                        <span className="admin-panel__spinner admin-panel__spinner--inline-card" aria-hidden="true" />
+                        <span className="admin-panel__muted">Executing…</span>
                       </div>
-                    ))}
+                    ) : executionResult ? (
+                      <>
+                        <div className="admin-panel__semantic-result-line">
+                          <span>Value</span>
+                          <strong>{formatExecutionValue(executionResult)}</strong>
+                        </div>
+                        <div className="admin-panel__semantic-result-candidates">
+                          {executionResult.result.members.slice(0, 4).map((m) => (
+                            <div key={m.memberId} className="admin-panel__semantic-result-candidate">
+                              <span>{m.label}</span>
+                              <span className="admin-panel__muted">{m.key ? `${m.key}: ${String(m.value)}` : String(m.value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : executionAttempted ? (
+                      <span className="admin-panel__muted">No result.</span>
+                    ) : (
+                      <span className="admin-panel__muted">–</span>
+                    )}
                   </div>
-                </>
-              ) : executionAttempted ? (
-                <div className="admin-panel__semantic-result-note">
-                  Execution did not return a result for this test phrase.
                 </div>
-              ) : (
-                <span className="admin-panel__muted">
-                  No concept has been executed yet.
-                </span>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* ── Member picker modal ── */}
+      {showMemberModal && (
+        <MemberModal
+          allMetrics={flatMetrics}
+          selectedIds={selectedMetricIds}
+          onAdd={addMetricMember}
+          onClose={() => setShowMemberModal(false)}
+        />
+      )}
     </div>
   );
 }

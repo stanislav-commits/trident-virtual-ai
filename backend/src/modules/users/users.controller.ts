@@ -7,6 +7,7 @@ import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserNameDto } from './dto/update-user-name.dto';
+import { UpdateUserShipDto } from './dto/update-user-ship.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -38,6 +39,13 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   updateName(@Param('id') id: string, @Body() body: UpdateUserNameDto) {
     return this.usersService.updateName(id, body);
+  }
+
+  @Patch(':id/ship')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  updateShip(@Param('id') id: string, @Body() body: UpdateUserShipDto) {
+    return this.usersService.updateShip(id, body);
   }
 
   @Patch(':id/reset-password')

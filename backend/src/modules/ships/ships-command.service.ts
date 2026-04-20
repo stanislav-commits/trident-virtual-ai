@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MetricsCatalogService } from '../metrics/metrics-catalog.service';
+import { UserRole } from '../../common/enums/user-role.enum';
+import { UserEntity } from '../users/entities/user.entity';
 import { CreateShipDto } from './dto/create-ship.dto';
 import { UpdateShipDto } from './dto/update-ship.dto';
 import { ShipEntity } from './entities/ship.entity';
@@ -12,6 +14,8 @@ export class ShipsCommandService {
   constructor(
     @InjectRepository(ShipEntity)
     private readonly shipsRepository: Repository<ShipEntity>,
+    @InjectRepository(UserEntity)
+    private readonly usersRepository: Repository<UserEntity>,
     private readonly metricsCatalogService: MetricsCatalogService,
   ) {}
 
@@ -78,5 +82,28 @@ export class ShipsCommandService {
     }
 
     return toShipResponse(savedShip);
+  }
+
+  async remove(id: string): Promise<void> {
+    const ship = await this.shipsRepository.findOne({ where: { id } });
+
+    if (!ship) {
+      throw new NotFoundException('Ship not found');
+    }
+
+    const assignedUsersCount = await this.usersRepository.count({
+      where: {
+        shipId: id,
+        role: UserRole.USER,
+      },
+    });
+
+    if (assignedUsersCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete this ship while ${assignedUsersCount} user${assignedUsersCount === 1 ? '' : 's'} ${assignedUsersCount === 1 ? 'is' : 'are'} assigned to it. Reassign or remove those users first.`,
+      );
+    }
+
+    await this.shipsRepository.remove(ship);
   }
 }

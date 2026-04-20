@@ -16,11 +16,6 @@ import { MetricConceptMemberDto } from './metric-concept-member.dto';
 export class UpdateMetricConceptDto {
   @IsOptional()
   @IsString()
-  @MaxLength(120)
-  slug?: string;
-
-  @IsOptional()
-  @IsString()
   @MaxLength(255)
   displayName?: string;
 

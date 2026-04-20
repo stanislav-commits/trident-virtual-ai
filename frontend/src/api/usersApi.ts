@@ -99,3 +99,28 @@ export async function updateUserName(
 
   return response.json();
 }
+
+export async function updateUserShip(
+  id: string,
+  shipId: string,
+  token: string,
+): Promise<{
+  id: string;
+  userId: string;
+  shipId: string | null;
+  ship: { id: string; name: string };
+}> {
+  const response = await fetchWithAuth(`users/${id}/ship`, {
+    token,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ shipId }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to update user ship");
+  }
+
+  return response.json();
+}

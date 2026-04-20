@@ -15,10 +15,6 @@ import { MetricConceptMemberDto } from './metric-concept-member.dto';
 
 export class CreateMetricConceptDto {
   @IsString()
-  @MaxLength(120)
-  slug!: string;
-
-  @IsString()
   @MaxLength(255)
   displayName!: string;
 

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   bootstrapShipMetricConcepts,
   createMetricConcept,
   executeMetricConcept,
-  listMetricConcepts,
+  listMetricConceptsPage,
   type MetricConceptBootstrapResult,
   resolveMetricConcept,
   type MetricConcept,
@@ -13,14 +13,20 @@ import {
   updateMetricConcept,
 } from "../../api/metricsApi";
 
+const METRIC_CONCEPTS_PAGE_SIZE = 50;
+
 export interface MetricConceptsAdminData {
   concepts: MetricConcept[];
+  totalConcepts: number;
   loading: boolean;
+  loadingMore: boolean;
   saving: boolean;
   bootstrapping: boolean;
+  hasMore: boolean;
   error: string;
   setError: (nextError: string) => void;
   refreshConcepts: () => Promise<void>;
+  loadMoreConcepts: () => Promise<void>;
   bootstrapConcepts: () => Promise<MetricConceptBootstrapResult | null>;
   saveConcept: (
     conceptId: string | null,
@@ -40,36 +46,111 @@ export interface MetricConceptsAdminData {
 export function useMetricConceptsAdminData(
   token: string | null,
   shipId: string | null,
+  search: string,
   enabled: boolean,
 ): MetricConceptsAdminData {
   const [concepts, setConcepts] = useState<MetricConcept[]>([]);
+  const [totalConcepts, setTotalConcepts] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [saving, setSaving] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState("");
+  const latestRequestIdRef = useRef(0);
+
+  const fetchConceptPage = useCallback(
+    async (nextPage: number, mode: "replace" | "append") => {
+      if (!enabled || !token || !shipId) {
+        setConcepts([]);
+        setTotalConcepts(0);
+        setPage(1);
+        setHasMore(false);
+        setLoading(false);
+        setLoadingMore(false);
+        return null;
+      }
+
+      const requestId = latestRequestIdRef.current + 1;
+      latestRequestIdRef.current = requestId;
+
+      if (mode === "append") {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      try {
+        const nextConceptPage = await listMetricConceptsPage(token, {
+          shipId,
+          search,
+          page: nextPage,
+          pageSize: METRIC_CONCEPTS_PAGE_SIZE,
+        });
+
+        if (latestRequestIdRef.current !== requestId) {
+          return nextConceptPage;
+        }
+
+        setConcepts((current) =>
+          mode === "append"
+            ? [...current, ...nextConceptPage.items]
+            : nextConceptPage.items,
+        );
+        setTotalConcepts(nextConceptPage.totalConcepts);
+        setPage(nextConceptPage.page);
+        setHasMore(nextConceptPage.hasMore);
+        return nextConceptPage;
+      } catch (conceptError) {
+        if (latestRequestIdRef.current === requestId) {
+          setError(
+            conceptError instanceof Error
+              ? conceptError.message
+              : "Failed to load metric concepts",
+          );
+        }
+        return null;
+      } finally {
+        if (latestRequestIdRef.current === requestId) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      }
+    },
+    [enabled, search, shipId, token],
+  );
 
   const refreshConcepts = useCallback(async () => {
     if (!enabled || !token || !shipId) {
       setConcepts([]);
+      setTotalConcepts(0);
+      setPage(1);
+      setHasMore(false);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    setError("");
+    await fetchConceptPage(1, "replace");
+  }, [enabled, fetchConceptPage, shipId, token]);
 
-    try {
-      const nextConcepts = await listMetricConcepts(token, shipId);
-      setConcepts(nextConcepts);
-    } catch (conceptError) {
-      setError(
-        conceptError instanceof Error
-          ? conceptError.message
-          : "Failed to load metric concepts",
-      );
-    } finally {
-      setLoading(false);
+  const loadMoreConcepts = useCallback(async () => {
+    if (!enabled || !token || !shipId || loading || loadingMore || !hasMore) {
+      return;
     }
-  }, [enabled, shipId, token]);
+
+    await fetchConceptPage(page + 1, "append");
+  }, [
+    enabled,
+    fetchConceptPage,
+    hasMore,
+    loading,
+    loadingMore,
+    page,
+    shipId,
+    token,
+  ]);
 
   const bootstrapConcepts = useCallback(async () => {
     if (!enabled || !token || !shipId) {
@@ -108,13 +189,7 @@ export function useMetricConceptsAdminData(
         const savedConcept = conceptId
           ? await updateMetricConcept(conceptId, input, token)
           : await createMetricConcept(input, token);
-
-        setConcepts((current) => {
-          const next = current.filter((concept) => concept.id !== savedConcept.id);
-          next.push(savedConcept);
-          next.sort((left, right) => left.displayName.localeCompare(right.displayName));
-          return next;
-        });
+        await refreshConcepts();
 
         return savedConcept;
       } catch (saveError) {
@@ -128,7 +203,7 @@ export function useMetricConceptsAdminData(
         setSaving(false);
       }
     },
-    [enabled, token],
+    [enabled, refreshConcepts, token],
   );
 
   const resolveQuery = useCallback(
@@ -182,25 +257,33 @@ export function useMetricConceptsAdminData(
   useEffect(() => {
     if (!enabled || !token || !shipId) {
       setConcepts([]);
+      setTotalConcepts(0);
+      setPage(1);
       setLoading(false);
+      setLoadingMore(false);
       setSaving(false);
       setBootstrapping(false);
+      setHasMore(false);
       setError("");
       return;
     }
 
     setError("");
     void refreshConcepts();
-  }, [enabled, refreshConcepts, shipId, token]);
+  }, [enabled, refreshConcepts, search, shipId, token]);
 
   return {
     concepts,
+    totalConcepts,
     loading,
+    loadingMore,
     saving,
     bootstrapping,
+    hasMore,
     error,
     setError,
     refreshConcepts,
+    loadMoreConcepts,
     bootstrapConcepts,
     saveConcept,
     resolveQuery,

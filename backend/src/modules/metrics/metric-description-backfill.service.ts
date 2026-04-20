@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Like, Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricDescriptionService } from './metric-description.service';
 import {
@@ -125,7 +125,6 @@ export class MetricDescriptionBackfillService
       where: [
         { description: IsNull() },
         { description: '' },
-        { description: Like('Displays the current %') },
       ],
       order: {
         syncedAt: 'DESC',

@@ -28,6 +28,27 @@ export interface ShipMetricsCatalog {
   buckets: ShipMetricBucketGroup[];
 }
 
+export interface ShipMetricCatalogBucketOption {
+  bucket: string;
+  totalMetrics: number;
+}
+
+export interface ShipMetricCatalogPage {
+  ship: {
+    id: string;
+    name: string;
+    organizationName: string | null;
+  };
+  totalMetrics: number;
+  filteredMetrics: number;
+  syncedAt: string | null;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  buckets: ShipMetricCatalogBucketOption[];
+  items: ShipMetricCatalogItem[];
+}
+
 export interface ShipMetricsSyncResult {
   shipId: string;
   shipName: string;
@@ -115,6 +136,15 @@ export interface MetricConcept {
   updatedAt: string;
 }
 
+export interface MetricConceptPage {
+  items: MetricConcept[];
+  totalConcepts: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
 export interface MetricConceptResolutionCandidate {
   concept: MetricConcept;
   score: number;
@@ -135,7 +165,6 @@ export interface MetricConceptMemberInput {
 }
 
 export interface SaveMetricConceptInput {
-  slug: string;
   displayName: string;
   description?: string | null;
   category?: string | null;
@@ -208,6 +237,50 @@ export async function getShipMetricsCatalog(
   return response.json();
 }
 
+export async function getShipMetricsCatalogPage(
+  shipId: string,
+  token: string,
+  params: {
+    search?: string;
+    bucket?: string | null;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<ShipMetricCatalogPage> {
+  const searchParams = new URLSearchParams();
+
+  if (params.search?.trim()) {
+    searchParams.set("search", params.search.trim());
+  }
+
+  if (params.bucket?.trim()) {
+    searchParams.set("bucket", params.bucket.trim());
+  }
+
+  if (typeof params.page === "number") {
+    searchParams.set("page", String(params.page));
+  }
+
+  if (typeof params.pageSize === "number") {
+    searchParams.set("pageSize", String(params.pageSize));
+  }
+
+  const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : "";
+  const response = await fetchWithAuth(
+    `metrics/ships/${shipId}/catalog/items${suffix}`,
+    {
+      token,
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to load ship metrics");
+  }
+
+  return response.json();
+}
+
 export async function syncShipMetricsCatalog(
   shipId: string,
   token: string,
@@ -251,6 +324,46 @@ export async function listMetricConcepts(
 ): Promise<MetricConcept[]> {
   const suffix = shipId ? `?shipId=${encodeURIComponent(shipId)}` : "";
   const response = await fetchWithAuth(`metrics/concepts${suffix}`, {
+    token,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to load metric concepts");
+  }
+
+  return response.json();
+}
+
+export async function listMetricConceptsPage(
+  token: string,
+  params: {
+    shipId?: string | null;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<MetricConceptPage> {
+  const searchParams = new URLSearchParams();
+
+  if (params.shipId?.trim()) {
+    searchParams.set("shipId", params.shipId.trim());
+  }
+
+  if (params.search?.trim()) {
+    searchParams.set("search", params.search.trim());
+  }
+
+  if (typeof params.page === "number") {
+    searchParams.set("page", String(params.page));
+  }
+
+  if (typeof params.pageSize === "number") {
+    searchParams.set("pageSize", String(params.pageSize));
+  }
+
+  const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : "";
+  const response = await fetchWithAuth(`metrics/concepts/items${suffix}`, {
     token,
   });
 

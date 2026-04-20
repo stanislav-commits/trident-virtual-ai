@@ -8,6 +8,7 @@ import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { ShipsQueryService } from '../ships/ships-query.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserNameDto } from './dto/update-user-name.dto';
+import { UpdateUserShipDto } from './dto/update-user-ship.dto';
 import { UserEntity } from './entities/user.entity';
 
 @Injectable()
@@ -102,6 +103,42 @@ export class UsersService {
       id: saved.id,
       userId: saved.userId,
       name: saved.name,
+    };
+  }
+
+  async updateShip(id: string, input: UpdateUserShipDto) {
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: { ship: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.role !== UserRole.USER) {
+      throw new BadRequestException(
+        'Only regular users can be reassigned to a ship',
+      );
+    }
+
+    const ship = await this.shipsQueryService.findById(input.shipId);
+
+    if (!ship) {
+      throw new BadRequestException('Ship not found');
+    }
+
+    user.shipId = ship.id;
+    const saved = await this.usersRepository.save(user);
+
+    return {
+      id: saved.id,
+      userId: saved.userId,
+      shipId: saved.shipId,
+      ship: {
+        id: ship.id,
+        name: ship.name,
+      },
     };
   }
 

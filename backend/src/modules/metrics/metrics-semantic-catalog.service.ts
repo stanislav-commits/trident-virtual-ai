@@ -4,16 +4,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { LlmService } from '../../integrations/llm/llm.service';
 import { parseJsonObject } from '../chat/planning/chat-turn-json.utils';
 import { CreateMetricConceptDto } from './dto/create-metric-concept.dto';
+import { ListMetricConceptsQueryDto } from './dto/list-metric-concepts-query.dto';
 import { ResolveMetricConceptDto } from './dto/resolve-metric-concept.dto';
 import { UpdateMetricConceptDto } from './dto/update-metric-concept.dto';
 import { MetricConceptEntity } from './entities/metric-concept.entity';
 import { MetricConceptMemberEntity } from './entities/metric-concept-member.entity';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricAggregationRule } from './enums/metric-aggregation-rule.enum';
+import { MetricConceptType } from './enums/metric-concept-type.enum';
 import { buildMetricSemanticBlueprint } from './metrics-semantic-bootstrap.utils';
 
 interface MetricConceptMemberResponseDto {
@@ -59,6 +61,15 @@ export interface MetricConceptResolutionDto {
   candidates: MetricConceptResolutionCandidateDto[];
 }
 
+export interface MetricConceptPageDto {
+  items: MetricConceptResponseDto[];
+  totalConcepts: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
 interface MetricConceptScoredMatch {
   concept: MetricConceptEntity;
   score: number;
@@ -99,6 +110,46 @@ const GENERIC_SEARCH_TOKENS = new Set([
   'where',
   'yacht',
 ]);
+
+const CYRILLIC_TO_LATIN_MAP: Record<string, string> = {
+  а: 'a',
+  б: 'b',
+  в: 'v',
+  г: 'h',
+  ґ: 'g',
+  д: 'd',
+  е: 'e',
+  є: 'ye',
+  ж: 'zh',
+  з: 'z',
+  и: 'y',
+  і: 'i',
+  ї: 'yi',
+  й: 'y',
+  к: 'k',
+  л: 'l',
+  м: 'm',
+  н: 'n',
+  о: 'o',
+  п: 'p',
+  р: 'r',
+  с: 's',
+  т: 't',
+  у: 'u',
+  ф: 'f',
+  х: 'kh',
+  ц: 'ts',
+  ч: 'ch',
+  ш: 'sh',
+  щ: 'shch',
+  ь: '',
+  ю: 'yu',
+  я: 'ya',
+  э: 'e',
+  ё: 'yo',
+  ы: 'y',
+  ъ: '',
+};
 
 @Injectable()
 export class MetricsSemanticCatalogService {
@@ -141,15 +192,94 @@ export class MetricsSemanticCatalogService {
       .map((concept) => this.serializeConcept(concept, shipId));
   }
 
+  async listConceptsPage(
+    query: ListMetricConceptsQueryDto,
+  ): Promise<MetricConceptPageDto> {
+    const shipId = query.shipId?.trim() || undefined;
+    const search = query.search?.trim() ?? '';
+    const pageSize = query.pageSize ?? 50;
+    const requestedPage = query.page ?? 1;
+    const baseQuery = this.applyConceptListFilters(
+      this.metricConceptRepository.createQueryBuilder('concept'),
+      {
+        shipId,
+        search,
+      },
+    );
+
+    const totalRaw = await baseQuery
+      .clone()
+      .select('COUNT(concept.id)', 'count')
+      .getRawOne<{ count: string }>();
+    const totalConcepts = Number(totalRaw?.count ?? 0);
+    const totalPages = Math.max(1, Math.ceil(totalConcepts / pageSize));
+    const page = Math.min(requestedPage, totalPages);
+    const conceptIdRows = await baseQuery
+      .clone()
+      .select('concept.id', 'id')
+      .orderBy('concept.displayName', 'ASC')
+      .addOrderBy('concept.createdAt', 'ASC')
+      .offset((page - 1) * pageSize)
+      .limit(pageSize)
+      .getRawMany<{ id: string }>();
+    const conceptIds = conceptIdRows.map((row) => row.id);
+
+    if (conceptIds.length === 0) {
+      return {
+        items: [],
+        totalConcepts,
+        page,
+        pageSize,
+        totalPages,
+        hasMore: false,
+      };
+    }
+
+    const concepts = await this.metricConceptRepository.find({
+      where: { id: In(conceptIds) },
+      relations: {
+        members: {
+          metricCatalog: true,
+        },
+      },
+      order: {
+        members: {
+          sortOrder: 'ASC',
+          createdAt: 'ASC',
+        },
+      },
+    });
+    const conceptsById = new Map(
+      concepts.map((concept) => [concept.id, concept]),
+    );
+    const items = conceptIds
+      .map((conceptId) => conceptsById.get(conceptId))
+      .filter((concept): concept is MetricConceptEntity => Boolean(concept))
+      .map((concept) => this.serializeConcept(concept, shipId));
+
+    return {
+      items,
+      totalConcepts,
+      page,
+      pageSize,
+      totalPages,
+      hasMore: page < totalPages,
+    };
+  }
+
   async createConcept(
     input: CreateMetricConceptDto,
   ): Promise<MetricConceptResponseDto> {
-    const slug = this.normalizeSlug(input.slug);
-    await this.assertSlugAvailable(slug);
+    const displayName = this.normalizeRequiredDisplayName(input.displayName);
+    const slug = await this.generateUniqueSlug({
+      displayName,
+      description: input.description,
+      type: input.type,
+    });
 
     const concept = this.metricConceptRepository.create({
       slug,
-      displayName: input.displayName.trim(),
+      displayName,
       description: this.normalizeOptionalText(input.description),
       category: this.normalizeOptionalText(input.category),
       type: input.type,
@@ -175,17 +305,8 @@ export class MetricsSemanticCatalogService {
       throw new NotFoundException('Metric concept not found');
     }
 
-    if (input.slug) {
-      const normalizedSlug = this.normalizeSlug(input.slug);
-
-      if (normalizedSlug !== concept.slug) {
-        await this.assertSlugAvailable(normalizedSlug, concept.id);
-        concept.slug = normalizedSlug;
-      }
-    }
-
     if (typeof input.displayName === 'string') {
-      concept.displayName = input.displayName.trim();
+      concept.displayName = this.normalizeRequiredDisplayName(input.displayName);
     }
 
     if (input.description !== undefined) {
@@ -452,6 +573,55 @@ export class MetricsSemanticCatalogService {
     await this.metricConceptMemberRepository.save(preparedMembers);
   }
 
+  private applyConceptListFilters(
+    queryBuilder: SelectQueryBuilder<MetricConceptEntity>,
+    filters: {
+      shipId?: string;
+      search: string;
+    },
+  ): SelectQueryBuilder<MetricConceptEntity> {
+    if (filters.shipId) {
+      queryBuilder.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM metric_concept_members ship_member
+          INNER JOIN ship_metric_catalog ship_metric
+            ON ship_metric.id = ship_member.metric_catalog_id
+          WHERE ship_member.concept_id = concept.id
+            AND ship_metric.ship_id = :shipId
+        )`,
+        { shipId: filters.shipId },
+      );
+    }
+
+    if (filters.search) {
+      const search = `%${filters.search}%`;
+
+      queryBuilder.andWhere(
+        new Brackets((qb) => {
+          qb.where('concept.displayName ILIKE :search', { search })
+            .orWhere(`COALESCE(concept.description, '') ILIKE :search`, {
+              search,
+            })
+            .orWhere(`COALESCE(concept.category, '') ILIKE :search`, {
+              search,
+            })
+            .orWhere(`CAST(concept.type AS text) ILIKE :search`, {
+              search,
+            })
+            .orWhere(
+              `CAST(concept.aggregationRule AS text) ILIKE :search`,
+              {
+                search,
+              },
+            );
+        }),
+      );
+    }
+
+    return queryBuilder;
+  }
+
   private serializeConcept(
     concept: MetricConceptEntity,
     shipId?: string,
@@ -493,31 +663,88 @@ export class MetricsSemanticCatalogService {
     };
   }
 
-  private async assertSlugAvailable(
+  private async generateUniqueSlug(input: {
+    displayName: string;
+    description?: string | null;
+    type?: MetricConceptType;
+    ignoreConceptId?: string;
+  }): Promise<string> {
+    const baseSlug = this.resolveSlugBase(input);
+    let candidate = baseSlug;
+    let suffix = 2;
+
+    while (
+      !(await this.isSlugAvailable(candidate, input.ignoreConceptId))
+    ) {
+      candidate = `${baseSlug}_${suffix}`;
+      suffix += 1;
+    }
+
+    return candidate;
+  }
+
+  private resolveSlugBase(input: {
+    displayName: string;
+    description?: string | null;
+    type?: MetricConceptType;
+  }): string {
+    const candidates = [
+      input.displayName,
+      input.description,
+      input.type ? `${input.type} concept` : null,
+      'metric concept',
+    ];
+
+    for (const candidate of candidates) {
+      const normalized = this.normalizeSlug(candidate);
+
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return 'metric_concept';
+  }
+
+  private async isSlugAvailable(
     slug: string,
     ignoreConceptId?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const existing = await this.metricConceptRepository.findOne({
       where: { slug },
       select: { id: true },
     });
 
-    if (existing && existing.id !== ignoreConceptId) {
-      throw new BadRequestException(
-        `Metric concept slug "${slug}" already exists`,
-      );
-    }
+    return !existing || existing.id === ignoreConceptId;
   }
 
-  private normalizeSlug(value: string): string {
-    const normalized = value
-      .trim()
+  private normalizeSlug(value?: string | null): string {
+    return this.transliterateToAscii(value)
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_');
+  }
+
+  private transliterateToAscii(value?: string | null): string {
+    return (value ?? '')
+      .trim()
+      .replace(/[ʼ'’`]/g, '')
+      .split('')
+      .map((char) => {
+        const lower = char.toLowerCase();
+        return CYRILLIC_TO_LATIN_MAP[lower] ?? char;
+      })
+      .join('');
+  }
+
+  private normalizeRequiredDisplayName(value: string): string {
+    const normalized = value.trim();
 
     if (!normalized) {
-      throw new BadRequestException('slug must not be empty');
+      throw new BadRequestException('displayName must not be empty');
     }
 
     return normalized;

@@ -5,6 +5,8 @@ interface ShipsTableProps {
   ships: ShipSummaryItem[];
   loading: boolean;
   onEdit: (ship: ShipSummaryItem) => void;
+  onDelete: (ship: ShipSummaryItem) => void;
+  deletingShipId: string | null;
 }
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -20,7 +22,13 @@ function formatDate(value: string): string {
     : dateFormatter.format(parsedDate);
 }
 
-export function ShipsTable({ ships, loading, onEdit }: ShipsTableProps) {
+export function ShipsTable({
+  ships,
+  loading,
+  onEdit,
+  onDelete,
+  deletingShipId,
+}: ShipsTableProps) {
   if (loading) {
     return (
       <div className="admin-panel__state-box">
@@ -76,8 +84,17 @@ export function ShipsTable({ ships, loading, onEdit }: ShipsTableProps) {
                     type="button"
                     className="admin-panel__btn admin-panel__btn--ghost"
                     onClick={() => onEdit(ship)}
+                    disabled={deletingShipId === ship.id}
                   >
                     Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-panel__btn admin-panel__btn--danger"
+                    onClick={() => onDelete(ship)}
+                    disabled={Boolean(deletingShipId)}
+                  >
+                    {deletingShipId === ship.id ? "Deleting..." : "Delete"}
                   </button>
                 </div>
               </td>
