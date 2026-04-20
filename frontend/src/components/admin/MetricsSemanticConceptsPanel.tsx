@@ -55,8 +55,8 @@ const CONCEPT_TYPE_OPTIONS: Array<{
   { value: "group", label: "Group" },
   { value: "composite", label: "Composite" },
   { value: "paired", label: "Paired" },
-  { value: "comparison", label: "Comparison" },
-  { value: "trajectory", label: "Trajectory" },
+  // { value: "comparison", label: "Comparison" },  // hidden temporarily
+  // { value: "trajectory", label: "Trajectory" },  // hidden temporarily
 ];
 
 const AGGREGATION_RULE_OPTIONS: Array<{
@@ -1004,6 +1004,7 @@ export function MetricsSemanticConceptsPanel({
                   ))}
                 </select>
               </div>
+              {/* TODO: hidden temporarily
               <div className="admin-panel__field">
                 <label className="admin-panel__field-label">Aggregation</label>
                 <select
@@ -1016,6 +1017,7 @@ export function MetricsSemanticConceptsPanel({
                   ))}
                 </select>
               </div>
+              */}
               <div className="admin-panel__field">
                 <label className="admin-panel__field-label">Unit</label>
                 <input
