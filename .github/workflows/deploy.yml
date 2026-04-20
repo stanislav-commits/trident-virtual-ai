@@ -16,4 +16,7 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
-            ./deploy.sh
+            git fetch origin --prune
+            git reset --hard origin/main
+            chmod +x ./scripts/deploy.sh
+            bash ./scripts/deploy.sh
