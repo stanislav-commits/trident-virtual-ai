@@ -78,6 +78,8 @@ export interface MetricConceptExecutionResponseDto {
 
 @Injectable()
 export class MetricsConceptExecutionService {
+  private readonly metricSampleConcurrency = 4;
+
   constructor(
     @InjectRepository(MetricConceptEntity)
     private readonly metricConceptRepository: Repository<MetricConceptEntity>,
@@ -275,8 +277,10 @@ export class MetricsConceptExecutionService {
     timeMode: MetricQueryTimeMode,
     timestamp: Date | null,
   ): Promise<Map<string, InfluxMetricSample | null>> {
-    const samples = await Promise.all(
-      metrics.map(async (metric) => {
+    const samples = await this.mapWithConcurrencyLimit(
+      metrics,
+      this.metricSampleConcurrency,
+      async (metric) => {
         const sample = await this.fetchSingleMetricSample(
           organizationName,
           metric,
@@ -285,7 +289,7 @@ export class MetricsConceptExecutionService {
         );
 
         return [metric.id, sample] as const;
-      }),
+      },
     );
 
     return new Map(samples);
@@ -601,5 +605,37 @@ export class MetricsConceptExecutionService {
       aggregationRule: concept.aggregationRule,
       unit: concept.unit,
     };
+  }
+
+  private async mapWithConcurrencyLimit<TInput, TOutput>(
+    items: TInput[],
+    concurrency: number,
+    worker: (item: TInput, index: number) => Promise<TOutput>,
+  ): Promise<TOutput[]> {
+    const normalizedConcurrency = Math.max(1, Math.floor(concurrency));
+    const results = new Array<TOutput>(items.length);
+    let nextIndex = 0;
+
+    const runWorker = async () => {
+      while (true) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+
+        if (currentIndex >= items.length) {
+          return;
+        }
+
+        results[currentIndex] = await worker(items[currentIndex], currentIndex);
+      }
+    };
+
+    await Promise.all(
+      Array.from(
+        { length: Math.min(normalizedConcurrency, items.length) },
+        () => runWorker(),
+      ),
+    );
+
+    return results;
   }
 }

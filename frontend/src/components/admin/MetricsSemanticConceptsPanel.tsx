@@ -862,7 +862,7 @@ export function MetricsSemanticConceptsPanel({
               className="admin-panel__metrics-search-input"
               value={conceptSearch}
               onChange={(e) => setConceptSearch(e.target.value)}
-              placeholder="Search name, category, description…"
+              placeholder="Search display name…"
             />
           </label>
 
@@ -901,8 +901,14 @@ export function MetricsSemanticConceptsPanel({
                       </div>
                     </div>
                     <div className="admin-panel__semantic-concept-item-meta">
-                      {concept.category && <span>{concept.category}</span>}
+                      {concept.category && (
+                        <>
+                          <span>{concept.category}</span>
+                          <span className="admin-panel__meta-divider">·</span>
+                        </>
+                      )}
                       <span>{formatAggregationRule(concept.aggregationRule)}</span>
+                      <span className="admin-panel__meta-divider">·</span>
                       <span>{concept.members.length} members</span>
                     </div>
                   </button>

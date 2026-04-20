@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { LlmService } from '../../integrations/llm/llm.service';
 import { parseJsonObject } from '../chat/planning/chat-turn-json.utils';
 import { CreateMetricConceptDto } from './dto/create-metric-concept.dto';
@@ -597,26 +597,7 @@ export class MetricsSemanticCatalogService {
     if (filters.search) {
       const search = `%${filters.search}%`;
 
-      queryBuilder.andWhere(
-        new Brackets((qb) => {
-          qb.where('concept.displayName ILIKE :search', { search })
-            .orWhere(`COALESCE(concept.description, '') ILIKE :search`, {
-              search,
-            })
-            .orWhere(`COALESCE(concept.category, '') ILIKE :search`, {
-              search,
-            })
-            .orWhere(`CAST(concept.type AS text) ILIKE :search`, {
-              search,
-            })
-            .orWhere(
-              `CAST(concept.aggregationRule AS text) ILIKE :search`,
-              {
-                search,
-              },
-            );
-        }),
-      );
+      queryBuilder.andWhere('concept.displayName ILIKE :search', { search });
     }
 
     return queryBuilder;

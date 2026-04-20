@@ -14,6 +14,8 @@ import { ChatTurnAskResult } from '../responders/interfaces/chat-turn-responder.
 
 @Injectable()
 export class ChatTurnOrchestratorService {
+  private readonly askExecutionConcurrency = 2;
+
   constructor(
     private readonly chatTurnPlannerService: ChatTurnPlannerService,
     private readonly chatLlmService: ChatLlmService,
@@ -55,8 +57,10 @@ export class ChatTurnOrchestratorService {
       };
     }
 
-    const askResults = await Promise.all(
-      asks.map((ask) =>
+    const askResults = await this.mapWithConcurrencyLimit(
+      asks,
+      this.askExecutionConcurrency,
+      (ask) =>
         this.executeAsk({
           plan,
           ask,
@@ -64,7 +68,6 @@ export class ChatTurnOrchestratorService {
           messages: input.messages,
           context: input.context,
         }),
-      ),
     );
     const content = await this.chatLlmService.composeAskResultsReply({
       context: input.context,
@@ -93,7 +96,7 @@ export class ChatTurnOrchestratorService {
     session: ChatSessionEntity;
     messages: ChatMessageEntity[];
     context: ChatConversationContext;
-  }): Promise<ChatTurnAskResult> {
+    }): Promise<ChatTurnAskResult> {
     switch (input.ask.responder) {
       case ChatTurnResponderKind.WEB_SEARCH:
         return this.chatWebSearchResponderService.respond(input);
@@ -105,5 +108,37 @@ export class ChatTurnOrchestratorService {
       default:
         return this.chatSmallTalkResponderService.respond(input);
     }
+  }
+
+  private async mapWithConcurrencyLimit<TInput, TOutput>(
+    items: TInput[],
+    concurrency: number,
+    worker: (item: TInput, index: number) => Promise<TOutput>,
+  ): Promise<TOutput[]> {
+    const normalizedConcurrency = Math.max(1, Math.floor(concurrency));
+    const results = new Array<TOutput>(items.length);
+    let nextIndex = 0;
+
+    const runWorker = async () => {
+      while (true) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+
+        if (currentIndex >= items.length) {
+          return;
+        }
+
+        results[currentIndex] = await worker(items[currentIndex], currentIndex);
+      }
+    };
+
+    await Promise.all(
+      Array.from(
+        { length: Math.min(normalizedConcurrency, items.length) },
+        () => runWorker(),
+      ),
+    );
+
+    return results;
   }
 }

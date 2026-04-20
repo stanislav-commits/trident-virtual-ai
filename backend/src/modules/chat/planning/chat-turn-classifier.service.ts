@@ -5,10 +5,7 @@ import { ChatConversationContext } from '../context/chat-conversation-context.ty
 import { ChatCapabilityRegistryService } from './chat-capability-registry.service';
 import { ChatMetricsAskTimeMode } from './chat-metrics-ask-time-mode.enum';
 import { parseJsonObject } from './chat-turn-json.utils';
-import {
-  ChatTurnClassification,
-  ChatTurnClassificationAsk,
-} from './chat-turn-classifier.types';
+import { ChatTurnClassificationAsk } from './chat-turn-classifier.types';
 import { ChatTurnIntent } from './chat-turn-intent.enum';
 
 @Injectable()
@@ -18,16 +15,17 @@ export class ChatTurnClassifierService {
     private readonly chatCapabilityRegistryService: ChatCapabilityRegistryService,
   ) {}
 
-  async classify(
-    context: ChatConversationContext,
-  ): Promise<ChatTurnClassification> {
+  async classifyAsk(input: {
+    context: ChatConversationContext;
+    question: string;
+  }): Promise<ChatTurnClassificationAsk> {
     const systemPrompt = this.buildSystemPrompt();
-    const userPrompt = this.buildUserPrompt(context);
+    const userPrompt = this.buildUserPrompt(input.context, input.question);
     const rawResult = await this.chatLlmService.completeText({
       systemPrompt,
       userPrompt,
       temperature: 0,
-      maxTokens: 320,
+      maxTokens: 220,
     });
 
     const parsed = this.parseClassification(rawResult);
@@ -36,23 +34,13 @@ export class ChatTurnClassifierService {
       return parsed;
     }
 
-    const fallbackQuestion =
-      context.latestUserMessage?.content.trim() || 'Continue the conversation.';
-
     return {
-      asks: [
-        {
-          intent: ChatTurnIntent.SMALL_TALK,
-          question: fallbackQuestion,
-          timeMode: null,
-          timestamp: null,
-          rangeStart: null,
-          rangeEnd: null,
-        },
-      ],
-      responseLanguage: null,
-      reasoning:
-        'Classifier output was unavailable or invalid, so the turn fell back to general conversation.',
+      intent: ChatTurnIntent.SMALL_TALK,
+      question: input.question.trim() || 'Continue the conversation.',
+      timeMode: null,
+      timestamp: null,
+      rangeStart: null,
+      rangeEnd: null,
     };
   }
 
@@ -66,14 +54,11 @@ export class ChatTurnClassifierService {
       .join('\n');
 
     return [
-      'You classify the latest user turn for the Trident backend.',
-      'Break the latest user turn into one or more concrete asks that the backend should handle.',
-      'Use the full recent conversation for context, especially for follow-up questions.',
-      'Do not answer the user. Only plan the asks.',
-      'Return between 1 and 3 asks.',
-      'Each ask must be standalone and self-contained.',
-      'If the user combines multiple requests in one message, split them into separate asks in the original order.',
-      'Use small_talk only when the turn is general conversation and there is no specific source-backed ask to execute.',
+      'You classify one standalone ask for the Trident backend.',
+      'The ask has already been decomposed and must not be split further.',
+      'Use the full recent conversation for follow-up context.',
+      'Do not answer the user. Only classify this one ask.',
+      'Use small_talk only when the ask is general conversation and there is no specific source-backed ask to execute.',
       'For metrics asks, set timeMode to one of snapshot, point_in_time, or range.',
       'For point_in_time metrics asks, provide an ISO timestamp only if you can infer it reliably; otherwise leave timestamp null.',
       'For range metrics asks, provide ISO rangeStart and rangeEnd when you can infer them reliably; otherwise leave them null.',
@@ -88,15 +73,19 @@ export class ChatTurnClassifierService {
       '- live_metrics: questions about current telemetry, current values, current vessel state, or live operational metrics.',
       '- historical_metrics: questions about trends, history, comparisons over time, aggregates, or metrics across a period.',
       'Return only raw JSON with this exact shape:',
-      '{"asks":[{"intent":"small_talk|web_search|documentation|manuals|live_metrics|historical_metrics","question":"standalone string","timeMode":"snapshot|point_in_time|range|null","timestamp":"ISO string or null","rangeStart":"ISO string or null","rangeEnd":"ISO string or null"}],"responseLanguage":"string or null","reasoning":"short string"}',
-      'responseLanguage must be the language the assistant should use for the final reply, inferred from the user and conversation context.',
+      '{"intent":"small_talk|web_search|documentation|manuals|live_metrics|historical_metrics","question":"standalone string","timeMode":"snapshot|point_in_time|range|null","timestamp":"ISO string or null","rangeStart":"ISO string or null","rangeEnd":"ISO string or null","reasoning":"short string"}',
       'Do not wrap JSON in markdown.',
     ].join('\n');
   }
 
-  private buildUserPrompt(context: ChatConversationContext): string {
+  private buildUserPrompt(
+    context: ChatConversationContext,
+    question: string,
+  ): string {
     return [
-      'Classify the latest user turn from this conversation transcript.',
+      'Classify this standalone ask from the latest user turn.',
+      '',
+      `Standalone ask: ${question}`,
       '',
       formatConversationContext(context),
     ].join('\n');
@@ -104,54 +93,14 @@ export class ChatTurnClassifierService {
 
   private parseClassification(
     rawResult: string | null,
-  ): ChatTurnClassification | null {
+  ): ChatTurnClassificationAsk | null {
     const parsed = parseJsonObject(rawResult);
 
     if (!parsed) {
       return null;
     }
 
-    const asks = this.parseAsks(parsed.asks);
-
-    if (asks.length === 0) {
-      return null;
-    }
-
-    const reasoning =
-      typeof parsed.reasoning === 'string' && parsed.reasoning.trim().length > 0
-        ? parsed.reasoning.trim()
-        : 'The classifier selected the closest supported intent.';
-
-    const responseLanguage =
-      typeof parsed.responseLanguage === 'string' &&
-      parsed.responseLanguage.trim().length > 0
-        ? parsed.responseLanguage.trim()
-        : null;
-
-    return {
-      asks,
-      responseLanguage,
-      reasoning,
-    };
-  }
-
-  private parseAsks(value: unknown): ChatTurnClassificationAsk[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-
-    return value
-      .map((entry) => this.parseAsk(entry))
-      .filter((entry): entry is ChatTurnClassificationAsk => entry !== null)
-      .slice(0, 3);
-  }
-
-  private parseAsk(value: unknown): ChatTurnClassificationAsk | null {
-    if (!value || typeof value !== 'object') {
-      return null;
-    }
-
-    const entry = value as Record<string, unknown>;
+    const entry = parsed as Record<string, unknown>;
     const intent =
       typeof entry.intent === 'string' && this.isSupportedIntent(entry.intent)
         ? entry.intent

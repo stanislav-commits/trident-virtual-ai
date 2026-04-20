@@ -33,6 +33,8 @@ export interface InfluxMetricSample extends InfluxMetricSelector {
 
 @Injectable()
 export class InfluxService {
+  private influxClient: InfluxDB | null = null;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly influxHttpService: InfluxHttpService,
@@ -171,6 +173,10 @@ export class InfluxService {
   }
 
   private get influx() {
+    if (this.influxClient) {
+      return this.influxClient;
+    }
+
     const url = this.configService.get<string>('integrations.influx.url', '');
     const token = this.configService.get<string>('integrations.influx.token', '');
 
@@ -178,11 +184,13 @@ export class InfluxService {
       throw new Error('Influx connection is not configured');
     }
 
-    return new InfluxDB({
+    this.influxClient = new InfluxDB({
       url,
       token,
       timeout: 30_000,
     });
+
+    return this.influxClient;
   }
 
   private async listMeasurements(
@@ -232,6 +240,22 @@ export class InfluxService {
     flux: string,
     orgName: string,
   ): Promise<Record<string, unknown>[]> {
+    try {
+      return await this.executeQueryRows(flux, orgName);
+    } catch (error) {
+      if (!this.isTimeoutError(error)) {
+        throw error;
+      }
+
+      await this.delay(250);
+      return this.executeQueryRows(flux, orgName);
+    }
+  }
+
+  private async executeQueryRows(
+    flux: string,
+    orgName: string,
+  ): Promise<Record<string, unknown>[]> {
     return new Promise((resolve, reject) => {
       const rows: Record<string, unknown>[] = [];
       const queryApi = this.influx.getQueryApi(orgName);
@@ -245,6 +269,16 @@ export class InfluxService {
         complete: () => resolve(rows),
       });
     });
+  }
+
+  private isTimeoutError(error: unknown): boolean {
+    return error instanceof Error
+      ? error.message.toLowerCase().includes('timed out')
+      : false;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async queryMetricSample(
