@@ -67,13 +67,13 @@ else
 fi
 
 log "Restarting PM2 process using $entry"
-pm2 delete "$PROCESS_NAME" >/dev/null 2>&1 || true
-pm2 start "$entry" --name "$PROCESS_NAME" --cwd "$BACKEND_DIR"
-pm2 save >/dev/null
+sudo pm2 delete "$PROCESS_NAME" >/dev/null 2>&1 || true
+sudo pm2 start "$entry" --name "$PROCESS_NAME" --cwd "$BACKEND_DIR"
+sudo pm2 save >/dev/null
 
 log "Reloading nginx"
-nginx -t
-systemctl reload nginx
+sudo nginx -t
+sudo systemctl reload nginx
 
 log "Waiting for backend healthcheck"
 for attempt in $(seq 1 30); do
@@ -83,7 +83,7 @@ for attempt in $(seq 1 30); do
   fi
   if [ "$attempt" -eq 30 ]; then
     log "Backend healthcheck failed"
-    pm2 logs "$PROCESS_NAME" --lines 80 --nostream || true
+    sudo pm2 logs "$PROCESS_NAME" --lines 80 --nostream || true
     exit 1
   fi
   sleep 2
