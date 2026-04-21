@@ -22,6 +22,7 @@ import { ListShipMetricCatalogQueryDto } from './dto/list-ship-metric-catalog-qu
 import { ListMetricConceptsQueryDto } from './dto/list-metric-concepts-query.dto';
 import { UpdateShipMetricDescriptionDto } from './dto/update-ship-metric-description.dto';
 import { UpdateMetricConceptDto } from './dto/update-metric-concept.dto';
+import { ToggleShipMetricsDto } from './dto/toggle-ship-metrics.dto';
 import { MetricsCatalogService } from './metrics-catalog.service';
 import { MetricsConceptExecutionService } from './metrics-concept-execution.service';
 import { MetricsSemanticBootstrapService } from './metrics-semantic-bootstrap.service';
@@ -73,6 +74,16 @@ export class MetricsController {
   @Roles(UserRole.ADMIN)
   bootstrapSemanticConcepts(@Param('shipId') shipId: string) {
     return this.metricsSemanticBootstrapService.bootstrapShipCatalog(shipId);
+  }
+
+  @Patch('ships/:shipId/catalog/toggle')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  toggleShipMetrics(
+    @Param('shipId') shipId: string,
+    @Body() body: ToggleShipMetricsDto,
+  ) {
+    return this.metricsCatalogService.toggleShipMetrics(shipId, body);
   }
 
   @Patch('catalog/:metricId')

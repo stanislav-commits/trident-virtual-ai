@@ -4202,6 +4202,15 @@
   cursor: not-allowed;
 }
 
+.admin-panel__row--disabled .admin-panel__td {
+  opacity: 0.45;
+  transition: opacity 0.2s ease;
+}
+
+.admin-panel__row--disabled .admin-panel__td--toggle {
+  opacity: 1;
+}
+
 .admin-panel__dropzone-files {
   display: flex;
   flex-wrap: wrap;

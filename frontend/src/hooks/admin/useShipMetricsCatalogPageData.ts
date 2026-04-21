@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   getShipMetricsCatalogPage,
   syncShipMetricsCatalog,
+  toggleShipMetrics,
   updateShipMetricDescription,
   type ShipMetricCatalogItem,
   type ShipMetricCatalogPage,
@@ -24,6 +25,7 @@ export interface ShipMetricsCatalogPageData {
   catalogPage: ShipMetricCatalogPage | null;
   loading: boolean;
   syncing: boolean;
+  toggling: boolean;
   error: string;
   setError: (nextError: string) => void;
   refreshCatalog: () => Promise<void>;
@@ -32,6 +34,10 @@ export interface ShipMetricsCatalogPageData {
     metricId: string,
     description: string | null,
   ) => Promise<ShipMetricCatalogItem | null>;
+  toggleMetrics: (
+    isEnabled: boolean,
+    metricIds?: string[],
+  ) => Promise<void>;
   lastSyncResult: ShipMetricsSyncResult | null;
 }
 
@@ -45,6 +51,7 @@ export function useShipMetricsCatalogPageData(
   );
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [error, setError] = useState("");
   const [lastSyncResult, setLastSyncResult] =
     useState<ShipMetricsSyncResult | null>(null);
@@ -170,6 +177,51 @@ export function useShipMetricsCatalogPageData(
     [token],
   );
 
+  const toggleMetrics = useCallback(
+    async (isEnabled: boolean, metricIds?: string[]) => {
+      if (!token || !shipId) {
+        return;
+      }
+
+      setToggling(true);
+
+      try {
+        await toggleShipMetrics(shipId, token, {
+          isEnabled,
+          metricIds: metricIds?.length ? metricIds : undefined,
+        });
+
+        setCatalogPage((currentCatalogPage) => {
+          if (!currentCatalogPage) {
+            return currentCatalogPage;
+          }
+
+          const idsToUpdate = metricIds?.length
+            ? new Set(metricIds)
+            : null;
+
+          return {
+            ...currentCatalogPage,
+            items: currentCatalogPage.items.map((metric) =>
+              idsToUpdate === null || idsToUpdate.has(metric.id)
+                ? { ...metric, isEnabled }
+                : metric,
+            ),
+          };
+        });
+      } catch (toggleError) {
+        setError(
+          toggleError instanceof Error
+            ? toggleError.message
+            : "Failed to toggle metrics",
+        );
+      } finally {
+        setToggling(false);
+      }
+    },
+    [shipId, token],
+  );
+
   useEffect(() => {
     if (!options.enabled || !token || !shipId) {
       setCatalogPage(null);
@@ -192,11 +244,13 @@ export function useShipMetricsCatalogPageData(
     catalogPage,
     loading,
     syncing,
+    toggling,
     error,
     setError,
     refreshCatalog,
     syncCatalog,
     updateDescription,
+    toggleMetrics,
     lastSyncResult,
   };
 }

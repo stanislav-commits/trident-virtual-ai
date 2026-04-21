@@ -6,6 +6,7 @@ export interface ShipMetricCatalogItem {
   bucket: string;
   field: string;
   description: string | null;
+  isEnabled: boolean;
   syncedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -483,6 +484,32 @@ export async function updateShipMetricDescription(
     throw new Error(
       errorBody.message ?? "Failed to update metric description",
     );
+  }
+
+  return response.json();
+}
+
+export async function toggleShipMetrics(
+  shipId: string,
+  token: string,
+  input: {
+    isEnabled: boolean;
+    metricIds?: string[];
+  },
+): Promise<{ updated: number }> {
+  const response = await fetchWithAuth(
+    `metrics/ships/${shipId}/catalog/toggle`,
+    {
+      token,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to toggle metrics");
   }
 
   return response.json();

@@ -14,6 +14,7 @@ interface MetricsTableRow {
   bucket: string;
   key: string;
   description: string | null;
+  isEnabled: boolean;
 }
 
 const syncDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -76,10 +77,12 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     catalogPage,
     loading: catalogLoading,
     syncing: catalogSyncing,
+    toggling: catalogToggling,
     error: catalogError,
     setError: setCatalogError,
     syncCatalog: syncCatalogPage,
     updateDescription,
+    toggleMetrics,
     lastSyncResult: catalogLastSyncResult,
   } = useShipMetricsCatalogPageData(token, effectiveSelectedShipId, {
     search: deferredCatalogSearch,
@@ -170,6 +173,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
       bucket: metric.bucket,
       key: metric.key,
       description: metric.description,
+      isEnabled: metric.isEnabled,
     })) ?? [];
   const totalFilteredMetrics = catalogPage?.filteredMetrics ?? 0;
   const totalPages = catalogPage?.totalPages ?? 1;
@@ -404,6 +408,22 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                   <span className="admin-panel__metrics-count">
                     {visibleFrom}–{visibleTo} of {totalFilteredMetrics}
                   </span>
+                  <button
+                    type="button"
+                    className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                    onClick={() => void toggleMetrics(true)}
+                    disabled={catalogToggling || catalogSyncing || !effectiveSelectedShipId}
+                  >
+                    Enable all
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                    onClick={() => void toggleMetrics(false)}
+                    disabled={catalogToggling || catalogSyncing || !effectiveSelectedShipId}
+                  >
+                    Disable all
+                  </button>
                 </div>
 
                 <div className="admin-panel__metrics-pager">
@@ -467,6 +487,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
               <div className="admin-panel__metrics-group-table-wrap">
                 <table className="admin-panel__table admin-panel__table--metrics">
                   <colgroup>
+                    <col style={{ width: '40px' }} />
                     <col style={{ width: '88px' }} />
                     <col style={{ width: '42%' }} />
                     <col />
@@ -474,6 +495,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                   </colgroup>
                   <thead>
                     <tr>
+                      <th className="admin-panel__th admin-panel__th--toggle" />
                       <th className="admin-panel__th">Bucket</th>
                       <th className="admin-panel__th">Key</th>
                       <th className="admin-panel__th">Description</th>
@@ -483,7 +505,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                   <tbody>
                     {paginatedMetrics.length === 0 ? (
                       <tr className="admin-panel__row">
-                        <td className="admin-panel__td" colSpan={4}>
+                        <td className="admin-panel__td" colSpan={5}>
                           <span className="admin-panel__muted">
                             No metrics match the current filters.
                           </span>
@@ -491,7 +513,19 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                       </tr>
                     ) : (
                       paginatedMetrics.map((metric) => (
-                        <tr key={metric.id} className="admin-panel__row">
+                        <tr key={metric.id} className={`admin-panel__row${!metric.isEnabled ? " admin-panel__row--disabled" : ""}`}>
+                          <td className="admin-panel__td admin-panel__td--toggle">
+                            <input
+                              type="checkbox"
+                              className="admin-panel__metrics-toggle"
+                              checked={metric.isEnabled}
+                              disabled={catalogToggling}
+                              onChange={() =>
+                                void toggleMetrics(!metric.isEnabled, [metric.id])
+                              }
+                              aria-label={`${metric.isEnabled ? "Disable" : "Enable"} metric ${metric.key}`}
+                            />
+                          </td>
                           <td className="admin-panel__td">
                             <span className="admin-panel__metrics-bucket-badge">
                               {metric.bucket}

@@ -38,6 +38,9 @@ export class ShipMetricCatalogEntity {
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 
+  @Column({ name: 'is_enabled', type: 'boolean', default: true })
+  isEnabled!: boolean;
+
   @Column({ name: 'synced_at', type: 'timestamptz' })
   syncedAt!: Date;
 

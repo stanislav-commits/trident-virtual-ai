@@ -5,13 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository, SelectQueryBuilder } from 'typeorm';
+import { Brackets, In, Repository, SelectQueryBuilder } from 'typeorm';
 import {
   InfluxMetricDefinition,
   InfluxService,
 } from '../../integrations/influx/influx.service';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { ListShipMetricCatalogQueryDto } from './dto/list-ship-metric-catalog-query.dto';
+import { ToggleShipMetricsDto } from './dto/toggle-ship-metrics.dto';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricDescriptionBackfillService } from './metric-description-backfill.service';
 import { MetricsSemanticBootstrapResultDto, MetricsSemanticBootstrapService } from './metrics-semantic-bootstrap.service';
@@ -26,6 +27,7 @@ export interface ShipMetricCatalogItemDto {
   bucket: string;
   field: string;
   description: string | null;
+  isEnabled: boolean;
   syncedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -438,6 +440,27 @@ export class MetricsCatalogService {
     return queryBuilder;
   }
 
+  async toggleShipMetrics(
+    shipId: string,
+    dto: ToggleShipMetricsDto,
+  ): Promise<{ updated: number }> {
+    await this.findRequiredShip(shipId);
+
+    if (dto.metricIds?.length) {
+      const result = await this.shipMetricCatalogRepository.update(
+        { id: In(dto.metricIds), shipId },
+        { isEnabled: dto.isEnabled },
+      );
+      return { updated: result.affected ?? 0 };
+    }
+
+    const result = await this.shipMetricCatalogRepository.update(
+      { shipId },
+      { isEnabled: dto.isEnabled },
+    );
+    return { updated: result.affected ?? 0 };
+  }
+
   private serializeEntry(
     entry: ShipMetricCatalogEntity,
   ): ShipMetricCatalogItemDto {
@@ -447,6 +470,7 @@ export class MetricsCatalogService {
       bucket: entry.bucket,
       field: entry.field,
       description: entry.description,
+      isEnabled: entry.isEnabled,
       syncedAt: entry.syncedAt.toISOString(),
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString(),
