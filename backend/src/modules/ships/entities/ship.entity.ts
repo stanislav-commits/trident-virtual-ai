@@ -42,6 +42,14 @@ export class ShipEntity {
   })
   buildYear!: number | null;
 
+  @Column({
+    name: 'ragflow_dataset_id',
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+  })
+  ragflowDatasetId!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
