@@ -5,11 +5,13 @@ import logoImg from "../assets/logo-home.png";
 import {
   UsersIcon,
   ShipIcon,
+  DocumentsIcon,
   MetricsIcon,
   ChevronLeftIcon,
   MenuIcon,
   XIcon,
 } from "../components/admin/AdminPanelIcons";
+import { DocumentsSection } from "../components/admin/DocumentsSection";
 import { MetricsSection } from "../components/admin/MetricsSection";
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
@@ -25,6 +27,7 @@ import {
 const SECTION_TITLES: Record<AdminSectionRoute, string> = {
   users: "Users",
   ships: "Ships",
+  documents: "Documents",
   metrics: "Metrics",
 };
 
@@ -124,6 +127,16 @@ export function AdminPanelPage() {
           </button>
           <button
             type="button"
+            className={`admin-panel__nav-item ${activeSection === "documents" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("documents")}
+          >
+            <span className="admin-panel__nav-icon">
+              <DocumentsIcon />
+            </span>
+            <span className="admin-panel__nav-label">Documents</span>
+          </button>
+          <button
+            type="button"
             className={`admin-panel__nav-item ${activeSection === "metrics" ? "admin-panel__nav-item--active" : ""}`}
             onClick={() => handleNavClick("metrics")}
           >
@@ -192,6 +205,8 @@ export function AdminPanelPage() {
             )}
 
             {activeSection === "metrics" && <MetricsSection token={token} />}
+
+            {activeSection === "documents" && <DocumentsSection />}
           </div>
         </main>
       </div>

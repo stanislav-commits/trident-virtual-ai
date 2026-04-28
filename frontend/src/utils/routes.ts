@@ -1,4 +1,4 @@
-export type AdminSectionRoute = "users" | "ships" | "metrics";
+export type AdminSectionRoute = "users" | "ships" | "documents" | "metrics";
 
 export const appRoutes = {
   root: "/",
@@ -14,7 +14,12 @@ export const appRoutes = {
   adminSection: (section: AdminSectionRoute) => `/admin/${section}`,
 } as const;
 
-const adminSections = new Set<AdminSectionRoute>(["users", "ships", "metrics"]);
+const adminSections = new Set<AdminSectionRoute>([
+  "users",
+  "ships",
+  "documents",
+  "metrics",
+]);
 
 export function isAdminSectionRoute(
   value: string | undefined,
