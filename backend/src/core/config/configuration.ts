@@ -7,6 +7,11 @@ function splitCsv(value?: string): string[] {
     .filter(Boolean) ?? [];
 }
 
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export default function configuration() {
   const db = getDatabaseEnv();
 
@@ -52,6 +57,14 @@ export default function configuration() {
       rag: {
         provider: process.env.RAG_PROVIDER ?? 'local',
         indexName: process.env.RAG_INDEX_NAME ?? '',
+        baseUrl: process.env.RAGFLOW_BASE_URL ?? process.env.RAG_BASE_URL ?? '',
+        apiKey: process.env.RAGFLOW_API_KEY ?? process.env.RAG_API_KEY ?? '',
+        datasetNamePrefix:
+          process.env.RAGFLOW_DATASET_NAME_PREFIX ?? 'trident-ship',
+        parseConcurrencyLimit: parsePositiveInteger(
+          process.env.RAGFLOW_PARSE_CONCURRENCY_LIMIT,
+          2,
+        ),
       },
       webSearch: {
         baseUrl: process.env.WEB_SEARCH_BASE_URL ?? '',
