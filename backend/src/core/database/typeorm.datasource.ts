@@ -5,6 +5,7 @@ import { ChatMessageEntity } from '../../modules/chat/entities/chat-message.enti
 import { ChatSessionEntity } from '../../modules/chat/entities/chat-session.entity';
 import { UserEntity } from '../../modules/users/entities/user.entity';
 import { ShipEntity } from '../../modules/ships/entities/ship.entity';
+import { DocumentEntity } from '../../modules/documents/entities/document.entity';
 import { MetricConceptAliasEntity } from '../../modules/metrics/entities/metric-concept-alias.entity';
 import { MetricConceptEntity } from '../../modules/metrics/entities/metric-concept.entity';
 import { MetricConceptMemberEntity } from '../../modules/metrics/entities/metric-concept-member.entity';
@@ -18,6 +19,9 @@ import { AddChatSessionMemory20260419000500 } from './migrations/20260419000500-
 import { AddMetricSemanticCatalog20260419000600 } from './migrations/20260419000600-add-metric-semantic-catalog';
 import { FlattenMetricConceptChildMembers20260420000100 } from './migrations/20260420000100-flatten-metric-concept-child-members';
 import { AddShipMetricCatalogIsEnabled20260421000100 } from './migrations/20260421000100-add-ship-metric-catalog-is-enabled';
+import { AddDocumentsRagflowIngestion20260426000100 } from './migrations/20260426000100-add-documents-ragflow-ingestion';
+import { AddDocumentParseProgress20260428000100 } from './migrations/20260428000100-add-document-parse-progress';
+import { UseDecimalDocumentParseProgress20260428000200 } from './migrations/20260428000200-use-decimal-document-parse-progress';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -32,6 +36,7 @@ const dataSource = new DataSource({
   entities: [
     UserEntity,
     ShipEntity,
+    DocumentEntity,
     ShipMetricCatalogEntity,
     MetricConceptEntity,
     MetricConceptAliasEntity,
@@ -50,6 +55,9 @@ const dataSource = new DataSource({
     AddMetricSemanticCatalog20260419000600,
     FlattenMetricConceptChildMembers20260420000100,
     AddShipMetricCatalogIsEnabled20260421000100,
+    AddDocumentsRagflowIngestion20260426000100,
+    AddDocumentParseProgress20260428000100,
+    UseDecimalDocumentParseProgress20260428000200,
   ],
   synchronize: false,
   ssl: db.ssl
