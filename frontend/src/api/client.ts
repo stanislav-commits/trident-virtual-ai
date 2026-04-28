@@ -319,10 +319,10 @@ export type ShipManualItem = {
 };
 
 export type ShipManualCategory =
-  | "MANUALS"
-  | "HISTORY_PROCEDURES"
-  | "CERTIFICATES"
-  | "REGULATION";
+  | "manual"
+  | "historical_procedure"
+  | "certificate"
+  | "regulation";
 
 export type PaginationMeta = {
   page: number;

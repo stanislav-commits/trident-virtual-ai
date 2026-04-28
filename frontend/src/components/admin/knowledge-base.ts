@@ -1,8 +1,8 @@
 export const KNOWLEDGE_BASE_CATEGORY_VALUES = [
-  "MANUALS",
-  "HISTORY_PROCEDURES",
-  "CERTIFICATES",
-  "REGULATION",
+  "manual",
+  "historical_procedure",
+  "certificate",
+  "regulation",
 ] as const;
 
 export type KnowledgeBaseCategory = (typeof KNOWLEDGE_BASE_CATEGORY_VALUES)[number];
@@ -21,7 +21,7 @@ export type KnowledgeBaseCategoryConfig = {
 
 export const KNOWLEDGE_BASE_CATEGORIES: KnowledgeBaseCategoryConfig[] = [
   {
-    id: "MANUALS",
+    id: "manual",
     label: "Manuals",
     folderLabel: "Manuals",
     uploadHeading: "Upload manuals",
@@ -33,19 +33,19 @@ export const KNOWLEDGE_BASE_CATEGORIES: KnowledgeBaseCategoryConfig[] = [
     rowLabel: "manuals",
   },
   {
-    id: "HISTORY_PROCEDURES",
-    label: "History Procedures",
-    folderLabel: "History Procedures",
-    uploadHeading: "Upload history procedures",
+    id: "historical_procedure",
+    label: "Historical Procedures",
+    folderLabel: "Historical Procedures",
+    uploadHeading: "Upload historical procedures",
     description:
-      "Use for history and procedure files. Table files are sent through table parsing, while text and PDF files keep the document flow already used in RAGFlow.",
+      "Use for historical procedure files. Table files are sent through table parsing, while text and PDF files keep the document flow already used in RAGFlow.",
     acceptedExtensionsLabel: "PDF, CSV, MD, XLSX, TXT",
     accept: ".pdf,.csv,.md,.xlsx,.txt",
-    emptyState: "No history procedures uploaded for this ship yet.",
-    rowLabel: "history procedure files",
+    emptyState: "No historical procedures uploaded for this ship yet.",
+    rowLabel: "historical procedure files",
   },
   {
-    id: "CERTIFICATES",
+    id: "certificate",
     label: "Certificates",
     folderLabel: "Certificates",
     uploadHeading: "Upload certificates",
@@ -57,20 +57,20 @@ export const KNOWLEDGE_BASE_CATEGORIES: KnowledgeBaseCategoryConfig[] = [
     rowLabel: "certificates",
   },
   {
-    id: "REGULATION",
-    label: "Regulation",
-    folderLabel: "Regulation",
-    uploadHeading: "Upload regulation files",
+    id: "regulation",
+    label: "Regulations",
+    folderLabel: "Regulations",
+    uploadHeading: "Upload regulations",
     description:
-      "Use for regulation and policy documents that should stay searchable alongside manuals and procedures.",
+      "Use for regulation and policy documents that should stay searchable alongside manuals and historical procedures.",
     acceptedExtensionsLabel: "PDF, DOC, DOCX, TXT, MD",
     accept: ".pdf,.doc,.docx,.txt,.md",
-    emptyState: "No regulation files uploaded for this ship yet.",
-    rowLabel: "regulation files",
+    emptyState: "No regulations uploaded for this ship yet.",
+    rowLabel: "regulations",
   },
 ];
 
-export const DEFAULT_KNOWLEDGE_BASE_CATEGORY: KnowledgeBaseCategory = "MANUALS";
+export const DEFAULT_KNOWLEDGE_BASE_CATEGORY: KnowledgeBaseCategory = "manual";
 
 export function getKnowledgeBaseCategoryConfig(
   category: KnowledgeBaseCategory,
