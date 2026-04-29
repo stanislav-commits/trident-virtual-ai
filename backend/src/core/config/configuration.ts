@@ -47,6 +47,9 @@ export default function configuration() {
         false,
       ),
     },
+    documents: {
+      uploadSpoolDir: process.env.DOCUMENT_UPLOAD_SPOOL_DIR ?? '',
+    },
     database: {
       host: db.host,
       port: db.port,
@@ -83,6 +86,18 @@ export default function configuration() {
         parseConcurrencyLimit: parsePositiveInteger(
           process.env.RAGFLOW_PARSE_CONCURRENCY_LIMIT,
           2,
+        ),
+        remoteIngestionConcurrencyLimit: parsePositiveInteger(
+          process.env.RAGFLOW_REMOTE_INGESTION_CONCURRENCY_LIMIT,
+          1,
+        ),
+        remoteIngestionRecoveryIntervalMs: parsePositiveInteger(
+          process.env.RAGFLOW_REMOTE_INGESTION_RECOVERY_INTERVAL_MS,
+          60_000,
+        ),
+        remoteIngestionStaleMs: parsePositiveInteger(
+          process.env.RAGFLOW_REMOTE_INGESTION_STALE_MS,
+          120_000,
         ),
       },
       webSearch: {

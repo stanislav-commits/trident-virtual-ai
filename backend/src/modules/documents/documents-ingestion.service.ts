@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
@@ -17,6 +18,7 @@ import { DocumentParseStatus } from './enums/document-parse-status.enum';
 import { DocumentTimeScope } from './enums/document-time-scope.enum';
 import { toDocumentResponse } from './documents.mapper';
 import { UploadedDocumentFile } from './documents-upload.types';
+import { DocumentsUploadStorageService } from './documents-upload-storage.service';
 import { DocumentsParseDispatcherService } from './documents-parse-dispatcher.service';
 import {
   applyParsingProfile,
@@ -39,6 +41,7 @@ export class DocumentsIngestionService {
     private readonly shipsRepository: Repository<ShipEntity>,
     private readonly ragService: RagService,
     private readonly parseDispatcher: DocumentsParseDispatcherService,
+    private readonly uploadStorage: DocumentsUploadStorageService,
   ) {}
 
   async upload(
@@ -48,7 +51,6 @@ export class DocumentsIngestionService {
     ship: ShipEntity,
   ): Promise<DocumentResponseDto> {
     const normalizedFile = this.validateUploadedFile(file);
-    const ragflowDatasetId = await this.ensureShipDataset(ship);
     const profile = getParsingProfileForDocClass(input.docClass);
     const metadata = buildDocumentMetadata(ship.id, input);
 
@@ -61,7 +63,7 @@ export class DocumentsIngestionService {
       fileSizeBytes: normalizedFile.size,
       checksumSha256: this.sha256(normalizedFile.buffer),
       pageCount: null,
-      ragflowDatasetId,
+      ragflowDatasetId: ship.ragflowDatasetId ?? null,
       ragflowDocumentId: null,
       docClass: input.docClass,
       language: input.language ?? null,
@@ -84,7 +86,154 @@ export class DocumentsIngestionService {
     applyParsingProfile(document, profile);
 
     const savedDocument = await this.documentsRepository.save(document);
-    return this.uploadAndParseRemote(savedDocument, normalizedFile, metadata);
+    try {
+      savedDocument.storageKey = await this.uploadStorage.saveUpload(
+        savedDocument.id,
+        normalizedFile.buffer,
+      );
+      savedDocument.lastSyncedAt = new Date();
+      return toDocumentResponse(await this.documentsRepository.save(savedDocument));
+    } catch (error) {
+      savedDocument.parseStatus = DocumentParseStatus.FAILED;
+      savedDocument.parseError = `Local upload staging failed: ${this.formatError(error)}`;
+      savedDocument.lastSyncedAt = new Date();
+      await this.documentsRepository.save(savedDocument);
+      throw new BadRequestException(savedDocument.parseError);
+    }
+  }
+
+  async ingestRemote(input: DocumentEntity): Promise<void> {
+    const document = await this.documentsRepository.findOne({
+      where: { id: input.id },
+    });
+
+    if (!document) {
+      return;
+    }
+
+    try {
+      document.parseStatus = DocumentParseStatus.PENDING_CONFIG;
+      document.parseError = null;
+      document.parseProgressPercent = null;
+      document.lastSyncedAt = new Date();
+      await this.documentsRepository.save(document);
+
+      const ragflowDatasetId = await this.ensureDocumentDataset(document);
+      document.ragflowDatasetId = ragflowDatasetId;
+      await this.documentsRepository.save(document);
+
+      const localStorageKey = this.uploadStorage.isLocalSpoolKey(
+        document.storageKey,
+      )
+        ? document.storageKey
+        : null;
+
+      if (!document.ragflowDocumentId) {
+        if (!localStorageKey) {
+          throw new Error(
+            'Local upload payload is unavailable; upload the document again.',
+          );
+        }
+
+        const remoteDocument = await this.ragService.uploadDocumentToDataset(
+          ragflowDatasetId,
+          {
+            buffer: await this.uploadStorage.readUpload(localStorageKey),
+            originalName: document.originalFileName,
+            mimeType: document.mimeType,
+          },
+        );
+
+        document.ragflowDocumentId = remoteDocument.id;
+        document.storageKey = `ragflow://${ragflowDatasetId}/${remoteDocument.id}`;
+        document.parseStatus = DocumentParseStatus.PENDING_CONFIG;
+        document.parseProgressPercent = null;
+        document.lastSyncedAt = new Date();
+        await this.documentsRepository.save(document);
+        await this.deleteLocalUpload(localStorageKey, document.id);
+      }
+
+      if (!document.ragflowDocumentId) {
+        throw new Error('RAGFlow did not return a document ID.');
+      }
+
+      const profile = getParsingProfileForDocClass(document.docClass);
+      await this.ragService.updateRemoteDocumentConfig(
+        ragflowDatasetId,
+        document.ragflowDocumentId,
+        {
+          metadata: document.metadataJson ?? buildDocumentMetadataFromEntity(document),
+          parsingProfile: profile,
+        },
+      );
+
+      document.parseStatus = DocumentParseStatus.PENDING_PARSE;
+      document.parseProgressPercent = null;
+      document.chunkCount = null;
+      document.parsedAt = null;
+      document.lastSyncedAt = new Date();
+      const savedDocument = await this.documentsRepository.save(document);
+
+      await this.parseDispatcher.dispatchPendingParses();
+      await this.reloadDocument(savedDocument);
+    } catch (error) {
+      document.parseStatus = DocumentParseStatus.FAILED;
+      document.parseError = this.formatError(error);
+      document.parseProgressPercent = null;
+      document.lastSyncedAt = new Date();
+      await this.documentsRepository.save(document);
+      this.logger.warn(
+        `RAGFlow upload/config failed for document ${document.id}: ${document.parseError}`,
+      );
+    }
+  }
+
+  async prepareRemoteIngestionRetry(
+    document: DocumentEntity,
+  ): Promise<DocumentEntity> {
+    const freshDocument = await this.reloadDocument(document);
+
+    if (freshDocument.ragflowDocumentId) {
+      freshDocument.parseStatus = DocumentParseStatus.PENDING_CONFIG;
+      freshDocument.parseError = null;
+      freshDocument.parseProgressPercent = null;
+      freshDocument.lastSyncedAt = new Date();
+      return this.documentsRepository.save(freshDocument);
+    }
+
+    if (this.uploadStorage.isLocalSpoolKey(freshDocument.storageKey)) {
+      freshDocument.parseStatus = DocumentParseStatus.UPLOADED;
+      freshDocument.parseError = null;
+      freshDocument.parseProgressPercent = null;
+      freshDocument.lastSyncedAt = new Date();
+      return this.documentsRepository.save(freshDocument);
+    }
+
+    freshDocument.parseStatus = DocumentParseStatus.FAILED;
+    freshDocument.parseError =
+      'Local upload payload is unavailable; upload the document again.';
+    freshDocument.parseProgressPercent = null;
+    freshDocument.lastSyncedAt = new Date();
+    return this.documentsRepository.save(freshDocument);
+  }
+
+  async deleteLocalUpload(document: DocumentEntity): Promise<void>;
+  async deleteLocalUpload(storageKey: string, documentId?: string): Promise<void>;
+  async deleteLocalUpload(
+    input: DocumentEntity | string,
+    documentId?: string,
+  ): Promise<void> {
+    const storageKey = typeof input === 'string' ? input : input.storageKey;
+
+    try {
+      await this.uploadStorage.deleteUpload(storageKey);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to delete local upload spool for document ${
+          typeof input === 'string' ? documentId ?? 'unknown' : input.id
+        }: ${this.formatError(error)}`,
+      );
+    }
   }
 
   async reparse(document: DocumentEntity): Promise<DocumentResponseDto> {
@@ -158,64 +307,6 @@ export class DocumentsIngestionService {
     return toDocumentResponse(await this.reloadDocument(savedDocument));
   }
 
-  private async uploadAndParseRemote(
-    document: DocumentEntity,
-    file: {
-      buffer: Buffer;
-      originalName: string;
-      mimeType: string;
-    },
-    metadata: Record<string, unknown>,
-  ): Promise<DocumentResponseDto> {
-    try {
-      const ragflowDatasetId = document.ragflowDatasetId;
-      if (!ragflowDatasetId) {
-        throw new Error('Document is missing a RAGFlow dataset ID.');
-      }
-
-      const remoteDocument = await this.ragService.uploadDocumentToDataset(
-        ragflowDatasetId,
-        {
-          buffer: file.buffer,
-          originalName: file.originalName,
-          mimeType: file.mimeType,
-        },
-      );
-
-      document.ragflowDocumentId = remoteDocument.id;
-      document.storageKey = `ragflow://${ragflowDatasetId}/${remoteDocument.id}`;
-      document.parseStatus = DocumentParseStatus.PENDING_CONFIG;
-      document.parseProgressPercent = null;
-      await this.documentsRepository.save(document);
-
-      const profile = getParsingProfileForDocClass(document.docClass);
-      await this.ragService.updateRemoteDocumentConfig(
-        ragflowDatasetId,
-        remoteDocument.id,
-        {
-          metadata,
-          parsingProfile: profile,
-        },
-      );
-
-      document.parseStatus = DocumentParseStatus.PENDING_PARSE;
-      document.parseProgressPercent = null;
-      const savedDocument = await this.documentsRepository.save(document);
-
-      await this.parseDispatcher.dispatchPendingParses();
-      return toDocumentResponse(await this.reloadDocument(savedDocument));
-    } catch (error) {
-      document.parseStatus = DocumentParseStatus.FAILED;
-      document.parseError = this.formatError(error);
-      document.lastSyncedAt = new Date();
-      this.logger.warn(
-        `RAGFlow upload failed for document ${document.id}: ${document.parseError}`,
-      );
-    }
-
-    return toDocumentResponse(await this.documentsRepository.save(document));
-  }
-
   private async ensureShipDataset(ship: ShipEntity): Promise<string> {
     const linkedDataset = await this.findLinkedShipDataset(ship);
 
@@ -234,6 +325,18 @@ export class DocumentsIngestionService {
       }));
 
     return this.persistShipDatasetLink(ship, dataset.id);
+  }
+
+  private async ensureDocumentDataset(document: DocumentEntity): Promise<string> {
+    const ship = await this.shipsRepository.findOne({
+      where: { id: document.shipId },
+    });
+
+    if (!ship) {
+      throw new NotFoundException('Ship not found');
+    }
+
+    return this.ensureShipDataset(ship);
   }
 
   private async findLinkedShipDataset(

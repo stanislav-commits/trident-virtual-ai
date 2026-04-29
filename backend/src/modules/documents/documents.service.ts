@@ -27,6 +27,7 @@ import { DocumentEntity } from './entities/document.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
 import { toDocumentResponse } from './documents.mapper';
 import { DocumentsIngestionService } from './documents-ingestion.service';
+import { DocumentsRemoteIngestionDispatcherService } from './documents-remote-ingestion-dispatcher.service';
 import { UploadedDocumentFile } from './documents-upload.types';
 import {
   applyMetadataOverrides,
@@ -53,6 +54,7 @@ export class DocumentsService {
     @InjectRepository(ShipEntity)
     private readonly shipsRepository: Repository<ShipEntity>,
     private readonly documentsIngestionService: DocumentsIngestionService,
+    private readonly remoteIngestionDispatcher: DocumentsRemoteIngestionDispatcherService,
     private readonly documentsRetrievalService: DocumentsRetrievalService,
     private readonly ragService: RagService,
   ) {}
@@ -63,7 +65,15 @@ export class DocumentsService {
     user: AuthenticatedUser,
   ): Promise<DocumentResponseDto> {
     const ship = await this.resolveAccessibleShip(input.shipId, user);
-    return this.documentsIngestionService.upload(input, file, user, ship);
+    const document = await this.documentsIngestionService.upload(
+      input,
+      file,
+      user,
+      ship,
+    );
+
+    void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
+    return document;
   }
 
   async list(
@@ -153,7 +163,34 @@ export class DocumentsService {
     user: AuthenticatedUser,
   ): Promise<DocumentResponseDto> {
     const document = await this.findAccessibleDocument(id, user);
+
+    if (!document.ragflowDocumentId) {
+      if (
+        document.parseStatus === DocumentParseStatus.PENDING_CONFIG ||
+        document.parseStatus === DocumentParseStatus.FAILED
+      ) {
+        return toDocumentResponse(document);
+      }
+
+      const queuedDocument =
+        await this.documentsIngestionService.prepareRemoteIngestionRetry(document);
+      void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
+      return toDocumentResponse(queuedDocument);
+    }
+
     return this.documentsIngestionService.syncStatus(document);
+  }
+
+  async retryIngestion(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<DocumentResponseDto> {
+    const document = await this.findAccessibleDocument(id, user);
+    const queuedDocument =
+      await this.documentsIngestionService.prepareRemoteIngestionRetry(document);
+
+    void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
+    return toDocumentResponse(queuedDocument);
   }
 
   async getFile(
@@ -245,6 +282,7 @@ export class DocumentsService {
     }
 
     await this.documentsRepository.delete({ id: document.id });
+    await this.documentsIngestionService.deleteLocalUpload(document);
 
     return {
       id: document.id,
