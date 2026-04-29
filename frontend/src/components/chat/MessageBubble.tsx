@@ -8,8 +8,12 @@ import type {
   ChatSuggestionActionDto,
 } from "../../types/chat";
 import { useAuth } from "../../context/AuthContext";
-import { fetchWithAuth } from "../../api/core";
 import { SourceCitations } from "./SourceCitations";
+import {
+  type ChatDocumentOpenTarget,
+  getChatDocumentOpenTarget,
+  openChatDocumentSource,
+} from "./chatSourceReferences";
 
 interface MessageBubbleProps {
   message: ChatMessageDto;
@@ -40,8 +44,8 @@ function normalizeMathLikeFormatting(text: string): string {
     .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1 / $2)")
     .replace(/\\lceil\s*/g, "ceil(")
     .replace(/\s*\\rceil/g, ")")
-    .replace(/\\times/g, "×")
-    .replace(/\\cdot/g, "·")
+    .replace(/\\times/g, "\u00d7")
+    .replace(/\\cdot/g, "\u00b7")
     .replace(/\\left/g, "")
     .replace(/\\right/g, "")
     .replace(/[ \t]+\n/g, "\n");
@@ -59,14 +63,20 @@ function normalizeEscapedMarkdown(text: string): string {
 
 function normalizeMojibakePunctuation(text: string): string {
   return text
-    .replace(/вЂ”|â€”/g, "-")
-    .replace(/вЂ“|â€“/g, "-")
-    .replace(/вЂ™|вЂ|â€™|â€˜/g, "'")
-    .replace(/вЂњ|вЂќ|â€œ|â€\u009d/g, '"')
-    .replace(/В°|Â°/g, "°")
-    .replace(/В·|Â·/g, "·")
-    .replace(/Г—/g, "x")
-    .replace(/Â/g, "");
+    .replace(/\u0432\u0402\u201d|\u00e2\u20ac\u201d/g, "-")
+    .replace(/\u0432\u0402\u201c|\u00e2\u20ac\u201c/g, "-")
+    .replace(
+      /\u0432\u0402\u2122|\u0432\u0402\u02dc|\u00e2\u20ac\u2122|\u00e2\u20ac\u02dc/g,
+      "'",
+    )
+    .replace(
+      /\u0432\u0402\u0459|\u0432\u0402\u045a|\u00e2\u20ac\u0153|\u00e2\u20ac\u009d/g,
+      '"',
+    )
+    .replace(/\u0412\u00b0|\u00c2\u00b0/g, "\u00b0")
+    .replace(/\u0412\u00b7|\u00c2\u00b7/g, "\u00b7")
+    .replace(/\u0413\u2014/g, "x")
+    .replace(/\u00c2/g, "");
 }
 
 function extractInlineButtonActions(text: string): {
@@ -107,13 +117,14 @@ function CitationBadge({
 }: {
   idx: number;
   citations: ChatContextReferenceDto[];
-  onOpen?: (shipId: string, manualId: string) => void;
+  onOpen?: (target: ChatDocumentOpenTarget) => void;
 }) {
   const ref = citations[idx - 1];
   const title = ref
-    ? `${ref.sourceTitle || "Document"}${ref.pageNumber ? ` — p. ${ref.pageNumber}` : ""}`
+    ? `${ref.sourceTitle || "Document"}${ref.pageNumber ? ` \u2014 p. ${ref.pageNumber}` : ""}`
     : `Source [${idx}]`;
-  const canOpen = !!(ref?.shipId && ref?.shipManualId && onOpen);
+  const openTarget = getChatDocumentOpenTarget(ref);
+  const canOpen = !!(openTarget && onOpen);
   const normalizedTitle = normalizeMojibakePunctuation(title);
 
   return (
@@ -122,14 +133,14 @@ function CitationBadge({
       title={normalizedTitle}
       role={canOpen ? "button" : undefined}
       tabIndex={canOpen ? 0 : undefined}
-      onClick={
-        canOpen ? () => onOpen(ref.shipId!, ref.shipManualId!) : undefined
-      }
+      onClick={canOpen ? () => onOpen(openTarget) : undefined}
       onKeyDown={
         canOpen
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ")
-                onOpen(ref.shipId!, ref.shipManualId!);
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onOpen(openTarget);
+              }
             }
           : undefined
       }
@@ -141,7 +152,7 @@ function CitationBadge({
 
 function useMdComponents(
   citations: ChatContextReferenceDto[],
-  onOpen?: (shipId: string, manualId: string) => void,
+  onOpen?: (target: ChatDocumentOpenTarget) => void,
 ): Components {
   return useMemo(
     () => ({
@@ -177,9 +188,10 @@ export function MessageBubble({
   const telemetryShips = Array.isArray(ragflowContext?.telemetryShips)
     ? ragflowContext.telemetryShips
         .filter(
-          (v): v is string => typeof v === "string" && v.trim().length > 0,
+          (value): value is string =>
+            typeof value === "string" && value.trim().length > 0,
         )
-        .map((v) => v.trim())
+        .map((value) => value.trim())
     : [];
   const clarificationActions = Array.isArray(ragflowContext?.clarificationActions)
     ? ragflowContext.clarificationActions.filter(
@@ -225,21 +237,8 @@ export function MessageBubble({
   }, [role, id, onRegenerate]);
 
   const handleOpenDocument = useCallback(
-    async (shipId: string, manualId: string) => {
-      if (!token) return;
-      try {
-        const res = await fetchWithAuth(
-          `ships/${shipId}/manuals/${manualId}/download`,
-          { token },
-        );
-        if (!res.ok) throw new Error("Download failed");
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      } catch {
-        // silently fail
-      }
+    (target: ChatDocumentOpenTarget) => {
+      void openChatDocumentSource(target, token);
     },
     [token],
   );
@@ -275,23 +274,23 @@ export function MessageBubble({
         )}
 
         {role === "assistant" && suggestionActions.length > 0 && (
-            <div
-              className="chat-message__suggestions"
-              aria-label="Suggested clarification actions"
-            >
-              {suggestionActions.map((action, index) => (
-                <button
-                  key={`${action.kind || "suggestion"}-${index}-${action.label}`}
-                  type="button"
-                  className={`chat-suggestion${action.kind === "all" ? " chat-suggestion--all" : ""}`}
-                  onClick={() => onSendMessage?.(action.message)}
-                  disabled={!onSendMessage || actionsDisabled}
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          )}
+          <div
+            className="chat-message__suggestions"
+            aria-label="Suggested clarification actions"
+          >
+            {suggestionActions.map((action, index) => (
+              <button
+                key={`${action.kind || "suggestion"}-${index}-${action.label}`}
+                type="button"
+                className={`chat-suggestion${action.kind === "all" ? " chat-suggestion--all" : ""}`}
+                onClick={() => onSendMessage?.(action.message)}
+                disabled={!onSendMessage || actionsDisabled}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Show citations for assistant messages that have them */}
@@ -323,7 +322,7 @@ export function MessageBubble({
             <line x1="12" y1="16" x2="12" y2="12" />
             <line x1="12" y1="8" x2="12.01" y2="8" />
           </svg>
-          No matching manual chunk for this query — answered without
+          No matching manual chunk for this query {"\u2014"} answered without
           supporting manual context
         </div>
       )}

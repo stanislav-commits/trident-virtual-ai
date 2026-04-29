@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ChatLlmService } from '../chat-llm.service';
 import { ChatConversationContext } from '../context/chat-conversation-context.types';
 import { ChatMessageEntity } from '../entities/chat-message.entity';
@@ -6,6 +7,8 @@ import { ChatSessionEntity } from '../entities/chat-session.entity';
 import { ChatTurnPlan, ChatTurnPlanAsk } from '../planning/chat-turn-plan.types';
 import { ChatTurnPlannerService } from '../planning/chat-turn-planner.service';
 import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum';
+import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
+import { ChatDocumentsResponderService } from '../responders/chat-documents-responder.service';
 import { ChatInDevelopmentResponderService } from '../responders/chat-in-development-responder.service';
 import { ChatMetricsResponderService } from '../responders/chat-metrics-responder.service';
 import { ChatSmallTalkResponderService } from '../responders/chat-small-talk-responder.service';
@@ -19,9 +22,11 @@ export class ChatTurnOrchestratorService {
   constructor(
     private readonly chatTurnPlannerService: ChatTurnPlannerService,
     private readonly chatLlmService: ChatLlmService,
+    private readonly configService: ConfigService,
     private readonly chatSmallTalkResponderService: ChatSmallTalkResponderService,
     private readonly chatWebSearchResponderService: ChatWebSearchResponderService,
     private readonly chatMetricsResponderService: ChatMetricsResponderService,
+    private readonly chatDocumentsResponderService: ChatDocumentsResponderService,
     private readonly chatInDevelopmentResponderService: ChatInDevelopmentResponderService,
   ) {}
 
@@ -36,7 +41,11 @@ export class ChatTurnOrchestratorService {
     const plan = await this.chatTurnPlannerService.plan(input.context);
     const asks = plan.asks;
 
-    if (asks.length === 1 && asks[0].responder === ChatTurnResponderKind.SMALL_TALK) {
+    if (
+      asks.length === 1 &&
+      asks[0].responder === ChatTurnResponderKind.SMALL_TALK &&
+      !this.shouldUseDocumentsResponder(asks[0])
+    ) {
       const singleResult = await this.chatSmallTalkResponderService.respond({
         plan,
         ask: asks[0],
@@ -48,10 +57,7 @@ export class ChatTurnOrchestratorService {
       return {
         content: singleResult.summary,
         ragflowContext: {
-          planner: {
-            reasoning: plan.reasoning,
-            asks,
-          },
+          planner: this.buildPlannerContext(plan),
           askResults: [singleResult],
         },
       };
@@ -69,6 +75,21 @@ export class ChatTurnOrchestratorService {
           context: input.context,
         }),
     );
+
+    if (
+      askResults.length === 1 &&
+      askResults[0].responder === ChatTurnResponderKind.DOCUMENTS
+    ) {
+      return {
+        content: askResults[0].summary,
+        ragflowContext: {
+          contextReferences: askResults[0].contextReferences ?? [],
+          planner: this.buildPlannerContext(plan),
+          askResults,
+        },
+      };
+    }
+
     const content = await this.chatLlmService.composeAskResultsReply({
       context: input.context,
       responseLanguage: plan.responseLanguage,
@@ -81,10 +102,7 @@ export class ChatTurnOrchestratorService {
         contextReferences: askResults.flatMap(
           (result) => result.contextReferences ?? [],
         ),
-        planner: {
-          reasoning: plan.reasoning,
-          asks,
-        },
+        planner: this.buildPlannerContext(plan),
         askResults,
       },
     };
@@ -96,7 +114,11 @@ export class ChatTurnOrchestratorService {
     session: ChatSessionEntity;
     messages: ChatMessageEntity[];
     context: ChatConversationContext;
-    }): Promise<ChatTurnAskResult> {
+  }): Promise<ChatTurnAskResult> {
+    if (this.shouldUseDocumentsResponder(input.ask)) {
+      return this.chatDocumentsResponderService.respond(input);
+    }
+
     switch (input.ask.responder) {
       case ChatTurnResponderKind.WEB_SEARCH:
         return this.chatWebSearchResponderService.respond(input);
@@ -140,5 +162,27 @@ export class ChatTurnOrchestratorService {
     );
 
     return results;
+  }
+
+  private buildPlannerContext(plan: ChatTurnPlan): {
+    reasoning: string;
+    asks: Array<Omit<ChatTurnPlanAsk, 'semanticRoute'>>;
+  } {
+    return {
+      reasoning: plan.reasoning,
+      asks: plan.asks.map((ask) => {
+        const { semanticRoute: _semanticRoute, ...contextAsk } = ask;
+
+        return contextAsk;
+      }),
+    };
+  }
+
+  private shouldUseDocumentsResponder(ask: ChatTurnPlanAsk): boolean {
+    return (
+      this.configService.get<boolean>('chat.documentsResponderEnabled', false) ===
+        true &&
+      ask.semanticRoute.route === ChatSemanticRoute.DOCUMENTS
+    );
   }
 }

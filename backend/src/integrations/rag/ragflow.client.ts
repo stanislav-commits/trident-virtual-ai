@@ -12,6 +12,8 @@ import {
   RagflowDocumentUploadFile,
   RagflowListDatasetsInput,
   RagflowRemoteDocumentConfigInput,
+  RagflowRetrievalInput,
+  RagflowRetrievalResponse,
 } from './ragflow.types';
 
 interface RagflowEnvelope<T> {
@@ -194,6 +196,28 @@ export class RagflowClient {
       buffer,
       contentType,
     };
+  }
+
+  async retrieveChunks(
+    input: RagflowRetrievalInput,
+  ): Promise<RagflowRetrievalResponse> {
+    return this.requestJson<RagflowRetrievalResponse>('/retrieval', {
+      method: 'POST',
+      body: {
+        question: input.question,
+        dataset_ids: input.datasetIds,
+        document_ids: input.documentIds,
+        page: input.page,
+        page_size: input.pageSize,
+        similarity_threshold: input.similarityThreshold,
+        vector_similarity_weight: input.vectorSimilarityWeight,
+        top_k: input.topK,
+        rerank_id: input.rerankId,
+        keyword: input.keyword,
+        highlight: input.highlight,
+        cross_languages: input.crossLanguages,
+      },
+    });
   }
 
   private async requestJson<T>(

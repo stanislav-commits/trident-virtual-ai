@@ -1,7 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { fetchWithAuth } from "../../api/core";
 import type { ChatContextReferenceDto } from "../../types/chat";
+import {
+  getChatDocumentOpenTarget,
+  getChatSourceGroupKey,
+  isHttpUrl,
+  openChatDocumentSource,
+} from "./chatSourceReferences";
 import "../../styles/chat.css";
 
 interface SourceCitationsProps {
@@ -23,9 +28,6 @@ export function SourceCitations({
 }: SourceCitationsProps) {
   const { token } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
-
-  const isHttpUrl = (value?: string): value is string =>
-    typeof value === "string" && /^https?:\/\//i.test(value.trim());
 
   const getDisplayTitle = (citation: ChatContextReferenceDto) => {
     const rawTitle = citation.sourceTitle?.trim();
@@ -65,39 +67,21 @@ export function SourceCitations({
   };
 
   const handleOpenDocument = useCallback(
-    async (shipId: string, manualId: string) => {
-      if (!token) return;
-      try {
-        const res = await fetchWithAuth(
-          `ships/${shipId}/manuals/${manualId}/download`,
-          { token },
-        );
-        if (!res.ok) throw new Error("Download failed");
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      } catch {
-        // silently fail — the source link just won't open
-      }
+    (citation: ChatContextReferenceDto) => {
+      const target = getChatDocumentOpenTarget(citation);
+      if (!target) return;
+
+      void openChatDocumentSource(target, token);
     },
     [token],
   );
 
-  if (!citations || citations.length === 0) {
-    return null;
-  }
-
-  // Group citations by source for cleaner display
   const groupedEntries = useMemo(
     () =>
       Object.entries(
         citations.reduce(
           (acc, citation) => {
-            const key =
-              citation.sourceUrl?.trim() ||
-              citation.sourceTitle?.trim() ||
-              "Unknown";
+            const key = getChatSourceGroupKey(citation);
             if (!acc[key]) {
               acc[key] = [];
             }
@@ -109,6 +93,10 @@ export function SourceCitations({
       ),
     [citations],
   );
+
+  if (!citations || citations.length === 0) {
+    return null;
+  }
 
   const hasHiddenSources =
     mode === "inline" && groupedEntries.length > DEFAULT_VISIBLE_SOURCES;
@@ -124,43 +112,43 @@ export function SourceCitations({
       <div className="chat-sources__header">Sources</div>
       <div className="chat-sources__list">
         {visibleEntries.map(([source, items]) => {
-          const canOpenManual = !!(items[0]?.shipId && items[0]?.shipManualId);
-          const sourceUrl = isHttpUrl(items[0]?.sourceUrl)
-            ? items[0].sourceUrl!.trim()
+          const primaryCitation = items[0];
+          if (!primaryCitation) {
+            return null;
+          }
+
+          const canOpenDocument = !!getChatDocumentOpenTarget(primaryCitation);
+          const sourceUrl = isHttpUrl(primaryCitation.sourceUrl)
+            ? primaryCitation.sourceUrl.trim()
             : null;
-          const displayTitle = getDisplayTitle(items[0]);
-          const displayUrl = getDisplayUrl(items[0]);
+          const displayTitle = getDisplayTitle(primaryCitation);
+          const displayUrl = getDisplayUrl(primaryCitation);
           const pages = [
             ...new Set(
               items
-                .map((i) => i.pageNumber)
-                .filter((p): p is number => p != null),
+                .map((item) => item.pageNumber)
+                .filter((page): page is number => page != null),
             ),
           ].sort((a, b) => a - b);
 
           return (
             <div
               key={source}
-              className={`chat-source-item${canOpenManual ? " chat-source-item--clickable" : ""}`}
-              role={canOpenManual ? "button" : undefined}
-              tabIndex={canOpenManual ? 0 : undefined}
+              className={`chat-source-item${canOpenDocument ? " chat-source-item--clickable" : ""}`}
+              role={canOpenDocument ? "button" : undefined}
+              tabIndex={canOpenDocument ? 0 : undefined}
               onClick={
-                canOpenManual
-                  ? () =>
-                      handleOpenDocument(
-                        items[0].shipId!,
-                        items[0].shipManualId!,
-                      )
+                canOpenDocument
+                  ? () => handleOpenDocument(primaryCitation)
                   : undefined
               }
               onKeyDown={
-                canOpenManual
-                  ? (e) => {
-                      if (e.key === "Enter" || e.key === " ")
-                        handleOpenDocument(
-                          items[0].shipId!,
-                          items[0].shipManualId!,
-                        );
+                canOpenDocument
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleOpenDocument(primaryCitation);
+                      }
                     }
                   : undefined
               }
@@ -173,7 +161,7 @@ export function SourceCitations({
                       href={sourceUrl}
                       target="_blank"
                       rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
                     >
                       {displayTitle}
                     </a>
@@ -192,19 +180,19 @@ export function SourceCitations({
                       p.&nbsp;{pages.join(", ")}
                     </span>
                   )}
-                  {(canOpenManual || sourceUrl) && (
+                  {(canOpenDocument || sourceUrl) && (
                     <span
                       className="chat-source-item__open-icon"
-                      title={canOpenManual ? "Open document" : "Open source"}
+                      title={canOpenDocument ? "Open document" : "Open source"}
                     >
-                      ↗
+                      {"\u2197"}
                     </span>
                   )}
                 </div>
               </div>
-              {items[0]?.snippet && (
+              {primaryCitation.snippet && (
                 <div className="chat-source-item__snippet">
-                  {items[0].snippet}
+                  {primaryCitation.snippet}
                 </div>
               )}
               {items.length > 1 && (

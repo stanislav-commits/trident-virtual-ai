@@ -1,6 +1,8 @@
 // Citation data from backend ChatContextReference
 export interface ChatContextReferenceDto {
   id: string;
+  sourceType?: "document" | "metric" | "web" | "legacy_manual" | (string & {});
+  documentId?: string;
   shipManualId?: string;
   shipId?: string | null;
   chunkId?: string;

@@ -12,6 +12,19 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseBoolean(value: string | undefined, fallback = false): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+
+  return fallback;
+}
+
 export default function configuration() {
   const db = getDatabaseEnv();
 
@@ -27,6 +40,12 @@ export default function configuration() {
     auth: {
       jwtSecret: process.env.JWT_SECRET ?? 'change-me-in-production',
       jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
+    },
+    chat: {
+      documentsResponderEnabled: parseBoolean(
+        process.env.CHAT_DOCUMENTS_RESPONDER_ENABLED,
+        false,
+      ),
     },
     database: {
       host: db.host,

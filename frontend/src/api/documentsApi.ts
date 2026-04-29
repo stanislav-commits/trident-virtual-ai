@@ -105,6 +105,7 @@ export interface ListDocumentsParams {
   shipId?: string;
   docClass?: DocumentDocClass;
   parseStatus?: DocumentParseStatus;
+  name?: string;
   page?: number;
   pageSize?: number;
 }
@@ -138,6 +139,8 @@ function withDocumentListQuery(path: string, params: ListDocumentsParams): strin
   if (params.shipId) query.set("shipId", params.shipId);
   if (params.docClass) query.set("docClass", params.docClass);
   if (params.parseStatus) query.set("parseStatus", params.parseStatus);
+  const trimmedName = params.name?.trim();
+  if (trimmedName) query.set("name", trimmedName);
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("pageSize", String(params.pageSize));
 
