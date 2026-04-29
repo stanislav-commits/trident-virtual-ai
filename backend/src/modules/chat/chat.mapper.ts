@@ -3,6 +3,8 @@ import { ChatSessionEntity } from './entities/chat-session.entity';
 
 export interface ChatContextReferenceResponseDto {
   id: string;
+  sourceType?: string;
+  documentId?: string;
   shipManualId?: string;
   shipId?: string | null;
   chunkId?: string;
@@ -126,6 +128,10 @@ function normalizeContextReference(
 
   return {
     id,
+    sourceType:
+      typeof entry.sourceType === 'string' ? entry.sourceType : undefined,
+    documentId:
+      typeof entry.documentId === 'string' ? entry.documentId : undefined,
     shipManualId:
       typeof entry.shipManualId === 'string' ? entry.shipManualId : undefined,
     shipId:
