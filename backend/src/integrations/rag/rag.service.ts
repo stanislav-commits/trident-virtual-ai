@@ -9,6 +9,8 @@ import {
   RagflowDocumentUploadFile,
   RagflowListDatasetsInput,
   RagflowRemoteDocumentConfigInput,
+  RagflowRetrievalInput,
+  RagflowRetrievalResponse,
 } from './ragflow.types';
 import { RagflowClient } from './ragflow.client';
 
@@ -115,6 +117,10 @@ export class RagService {
     documentId: string,
   ): Promise<RagflowDocumentDownload> {
     return this.ragflowClient.downloadDocumentFromDataset(datasetId, documentId);
+  }
+
+  retrieveChunks(input: RagflowRetrievalInput): Promise<RagflowRetrievalResponse> {
+    return this.ragflowClient.retrieveChunks(input);
   }
 
   private async findAccessibleDataset(
