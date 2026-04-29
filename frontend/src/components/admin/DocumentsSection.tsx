@@ -136,8 +136,10 @@ export function DocumentsSection() {
         .filter(
           (document) =>
             ACTIVE_PARSE_STATUSES.includes(document.parseStatus) &&
-            Boolean(document.ragflowDatasetId) &&
-            Boolean(document.ragflowDocumentId),
+            (document.parseStatus === "uploaded" ||
+              document.parseStatus === "pending_config" ||
+              (Boolean(document.ragflowDatasetId) &&
+                Boolean(document.ragflowDocumentId))),
         )
         .map((document) => document.id),
     [documents],

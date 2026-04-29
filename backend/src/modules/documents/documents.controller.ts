@@ -98,6 +98,11 @@ export class DocumentsController {
     return this.documentsService.syncStatus(id, user);
   }
 
+  @Post(':id/ingestion-retry')
+  retryIngestion(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.documentsService.retryIngestion(id, user);
+  }
+
   @Delete(':id')
   delete(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.documentsService.delete(id, user);
