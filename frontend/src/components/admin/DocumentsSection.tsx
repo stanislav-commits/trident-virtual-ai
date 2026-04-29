@@ -76,6 +76,8 @@ export function DocumentsSection() {
   const [parseStatusFilter, setParseStatusFilter] = useState<
     DocumentParseStatus | typeof ALL_FILTER
   >(ALL_FILTER);
+  const [nameSearchInput, setNameSearchInput] = useState("");
+  const [nameSearch, setNameSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -100,6 +102,7 @@ export function DocumentsSection() {
     docClass: docClassFilter === ALL_FILTER ? undefined : docClassFilter,
     parseStatus:
       parseStatusFilter === ALL_FILTER ? undefined : parseStatusFilter,
+    name: nameSearch || undefined,
     page,
     pageSize,
     enabled: Boolean(token),
@@ -328,7 +331,22 @@ export function DocumentsSection() {
 
   useEffect(() => {
     clearSelectedDocuments();
-  }, [shipFilter, docClassFilter, parseStatusFilter, page, pageSize]);
+  }, [shipFilter, docClassFilter, parseStatusFilter, nameSearch, page, pageSize]);
+
+  useEffect(() => {
+    const trimmed = nameSearchInput.trim();
+
+    if (trimmed === nameSearch) {
+      return undefined;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setNameSearch(trimmed);
+      setPage(1);
+    }, 300);
+
+    return () => window.clearTimeout(timerId);
+  }, [nameSearchInput, nameSearch]);
 
   return (
     <section className="admin-panel__section">
@@ -433,6 +451,20 @@ export function DocumentsSection() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="admin-panel__field">
+            <label className="admin-panel__field-label" htmlFor="documents-name">
+              Name
+            </label>
+            <input
+              id="documents-name"
+              type="search"
+              className="admin-panel__input"
+              placeholder="Search by document name"
+              value={nameSearchInput}
+              onChange={(event) => setNameSearchInput(event.target.value)}
+            />
           </div>
         </div>
       </div>

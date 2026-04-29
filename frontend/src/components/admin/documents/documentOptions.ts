@@ -32,7 +32,7 @@ export const DOCUMENT_PARSE_PROFILE_LABELS: Record<
   string
 > = {
   manual_long: "Manual long",
-  procedure_bunkering: "Procedure bunkering",
+  procedure_bunkering: "Historical procedure profile",
   safety_hard_parse: "Safety hard parse",
   regulation_baseline: "Regulation baseline",
 };

@@ -10,6 +10,7 @@ interface UseDocumentsAdminDataOptions {
   shipId?: string;
   docClass?: DocumentDocClass;
   parseStatus?: DocumentParseStatus;
+  name?: string;
   page: number;
   pageSize: number;
   enabled: boolean;
@@ -52,6 +53,7 @@ export function useDocumentsAdminData(
         shipId: options.shipId,
         docClass: options.docClass,
         parseStatus: options.parseStatus,
+        name: options.name,
         page: options.page,
         pageSize: options.pageSize,
       });
@@ -77,6 +79,7 @@ export function useDocumentsAdminData(
   }, [
     options.docClass,
     options.enabled,
+    options.name,
     options.page,
     options.pageSize,
     options.parseStatus,
