@@ -1,4 +1,13 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
 import { DocumentParseStatus } from '../enums/document-parse-status.enum';
 
@@ -14,6 +23,14 @@ export class ListDocumentsQueryDto {
   @IsOptional()
   @IsEnum(DocumentParseStatus)
   parseStatus?: DocumentParseStatus;
+
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() || undefined : value,
+  )
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string;
 
   @IsOptional()
   @IsInt()

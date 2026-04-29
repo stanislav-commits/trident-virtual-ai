@@ -5,8 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
-import { SourceReferenceDto } from '../../common/dto/source-reference.dto';
+import { FindOptionsWhere, ILike, Repository } from 'typeorm';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { RagService } from '../../integrations/rag/rag.service';
@@ -18,6 +17,7 @@ import {
   DocumentRemoteDeleteStatus,
 } from './dto/delete-documents.dto';
 import { DocumentListResponseDto } from './dto/document-list-response.dto';
+import { DocumentRetrievalResponseDto } from './dto/document-retrieval-response.dto';
 import { DocumentResponseDto } from './dto/document-response.dto';
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto';
 import { SearchDocumentsDto } from './dto/search-documents.dto';
@@ -37,6 +37,7 @@ import {
   buildEffectiveParserConfig,
   getParsingProfileForDocClass,
 } from './parsing/document-parsing-profiles';
+import { DocumentsRetrievalService } from './retrieval/documents-retrieval.service';
 
 export interface DocumentFilePayload {
   buffer: Buffer;
@@ -52,6 +53,7 @@ export class DocumentsService {
     @InjectRepository(ShipEntity)
     private readonly shipsRepository: Repository<ShipEntity>,
     private readonly documentsIngestionService: DocumentsIngestionService,
+    private readonly documentsRetrievalService: DocumentsRetrievalService,
     private readonly ragService: RagService,
   ) {}
 
@@ -76,6 +78,10 @@ export class DocumentsService {
     if (shipId) where.shipId = shipId;
     if (input.docClass) where.docClass = input.docClass;
     if (input.parseStatus) where.parseStatus = input.parseStatus;
+    const trimmedName = input.name?.trim();
+    if (trimmedName) {
+      where.originalFileName = ILike(`%${escapeLikePattern(trimmedName)}%`);
+    }
 
     const total = await this.documentsRepository.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -212,28 +218,8 @@ export class DocumentsService {
     };
   }
 
-  async search(input: SearchDocumentsDto): Promise<{
-    summary: string;
-    data: Record<string, unknown>;
-    references: SourceReferenceDto[];
-  }> {
-    return {
-      summary:
-        'Documentation search flow is connected to the module boundary. Semantic retrieval and citation extraction are the next implementation step.',
-      data: {
-        normalizedQuestion: input.question,
-        shipId: input.shipId ?? null,
-        category: input.category ?? null,
-        rag: this.ragService.getStatus(),
-      },
-      references: [
-        {
-          source: 'documents',
-          title: 'Documentation corpus',
-          snippet: 'RAG retrieval is not implemented yet.',
-        },
-      ],
-    };
+  async search(input: SearchDocumentsDto): Promise<DocumentRetrievalResponseDto> {
+    return this.documentsRetrievalService.search(input);
   }
 
   private async deleteDocumentEntity(
@@ -369,4 +355,8 @@ export class DocumentsService {
 
     return document;
   }
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
