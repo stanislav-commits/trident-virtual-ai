@@ -1652,18 +1652,19 @@
 }
 
 .admin-panel__row {
-  transition: background var(--transition-fast);
+  transition: background 0.2s ease;
 }
 
 .admin-panel__row:hover .admin-panel__td {
-  background: var(--table-row-hover);
+  background: rgba(255, 255, 255, 0.028);
 }
 
 .admin-panel__td {
   padding: 13px 18px;
-  border-bottom: 1px solid var(--chat-border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   vertical-align: middle;
   color: var(--chat-text);
+  transition: background 0.2s ease;
 }
 
 .admin-panel__row:last-child .admin-panel__td {
@@ -1718,7 +1719,8 @@
 }
 
 .admin-panel__documents-card {
-  padding: 14px;
+  padding: 12px;
+  overflow: visible;
 }
 
 .admin-panel__documents-card .admin-panel__metrics-toolbar-strip {
@@ -1740,86 +1742,73 @@
 }
 
 .admin-panel__documents-table-wrap {
-  border: 1px solid var(--chat-border);
-  border-radius: 12px;
-  background: var(--chat-surface);
+  overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.015);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
 }
 
 .admin-panel__table--documents {
-  min-width: 1120px;
+  min-width: 0;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
 }
 
 .admin-panel__table--documents .admin-panel__th {
-  padding: 12px 16px;
-  background: var(--chat-surface-2);
+  padding: 13px 16px;
+  background: rgba(255, 255, 255, 0.035);
+  white-space: nowrap;
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  color: rgba(255, 255, 255, 0.38);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .admin-panel__table--documents .admin-panel__td {
-  padding: 12px 16px;
+  min-width: 0;
+  padding: 14px 16px;
   line-height: 1.45;
   vertical-align: middle;
+  border-bottom-color: rgba(255, 255, 255, 0.04);
+}
+
+.admin-panel__table--documents .admin-panel__th:first-child {
+  border-top-left-radius: 12px;
+}
+
+.admin-panel__table--documents .admin-panel__th:last-child {
+  border-top-right-radius: 12px;
 }
 
 .admin-panel__documents-col--select {
-  width: 48px;
+  width: 50px;
 }
 
 .admin-panel__documents-col--file {
-  width: 26%;
+  width: 40%;
 }
 
 .admin-panel__documents-col--ship {
-  width: 14%;
-}
-
-.admin-panel__documents-col--class {
-  width: 12%;
-}
-
-.admin-panel__documents-col--status {
   width: 16%;
 }
 
-.admin-panel__documents-col--profile {
-  width: 11%;
+.admin-panel__documents-col--class {
+  width: 14%;
 }
 
-.admin-panel__documents-col--chunks {
-  width: 80px;
-}
-
-.admin-panel__documents-col--updated {
-  width: 148px;
+.admin-panel__documents-col--status {
+  width: 22%;
 }
 
 .admin-panel__documents-col--actions {
-  width: 64px;
+  width: 58px;
 }
 
 .admin-panel__th--numeric,
 .admin-panel__td--numeric {
   text-align: right;
-}
-
-.admin-panel__th--actions-sticky,
-.admin-panel__td--actions-sticky {
-  position: sticky;
-  right: 0;
-  z-index: 1;
-  background: var(--chat-surface);
-  box-shadow: -8px 0 12px -10px rgba(0, 0, 0, 0.35);
-}
-
-.admin-panel__th--actions-sticky {
-  background: var(--chat-surface-2);
-}
-
-.admin-panel__row--selected .admin-panel__td--actions-sticky {
-  box-shadow: -8px 0 12px -10px rgba(0, 0, 0, 0.35),
-    inset 0 0 0 999px rgba(59, 130, 246, 0.045);
 }
 
 .admin-panel__visually-hidden {
@@ -1836,6 +1825,19 @@
 
 .admin-panel__td--document-name {
   min-width: 0;
+}
+
+.admin-panel__td--document-ship,
+.admin-panel__td--document-class,
+.admin-panel__td--status {
+  min-width: 0;
+}
+
+.admin-panel__document-file-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .admin-panel__document-name-button {
@@ -1866,18 +1868,113 @@
   display: block;
   max-width: 100%;
   font-weight: 650;
+  font-size: 0.875rem;
+  letter-spacing: -0.01em;
   color: var(--chat-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+
+.admin-panel__document-file-meta,
+.admin-panel__document-status-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 9px;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.admin-panel__document-file-meta span,
+.admin-panel__document-status-meta span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.admin-panel__document-file-meta span + span::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  margin: 0 9px 2px 0;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.admin-panel__document-mobile-class {
+  display: none;
+}
+
+.admin-panel__document-file-meta .admin-panel__document-mobile-class {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.admin-panel__document-primary-text,
+.admin-panel__document-secondary-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-panel__document-primary-text {
+  color: var(--chat-text);
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: -0.005em;
+}
+
+.admin-panel__document-secondary-text {
+  margin-top: 3px;
+  color: var(--chat-text-subtle);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.admin-panel__document-class-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 4px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
 .admin-panel__document-status-cell {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 5px;
   min-width: 0;
+}
+
+.admin-panel__document-status-cell .admin-panel__badge {
+  min-height: 26px;
+  padding: 0 11px;
+  font-size: 0.7rem;
+  border-radius: 8px;
+  letter-spacing: 0.04em;
 }
 
 .admin-panel__document-status-row {
@@ -1905,6 +2002,14 @@
   color: var(--color-error);
   font-size: 0.75rem;
   line-height: 1.35;
+}
+
+.admin-panel__document-status-meta {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--chat-text-muted);
 }
 
 .admin-panel__document-status-note--error {
@@ -1937,7 +2042,52 @@
 
 .admin-panel__td--actions {
   white-space: nowrap;
-  text-align: right;
+  text-align: center;
+}
+
+.admin-panel__document-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-panel__document-delete-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.admin-panel__document-delete-action:hover:not(:disabled) {
+  border-color: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.08);
+  color: #f87171;
+  transform: scale(1.05);
+}
+
+.admin-panel__document-delete-action:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-color: var(--color-error-border);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--color-error);
+}
+
+.admin-panel__document-delete-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .admin-panel__row-action-icon {
@@ -6286,6 +6436,48 @@
   }
 }
 
+@media (max-width: 768px) {
+  .admin-panel__table--documents .admin-panel__th:nth-child(1),
+  .admin-panel__table--documents .admin-panel__td:nth-child(1),
+  .admin-panel__table--documents .admin-panel__th:nth-child(2),
+  .admin-panel__table--documents .admin-panel__td:nth-child(2),
+  .admin-panel__table--documents .admin-panel__th:nth-child(4),
+  .admin-panel__table--documents .admin-panel__td:nth-child(4),
+  .admin-panel__table--documents .admin-panel__th:nth-child(5),
+  .admin-panel__table--documents .admin-panel__td:nth-child(5),
+  .admin-panel__table--documents .admin-panel__th:nth-child(6),
+  .admin-panel__table--documents .admin-panel__td:nth-child(6) {
+    display: table-cell;
+  }
+
+  .admin-panel__table--documents .admin-panel__th:nth-child(3),
+  .admin-panel__table--documents .admin-panel__td:nth-child(3) {
+    display: none;
+  }
+
+  .admin-panel__table--documents .admin-panel__th,
+  .admin-panel__table--documents .admin-panel__td {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .admin-panel__documents-col--file {
+    width: 46%;
+  }
+
+  .admin-panel__documents-col--ship {
+    width: 0;
+  }
+
+  .admin-panel__documents-col--class {
+    width: 16%;
+  }
+
+  .admin-panel__documents-col--status {
+    width: 28%;
+  }
+}
+
 @media (max-width: 720px) {
   .admin-panel__table--documents .admin-panel__th:nth-child(2),
   .admin-panel__table--documents .admin-panel__td:nth-child(2) {
@@ -6354,5 +6546,57 @@
 
   .admin-panel__tag-links-toolbar-selects .admin-panel__select {
     flex: 1 1 180px;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-panel__table--documents .admin-panel__th:nth-child(4),
+  .admin-panel__table--documents .admin-panel__td:nth-child(4) {
+    display: none;
+  }
+
+  .admin-panel__document-mobile-class {
+    display: inline;
+  }
+
+  .admin-panel__documents-col--select,
+  .admin-panel__documents-col--actions {
+    width: 40px;
+  }
+
+  .admin-panel__documents-col--file {
+    width: auto;
+  }
+
+  .admin-panel__documents-col--class {
+    width: 0;
+  }
+
+  .admin-panel__documents-col--status {
+    width: 96px;
+  }
+
+  .admin-panel__table--documents .admin-panel__th,
+  .admin-panel__table--documents .admin-panel__td {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .admin-panel__table--documents .admin-panel__th--select,
+  .admin-panel__table--documents .admin-panel__td--select,
+  .admin-panel__table--documents .admin-panel__th--actions,
+  .admin-panel__table--documents .admin-panel__td--actions {
+    width: 40px;
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .admin-panel__document-status-meta {
+    display: none;
+  }
+
+  .admin-panel__document-delete-action {
+    width: 30px;
+    height: 30px;
   }
 }
