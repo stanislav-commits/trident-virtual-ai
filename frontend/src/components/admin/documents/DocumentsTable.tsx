@@ -1,6 +1,10 @@
+import type {
+  DocumentDocClass,
+  DocumentListItem,
+  DocumentParseStatus,
+} from "../../../api/documentsApi";
 import type { ShipSummaryItem } from "../../../api/shipsApi";
-import type { DocumentListItem, DocumentParseStatus } from "../../../api/documentsApi";
-import { TrashIcon } from "../AdminPanelIcons";
+import { DocumentRowActions } from "./DocumentRowActions";
 import {
   getDocumentClassLabel,
   getDocumentParseProfileLabel,
@@ -9,7 +13,10 @@ import {
 
 interface DocumentsTableProps {
   documents: DocumentListItem[];
-  shipsById: Map<string, Pick<ShipSummaryItem, "id" | "name" | "organizationName">>;
+  shipsById: Map<
+    string,
+    Pick<ShipSummaryItem, "id" | "name" | "organizationName">
+  >;
   selectedDocumentIds: Set<string>;
   allPageDocumentsSelected: boolean;
   onTogglePageSelection: () => void;
@@ -20,12 +27,18 @@ interface DocumentsTableProps {
   deletingDocumentIds: Set<string>;
 }
 
-const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+const fullDateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "short",
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
+});
+
+const compactDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
 });
 
 const STATUS_BADGE_CLASS: Record<DocumentParseStatus, string> = {
@@ -38,24 +51,57 @@ const STATUS_BADGE_CLASS: Record<DocumentParseStatus, string> = {
   reparse_required: "admin-panel__badge--manual-cancel",
 };
 
-function formatUpdatedAt(value: string): string {
+function formatDateTime(value: string): string {
   const parsedDate = new Date(value);
   return Number.isNaN(parsedDate.getTime())
     ? "-"
-    : dateTimeFormatter.format(parsedDate);
+    : fullDateTimeFormatter.format(parsedDate);
 }
 
-function getShipLabel(
+function formatCompactDate(value: string): string {
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime())
+    ? "-"
+    : compactDateFormatter.format(parsedDate);
+}
+
+function getShipDisplay(
   shipId: string,
   shipsById: DocumentsTableProps["shipsById"],
-): string {
+): { name: string; organizationName?: string } {
   const ship = shipsById.get(shipId);
 
   if (ship) {
-    return ship.organizationName ? `${ship.name} (${ship.organizationName})` : ship.name;
+    return {
+      name: ship.name,
+      organizationName: ship.organizationName ?? undefined,
+    };
   }
 
-  return shipId.slice(0, 8);
+  return { name: shipId.slice(0, 8) };
+}
+
+function getCompactParseProfileLabel(document: DocumentListItem): string {
+  return getDocumentParseProfileLabel(document.parseProfile).replace(
+    /\s+profile$/i,
+    "",
+  );
+}
+
+function getClassChipLabel(docClass: DocumentDocClass): string {
+  if (docClass === "historical_procedure") {
+    return "Historical Proc.";
+  }
+
+  return getDocumentClassLabel(docClass);
+}
+
+function formatChunkCount(chunkCount: number | null): string | null {
+  if (chunkCount === null) {
+    return null;
+  }
+
+  return `${chunkCount.toLocaleString()} chunk${chunkCount === 1 ? "" : "s"}`;
 }
 
 function getParseProgressPercent(document: DocumentListItem): number | null {
@@ -78,11 +124,19 @@ interface DocumentStatusCellProps {
   document: DocumentListItem;
 }
 
+function DocumentStatusMeta({ document }: DocumentStatusCellProps) {
+  return (
+    <span className="admin-panel__document-status-meta">
+      {getCompactParseProfileLabel(document)}
+    </span>
+  );
+}
+
 function DocumentStatusCell({ document }: DocumentStatusCellProps) {
   const label = getDocumentParseStatusLabel(document.parseStatus);
   const badgeClass = `admin-panel__badge ${STATUS_BADGE_CLASS[document.parseStatus]}`;
   const parsedAtTitle = document.parsedAt
-    ? `Parsed ${formatUpdatedAt(document.parsedAt)}`
+    ? `Parsed ${formatDateTime(document.parsedAt)}`
     : undefined;
 
   if (document.parseStatus === "parsing") {
@@ -114,6 +168,7 @@ function DocumentStatusCell({ document }: DocumentStatusCellProps) {
             aria-label="Parsing in progress"
           />
         )}
+        <DocumentStatusMeta document={document} />
       </div>
     );
   }
@@ -130,14 +185,17 @@ function DocumentStatusCell({ document }: DocumentStatusCellProps) {
             {document.parseError}
           </span>
         )}
+        <DocumentStatusMeta document={document} />
       </div>
     );
   }
 
   return (
-    <span className={badgeClass} title={parsedAtTitle}>
-      {label}
-    </span>
+    <div className="admin-panel__document-status-cell">
+      <span className={badgeClass} title={parsedAtTitle}>
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -162,9 +220,6 @@ export function DocumentsTable({
           <col className="admin-panel__documents-col--ship" />
           <col className="admin-panel__documents-col--class" />
           <col className="admin-panel__documents-col--status" />
-          <col className="admin-panel__documents-col--profile" />
-          <col className="admin-panel__documents-col--chunks" />
-          <col className="admin-panel__documents-col--updated" />
           <col className="admin-panel__documents-col--actions" />
         </colgroup>
         <thead>
@@ -181,11 +236,8 @@ export function DocumentsTable({
             <th className="admin-panel__th">File name</th>
             <th className="admin-panel__th">Ship</th>
             <th className="admin-panel__th">Class</th>
-            <th className="admin-panel__th">Parse status</th>
-            <th className="admin-panel__th">Parse profile</th>
-            <th className="admin-panel__th admin-panel__th--numeric">Chunks</th>
-            <th className="admin-panel__th">Updated</th>
-            <th className="admin-panel__th admin-panel__th--actions admin-panel__th--actions-sticky">
+            <th className="admin-panel__th">Status</th>
+            <th className="admin-panel__th admin-panel__th--actions">
               <span className="admin-panel__visually-hidden">Actions</span>
             </th>
           </tr>
@@ -198,8 +250,24 @@ export function DocumentsTable({
               document.ragflowDatasetId && document.ragflowDocumentId,
             );
             const fileTitle = document.mimeType
-              ? `${document.originalFileName} • ${document.mimeType}`
+              ? `${document.originalFileName} - ${document.mimeType}`
               : document.originalFileName;
+            const shipDisplay = getShipDisplay(document.shipId, shipsById);
+            const documentClassLabel = getDocumentClassLabel(document.docClass);
+            const documentClassChipLabel = getClassChipLabel(document.docClass);
+            const updatedAtLabel = formatCompactDate(document.updatedAt);
+            const updatedAtTitle = formatDateTime(document.updatedAt);
+            const fileMetaItems = [
+              {
+                label: `Updated ${updatedAtLabel}`,
+                title: updatedAtTitle,
+              },
+              {
+                label: formatChunkCount(document.chunkCount),
+              },
+            ].filter((item): item is { label: string; title?: string } =>
+              Boolean(item.label),
+            );
 
             return (
               <tr
@@ -217,49 +285,52 @@ export function DocumentsTable({
                   />
                 </td>
                 <td className="admin-panel__td admin-panel__td--document-name">
-                  <button
-                    type="button"
-                    className="admin-panel__document-name-button"
-                    disabled={!canView || openingDocumentId === document.id}
-                    onClick={() => onViewDocument(document)}
-                    title={canView ? `Open ${fileTitle}` : fileTitle}
+                  <div className="admin-panel__document-file-cell">
+                    <button
+                      type="button"
+                      className="admin-panel__document-name-button"
+                      disabled={!canView || openingDocumentId === document.id}
+                      onClick={() => onViewDocument(document)}
+                      title={canView ? `Open ${fileTitle}` : fileTitle}
+                    >
+                      <span className="admin-panel__document-name-text">
+                        {document.originalFileName}
+                      </span>
+                    </button>
+                    <div className="admin-panel__document-file-meta">
+                      {fileMetaItems.map((item) => (
+                        <span key={item.label} title={item.title}>
+                          {item.label}
+                        </span>
+                      ))}
+                      <span className="admin-panel__document-mobile-class">
+                        {documentClassChipLabel}
+                      </span>
+                    </div>
+                  </div>
+                </td>
+                <td className="admin-panel__td admin-panel__td--document-ship">
+                  <span className="admin-panel__document-primary-text">
+                    {shipDisplay.name}
+                  </span>
+                </td>
+                <td className="admin-panel__td admin-panel__td--document-class">
+                  <span
+                    className="admin-panel__document-class-pill"
+                    title={documentClassLabel}
                   >
-                    <span className="admin-panel__document-name-text">
-                      {document.originalFileName}
-                    </span>
-                  </button>
-                </td>
-                <td className="admin-panel__td">
-                  {getShipLabel(document.shipId, shipsById)}
-                </td>
-                <td className="admin-panel__td">
-                  <span className="admin-panel__badge">
-                    {getDocumentClassLabel(document.docClass)}
+                    {documentClassChipLabel}
                   </span>
                 </td>
                 <td className="admin-panel__td admin-panel__td--status">
                   <DocumentStatusCell document={document} />
                 </td>
-                <td className="admin-panel__td admin-panel__td--serial">
-                  {getDocumentParseProfileLabel(document.parseProfile)}
-                </td>
-                <td className="admin-panel__td admin-panel__td--serial admin-panel__td--numeric">
-                  {document.chunkCount ?? "-"}
-                </td>
-                <td className="admin-panel__td admin-panel__td--serial">
-                  {formatUpdatedAt(document.updatedAt)}
-                </td>
-                <td className="admin-panel__td admin-panel__td--actions admin-panel__td--actions-sticky">
-                  <button
-                    type="button"
-                    className="admin-panel__row-action-icon admin-panel__row-action-icon--danger"
-                    disabled={isDeleting}
-                    onClick={() => onRequestDelete(document)}
-                    aria-label={`Delete ${document.originalFileName}`}
-                    title={isDeleting ? "Deleting..." : "Delete document"}
-                  >
-                    <TrashIcon />
-                  </button>
+                <td className="admin-panel__td admin-panel__td--actions">
+                  <DocumentRowActions
+                    document={document}
+                    isDeleting={isDeleting}
+                    onRequestDelete={onRequestDelete}
+                  />
                 </td>
               </tr>
             );
