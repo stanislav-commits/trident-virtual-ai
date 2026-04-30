@@ -33,7 +33,7 @@ export const DOCUMENT_PARSE_PROFILE_LABELS: Record<
 > = {
   manual_long: "Manual long",
   procedure_bunkering: "Historical procedure profile",
-  safety_hard_parse: "Safety hard parse",
+  safety_hard_parse: "Certificate parse profile",
   regulation_baseline: "Regulation baseline",
 };
 
