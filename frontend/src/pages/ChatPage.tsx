@@ -292,6 +292,8 @@ export function ChatPage() {
                 value={inputValue}
                 onChange={setInputValue}
                 onSend={() => handleSend()}
+                token={token}
+                sessionId={activeSessionId}
                 disabled={isDisabled}
                 placeholder="Type a message..."
               />
@@ -323,6 +325,8 @@ export function ChatPage() {
               value={inputValue}
               onChange={setInputValue}
               onSend={() => handleSend()}
+              token={token}
+              sessionId={activeSessionId}
               disabled={isDisabled}
               placeholder="Start a new conversation..."
             />
