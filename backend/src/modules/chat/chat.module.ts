@@ -27,6 +27,8 @@ import { ChatInDevelopmentResponderService } from './responders/chat-in-developm
 import { ChatMetricsResponderService } from './responders/chat-metrics-responder.service';
 import { ChatSmallTalkResponderService } from './responders/chat-small-talk-responder.service';
 import { ChatWebSearchResponderService } from './responders/chat-web-search-responder.service';
+import { ChatVoiceController } from './voice/chat-voice.controller';
+import { ChatVoiceTranscriptionService } from './voice/chat-voice-transcription.service';
 
 @Module({
   imports: [
@@ -41,7 +43,7 @@ import { ChatWebSearchResponderService } from './responders/chat-web-search-resp
       ChatSessionMemoryEntity,
     ]),
   ],
-  controllers: [ChatController],
+  controllers: [ChatController, ChatVoiceController],
   providers: [
     ChatSessionsService,
     ChatMessagesService,
@@ -61,6 +63,7 @@ import { ChatWebSearchResponderService } from './responders/chat-web-search-resp
     ChatMetricsResponderService,
     ChatDocumentsResponderService,
     ChatInDevelopmentResponderService,
+    ChatVoiceTranscriptionService,
   ],
   exports: [ChatSessionsService, ChatMessagesService],
 })
