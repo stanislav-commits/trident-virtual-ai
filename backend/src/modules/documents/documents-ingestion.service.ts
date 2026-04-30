@@ -19,7 +19,9 @@ import { DocumentTimeScope } from './enums/document-time-scope.enum';
 import { toDocumentResponse } from './documents.mapper';
 import { UploadedDocumentFile } from './documents-upload.types';
 import { DocumentsUploadStorageService } from './documents-upload-storage.service';
+import { DocumentsParseDrainService } from './documents-parse-drain.service';
 import { DocumentsParseDispatcherService } from './documents-parse-dispatcher.service';
+import { DocumentsParseStatusSyncService } from './documents-parse-status-sync.service';
 import {
   applyParsingProfile,
   buildDocumentMetadata,
@@ -41,6 +43,8 @@ export class DocumentsIngestionService {
     private readonly shipsRepository: Repository<ShipEntity>,
     private readonly ragService: RagService,
     private readonly parseDispatcher: DocumentsParseDispatcherService,
+    private readonly parseDrain: DocumentsParseDrainService,
+    private readonly parseStatusSync: DocumentsParseStatusSyncService,
     private readonly uploadStorage: DocumentsUploadStorageService,
   ) {}
 
@@ -175,6 +179,7 @@ export class DocumentsIngestionService {
       const savedDocument = await this.documentsRepository.save(document);
 
       await this.parseDispatcher.dispatchPendingParses();
+      this.parseDrain.wake();
       await this.reloadDocument(savedDocument);
     } catch (error) {
       document.parseStatus = DocumentParseStatus.FAILED;
@@ -268,6 +273,7 @@ export class DocumentsIngestionService {
       const savedDocument = await this.documentsRepository.save(document);
 
       await this.parseDispatcher.dispatchPendingParses();
+      this.parseDrain.wake();
       return toDocumentResponse(await this.reloadDocument(savedDocument));
     } catch (error) {
       document.parseStatus = DocumentParseStatus.FAILED;
@@ -286,24 +292,10 @@ export class DocumentsIngestionService {
       throw new BadRequestException('Document is not uploaded to RAGFlow yet.');
     }
 
-    const remoteDocument = await this.ragService.fetchRemoteDocumentStatus(
-      document.ragflowDatasetId,
-      document.ragflowDocumentId,
-    );
-
-    if (!remoteDocument) {
-      document.parseStatus = DocumentParseStatus.FAILED;
-      document.parseError = 'RAGFlow document was not found.';
-      document.parseProgressPercent = null;
-      document.lastSyncedAt = new Date();
-      const savedDocument = await this.documentsRepository.save(document);
-      await this.parseDispatcher.dispatchPendingParses();
-      return toDocumentResponse(await this.reloadDocument(savedDocument));
-    }
-
-    this.applyRemoteStatus(document, remoteDocument);
-    const savedDocument = await this.documentsRepository.save(document);
+    const savedDocument =
+      await this.parseStatusSync.syncRemoteParseStatus(document);
     await this.parseDispatcher.dispatchPendingParses();
+    this.parseDrain.wake();
     return toDocumentResponse(await this.reloadDocument(savedDocument));
   }
 
@@ -394,44 +386,6 @@ export class DocumentsIngestionService {
       mimeType: file.mimetype?.trim() || 'application/octet-stream',
       size,
     };
-  }
-
-  private applyRemoteStatus(
-    document: DocumentEntity,
-    remoteDocument: {
-      run?: string;
-      progress?: number;
-      progress_msg?: string;
-      chunk_count?: number;
-    },
-  ): void {
-    const run = String(remoteDocument.run ?? '').toUpperCase();
-    const progressPercent =
-      this.ragService.getDocumentParseProgressPercent(remoteDocument);
-    document.parseProgressPercent = progressPercent;
-
-    if (run === 'DONE' || Number(remoteDocument.progress ?? 0) >= 1) {
-      document.parseStatus = DocumentParseStatus.PARSED;
-      document.parseError = null;
-      document.parseProgressPercent = 100;
-      document.parsedAt = document.parsedAt ?? new Date();
-    } else if (run === 'RUNNING') {
-      document.parseStatus = DocumentParseStatus.PARSING;
-    } else if (run === 'FAIL' || run === 'CANCEL') {
-      document.parseStatus = DocumentParseStatus.FAILED;
-      document.parseError = remoteDocument.progress_msg || 'RAGFlow parsing failed.';
-    } else if (
-      run === 'UNSTART' &&
-      document.parseStatus !== DocumentParseStatus.PARSING
-    ) {
-      document.parseStatus = DocumentParseStatus.PENDING_PARSE;
-    }
-
-    document.chunkCount =
-      typeof remoteDocument.chunk_count === 'number'
-        ? remoteDocument.chunk_count
-        : document.chunkCount;
-    document.lastSyncedAt = new Date();
   }
 
   private sha256(buffer: Buffer): string {

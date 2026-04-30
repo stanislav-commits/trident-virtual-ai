@@ -49,6 +49,14 @@ export default function configuration() {
     },
     documents: {
       uploadSpoolDir: process.env.DOCUMENT_UPLOAD_SPOOL_DIR ?? '',
+      parseDrainEnabled: parseBoolean(
+        process.env.DOCUMENTS_PARSE_DRAIN_ENABLED,
+        true,
+      ),
+      parseDrainIntervalMs: parsePositiveInteger(
+        process.env.DOCUMENTS_PARSE_DRAIN_INTERVAL_MS,
+        15_000,
+      ),
     },
     database: {
       host: db.host,

@@ -5,7 +5,9 @@ import { ShipEntity } from '../ships/entities/ship.entity';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentsController } from './documents.controller';
 import { DocumentsIngestionService } from './documents-ingestion.service';
+import { DocumentsParseDrainService } from './documents-parse-drain.service';
 import { DocumentsParseDispatcherService } from './documents-parse-dispatcher.service';
+import { DocumentsParseStatusSyncService } from './documents-parse-status-sync.service';
 import { DocumentsRemoteIngestionDispatcherService } from './documents-remote-ingestion-dispatcher.service';
 import { DocumentsService } from './documents.service';
 import { DocumentsUploadStorageService } from './documents-upload-storage.service';
@@ -23,7 +25,9 @@ import { DocumentsRetrievalService } from './retrieval/documents-retrieval.servi
   providers: [
     DocumentsService,
     DocumentsIngestionService,
+    DocumentsParseDrainService,
     DocumentsParseDispatcherService,
+    DocumentsParseStatusSyncService,
     DocumentsRemoteIngestionDispatcherService,
     DocumentsUploadStorageService,
     DocumentsRetrievalFilterBuilder,
