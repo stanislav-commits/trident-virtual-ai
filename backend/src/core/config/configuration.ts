@@ -46,6 +46,16 @@ export default function configuration() {
         process.env.CHAT_DOCUMENTS_RESPONDER_ENABLED,
         false,
       ),
+      voice: {
+        maxUploadBytes: parsePositiveInteger(
+          process.env.CHAT_VOICE_MAX_UPLOAD_BYTES,
+          10 * 1024 * 1024,
+        ),
+        maxDurationMs: parsePositiveInteger(
+          process.env.CHAT_VOICE_MAX_DURATION_MS,
+          120_000,
+        ),
+      },
     },
     documents: {
       uploadSpoolDir: process.env.DOCUMENT_UPLOAD_SPOOL_DIR ?? '',
@@ -118,6 +128,12 @@ export default function configuration() {
         baseUrl: process.env.LLM_BASE_URL ?? '',
         model: process.env.LLM_MODEL ?? 'gpt-4.1-mini',
         apiKey: process.env.LLM_API_KEY ?? '',
+      },
+      transcription: {
+        provider: process.env.TRANSCRIPTION_PROVIDER ?? 'openai',
+        baseUrl: process.env.TRANSCRIPTION_BASE_URL ?? '',
+        model: process.env.TRANSCRIPTION_MODEL ?? 'whisper-1',
+        apiKey: process.env.TRANSCRIPTION_API_KEY ?? '',
       },
       grafanaLlm: {
         baseUrl: process.env.GRAFANA_LLM_BASE_URL ?? '',
