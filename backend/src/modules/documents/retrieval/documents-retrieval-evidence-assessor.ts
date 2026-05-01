@@ -9,6 +9,8 @@ import {
   QuestionSupportSignals,
 } from './documents-retrieval-text-signals';
 
+const MIN_SPECIFIC_SUPPORT_SCORE = 0.6;
+
 interface DocumentRetrievalEvidenceAssessmentInput {
   candidates: EnrichedDocumentRetrievalCandidate[];
   question: string;
@@ -151,6 +153,14 @@ function hasInsufficientSpecificSupport(
     return true;
   }
 
+  if (
+    supportSignals.specificTokenCount >= 4 &&
+    supportSignals.specificSupportScore < 0.5 &&
+    specificSupportedCandidateCount === 0
+  ) {
+    return true;
+  }
+
   return (
     supportSignals.hasOnlyGenericSupport &&
     supportedCandidateCount <= 1 &&
@@ -205,7 +215,7 @@ function hasAdequateSpecificSupport(
 ): boolean {
   return (
     !supportSignals.hasSpecificTokens ||
-    supportSignals.specificSupportScore >= 0.5
+    supportSignals.specificSupportScore >= MIN_SPECIFIC_SUPPORT_SCORE
   );
 }
 
@@ -224,16 +234,7 @@ function hasQuestionTypeClassFit(
 function buildCandidateSupportText(
   candidate: EnrichedDocumentRetrievalCandidate,
 ): string {
-  return [
-    candidate.chunk.content,
-    candidate.chunk.document_keyword,
-    candidate.chunk.docnm_kwd,
-    candidate.document.originalFileName,
-    candidate.document.equipmentOrSystem,
-    candidate.document.manufacturer,
-    candidate.document.model,
-    candidate.document.contentFocus,
-  ]
-    .filter((value): value is string => typeof value === 'string' && Boolean(value))
-    .join(' ');
+  return typeof candidate.chunk.content === 'string'
+    ? candidate.chunk.content
+    : '';
 }
