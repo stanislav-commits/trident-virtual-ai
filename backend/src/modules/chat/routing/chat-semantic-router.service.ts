@@ -13,6 +13,7 @@ import {
   ChatSemanticSourcePolicy,
   ChatSemanticWebRoute,
 } from './chat-semantic-router.types';
+import { extractDocumentTitleHint } from './chat-document-title-hints';
 
 const SUPPORTED_DOCUMENT_CLASSES = Object.values(DocumentDocClass);
 const SUPPORTED_DOCUMENT_QUESTION_TYPES = Object.values(
@@ -52,7 +53,7 @@ export class ChatSemanticRouterService {
         systemPrompt: this.buildSystemPrompt(),
         userPrompt: this.buildUserPrompt(input),
         temperature: 0,
-        maxTokens: 520,
+        maxTokens: 600,
       });
     } catch {
       return null;
@@ -80,17 +81,23 @@ export class ChatSemanticRouterService {
       '- certificate: certificates, validity, issuer, class/approval, vessel/equipment coverage, and compliance status.',
       '- historical_procedure: historical or planned procedure records, including when something was done, when it is due, completed/planned procedure history, status, and timeline.',
       'Document question types are equipment_reference, step_by_step_procedure, historical_case, compliance_or_certificate, multi_document_compare, troubleshooting.',
+      'Use equipment_reference for equipment-specific operation, maintenance, removal, replacement, repair, service, cleaning, adjustment, inspection, or technical how-to asks that should come from manuals.',
+      'Use step_by_step_procedure only for formal SOP, regulatory, checklist, emergency, compliance, or required-action instructions. Do not treat every "how to" question as a formal procedure.',
       'Procedure intent policy:',
-      '- Procedure instructions, SOPs, checklists, required actions, and emergency procedure asks are step_by_step_procedure with regulation as the primary class; include manual when equipment-specific.',
+      '- Formal procedure instructions, SOPs, checklists, required actions, and emergency procedure asks are step_by_step_procedure with regulation as the primary class; include manual when equipment-specific.',
+      '- Equipment maintenance/removal/replacement/repair/service/cleaning instructions are equipment_reference with manual as the primary class unless the user clearly asks for formal rules, SOP, checklist, compliance, or emergency actions.',
       '- Procedure records, schedules, history, status, due dates, planned work, and completed work are historical_case with historical_procedure as the class.',
       '- Do not use historical_case for formal instructions, SOPs, checklists, or required-action questions.',
       '- For multi_document_compare, include all semantically relevant document classes and set multiDocumentLikely true instead of collapsing early to one class.',
+      'Document title hint policy:',
+      '- If the ask contains an explicit filename, quoted document title, or strong title-like phrase such as a named manual, approval, certificate, SOP, checklist, plan, or procedure, copy that exact title span to documents.documentTitleHint.',
+      '- If there is no clear title or filename mention, set documents.documentTitleHint to null. Do not invent document names.',
       'If a ship context exists and the ask likely refers to onboard/manual knowledge, prefer documents over generic web.',
       'Do not use web as a fallback for weak or missing document evidence; fallback policy is a later orchestration concern.',
       'If the ask needs ship documents but no shipId is available, route unclear and require clarification.',
       'For metrics, use timeMode snapshot for current/live readings, point_in_time for a single historical moment, and range for trend/range requests.',
       'Return only raw JSON with this exact shape:',
-      '{"route":"documents|metrics|web|mixed|unclear","confidence":0.0,"requiresClarification":false,"clarificationQuestion":null,"sourcePolicy":{"allowDocuments":true,"allowMetrics":false,"allowWeb":false,"allowWebFallback":false,"allowMixedComposition":false},"documents":{"questionType":"equipment_reference|step_by_step_procedure|historical_case|compliance_or_certificate|multi_document_compare|troubleshooting|null","candidateDocClasses":["manual"],"equipmentOrSystemHints":[],"manufacturerHints":[],"modelHints":[],"contentFocusHints":[],"languageHint":null,"multiDocumentLikely":false},"metrics":{"timeMode":"snapshot|point_in_time|range|null","timestamp":null,"rangeStart":null,"rangeEnd":null},"web":{"externalKnowledgeExplicit":false,"freshnessRequired":false},"internalDebugNote":"short source-policy note"}',
+      '{"route":"documents|metrics|web|mixed|unclear","confidence":0.0,"requiresClarification":false,"clarificationQuestion":null,"sourcePolicy":{"allowDocuments":true,"allowMetrics":false,"allowWeb":false,"allowWebFallback":false,"allowMixedComposition":false},"documents":{"questionType":"equipment_reference|step_by_step_procedure|historical_case|compliance_or_certificate|multi_document_compare|troubleshooting|null","candidateDocClasses":["manual"],"equipmentOrSystemHints":[],"manufacturerHints":[],"modelHints":[],"contentFocusHints":[],"documentTitleHint":null,"languageHint":null,"multiDocumentLikely":false},"metrics":{"timeMode":"snapshot|point_in_time|range|null","timestamp":null,"rangeStart":null,"rangeEnd":null},"web":{"externalKnowledgeExplicit":false,"freshnessRequired":false},"internalDebugNote":"short source-policy note"}',
       'Do not wrap JSON in markdown.',
     ].join('\n');
   }
@@ -126,7 +133,11 @@ export class ChatSemanticRouterService {
       entry.clarificationQuestion,
     );
 
-    const documents = this.parseDocumentsRoute(entry.documents, input.shipId);
+    const documents = this.parseDocumentsRoute(
+      entry.documents,
+      input.shipId,
+      input.question,
+    );
     const metrics = this.parseMetricsRoute(entry.metrics);
     const web = this.parseWebRoute(entry.web);
 
@@ -162,7 +173,7 @@ export class ChatSemanticRouterService {
       clarificationQuestion:
         'Should I use ship documents, vessel metrics, or public web information for this?',
       sourcePolicy: this.buildSourcePolicy(ChatSemanticRoute.UNCLEAR),
-      documents: this.buildDefaultDocumentsRoute(input.shipId),
+      documents: this.buildDefaultDocumentsRoute(input.shipId, input.question),
       metrics: this.buildDefaultMetricsRoute(),
       web: this.buildDefaultWebRoute(),
       internalDebugNote: reason,
@@ -245,13 +256,14 @@ export class ChatSemanticRouterService {
   private parseDocumentsRoute(
     value: unknown,
     shipId: string | null,
+    question: string,
   ): ChatSemanticDocumentsRoute {
     if (!value || typeof value !== 'object') {
-      return this.buildDefaultDocumentsRoute(shipId);
+      return this.buildDefaultDocumentsRoute(shipId, question);
     }
 
     const entry = value as Record<string, unknown>;
-    const questionType =
+    const parsedQuestionType =
       typeof entry.questionType === 'string' &&
       SUPPORTED_DOCUMENT_QUESTION_TYPES.includes(
         entry.questionType as DocumentRetrievalQuestionType,
@@ -261,15 +273,19 @@ export class ChatSemanticRouterService {
     const candidateDocClasses = this.parseDocumentClasses(
       entry.candidateDocClasses,
     );
+    const documentTitleHint =
+      this.parseNullableText(entry.documentTitleHint) ??
+      extractDocumentTitleHint(question);
 
     return {
       shipId,
-      questionType,
+      questionType: parsedQuestionType,
       candidateDocClasses,
       equipmentOrSystemHints: this.parseStringList(entry.equipmentOrSystemHints),
       manufacturerHints: this.parseStringList(entry.manufacturerHints),
       modelHints: this.parseStringList(entry.modelHints),
       contentFocusHints: this.parseStringList(entry.contentFocusHints),
+      documentTitleHint,
       languageHint: this.parseNullableText(entry.languageHint),
       multiDocumentLikely: entry.multiDocumentLikely === true,
     };
@@ -346,6 +362,7 @@ export class ChatSemanticRouterService {
 
   private buildDefaultDocumentsRoute(
     shipId: string | null,
+    question = '',
   ): ChatSemanticDocumentsRoute {
     return {
       shipId,
@@ -355,6 +372,7 @@ export class ChatSemanticRouterService {
       manufacturerHints: [],
       modelHints: [],
       contentFocusHints: [],
+      documentTitleHint: extractDocumentTitleHint(question),
       languageHint: null,
       multiDocumentLikely: false,
     };
@@ -383,7 +401,8 @@ export class ChatSemanticRouterService {
       documents.equipmentOrSystemHints.length > 0 ||
       documents.manufacturerHints.length > 0 ||
       documents.modelHints.length > 0 ||
-      documents.contentFocusHints.length > 0
+      documents.contentFocusHints.length > 0 ||
+      documents.documentTitleHint !== null
     );
   }
 
