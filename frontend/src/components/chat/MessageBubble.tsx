@@ -12,6 +12,7 @@ import { SourceCitations } from "./SourceCitations";
 import {
   type ChatDocumentOpenTarget,
   getChatDocumentOpenTarget,
+  isDisplayableChatSourceReference,
   openChatDocumentSource,
 } from "./chatSourceReferences";
 
@@ -120,9 +121,11 @@ function CitationBadge({
   onOpen?: (target: ChatDocumentOpenTarget) => void;
 }) {
   const ref = citations[idx - 1];
-  const title = ref
-    ? `${ref.sourceTitle || "Document"}${ref.pageNumber ? ` \u2014 p. ${ref.pageNumber}` : ""}`
-    : `Source [${idx}]`;
+  if (!isDisplayableChatSourceReference(ref)) {
+    return null;
+  }
+
+  const title = `${ref.sourceTitle || "Document"}${ref.pageNumber ? ` \u2014 p. ${ref.pageNumber}` : ""}`;
   const openTarget = getChatDocumentOpenTarget(ref);
   const canOpen = !!(openTarget && onOpen);
   const normalizedTitle = normalizeMojibakePunctuation(title);
@@ -155,20 +158,18 @@ function useMdComponents(
   onOpen?: (target: ChatDocumentOpenTarget) => void,
 ): Components {
   return useMemo(
-    () => ({
-      "cite-ref": ({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ...props
-      }: any) => {
-        const idx = Number(props["data-idx"]);
-        if (!idx) return null;
-        return (
-          <CitationBadge idx={idx} citations={citations} onOpen={onOpen} />
-        );
-      },
-    }),
+    () =>
+      ({
+        "cite-ref": (props: { "data-idx"?: string | number }) => {
+          const idx = Number(props["data-idx"]);
+          if (!idx) return null;
+          return (
+            <CitationBadge idx={idx} citations={citations} onOpen={onOpen} />
+          );
+        },
+      }) as Components,
     [citations, onOpen],
-  ) as Components;
+  );
 }
 
 export function MessageBubble({
@@ -184,7 +185,11 @@ export function MessageBubble({
   const isAdmin = user?.role === "admin";
   const { id, role, content, createdAt, contextReferences, ragflowContext } =
     message;
-  const refs = contextReferences ?? [];
+  const refs = useMemo(() => contextReferences ?? [], [contextReferences]);
+  const displayableRefs = useMemo(
+    () => refs.filter(isDisplayableChatSourceReference),
+    [refs],
+  );
   const telemetryShips = Array.isArray(ragflowContext?.telemetryShips)
     ? ragflowContext.telemetryShips
         .filter(
@@ -265,7 +270,7 @@ export function MessageBubble({
             rehypePlugins={[rehypeRaw]}
             components={mdComponents}
           >
-            {refs.length > 0
+            {displayableRefs.length > 0
               ? injectCiteRefs(renderedAssistantContent)
               : renderedAssistantContent}
           </ReactMarkdown>
@@ -295,37 +300,14 @@ export function MessageBubble({
 
       {/* Show citations for assistant messages that have them */}
       {role === "assistant" &&
-        contextReferences &&
-        contextReferences.length > 0 && (
+        displayableRefs.length > 0 && (
           <div className="chat-message__sources">
             <SourceCitations
-              citations={contextReferences}
+              citations={displayableRefs}
               onOpenPanel={onOpenSourcesPanel}
             />
           </div>
         )}
-
-      {false && (
-        <div className="chat-message__no-docs">
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="16" x2="12" y2="12" />
-            <line x1="12" y1="8" x2="12.01" y2="8" />
-          </svg>
-          No matching manual chunk for this query {"\u2014"} answered without
-          supporting manual context
-        </div>
-      )}
 
       {isLoading && (
         <div className="typing-dots">
