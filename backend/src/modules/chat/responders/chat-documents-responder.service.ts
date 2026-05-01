@@ -17,7 +17,11 @@ import {
 } from './interfaces/chat-turn-responder.types';
 
 interface DocumentClassAttempt {
-  reason: 'primary' | 'secondary_fallback' | 'router_candidates';
+  reason:
+    | 'title_hint'
+    | 'primary'
+    | 'secondary_fallback'
+    | 'router_candidates';
   candidateDocClasses?: DocumentDocClass[];
 }
 
@@ -48,12 +52,16 @@ export class ChatDocumentsResponderService {
 
     try {
       for (const attempt of attempts) {
-        completedAttempt = attempt;
-        retrieval = await this.documentsService.search(
+        const attemptRetrieval = await this.documentsService.search(
           this.buildRetrievalRequest(input, documentsRoute, shipId, attempt),
         );
 
-        if (retrieval.evidenceQuality !== 'none') {
+        if (!retrieval || this.isBetterRetrieval(attemptRetrieval, retrieval)) {
+          retrieval = attemptRetrieval;
+          completedAttempt = attempt;
+        }
+
+        if (attemptRetrieval.evidenceQuality === 'strong') {
           break;
         }
       }
@@ -98,7 +106,7 @@ export class ChatDocumentsResponderService {
           resultCount: retrieval.results.length,
         },
       },
-      contextReferences: this.toContextReferences(retrieval, summary),
+      contextReferences: this.toContextReferences(retrieval),
     };
   }
 
@@ -125,6 +133,8 @@ export class ChatDocumentsResponderService {
       contentFocusHints: documentsRoute.contentFocusHints.length
         ? documentsRoute.contentFocusHints
         : undefined,
+      documentTitleHint: documentsRoute.documentTitleHint ?? undefined,
+      requireDocumentTitleMatch: attempt.reason === 'title_hint' || undefined,
       languageHint:
         documentsRoute.languageHint ?? input.plan.responseLanguage ?? undefined,
       allowMultiDocument:
@@ -235,9 +245,8 @@ export class ChatDocumentsResponderService {
 
   private toContextReferences(
     retrieval: DocumentRetrievalResponseDto,
-    summary: string,
   ): Record<string, unknown>[] {
-    if (!this.shouldExposeContextReferences(retrieval, summary)) {
+    if (!this.shouldExposeContextReferences(retrieval)) {
       return [];
     }
 
@@ -256,35 +265,19 @@ export class ChatDocumentsResponderService {
 
   private shouldExposeContextReferences(
     retrieval: DocumentRetrievalResponseDto,
-    summary: string,
   ): boolean {
+    const answerabilityStatus = String(retrieval.answerability.status);
+
     if (
       retrieval.evidenceQuality === 'none' ||
-      retrieval.answerability.status === 'none' ||
+      answerabilityStatus === 'none' ||
+      answerabilityStatus === 'insufficient' ||
       !retrieval.results.length
     ) {
       return false;
     }
 
-    return !this.isNoSupportingEvidenceSummary(summary);
-  }
-
-  private isNoSupportingEvidenceSummary(summary: string): boolean {
-    const normalized = summary.toLowerCase().replace(/\s+/g, ' ').trim();
-
-    if (!normalized) {
-      return true;
-    }
-
-    return [
-      /could not find sufficient (?:ship-)?document evidence/,
-      /could not find sufficient evidence in the uploaded ship documents/,
-      /no (?:relevant )?(?:parsed )?(?:ship-)?document evidence/,
-      /no supporting (?:ship-)?document evidence/,
-      /retrieved evidence (?:does|do) not (?:contain|provide|include|show|support)/,
-      /available evidence (?:does|do) not (?:contain|provide|include|show|support)/,
-      /uploaded (?:ship )?documents? (?:does|do) not (?:contain|provide|include|show|support)/,
-    ].some((pattern) => pattern.test(normalized));
+    return true;
   }
 
   private buildStaticResponse(
@@ -320,24 +313,29 @@ export class ChatDocumentsResponderService {
   private buildDocumentClassAttempts(
     documentsRoute: ChatSemanticDocumentsRoute,
   ): DocumentClassAttempt[] {
+    const attempts: DocumentClassAttempt[] = [];
+
+    if (documentsRoute.documentTitleHint?.trim()) {
+      attempts.push({ reason: 'title_hint' });
+    }
+
     const policy = getDocumentQuestionClassPolicy(
       documentsRoute.questionType,
     );
 
     if (!policy) {
-      return [
-        {
-          reason: 'router_candidates',
-          candidateDocClasses: this.toOptionalClasses(
-            documentsRoute.candidateDocClasses,
-          ),
-        },
-      ];
+      attempts.push({
+        reason: 'router_candidates',
+        candidateDocClasses: this.toOptionalClasses(
+          documentsRoute.candidateDocClasses,
+        ),
+      });
+
+      return this.dedupeAttempts(attempts);
     }
 
     const primary = this.mergeClasses(policy.primary, []);
     const fallback = this.mergeClasses(policy.secondary, []);
-    const attempts: DocumentClassAttempt[] = [];
 
     if (primary.length) {
       attempts.push({
@@ -353,16 +351,16 @@ export class ChatDocumentsResponderService {
       });
     }
 
-    return attempts.length
-      ? attempts
-      : [
-          {
-            reason: 'router_candidates',
-            candidateDocClasses: this.toOptionalClasses(
-              documentsRoute.candidateDocClasses,
-            ),
-          },
-        ];
+    if (!attempts.length) {
+      attempts.push({
+        reason: 'router_candidates',
+        candidateDocClasses: this.toOptionalClasses(
+          documentsRoute.candidateDocClasses,
+        ),
+      });
+    }
+
+    return this.dedupeAttempts(attempts);
   }
 
   private mergeClasses(
@@ -378,5 +376,75 @@ export class ChatDocumentsResponderService {
     return candidateDocClasses.length
       ? this.mergeClasses(candidateDocClasses, [])
       : undefined;
+  }
+
+  private dedupeAttempts(attempts: DocumentClassAttempt[]): DocumentClassAttempt[] {
+    const seen = new Set<string>();
+
+    return attempts.filter((attempt) => {
+      const key = `${attempt.reason}:${(attempt.candidateDocClasses ?? []).join(',')}`;
+
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private isBetterRetrieval(
+    candidate: DocumentRetrievalResponseDto,
+    current: DocumentRetrievalResponseDto,
+  ): boolean {
+    const candidateRank = this.getRetrievalQualityRank(candidate);
+    const currentRank = this.getRetrievalQualityRank(current);
+
+    if (candidateRank !== currentRank) {
+      return candidateRank > currentRank;
+    }
+
+    const candidateAnswerable = this.hasUsableAnswerability(candidate);
+    const currentAnswerable = this.hasUsableAnswerability(current);
+
+    if (candidateAnswerable !== currentAnswerable) {
+      return candidateAnswerable;
+    }
+
+    return this.getTopResultScore(candidate) > this.getTopResultScore(current);
+  }
+
+  private getRetrievalQualityRank(
+    retrieval: DocumentRetrievalResponseDto,
+  ): number {
+    if (retrieval.evidenceQuality === 'strong') {
+      return 3;
+    }
+
+    if (retrieval.evidenceQuality === 'weak') {
+      return this.hasUsableAnswerability(retrieval) ? 2 : 1;
+    }
+
+    return 0;
+  }
+
+  private hasUsableAnswerability(
+    retrieval: DocumentRetrievalResponseDto,
+  ): boolean {
+    const answerabilityStatus = String(retrieval.answerability.status);
+
+    return answerabilityStatus !== 'none' && answerabilityStatus !== 'insufficient';
+  }
+
+  private getTopResultScore(retrieval: DocumentRetrievalResponseDto): number {
+    const [topResult] = retrieval.results;
+
+    if (!topResult) {
+      return 0;
+    }
+
+    return Number.isFinite(topResult.rerankScore)
+      ? topResult.rerankScore
+      : topResult.retrievalScore ?? 0;
   }
 }
