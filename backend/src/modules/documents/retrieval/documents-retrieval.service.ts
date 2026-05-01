@@ -55,7 +55,9 @@ export class DocumentsRetrievalService {
       );
     const retrievalDocuments = metadataMatchedDocuments.length
       ? metadataMatchedDocuments
-      : usableDocuments;
+      : context.requireDocumentTitleMatch
+        ? []
+        : usableDocuments;
 
     if (!retrievalDocuments.length) {
       return this.mapper.buildEmptyResponse({

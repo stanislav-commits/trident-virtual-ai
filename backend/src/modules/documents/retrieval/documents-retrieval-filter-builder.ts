@@ -34,6 +34,9 @@ export class DocumentsRetrievalFilterBuilder {
     const requestedDocClasses = this.resolveCandidateDocClasses(input);
     const hints = this.normalizeHints(input);
     const documentTitleHint = input.documentTitleHint?.trim() || null;
+    const requireDocumentTitleMatch = Boolean(
+      input.requireDocumentTitleMatch && documentTitleHint,
+    );
 
     return {
       topK,
@@ -50,6 +53,7 @@ export class DocumentsRetrievalFilterBuilder {
           input.questionType === DocumentRetrievalQuestionType.MULTI_DOCUMENT_COMPARE,
       ),
       documentTitleHint,
+      requireDocumentTitleMatch,
     };
   }
 
@@ -82,36 +86,40 @@ export class DocumentsRetrievalFilterBuilder {
       return documents;
     }
 
-    return documents.filter((document) => {
-      const hintMatches = [
-        context.hints.equipmentOrSystem.length
-          ? matchesAnyRetrievalHint(
-              document.equipmentOrSystem,
-              context.hints.equipmentOrSystem,
-            )
-          : true,
-        context.hints.manufacturer.length
-          ? matchesAnyRetrievalHint(document.manufacturer, context.hints.manufacturer)
-          : true,
-        context.hints.model.length
-          ? matchesAnyRetrievalHint(document.model, context.hints.model)
-          : true,
-        context.hints.contentFocus.length
-          ? matchesAnyRetrievalHint(document.contentFocus, context.hints.contentFocus)
-          : true,
-        languageHint?.trim()
-          ? matchesAnyRetrievalHint(document.language, [languageHint.trim()])
-          : true,
-        context.documentTitleHint
-          ? scoreDocumentTitleHintMatch(
-              document.originalFileName,
-              context.documentTitleHint,
-            ) >= DOCUMENT_TITLE_HINT_NARROWING_THRESHOLD
-          : true,
-      ];
+    const titleMatchedDocuments = context.documentTitleHint
+      ? documents.filter((document) =>
+          this.matchesDocumentTitleHint(document, context.documentTitleHint),
+        )
+      : [];
 
-      return hintMatches.every(Boolean);
-    });
+    if (
+      context.requireDocumentTitleMatch &&
+      context.documentTitleHint &&
+      !titleMatchedDocuments.length
+    ) {
+      return [];
+    }
+
+    if (titleMatchedDocuments.length) {
+      const metadataMatchedTitleDocuments = titleMatchedDocuments.filter((document) =>
+        this.matchesNonTitleMetadataHints(document, context, languageHint),
+      );
+
+      return metadataMatchedTitleDocuments.length
+        ? metadataMatchedTitleDocuments
+        : titleMatchedDocuments;
+    }
+
+    if (
+      context.documentTitleHint &&
+      !this.hasNonTitleMetadataHints(context, languageHint)
+    ) {
+      return [];
+    }
+
+    return documents.filter((document) =>
+      this.matchesNonTitleMetadataHints(document, context, languageHint),
+    );
   }
 
   indexByRagflowDocumentId(
@@ -172,6 +180,60 @@ export class DocumentsRetrievalFilterBuilder {
 
   private isDocumentClass(value: string): value is DocumentDocClass {
     return ALL_DOCUMENT_CLASSES.includes(value as DocumentDocClass);
+  }
+
+  private matchesDocumentTitleHint(
+    document: DocumentEntity,
+    documentTitleHint: string | null,
+  ): boolean {
+    return (
+      scoreDocumentTitleHintMatch(
+        document.originalFileName,
+        documentTitleHint,
+      ) >= DOCUMENT_TITLE_HINT_NARROWING_THRESHOLD
+    );
+  }
+
+  private matchesNonTitleMetadataHints(
+    document: DocumentEntity,
+    context: DocumentRetrievalFilterContext,
+    languageHint: string | undefined,
+  ): boolean {
+    const hintMatches = [
+      context.hints.equipmentOrSystem.length
+        ? matchesAnyRetrievalHint(
+            document.equipmentOrSystem,
+            context.hints.equipmentOrSystem,
+          )
+        : true,
+      context.hints.manufacturer.length
+        ? matchesAnyRetrievalHint(document.manufacturer, context.hints.manufacturer)
+        : true,
+      context.hints.model.length
+        ? matchesAnyRetrievalHint(document.model, context.hints.model)
+        : true,
+      context.hints.contentFocus.length
+        ? matchesAnyRetrievalHint(document.contentFocus, context.hints.contentFocus)
+        : true,
+      languageHint?.trim()
+        ? matchesAnyRetrievalHint(document.language, [languageHint.trim()])
+        : true,
+    ];
+
+    return hintMatches.every(Boolean);
+  }
+
+  private hasNonTitleMetadataHints(
+    context: DocumentRetrievalFilterContext,
+    languageHint: string | undefined,
+  ): boolean {
+    return (
+      context.hints.equipmentOrSystem.length > 0 ||
+      context.hints.manufacturer.length > 0 ||
+      context.hints.model.length > 0 ||
+      context.hints.contentFocus.length > 0 ||
+      Boolean(languageHint?.trim())
+    );
   }
 }
 

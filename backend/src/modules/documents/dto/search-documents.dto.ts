@@ -128,6 +128,11 @@ export class SearchDocumentsDto {
   @IsString()
   documentTitleHint?: string;
 
+  @Transform(({ value }) => normalizeOptionalBoolean(value))
+  @IsOptional()
+  @IsBoolean()
+  requireDocumentTitleMatch?: boolean;
+
   @Transform(({ value }) => normalizeOptionalInteger(value))
   @IsOptional()
   @IsInt()

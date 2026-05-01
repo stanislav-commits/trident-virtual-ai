@@ -23,6 +23,7 @@ export interface DocumentRetrievalFilterContext {
   hasMetadataHints: boolean;
   allowMultiDocument: boolean;
   documentTitleHint: string | null;
+  requireDocumentTitleMatch: boolean;
 }
 
 export interface DocumentRetrievalCandidateScoreInput {
@@ -65,12 +66,21 @@ export function matchesAnyRetrievalHint(
 }
 
 export const DOCUMENT_TITLE_HINT_NARROWING_THRESHOLD = 0.5;
+const GENERIC_DOCUMENT_TITLE_TOKENS = new Set([
+  'doc',
+  'document',
+  'documents',
+  'file',
+  'manual',
+  'manuals',
+  'pdf',
+]);
 
 /**
  * Returns a 0..1 score describing how well a stored document name matches a
  * free-form title/filename hint supplied by the caller. Uses conservative
- * token-overlap matching against the normalized filename (extension stripped)
- * — no exact-match coupling and no per-document hardcoding.
+ * token-overlap matching against the normalized filename with no per-document
+ * hardcoding.
  */
 export function scoreDocumentTitleHintMatch(
   fileName: string | null | undefined,
@@ -88,19 +98,30 @@ export function scoreDocumentTitleHintMatch(
     return 0;
   }
 
-  const matchedTokenCount = tokens.reduce(
+  const normalizedHint = normalizeDocumentTitleString(hint ?? '');
+
+  if (normalizedHint && normalizedName.includes(normalizedHint)) {
+    return 1;
+  }
+
+  const significantTokens = tokens.filter(
+    (token) => !GENERIC_DOCUMENT_TITLE_TOKENS.has(token),
+  );
+  const tokensForScoring = significantTokens.length ? significantTokens : tokens;
+
+  const matchedTokenCount = tokensForScoring.reduce(
     (count, token) => count + (normalizedName.includes(token) ? 1 : 0),
     0,
   );
 
-  return matchedTokenCount / tokens.length;
+  return matchedTokenCount / tokensForScoring.length;
 }
 
 function normalizeDocumentTitleString(value: string): string {
   return value
     .toLowerCase()
-    .replace(/\.[a-z0-9]{1,8}$/i, '')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\.[\p{L}\p{N}]{1,8}$/u, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 }
 
@@ -113,7 +134,7 @@ function tokenizeDocumentTitleHint(value: string | null | undefined): string[] {
     new Set(
       value
         .toLowerCase()
-        .split(/[^a-z0-9]+/g)
+        .split(/[^\p{L}\p{N}]+/gu)
         .map((token) => token.trim())
         .filter((token) => token.length >= 2),
     ),

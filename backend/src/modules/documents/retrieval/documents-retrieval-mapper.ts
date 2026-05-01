@@ -74,6 +74,8 @@ export class DocumentsRetrievalMapper {
         metadataFiltering: 'local_only',
         hints: {
           ...options.context.hints,
+          documentTitle: options.context.documentTitleHint,
+          requireDocumentTitleMatch: options.context.requireDocumentTitleMatch,
           language: options.input.languageHint?.trim() || null,
         },
         topK: options.context.topK,
@@ -95,6 +97,7 @@ export class DocumentsRetrievalMapper {
         usableDocumentCount: options.usableDocumentCount,
         retrievedCandidateCount: options.retrievedCandidateCount,
         enrichedCandidateCount: options.enrichedCandidateCount,
+        metadataMatchedDocumentCount: options.metadataMatchedDocumentCount,
         ragflowTotal: options.ragflowTotal,
         metadataFilteringSupported: 'api_available_but_not_enabled_in_trident',
       },
@@ -129,6 +132,8 @@ export class DocumentsRetrievalMapper {
         metadataFiltering: 'local_only',
         hints: {
           ...options.context.hints,
+          documentTitle: options.context.documentTitleHint,
+          requireDocumentTitleMatch: options.context.requireDocumentTitleMatch,
           language: options.input.languageHint?.trim() || null,
         },
         topK: options.context.topK,
@@ -147,6 +152,7 @@ export class DocumentsRetrievalMapper {
         usableDocumentCount: options.usableDocumentCount ?? 0,
         retrievedCandidateCount: 0,
         enrichedCandidateCount: 0,
+        metadataMatchedDocumentCount: 0,
         ragflowTotal: null,
         metadataFilteringSupported: 'api_available_but_not_enabled_in_trident',
       },

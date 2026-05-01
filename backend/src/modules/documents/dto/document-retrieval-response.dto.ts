@@ -23,6 +23,8 @@ export class DocumentRetrievalAppliedFiltersDto {
     manufacturer: string[];
     model: string[];
     contentFocus: string[];
+    documentTitle: string | null;
+    requireDocumentTitleMatch: boolean;
     language: string | null;
   };
   topK!: number;
@@ -76,6 +78,7 @@ export class DocumentRetrievalResponseDto {
     usableDocumentCount: number;
     retrievedCandidateCount: number;
     enrichedCandidateCount: number;
+    metadataMatchedDocumentCount: number;
     ragflowTotal: number | null;
     metadataFilteringSupported: 'api_available_but_not_enabled_in_trident';
   };

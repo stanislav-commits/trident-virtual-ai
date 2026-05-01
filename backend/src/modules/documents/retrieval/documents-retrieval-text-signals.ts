@@ -206,7 +206,7 @@ function getMeaningfulTokens(value: string): string[] {
     new Set(
       value
         .toLowerCase()
-        .split(/[^a-z0-9]+/g)
+        .split(/[^\p{L}\p{N}]+/gu)
         .map((token) => token.trim())
         .filter((token) => token.length >= 3 && !BASIC_STOP_WORDS.has(token)),
     ),
@@ -216,7 +216,7 @@ function getMeaningfulTokens(value: string): string[] {
 function getSearchableTokens(value: string): string[] {
   return value
     .toLowerCase()
-    .split(/[^a-z0-9]+/g)
+    .split(/[^\p{L}\p{N}]+/gu)
     .map((token) => token.trim())
     .filter((token) => token.length >= 2);
 }
