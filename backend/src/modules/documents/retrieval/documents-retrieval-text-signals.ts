@@ -16,6 +16,10 @@ const BASIC_STOP_WORDS = new Set([
   'an',
   'and',
   'are',
+  'about',
+  'describe',
+  'describes',
+  'does',
   'for',
   'from',
   'how',
@@ -28,6 +32,9 @@ const BASIC_STOP_WORDS = new Set([
   'where',
   'which',
   'with',
+  'say',
+  'says',
+  'using',
 ]);
 
 const GENERIC_DOMAIN_TOKENS = new Set([
