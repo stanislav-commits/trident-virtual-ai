@@ -15,6 +15,10 @@ import {
   ChatTurnResponderInput,
   ChatTurnResponderOutput,
 } from './interfaces/chat-turn-responder.types';
+import {
+  extractCitedEvidenceRanks,
+  validateDocumentAnswerGrounding,
+} from './document-answer-grounding';
 
 interface DocumentClassAttempt {
   reason:
@@ -23,6 +27,12 @@ interface DocumentClassAttempt {
     | 'secondary_fallback'
     | 'router_candidates';
   candidateDocClasses?: DocumentDocClass[];
+}
+
+interface GroundedDocumentAnswer {
+  summary: string;
+  groundingStatus: 'grounded' | 'insufficient';
+  groundingReason?: string;
 }
 
 @Injectable()
@@ -81,7 +91,7 @@ export class ChatDocumentsResponderService {
       );
     }
 
-    const summary = await this.buildGroundedSummary(input, retrieval);
+    const groundedAnswer = await this.buildGroundedSummary(input, retrieval);
 
     return {
       askId: input.ask.id,
@@ -90,7 +100,7 @@ export class ChatDocumentsResponderService {
       question: input.ask.question,
       capabilityEnabled: true,
       capabilityLabel: 'document retrieval',
-      summary,
+      summary: groundedAnswer.summary,
       data: {
         status: this.toResponseStatus(retrieval.evidenceQuality),
         retrieval: {
@@ -104,9 +114,17 @@ export class ChatDocumentsResponderService {
             candidateDocClasses: attempt.candidateDocClasses ?? null,
           })),
           resultCount: retrieval.results.length,
+          answerGrounding: {
+            status: groundedAnswer.groundingStatus,
+            reason: groundedAnswer.groundingReason ?? null,
+          },
         },
       },
-      contextReferences: this.toContextReferences(retrieval),
+      contextReferences: this.toContextReferences(
+        retrieval,
+        groundedAnswer.summary,
+        groundedAnswer.groundingStatus,
+      ),
     };
   }
 
@@ -148,13 +166,17 @@ export class ChatDocumentsResponderService {
   private async buildGroundedSummary(
     input: ChatTurnResponderInput,
     retrieval: DocumentRetrievalResponseDto,
-  ): Promise<string> {
+  ): Promise<GroundedDocumentAnswer> {
     if (retrieval.evidenceQuality === 'none') {
-      return [
-        'I could not find sufficient evidence in the uploaded ship documents to answer this confidently.',
-        retrieval.answerability.reason,
-        'I did not use web fallback for this document-only request.',
-      ].join(' ');
+      return {
+        summary: [
+          'I could not find sufficient evidence in the uploaded ship documents to answer this confidently.',
+          retrieval.answerability.reason,
+          'I did not use web fallback for this document-only request.',
+        ].join(' '),
+        groundingStatus: 'insufficient',
+        groundingReason: retrieval.answerability.reason,
+      };
     }
 
     const reply = await this.chatLlmService.completeText({
@@ -165,10 +187,31 @@ export class ChatDocumentsResponderService {
     });
 
     if (reply) {
-      return reply;
+      const validation = validateDocumentAnswerGrounding(reply, retrieval);
+
+      if (!validation.isGrounded) {
+        return {
+          summary: this.buildInsufficientGroundingSummary(
+            retrieval,
+            validation.reason,
+          ),
+          groundingStatus: 'insufficient',
+          groundingReason: validation.reason,
+        };
+      }
+
+      return {
+        summary: reply,
+        groundingStatus: 'grounded',
+      };
     }
 
-    return this.buildFallbackEvidenceSummary(retrieval);
+    return {
+      summary: this.buildFallbackEvidenceSummary(retrieval),
+      groundingStatus: 'insufficient',
+      groundingReason:
+        'The document answer model did not return a grounded response.',
+    };
   }
 
   private buildGroundedAnswerSystemPrompt(
@@ -184,7 +227,13 @@ export class ChatDocumentsResponderService {
       'Do not use public web knowledge, generic maritime knowledge, or assumptions.',
       'Do not invent page numbers, section names, values, procedures, or requirements.',
       'Use citation markers like [1] or [2] for facts that come from the evidence.',
+      'Cite only evidence items that directly support the sentence or value you are writing.',
+      'Do not cite generally related snippets, candidate chunks, document titles, or metadata as proof.',
       'If the evidence does not support part of the question, say that plainly.',
+      'For numeric, table, specification, threshold, interval, capacity, voltage, pressure, power, model, alarm-code, or fault-code answers, report a value only when the exact value and unit appear in the cited evidence snippet.',
+      'When evidence is tabular, preserve the row and column relationship exactly as shown in one cited evidence item.',
+      'Do not infer from adjacent rows, combine unrelated rows or tables, add values together, convert units, or guess missing cells.',
+      'If the row, model, column, value, or unit relationship is unclear, say the evidence is insufficient or ambiguous instead of giving a concrete value.',
       weakInstruction,
     ].join(' ');
   }
@@ -201,6 +250,10 @@ export class ChatDocumentsResponderService {
       '',
       'Retrieved evidence:',
       ...retrieval.results.map((result) => this.formatEvidenceItem(result)),
+      '',
+      'Citation rule:',
+      'Use [n] only when evidence item [n] directly supports the claim.',
+      'If no evidence item directly supports the requested value, procedure, or fact, answer that the uploaded document evidence is insufficient and do not include citation markers.',
     ].join('\n');
   }
 
@@ -230,37 +283,49 @@ export class ChatDocumentsResponderService {
 
     if (retrieval.evidenceQuality === 'weak') {
       return [
-        'I found limited ship-document evidence, but it is not strong enough for a confident answer.',
-        `The closest source is ${topResult.filename}${topResult.page ? `, page ${topResult.page}` : ''}.`,
-        `[1]`,
+        'I found limited ship-document evidence, but the answer model did not return a grounded response from it.',
+        'The uploaded document evidence is insufficient or ambiguous for a confident answer.',
+        retrieval.answerability.reason,
       ].join(' ');
     }
 
     return [
-      `The strongest retrieved evidence is in ${topResult.filename}${topResult.page ? `, page ${topResult.page}` : ''}.`,
-      topResult.snippet,
-      `[1]`,
+      'I found ship-document evidence, but the answer model did not return a grounded response from it.',
+      'The uploaded document evidence is insufficient or ambiguous for the requested detail.',
+      retrieval.answerability.reason,
     ].join(' ');
   }
 
   private toContextReferences(
     retrieval: DocumentRetrievalResponseDto,
+    answerText?: string,
+    groundingStatus: 'grounded' | 'insufficient' = 'grounded',
   ): Record<string, unknown>[] {
-    if (!this.shouldExposeContextReferences(retrieval)) {
+    if (
+      groundingStatus !== 'grounded' ||
+      !this.shouldExposeContextReferences(retrieval)
+    ) {
       return [];
     }
 
-    return retrieval.results.map((result) => ({
-      id: `document-${result.rank}`,
-      sourceType: 'document',
-      documentId: result.documentId,
-      shipId: retrieval.shipId,
-      chunkId: result.chunkId,
-      score: result.rerankScore,
-      pageNumber: result.page ?? undefined,
-      snippet: result.snippet,
-      sourceTitle: result.filename,
-    }));
+    const citedRanks = extractCitedEvidenceRanks(answerText ?? '');
+    if (!citedRanks.size) {
+      return [];
+    }
+
+    return retrieval.results
+      .filter((result) => citedRanks.has(result.rank))
+      .map((result) => ({
+        id: `document-${result.rank}`,
+        sourceType: 'document',
+        documentId: result.documentId,
+        shipId: retrieval.shipId,
+        chunkId: result.chunkId,
+        score: result.rerankScore,
+        pageNumber: result.page ?? undefined,
+        snippet: result.snippet,
+        sourceTitle: result.filename,
+      }));
   }
 
   private shouldExposeContextReferences(
@@ -361,6 +426,18 @@ export class ChatDocumentsResponderService {
     }
 
     return this.dedupeAttempts(attempts);
+  }
+
+  private buildInsufficientGroundingSummary(
+    retrieval: DocumentRetrievalResponseDto,
+    reason: string,
+  ): string {
+    return [
+      'I found related ship-document snippets, but they do not clearly support the exact value or table row needed to answer this confidently.',
+      'The uploaded document evidence is insufficient or ambiguous for the requested detail.',
+      reason,
+      retrieval.answerability.reason,
+    ].join(' ');
   }
 
   private mergeClasses(
