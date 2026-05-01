@@ -5,6 +5,10 @@ import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
 import { appRoutes } from "../../utils/routes";
 
+function formatActiveVesselName(ship: { name: string }): string {
+  return ship.name.trim() || "Unnamed vessel";
+}
+
 export function TopBar() {
   const { user } = useAuth();
   const {
@@ -38,9 +42,7 @@ export function TopBar() {
       ? "A"
       : (user?.userId?.slice(0, 2).toUpperCase() ?? "U");
   const selectedShipLabel = selectedShip
-    ? selectedShip.organizationName
-      ? `${selectedShip.name} - ${selectedShip.organizationName}`
-      : selectedShip.name
+    ? formatActiveVesselName(selectedShip)
     : isLoading
       ? "Loading vessels..."
       : "Select vessel";
@@ -77,9 +79,7 @@ export function TopBar() {
               </option>
               {availableShips.map((ship) => (
                 <option key={ship.id} value={ship.id}>
-                  {ship.organizationName
-                    ? `${ship.name} - ${ship.organizationName}`
-                    : ship.name}
+                  {formatActiveVesselName(ship)}
                 </option>
               ))}
             </select>
