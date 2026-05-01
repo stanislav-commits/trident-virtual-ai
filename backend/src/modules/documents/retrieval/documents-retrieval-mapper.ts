@@ -51,6 +51,11 @@ export class DocumentsRetrievalMapper {
   }
 
   buildResponse(options: BuildRetrievalResponseOptions): DocumentRetrievalResponseDto {
+    const references =
+      options.evidenceQuality === 'none'
+        ? []
+        : this.toReferences(options.results);
+
     return {
       normalizedQuestion: options.normalizedQuestion,
       shipId: options.shipId,
@@ -85,7 +90,7 @@ export class DocumentsRetrievalMapper {
         ),
       },
       results: options.results,
-      references: this.toReferences(options.results),
+      references,
       diagnostics: {
         usableDocumentCount: options.usableDocumentCount,
         retrievedCandidateCount: options.retrievedCandidateCount,
