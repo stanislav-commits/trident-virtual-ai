@@ -1,4 +1,5 @@
 import type { ChatContextReferenceDto } from "../../types/chat";
+import { isDisplayableChatSourceReference } from "./chatSourceReferences";
 import { SourceCitations } from "./SourceCitations";
 
 interface ChatSourcesPanelProps {
@@ -10,8 +11,9 @@ export function ChatSourcesPanel({
   citations,
   onClose,
 }: ChatSourcesPanelProps) {
+  const displayableCitations = citations.filter(isDisplayableChatSourceReference);
   const groupedSourceCount = new Set(
-    citations.map(
+    displayableCitations.map(
       (citation) =>
         citation.sourceUrl?.trim() || citation.sourceTitle?.trim() || "Unknown",
     ),
@@ -42,7 +44,7 @@ export function ChatSourcesPanel({
       </div>
 
       <div className="chat-sources-panel__body">
-        <SourceCitations citations={citations} mode="panel" />
+        <SourceCitations citations={displayableCitations} mode="panel" />
       </div>
     </aside>
   );
