@@ -4,6 +4,7 @@ import type { ChatContextReferenceDto } from "../../types/chat";
 import {
   getChatDocumentOpenTarget,
   getChatSourceGroupKey,
+  isDisplayableChatSourceReference,
   isHttpUrl,
   openChatDocumentSource,
 } from "./chatSourceReferences";
@@ -28,6 +29,10 @@ export function SourceCitations({
 }: SourceCitationsProps) {
   const { token } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
+  const displayableCitations = useMemo(
+    () => citations.filter(isDisplayableChatSourceReference),
+    [citations],
+  );
 
   const getDisplayTitle = (citation: ChatContextReferenceDto) => {
     const rawTitle = citation.sourceTitle?.trim();
@@ -79,7 +84,7 @@ export function SourceCitations({
   const groupedEntries = useMemo(
     () =>
       Object.entries(
-        citations.reduce(
+        displayableCitations.reduce(
           (acc, citation) => {
             const key = getChatSourceGroupKey(citation);
             if (!acc[key]) {
@@ -91,10 +96,10 @@ export function SourceCitations({
           {} as Record<string, ChatContextReferenceDto[]>,
         ),
       ),
-    [citations],
+    [displayableCitations],
   );
 
-  if (!citations || citations.length === 0) {
+  if (displayableCitations.length === 0) {
     return null;
   }
 
@@ -210,7 +215,7 @@ export function SourceCitations({
           className="chat-sources__toggle"
           onClick={() => {
             if (onOpenPanel) {
-              onOpenPanel(citations);
+              onOpenPanel(displayableCitations);
               return;
             }
 
