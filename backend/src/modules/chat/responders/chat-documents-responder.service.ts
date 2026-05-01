@@ -7,7 +7,7 @@ import {
 import { SearchDocumentsDto } from '../../documents/dto/search-documents.dto';
 import { DocumentsService } from '../../documents/documents.service';
 import { DocumentDocClass } from '../../documents/enums/document-doc-class.enum';
-import { DocumentRetrievalQuestionType } from '../../documents/enums/document-retrieval-question-type.enum';
+import { getDocumentQuestionClassPolicy } from '../../documents/retrieval/document-question-class-policy';
 import { ChatLlmService } from '../chat-llm.service';
 import { ChatSemanticDocumentsRoute } from '../routing/chat-semantic-router.types';
 import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum';
@@ -98,7 +98,7 @@ export class ChatDocumentsResponderService {
           resultCount: retrieval.results.length,
         },
       },
-      contextReferences: this.toContextReferences(retrieval),
+      contextReferences: this.toContextReferences(retrieval, summary),
     };
   }
 
@@ -235,8 +235,9 @@ export class ChatDocumentsResponderService {
 
   private toContextReferences(
     retrieval: DocumentRetrievalResponseDto,
+    summary: string,
   ): Record<string, unknown>[] {
-    if (retrieval.evidenceQuality === 'none') {
+    if (!this.shouldExposeContextReferences(retrieval, summary)) {
       return [];
     }
 
@@ -251,6 +252,39 @@ export class ChatDocumentsResponderService {
       snippet: result.snippet,
       sourceTitle: result.filename,
     }));
+  }
+
+  private shouldExposeContextReferences(
+    retrieval: DocumentRetrievalResponseDto,
+    summary: string,
+  ): boolean {
+    if (
+      retrieval.evidenceQuality === 'none' ||
+      retrieval.answerability.status === 'none' ||
+      !retrieval.results.length
+    ) {
+      return false;
+    }
+
+    return !this.isNoSupportingEvidenceSummary(summary);
+  }
+
+  private isNoSupportingEvidenceSummary(summary: string): boolean {
+    const normalized = summary.toLowerCase().replace(/\s+/g, ' ').trim();
+
+    if (!normalized) {
+      return true;
+    }
+
+    return [
+      /could not find sufficient (?:ship-)?document evidence/,
+      /could not find sufficient evidence in the uploaded ship documents/,
+      /no (?:relevant )?(?:parsed )?(?:ship-)?document evidence/,
+      /no supporting (?:ship-)?document evidence/,
+      /retrieved evidence (?:does|do) not (?:contain|provide|include|show|support)/,
+      /available evidence (?:does|do) not (?:contain|provide|include|show|support)/,
+      /uploaded (?:ship )?documents? (?:does|do) not (?:contain|provide|include|show|support)/,
+    ].some((pattern) => pattern.test(normalized));
   }
 
   private buildStaticResponse(
@@ -286,7 +320,7 @@ export class ChatDocumentsResponderService {
   private buildDocumentClassAttempts(
     documentsRoute: ChatSemanticDocumentsRoute,
   ): DocumentClassAttempt[] {
-    const policy = this.getQuestionTypeDocumentClassPolicy(
+    const policy = getDocumentQuestionClassPolicy(
       documentsRoute.questionType,
     );
 
@@ -302,12 +336,7 @@ export class ChatDocumentsResponderService {
     }
 
     const primary = this.mergeClasses(policy.primary, []);
-    const fallback = this.mergeClasses(
-      policy.secondary,
-      documentsRoute.candidateDocClasses.filter(
-        (docClass) => !policy.primary.includes(docClass),
-      ),
-    );
+    const fallback = this.mergeClasses(policy.secondary, []);
     const attempts: DocumentClassAttempt[] = [];
 
     if (primary.length) {
@@ -334,53 +363,6 @@ export class ChatDocumentsResponderService {
             ),
           },
         ];
-  }
-
-  private getQuestionTypeDocumentClassPolicy(
-    questionType: DocumentRetrievalQuestionType | null,
-  ): { primary: DocumentDocClass[]; secondary: DocumentDocClass[] } | null {
-    if (!questionType) {
-      return null;
-    }
-
-    const policies: Partial<
-      Record<
-        DocumentRetrievalQuestionType,
-        { primary: DocumentDocClass[]; secondary: DocumentDocClass[] }
-      >
-    > = {
-      [DocumentRetrievalQuestionType.EQUIPMENT_REFERENCE]: {
-        primary: [DocumentDocClass.MANUAL],
-        secondary: [],
-      },
-      [DocumentRetrievalQuestionType.STEP_BY_STEP_PROCEDURE]: {
-        primary: [DocumentDocClass.HISTORICAL_PROCEDURE],
-        secondary: [DocumentDocClass.MANUAL],
-      },
-      [DocumentRetrievalQuestionType.HISTORICAL_CASE]: {
-        primary: [DocumentDocClass.HISTORICAL_PROCEDURE],
-        secondary: [],
-      },
-      [DocumentRetrievalQuestionType.COMPLIANCE_OR_CERTIFICATE]: {
-        primary: [DocumentDocClass.CERTIFICATE],
-        secondary: [DocumentDocClass.REGULATION],
-      },
-      [DocumentRetrievalQuestionType.TROUBLESHOOTING]: {
-        primary: [DocumentDocClass.MANUAL],
-        secondary: [],
-      },
-      [DocumentRetrievalQuestionType.MULTI_DOCUMENT_COMPARE]: {
-        primary: [
-          DocumentDocClass.MANUAL,
-          DocumentDocClass.HISTORICAL_PROCEDURE,
-          DocumentDocClass.CERTIFICATE,
-          DocumentDocClass.REGULATION,
-        ],
-        secondary: [],
-      },
-    };
-
-    return policies[questionType] ?? null;
   }
 
   private mergeClasses(
