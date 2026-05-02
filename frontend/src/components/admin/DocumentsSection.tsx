@@ -3,11 +3,13 @@ import type {
   DocumentDocClass,
   DocumentListItem,
   DocumentParseStatus,
+  ReparseDocumentInput,
 } from "../../api/documentsApi";
 import {
   bulkDeleteDocuments,
   deleteDocument,
   fetchDocumentFile,
+  reparseDocument,
   syncDocumentStatus,
 } from "../../api/documentsApi";
 import { useAdminShip } from "../../context/AdminShipContext";
@@ -16,8 +18,10 @@ import { useDocumentsAdminData } from "../../hooks/admin/useDocumentsAdminData";
 import { Toast } from "../layout/Toast";
 import { DocumentsIcon, UploadIcon } from "./AdminPanelIcons";
 import { DocumentDeleteDialog } from "./documents/DocumentDeleteDialog";
+import { DocumentReparseDialog } from "./documents/DocumentReparseDialog";
 import { DocumentUploadModal } from "./documents/DocumentUploadModal";
 import { DocumentsTable } from "./documents/DocumentsTable";
+import { getDocumentReparseAction } from "./documents/documentReparseActions";
 import {
   DOCUMENT_CLASS_OPTIONS,
   DOCUMENT_PARSE_STATUS_OPTIONS,
@@ -87,6 +91,12 @@ export function DocumentsSection() {
   const [deleteTargets, setDeleteTargets] = useState<DocumentListItem[]>([]);
   const [deletingDocumentIds, setDeletingDocumentIds] = useState<Set<string>>(
     () => new Set(),
+  );
+  const [reparsingDocumentIds, setReparsingDocumentIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [reparseTarget, setReparseTarget] = useState<DocumentListItem | null>(
+    null,
   );
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<DocumentFeedback | null>(null);
@@ -237,6 +247,67 @@ export function DocumentsSection() {
 
   const requestSingleDelete = (document: DocumentListItem) => {
     setDeleteTargets([document]);
+  };
+
+  const requestReparse = (document: DocumentListItem) => {
+    if (!token) {
+      setFeedback({ type: "error", message: "Authentication token is missing." });
+      return;
+    }
+
+    const reparseAction = getDocumentReparseAction(document);
+
+    if (!reparseAction) {
+      setFeedback({
+        type: "error",
+        message: "This document cannot be reparsed in its current status.",
+      });
+      return;
+    }
+
+    setReparseTarget(document);
+  };
+
+  const handleCancelReparse = () => {
+    if (!reparseTarget || reparsingDocumentIds.has(reparseTarget.id)) {
+      return;
+    }
+
+    setReparseTarget(null);
+  };
+
+  const handleConfirmReparse = async (input: ReparseDocumentInput) => {
+    if (!token || !reparseTarget) {
+      return;
+    }
+
+    const targetDocument = reparseTarget;
+    setReparsingDocumentIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      nextIds.add(targetDocument.id);
+      return nextIds;
+    });
+    setFeedback(null);
+
+    try {
+      await reparseDocument(token, targetDocument.id, input);
+      setFeedback({ type: "success", message: "Reparse queued" });
+      setReparseTarget(null);
+      await refreshDocuments();
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to queue reparse.",
+      });
+      setReparseTarget(null);
+    } finally {
+      setReparsingDocumentIds((currentIds) => {
+        const nextIds = new Set(currentIds);
+        nextIds.delete(targetDocument.id);
+        return nextIds;
+      });
+    }
   };
 
   const requestBulkDelete = () => {
@@ -574,8 +645,10 @@ export function DocumentsSection() {
             onToggleDocumentSelection={handleToggleDocumentSelection}
             onViewDocument={openDocumentInNewTab}
             onRequestDelete={requestSingleDelete}
+            onRequestReparse={requestReparse}
             openingDocumentId={openingDocumentId}
             deletingDocumentIds={deletingDocumentIds}
+            reparsingDocumentIds={reparsingDocumentIds}
           />
         </div>
       )}
@@ -596,6 +669,16 @@ export function DocumentsSection() {
           deleting={deletingDocumentIds.size > 0}
           onCancel={() => setDeleteTargets([])}
           onConfirm={() => void handleConfirmDelete()}
+        />
+      )}
+
+      {reparseTarget && (
+        <DocumentReparseDialog
+          key={reparseTarget.id}
+          document={reparseTarget}
+          reparsing={reparsingDocumentIds.has(reparseTarget.id)}
+          onCancel={handleCancelReparse}
+          onConfirm={(input) => void handleConfirmReparse(input)}
         />
       )}
 
