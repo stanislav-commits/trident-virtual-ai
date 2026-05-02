@@ -123,6 +123,22 @@ export interface UploadDocumentInput {
   contentFocus?: string;
 }
 
+export interface ReparseDocumentMetadataInput {
+  language?: string | null;
+  equipmentOrSystem?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  revision?: string | null;
+  timeScope?: DocumentTimeScope;
+  sourcePriority?: number;
+  contentFocus?: string | null;
+}
+
+export interface ReparseDocumentInput {
+  docClass?: DocumentDocClass;
+  metadata?: ReparseDocumentMetadataInput;
+}
+
 export interface UploadDocumentProgress {
   loadedBytes: number;
   totalBytes: number | null;
@@ -284,6 +300,28 @@ export async function syncDocumentStatus(
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(errorBody.message ?? "Failed to refresh document status");
+  }
+
+  return response.json();
+}
+
+export async function reparseDocument(
+  token: string,
+  documentId: string,
+  input: ReparseDocumentInput = {},
+): Promise<DocumentListItem> {
+  const response = await fetchWithAuth(`documents/${documentId}/reparse`, {
+    token,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to queue reparse");
   }
 
   return response.json();
