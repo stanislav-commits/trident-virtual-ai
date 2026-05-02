@@ -18,14 +18,14 @@ export interface DocumentMetadataInput {
 }
 
 export interface DocumentMetadataOverrides {
-  language?: string;
-  equipmentOrSystem?: string;
-  manufacturer?: string;
-  model?: string;
-  revision?: string;
+  language?: string | null;
+  equipmentOrSystem?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  revision?: string | null;
   timeScope?: DocumentTimeScope;
   sourcePriority?: number;
-  contentFocus?: string;
+  contentFocus?: string | null;
 }
 
 export function applyParsingProfile(

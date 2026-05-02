@@ -27,6 +27,19 @@ export class DocumentsUploadStorageService {
     return fs.readFile(this.resolveLocalSpoolKey(storageKey));
   }
 
+  async hasUpload(storageKey: string | null | undefined): Promise<boolean> {
+    if (!this.isLocalSpoolKey(storageKey)) {
+      return false;
+    }
+
+    try {
+      await fs.access(this.resolveLocalSpoolKey(storageKey));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async deleteUpload(storageKey: string | null | undefined): Promise<void> {
     if (!this.isLocalSpoolKey(storageKey)) {
       return;
