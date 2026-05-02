@@ -16,10 +16,13 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
+import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { BulkDeleteDocumentsDto } from './dto/delete-documents.dto';
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto';
+import { ReparseDocumentDto } from './dto/reparse-document.dto';
 import { SearchDocumentsDto } from './dto/search-documents.dto';
 import { UpdateDocumentClassificationDto } from './dto/update-document-classification.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -89,8 +92,14 @@ export class DocumentsController {
   }
 
   @Post(':id/reparse')
-  reparse(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.documentsService.reparse(id, user);
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  reparse(
+    @Param('id') id: string,
+    @Body() body: ReparseDocumentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentsService.reparse(id, user, body ?? {});
   }
 
   @Post(':id/status-sync')
