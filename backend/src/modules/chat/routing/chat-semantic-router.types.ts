@@ -27,6 +27,8 @@ export interface ChatSemanticDocumentsRoute {
   modelHints: string[];
   contentFocusHints: string[];
   documentTitleHint: string | null;
+  retrievalQuery?: string | null;
+  answerLanguage?: string | null;
   languageHint: string | null;
   multiDocumentLikely: boolean;
 }

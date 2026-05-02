@@ -14,6 +14,11 @@ import {
   ChatSemanticWebRoute,
 } from './chat-semantic-router.types';
 import { extractDocumentTitleHint } from './chat-document-title-hints';
+import {
+  normalizeDocumentAnswerLanguage,
+  normalizeDocumentLanguageHint,
+  normalizeDocumentRetrievalQuery,
+} from './chat-document-retrieval-query';
 
 const SUPPORTED_DOCUMENT_CLASSES = Object.values(DocumentDocClass);
 const SUPPORTED_DOCUMENT_QUESTION_TYPES = Object.values(
@@ -53,7 +58,7 @@ export class ChatSemanticRouterService {
         systemPrompt: this.buildSystemPrompt(),
         userPrompt: this.buildUserPrompt(input),
         temperature: 0,
-        maxTokens: 600,
+        maxTokens: 760,
       });
     } catch {
       return null;
@@ -92,12 +97,23 @@ export class ChatSemanticRouterService {
       'Document title hint policy:',
       '- If the ask contains an explicit filename, quoted document title, or strong title-like phrase such as a named manual, approval, certificate, SOP, checklist, plan, or procedure, copy that exact title span to documents.documentTitleHint.',
       '- If there is no clear title or filename mention, set documents.documentTitleHint to null. Do not invent document names.',
+      'Document retrieval-query policy:',
+      '- User questions may be in any language.',
+      '- Set documents.answerLanguage to the user-facing answer language, such as "en", "uk", "es", "it", or a short language name when needed.',
+      '- For document retrieval only, set documents.retrievalQuery to a concise English search query when the user question is non-English or would benefit from normalization for an English-heavy corpus.',
+      '- For English questions, documents.retrievalQuery may be the same as the ask or a concise normalized equivalent.',
+      '- Preserve technical terms, acronyms, model numbers, vessel/system names, and document titles exactly.',
+      '- Do not broaden the retrievalQuery beyond the user intent, and do not invent missing context.',
+      '- Do not translate quoted document titles or filename-like strings.',
+      '- Keep documents.documentTitleHint separate from documents.retrievalQuery. Do not use retrievalQuery to replace a title hint.',
+      '- documents.languageHint is optional document metadata language, not the user answer language; leave it null unless the user explicitly asks for documents in a particular stored document language.',
+      '- When setting documents.languageHint, use the exact document-language wording from the ask or retrievalQuery rather than an inferred ISO code.',
       'If a ship context exists and the ask likely refers to onboard/manual knowledge, prefer documents over generic web.',
       'Do not use web as a fallback for weak or missing document evidence; fallback policy is a later orchestration concern.',
       'If the ask needs ship documents but no shipId is available, route unclear and require clarification.',
       'For metrics, use timeMode snapshot for current/live readings, point_in_time for a single historical moment, and range for trend/range requests.',
       'Return only raw JSON with this exact shape:',
-      '{"route":"documents|metrics|web|mixed|unclear","confidence":0.0,"requiresClarification":false,"clarificationQuestion":null,"sourcePolicy":{"allowDocuments":true,"allowMetrics":false,"allowWeb":false,"allowWebFallback":false,"allowMixedComposition":false},"documents":{"questionType":"equipment_reference|step_by_step_procedure|historical_case|compliance_or_certificate|multi_document_compare|troubleshooting|null","candidateDocClasses":["manual"],"equipmentOrSystemHints":[],"manufacturerHints":[],"modelHints":[],"contentFocusHints":[],"documentTitleHint":null,"languageHint":null,"multiDocumentLikely":false},"metrics":{"timeMode":"snapshot|point_in_time|range|null","timestamp":null,"rangeStart":null,"rangeEnd":null},"web":{"externalKnowledgeExplicit":false,"freshnessRequired":false},"internalDebugNote":"short source-policy note"}',
+      '{"route":"documents|metrics|web|mixed|unclear","confidence":0.0,"requiresClarification":false,"clarificationQuestion":null,"sourcePolicy":{"allowDocuments":true,"allowMetrics":false,"allowWeb":false,"allowWebFallback":false,"allowMixedComposition":false},"documents":{"questionType":"equipment_reference|step_by_step_procedure|historical_case|compliance_or_certificate|multi_document_compare|troubleshooting|null","candidateDocClasses":["manual"],"equipmentOrSystemHints":[],"manufacturerHints":[],"modelHints":[],"contentFocusHints":[],"documentTitleHint":null,"retrievalQuery":null,"answerLanguage":null,"languageHint":null,"multiDocumentLikely":false},"metrics":{"timeMode":"snapshot|point_in_time|range|null","timestamp":null,"rangeStart":null,"rangeEnd":null},"web":{"externalKnowledgeExplicit":false,"freshnessRequired":false},"internalDebugNote":"short source-policy note"}',
       'Do not wrap JSON in markdown.',
     ].join('\n');
   }
@@ -276,6 +292,12 @@ export class ChatSemanticRouterService {
     const documentTitleHint =
       this.parseNullableText(entry.documentTitleHint) ??
       extractDocumentTitleHint(question);
+    const retrievalQuery = normalizeDocumentRetrievalQuery({
+      originalQuestion: question,
+      retrievalQuery: entry.retrievalQuery,
+      documentTitleHint,
+    });
+    const answerLanguage = normalizeDocumentAnswerLanguage(entry.answerLanguage);
 
     return {
       shipId,
@@ -286,7 +308,15 @@ export class ChatSemanticRouterService {
       modelHints: this.parseStringList(entry.modelHints),
       contentFocusHints: this.parseStringList(entry.contentFocusHints),
       documentTitleHint,
-      languageHint: this.parseNullableText(entry.languageHint),
+      retrievalQuery,
+      answerLanguage,
+      languageHint: normalizeDocumentLanguageHint({
+        originalQuestion: question,
+        retrievalQuery,
+        languageHint: entry.languageHint,
+        answerLanguage,
+        documentTitleHint,
+      }),
       multiDocumentLikely: entry.multiDocumentLikely === true,
     };
   }
@@ -373,6 +403,8 @@ export class ChatSemanticRouterService {
       modelHints: [],
       contentFocusHints: [],
       documentTitleHint: extractDocumentTitleHint(question),
+      retrievalQuery: null,
+      answerLanguage: null,
       languageHint: null,
       multiDocumentLikely: false,
     };
