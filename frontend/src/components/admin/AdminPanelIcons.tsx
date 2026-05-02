@@ -253,6 +253,24 @@ export const TrashIcon = () => (
   </svg>
 );
 
+export const RefreshIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+    <path d="M3 12A9 9 0 0 1 18.5 5.8" />
+    <path d="M18 2v4h4" />
+    <path d="M6 22v-4H2" />
+  </svg>
+);
+
 export const UploadIcon = () => (
   <svg
     width="20"
