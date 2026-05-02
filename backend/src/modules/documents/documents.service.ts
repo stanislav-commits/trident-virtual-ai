@@ -20,6 +20,7 @@ import { DocumentListResponseDto } from './dto/document-list-response.dto';
 import { DocumentRetrievalResponseDto } from './dto/document-retrieval-response.dto';
 import { DocumentResponseDto } from './dto/document-response.dto';
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto';
+import { ReparseDocumentDto } from './dto/reparse-document.dto';
 import { SearchDocumentsDto } from './dto/search-documents.dto';
 import { UpdateDocumentClassificationDto } from './dto/update-document-classification.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -153,9 +154,16 @@ export class DocumentsService {
   async reparse(
     id: string,
     user: AuthenticatedUser,
+    input: ReparseDocumentDto = {},
   ): Promise<DocumentResponseDto> {
     const document = await this.findAccessibleDocument(id, user);
-    return this.documentsIngestionService.reparse(document);
+    const reparsedDocument = await this.documentsIngestionService.reparse(
+      document,
+      input,
+    );
+
+    void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
+    return reparsedDocument;
   }
 
   async syncStatus(
