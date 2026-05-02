@@ -1,7 +1,7 @@
-import { DocumentRetrievalResponseDto } from '../../documents/dto/document-retrieval-response.dto';
-import { DocumentDocClass } from '../../documents/enums/document-doc-class.enum';
-import { getDocumentQuestionClassPolicy } from '../../documents/retrieval/document-question-class-policy';
-import { ChatSemanticDocumentsRoute } from '../routing/chat-semantic-router.types';
+import { DocumentRetrievalResponseDto } from '../../../documents/dto/document-retrieval-response.dto';
+import { DocumentDocClass } from '../../../documents/enums/document-doc-class.enum';
+import { getDocumentQuestionClassPolicy } from '../../../documents/retrieval/document-question-class-policy';
+import { ChatSemanticDocumentsRoute } from '../../routing/chat-semantic-router.types';
 
 export interface DocumentClassAttempt {
   reason:

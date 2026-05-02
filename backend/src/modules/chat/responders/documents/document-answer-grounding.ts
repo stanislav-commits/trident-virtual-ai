@@ -1,4 +1,4 @@
-import { DocumentRetrievalResponseDto } from '../../documents/dto/document-retrieval-response.dto';
+import { DocumentRetrievalResponseDto } from '../../../documents/dto/document-retrieval-response.dto';
 
 interface NumericValueClaim {
   raw: string;

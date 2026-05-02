@@ -22,7 +22,7 @@ import { ChatTurnDecomposerService } from './planning/chat-turn-decomposer.servi
 import { ChatMetricsTimeNormalizerService } from './planning/chat-metrics-time-normalizer.service';
 import { ChatTurnPlannerService } from './planning/chat-turn-planner.service';
 import { ChatSemanticRouterService } from './routing/chat-semantic-router.service';
-import { ChatDocumentsResponderService } from './responders/chat-documents-responder.service';
+import { ChatDocumentsResponderService } from './responders/documents/chat-documents-responder.service';
 import { ChatInDevelopmentResponderService } from './responders/chat-in-development-responder.service';
 import { ChatMetricsResponderService } from './responders/chat-metrics-responder.service';
 import { ChatSmallTalkResponderService } from './responders/chat-small-talk-responder.service';

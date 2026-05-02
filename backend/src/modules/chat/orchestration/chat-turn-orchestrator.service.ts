@@ -8,12 +8,16 @@ import { ChatTurnPlan, ChatTurnPlanAsk } from '../planning/chat-turn-plan.types'
 import { ChatTurnPlannerService } from '../planning/chat-turn-planner.service';
 import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum';
 import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
-import { ChatDocumentsResponderService } from '../responders/chat-documents-responder.service';
+import { ChatDocumentsResponderService } from '../responders/documents/chat-documents-responder.service';
 import { ChatInDevelopmentResponderService } from '../responders/chat-in-development-responder.service';
 import { ChatMetricsResponderService } from '../responders/chat-metrics-responder.service';
 import { ChatSmallTalkResponderService } from '../responders/chat-small-talk-responder.service';
 import { ChatWebSearchResponderService } from '../responders/chat-web-search-responder.service';
 import { ChatTurnAskResult } from '../responders/interfaces/chat-turn-responder.types';
+import {
+  composeDocumentOnlyResults,
+  filterContextReferencesForAnswer,
+} from './document-results/document-result-composition';
 
 @Injectable()
 export class ChatTurnOrchestratorService {
@@ -90,18 +94,38 @@ export class ChatTurnOrchestratorService {
       };
     }
 
+    if (
+      askResults.length > 1 &&
+      askResults.every(
+        (result) => result.responder === ChatTurnResponderKind.DOCUMENTS,
+      )
+    ) {
+      const documentOnlyReply = composeDocumentOnlyResults(askResults);
+
+      return {
+        content: documentOnlyReply.content,
+        ragflowContext: {
+          contextReferences: documentOnlyReply.contextReferences,
+          planner: this.buildPlannerContext(plan),
+          askResults,
+        },
+      };
+    }
+
     const content = await this.chatLlmService.composeAskResultsReply({
       context: input.context,
       responseLanguage: plan.responseLanguage,
       askResults,
     });
+    const contextReferences = filterContextReferencesForAnswer(
+      content,
+      askResults.flatMap((result) => result.contextReferences ?? []),
+    );
 
     return {
       content,
       ragflowContext: {
-        contextReferences: askResults.flatMap(
-          (result) => result.contextReferences ?? [],
-        ),
+        contextReferences,
         planner: this.buildPlannerContext(plan),
         askResults,
       },

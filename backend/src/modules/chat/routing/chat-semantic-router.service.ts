@@ -5,6 +5,8 @@ import { ChatLlmService } from '../chat-llm.service';
 import { ChatMetricsAskTimeMode } from '../planning/chat-metrics-ask-time-mode.enum';
 import { parseJsonObject } from '../planning/chat-turn-json.utils';
 import {
+  ChatSemanticDocumentComponent,
+  ChatSemanticDocumentCompositionMode,
   ChatSemanticDocumentsRoute,
   ChatSemanticMetricsRoute,
   ChatSemanticRoute,
@@ -25,6 +27,16 @@ const SUPPORTED_DOCUMENT_QUESTION_TYPES = Object.values(
   DocumentRetrievalQuestionType,
 );
 const SUPPORTED_METRICS_TIME_MODES = Object.values(ChatMetricsAskTimeMode);
+const SUPPORTED_DOCUMENT_COMPOSITION_MODES: ChatSemanticDocumentCompositionMode[] =
+  [
+    'synthesize',
+    'compare',
+    'checklist',
+    'procedure',
+    'conflicts',
+    'summarize_by_source',
+  ];
+const MAX_DOCUMENT_COMPOSITE_COMPONENTS = 3;
 
 @Injectable()
 export class ChatSemanticRouterService {
@@ -58,7 +70,7 @@ export class ChatSemanticRouterService {
         systemPrompt: this.buildSystemPrompt(),
         userPrompt: this.buildUserPrompt(input),
         temperature: 0,
-        maxTokens: 760,
+        maxTokens: 1100,
       });
     } catch {
       return null;
@@ -74,10 +86,10 @@ export class ChatSemanticRouterService {
       'Do not expose chain-of-thought.',
       'Use semantic intent, active ship context, and source policy. Do not rely on brittle keyword matching.',
       'Primary routes:',
-      '- documents: ship-specific manuals, onboard procedures, historical procedures, certificates, regulations, troubleshooting, equipment references, or knowledge likely found in uploaded ship documents.',
+      '- documents: ship-specific manuals, onboard procedures, historical procedures, certificates, regulations, troubleshooting, equipment references, or knowledge likely found in uploaded ship documents. Use documents for document-only composite asks too.',
       '- metrics: current/live telemetry, point-in-time readings, trends, ranges, operational measurements, vessel state from sensors.',
       '- web: explicit public/external/current knowledge, latest public guidance, or information clearly outside onboard documents.',
-      '- mixed: more than one source is needed, such as current metric state plus manual requirement, or ship document plus public/current guidance.',
+      '- mixed: more than one source type is needed, such as current metric state plus manual requirement, or ship document plus public/current guidance. Do not use mixed for document-only composites.',
       '- unclear: the source cannot be selected safely or required context is missing.',
       'Document classes are only manual, historical_procedure, certificate, regulation.',
       'Document class meanings:',
@@ -94,6 +106,14 @@ export class ChatSemanticRouterService {
       '- Procedure records, schedules, history, status, due dates, planned work, and completed work are historical_case with historical_procedure as the class.',
       '- Do not use historical_case for formal instructions, SOPs, checklists, or required-action questions.',
       '- For multi_document_compare, include all semantically relevant document classes and set multiDocumentLikely true instead of collapsing early to one class.',
+      'Document-only composite policy:',
+      '- Keep document-only composite asks on route "documents", not route "mixed".',
+      '- Set documents.mode to "composite" only when the ask has clearly separate document information needs, named document/source groups, comparisons, conflicts, or synthesis across document classes.',
+      '- Use documents.mode "single" for ordinary single-topic document questions, even if they are long.',
+      '- For composite mode, provide 2 components by default and at most 3 when clearly necessary.',
+      '- Each component must be a focused document question with its own retrievalQuery, questionType, candidateDocClasses, documentTitleHint, requireDocumentTitleMatch, and languageHint.',
+      '- Preserve named document titles exactly in the matching component. Do not move title text into retrievalQuery.',
+      '- Use compositionMode "compare" for comparisons, "conflicts" for differences/conflicts, "procedure" for combined procedures, "checklist" for checklist answers, "summarize_by_source" for source-by-source summaries, and "synthesize" otherwise.',
       'Document title hint policy:',
       '- If the ask contains an explicit filename, quoted document title, or strong title-like phrase such as a named manual, approval, certificate, SOP, checklist, plan, or procedure, copy that exact title span to documents.documentTitleHint.',
       '- If there is no clear title or filename mention, set documents.documentTitleHint to null. Do not invent document names.',
@@ -113,7 +133,7 @@ export class ChatSemanticRouterService {
       'If the ask needs ship documents but no shipId is available, route unclear and require clarification.',
       'For metrics, use timeMode snapshot for current/live readings, point_in_time for a single historical moment, and range for trend/range requests.',
       'Return only raw JSON with this exact shape:',
-      '{"route":"documents|metrics|web|mixed|unclear","confidence":0.0,"requiresClarification":false,"clarificationQuestion":null,"sourcePolicy":{"allowDocuments":true,"allowMetrics":false,"allowWeb":false,"allowWebFallback":false,"allowMixedComposition":false},"documents":{"questionType":"equipment_reference|step_by_step_procedure|historical_case|compliance_or_certificate|multi_document_compare|troubleshooting|null","candidateDocClasses":["manual"],"equipmentOrSystemHints":[],"manufacturerHints":[],"modelHints":[],"contentFocusHints":[],"documentTitleHint":null,"retrievalQuery":null,"answerLanguage":null,"languageHint":null,"multiDocumentLikely":false},"metrics":{"timeMode":"snapshot|point_in_time|range|null","timestamp":null,"rangeStart":null,"rangeEnd":null},"web":{"externalKnowledgeExplicit":false,"freshnessRequired":false},"internalDebugNote":"short source-policy note"}',
+      '{"route":"documents|metrics|web|mixed|unclear","confidence":0.0,"requiresClarification":false,"clarificationQuestion":null,"sourcePolicy":{"allowDocuments":true,"allowMetrics":false,"allowWeb":false,"allowWebFallback":false,"allowMixedComposition":false},"documents":{"mode":"single|composite","questionType":"equipment_reference|step_by_step_procedure|historical_case|compliance_or_certificate|multi_document_compare|troubleshooting|null","candidateDocClasses":["manual"],"equipmentOrSystemHints":[],"manufacturerHints":[],"modelHints":[],"contentFocusHints":[],"documentTitleHint":null,"retrievalQuery":null,"answerLanguage":null,"languageHint":null,"multiDocumentLikely":false,"components":[{"id":"part-a","label":"short source label","question":"focused subquestion","retrievalQuery":null,"questionType":"equipment_reference|step_by_step_procedure|historical_case|compliance_or_certificate|multi_document_compare|troubleshooting|null","candidateDocClasses":["manual"],"documentTitleHint":null,"requireDocumentTitleMatch":false,"languageHint":null}],"compositionMode":"synthesize|compare|checklist|procedure|conflicts|summarize_by_source|null"},"metrics":{"timeMode":"snapshot|point_in_time|range|null","timestamp":null,"rangeStart":null,"rangeEnd":null},"web":{"externalKnowledgeExplicit":false,"freshnessRequired":false},"internalDebugNote":"short source-policy note"}',
       'Do not wrap JSON in markdown.',
     ].join('\n');
   }
@@ -298,9 +318,17 @@ export class ChatSemanticRouterService {
       documentTitleHint,
     });
     const answerLanguage = normalizeDocumentAnswerLanguage(entry.answerLanguage);
+    const components = this.parseDocumentComponents(
+      entry.components,
+      answerLanguage,
+    );
 
     return {
       shipId,
+      mode:
+        entry.mode === 'composite' || components.length >= 2
+          ? 'composite'
+          : 'single',
       questionType: parsedQuestionType,
       candidateDocClasses,
       equipmentOrSystemHints: this.parseStringList(entry.equipmentOrSystemHints),
@@ -318,6 +346,8 @@ export class ChatSemanticRouterService {
         documentTitleHint,
       }),
       multiDocumentLikely: entry.multiDocumentLikely === true,
+      components,
+      compositionMode: this.parseDocumentCompositionMode(entry.compositionMode),
     };
   }
 
@@ -370,6 +400,112 @@ export class ChatSemanticRouterService {
     );
   }
 
+  private parseDocumentComponents(
+    value: unknown,
+    answerLanguage: string | null,
+  ): ChatSemanticDocumentComponent[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const components: ChatSemanticDocumentComponent[] = [];
+    const seenIds = new Set<string>();
+
+    for (const item of value) {
+      if (components.length >= MAX_DOCUMENT_COMPOSITE_COMPONENTS) {
+        break;
+      }
+
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+
+      const entry = item as Record<string, unknown>;
+      const question = this.parseNullableText(entry.question);
+
+      if (!question || question.length < 6) {
+        continue;
+      }
+
+      const id = this.buildDocumentComponentId(entry.id, components.length, seenIds);
+      const label = this.parseNullableText(entry.label);
+      const documentTitleHint =
+        this.parseNullableText(entry.documentTitleHint) ??
+        extractDocumentTitleHint(question);
+      const retrievalQuery = normalizeDocumentRetrievalQuery({
+        originalQuestion: question,
+        retrievalQuery: entry.retrievalQuery,
+        documentTitleHint,
+      });
+
+      components.push({
+        id,
+        label,
+        question,
+        retrievalQuery,
+        questionType: this.parseDocumentQuestionType(entry.questionType),
+        candidateDocClasses: this.parseDocumentClasses(entry.candidateDocClasses),
+        documentTitleHint,
+        requireDocumentTitleMatch: entry.requireDocumentTitleMatch === true,
+        languageHint: normalizeDocumentLanguageHint({
+          originalQuestion: question,
+          retrievalQuery,
+          languageHint: entry.languageHint,
+          answerLanguage,
+          documentTitleHint,
+        }),
+      });
+    }
+
+    return components;
+  }
+
+  private buildDocumentComponentId(
+    value: unknown,
+    index: number,
+    seenIds: Set<string>,
+  ): string {
+    const parsed = this.parseNullableText(value);
+    const normalized =
+      parsed
+        ?.toLocaleLowerCase()
+        .replace(/[^a-z0-9_-]+/gu, '-')
+        .replace(/^-+|-+$/gu, '')
+        .slice(0, 40) || `component-${index + 1}`;
+    let candidate = normalized;
+    let suffix = 2;
+
+    while (seenIds.has(candidate)) {
+      candidate = `${normalized}-${suffix}`;
+      suffix += 1;
+    }
+
+    seenIds.add(candidate);
+    return candidate;
+  }
+
+  private parseDocumentQuestionType(
+    value: unknown,
+  ): DocumentRetrievalQuestionType | null {
+    return typeof value === 'string' &&
+      SUPPORTED_DOCUMENT_QUESTION_TYPES.includes(
+        value as DocumentRetrievalQuestionType,
+      )
+      ? (value as DocumentRetrievalQuestionType)
+      : null;
+  }
+
+  private parseDocumentCompositionMode(
+    value: unknown,
+  ): ChatSemanticDocumentCompositionMode | null {
+    return typeof value === 'string' &&
+      SUPPORTED_DOCUMENT_COMPOSITION_MODES.includes(
+        value as ChatSemanticDocumentCompositionMode,
+      )
+      ? (value as ChatSemanticDocumentCompositionMode)
+      : null;
+  }
+
   private parseStringList(value: unknown): string[] {
     if (!Array.isArray(value)) {
       return [];
@@ -396,6 +532,7 @@ export class ChatSemanticRouterService {
   ): ChatSemanticDocumentsRoute {
     return {
       shipId,
+      mode: 'single',
       questionType: null,
       candidateDocClasses: [],
       equipmentOrSystemHints: [],
@@ -407,6 +544,8 @@ export class ChatSemanticRouterService {
       answerLanguage: null,
       languageHint: null,
       multiDocumentLikely: false,
+      components: [],
+      compositionMode: null,
     };
   }
 
@@ -434,7 +573,9 @@ export class ChatSemanticRouterService {
       documents.manufacturerHints.length > 0 ||
       documents.modelHints.length > 0 ||
       documents.contentFocusHints.length > 0 ||
-      documents.documentTitleHint !== null
+      documents.documentTitleHint !== null ||
+      documents.components.length > 0 ||
+      documents.mode === 'composite'
     );
   }
 

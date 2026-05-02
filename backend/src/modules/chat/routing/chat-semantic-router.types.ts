@@ -18,8 +18,31 @@ export interface ChatSemanticSourcePolicy {
   allowMixedComposition: boolean;
 }
 
+export type ChatSemanticDocumentsMode = 'single' | 'composite';
+
+export type ChatSemanticDocumentCompositionMode =
+  | 'synthesize'
+  | 'compare'
+  | 'checklist'
+  | 'procedure'
+  | 'conflicts'
+  | 'summarize_by_source';
+
+export interface ChatSemanticDocumentComponent {
+  id: string;
+  label: string | null;
+  question: string;
+  retrievalQuery?: string | null;
+  questionType: DocumentRetrievalQuestionType | null;
+  candidateDocClasses: DocumentDocClass[];
+  documentTitleHint: string | null;
+  requireDocumentTitleMatch: boolean;
+  languageHint: string | null;
+}
+
 export interface ChatSemanticDocumentsRoute {
   shipId: string | null;
+  mode: ChatSemanticDocumentsMode;
   questionType: DocumentRetrievalQuestionType | null;
   candidateDocClasses: DocumentDocClass[];
   equipmentOrSystemHints: string[];
@@ -31,6 +54,8 @@ export interface ChatSemanticDocumentsRoute {
   answerLanguage?: string | null;
   languageHint: string | null;
   multiDocumentLikely: boolean;
+  components: ChatSemanticDocumentComponent[];
+  compositionMode: ChatSemanticDocumentCompositionMode | null;
 }
 
 export interface ChatSemanticMetricsRoute {

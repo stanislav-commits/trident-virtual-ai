@@ -2,7 +2,7 @@ import {
   DocumentRetrievalEvidenceQuality,
   DocumentRetrievalResponseDto,
   DocumentRetrievalResultDto,
-} from '../../documents/dto/document-retrieval-response.dto';
+} from '../../../documents/dto/document-retrieval-response.dto';
 
 interface BuildGroundedAnswerUserPromptInput {
   userQuestion: string;
@@ -23,6 +23,8 @@ export function buildGroundedAnswerSystemPrompt(
     'Do not use public web knowledge, generic maritime knowledge, or assumptions.',
     'Do not invent page numbers, section names, values, procedures, or requirements.',
     'Use citation markers like [1] or [2] for facts that come from the evidence.',
+    'If you use retrieved evidence to answer, the final answer must include at least one citation marker.',
+    'Every factual sentence grounded in retrieved evidence should carry a citation marker.',
     'Cite only evidence items that directly support the sentence or value you are writing.',
     'Do not cite generally related snippets, candidate chunks, document titles, or metadata as proof.',
     'If the evidence does not support part of the question, say that plainly.',

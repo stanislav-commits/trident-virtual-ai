@@ -6,6 +6,10 @@ import { ChatTurnDecomposerService } from './chat-turn-decomposer.service';
 import { ChatMetricsTimeNormalizerService } from './chat-metrics-time-normalizer.service';
 import { ChatTurnIntent } from './chat-turn-intent.enum';
 import { ChatTurnPlan } from './chat-turn-plan.types';
+import {
+  ChatSemanticRoute,
+  ChatSemanticRouteDecision,
+} from '../routing/chat-semantic-router.types';
 import { ChatSemanticRouterService } from '../routing/chat-semantic-router.service';
 
 @Injectable()
@@ -28,12 +32,12 @@ export class ChatTurnPlannerService {
         }),
       ),
     );
-    const normalizedAsks = await Promise.all(
+    let normalizedAsks = await Promise.all(
       classifiedAsks.map((ask) =>
         this.chatMetricsTimeNormalizerService.normalizeAsk(ask, context),
       ),
     );
-    const semanticRoutes = await Promise.all(
+    let semanticRoutes = await Promise.all(
       normalizedAsks.map((ask) =>
         this.chatSemanticRouterService.route({
           question: ask.question,
@@ -42,6 +46,38 @@ export class ChatTurnPlannerService {
         }),
       ),
     );
+    const documentOnlyCompositeRoute =
+      await this.resolveDocumentOnlyCompositeRoute({
+        context,
+        responseLanguage: decomposition.responseLanguage,
+        semanticRoutes,
+      });
+
+    if (documentOnlyCompositeRoute) {
+      const originalQuestion =
+        context.latestUserMessage?.content.trim() || normalizedAsks[0].question;
+      const originalClassification =
+        await this.chatTurnClassifierService.classifyAsk({
+          context,
+          question: originalQuestion,
+        });
+      const normalizedOriginal =
+        await this.chatMetricsTimeNormalizerService.normalizeAsk(
+          {
+            ...originalClassification,
+            question: originalQuestion,
+          },
+          context,
+        );
+
+      normalizedAsks = [
+        {
+          ...normalizedOriginal,
+          question: originalQuestion,
+        },
+      ];
+      semanticRoutes = [documentOnlyCompositeRoute];
+    }
 
     return {
       asks: normalizedAsks.map((ask, index) => {
@@ -62,7 +98,54 @@ export class ChatTurnPlannerService {
         };
       }),
       responseLanguage: decomposition.responseLanguage,
-      reasoning: decomposition.reasoning,
+      reasoning: documentOnlyCompositeRoute
+        ? `${decomposition.reasoning} Document-only composite routing kept the user turn as one documents ask.`
+        : decomposition.reasoning,
     };
+  }
+
+  private async resolveDocumentOnlyCompositeRoute(input: {
+    context: ChatConversationContext;
+    responseLanguage: string | null;
+    semanticRoutes: ChatSemanticRouteDecision[];
+  }): Promise<ChatSemanticRouteDecision | null> {
+    if (
+      input.semanticRoutes.length < 2 ||
+      !input.semanticRoutes.every(
+        (route) => route.route === ChatSemanticRoute.DOCUMENTS,
+      )
+    ) {
+      return null;
+    }
+
+    const originalQuestion = input.context.latestUserMessage?.content.trim();
+
+    if (originalQuestion) {
+      const originalRoute = await this.chatSemanticRouterService.route({
+        question: originalQuestion,
+        shipId: input.context.session.shipId,
+        responseLanguage: input.responseLanguage,
+      });
+
+      if (this.isValidDocumentCompositeRoute(originalRoute)) {
+        return originalRoute;
+      }
+    }
+
+    return (
+      input.semanticRoutes.find((route) =>
+        this.isValidDocumentCompositeRoute(route),
+      ) ?? null
+    );
+  }
+
+  private isValidDocumentCompositeRoute(
+    route: ChatSemanticRouteDecision,
+  ): boolean {
+    return (
+      route.route === ChatSemanticRoute.DOCUMENTS &&
+      route.documents.mode === 'composite' &&
+      route.documents.components.length >= 2
+    );
   }
 }

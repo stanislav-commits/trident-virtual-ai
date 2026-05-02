@@ -87,6 +87,7 @@ export class ChatTurnDecomposerService {
       'Each ask must be standalone, self-contained, and executable on its own.',
       'Each ask must represent exactly one deliverable or one telemetry concept.',
       'If the user requests several different metrics in one sentence, split them into separate asks in the original order.',
+      'Do not split document-only comparisons, conflicts, summarize-by-source requests, or synthesis requests across named manuals/SOPs/procedures/documents; keep them as one ask so document routing can build one composite document plan.',
       'Never duplicate asks.',
       'Never merge different telemetry concepts such as speed, location, fuel, depth, heading, wind, temperature, or engine state into one ask.',
       'Preserve the user language when possible, but make each ask explicit enough to stand on its own.',
