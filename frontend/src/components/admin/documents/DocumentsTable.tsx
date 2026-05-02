@@ -23,8 +23,10 @@ interface DocumentsTableProps {
   onToggleDocumentSelection: (documentId: string) => void;
   onViewDocument: (document: DocumentListItem) => void;
   onRequestDelete: (document: DocumentListItem) => void;
+  onRequestReparse: (document: DocumentListItem) => void;
   openingDocumentId: string | null;
   deletingDocumentIds: Set<string>;
+  reparsingDocumentIds: Set<string>;
 }
 
 const fullDateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -104,6 +106,16 @@ function formatChunkCount(chunkCount: number | null): string | null {
   return `${chunkCount.toLocaleString()} chunk${chunkCount === 1 ? "" : "s"}`;
 }
 
+function getFailedChunkSummary(document: DocumentListItem): string | null {
+  if (document.parseStatus !== "failed" || document.chunkCount === null) {
+    return null;
+  }
+
+  return document.chunkCount > 0
+    ? `Failed after ${formatChunkCount(document.chunkCount)}`
+    : "Failed with 0 chunks";
+}
+
 function getParseProgressPercent(document: DocumentListItem): number | null {
   if (typeof document.parseProgressPercent !== "number") {
     return null;
@@ -174,9 +186,16 @@ function DocumentStatusCell({ document }: DocumentStatusCellProps) {
   }
 
   if (document.parseStatus === "failed") {
+    const failedChunkSummary = getFailedChunkSummary(document);
+
     return (
       <div className="admin-panel__document-status-cell">
         <span className={badgeClass}>{label}</span>
+        {failedChunkSummary && (
+          <span className="admin-panel__document-status-note admin-panel__document-status-note--secondary">
+            {failedChunkSummary}
+          </span>
+        )}
         {document.parseError && (
           <span
             className="admin-panel__document-status-note admin-panel__document-status-note--error"
@@ -208,8 +227,10 @@ export function DocumentsTable({
   onToggleDocumentSelection,
   onViewDocument,
   onRequestDelete,
+  onRequestReparse,
   openingDocumentId,
   deletingDocumentIds,
+  reparsingDocumentIds,
 }: DocumentsTableProps) {
   return (
     <div className="admin-panel__table-wrap admin-panel__documents-table-wrap">
@@ -246,6 +267,7 @@ export function DocumentsTable({
           {documents.map((document) => {
             const isSelected = selectedDocumentIds.has(document.id);
             const isDeleting = deletingDocumentIds.has(document.id);
+            const isReparsing = reparsingDocumentIds.has(document.id);
             const canView = Boolean(
               document.ragflowDatasetId && document.ragflowDocumentId,
             );
@@ -329,7 +351,9 @@ export function DocumentsTable({
                   <DocumentRowActions
                     document={document}
                     isDeleting={isDeleting}
+                    isReparsing={isReparsing}
                     onRequestDelete={onRequestDelete}
+                    onRequestReparse={onRequestReparse}
                   />
                 </td>
               </tr>
