@@ -1,5 +1,7 @@
 import {
+  BadGatewayException,
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -12,6 +14,10 @@ import { RagService } from '../../integrations/rag/rag.service';
 import type { RagflowDataset } from '../../integrations/rag/ragflow.types';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { DocumentResponseDto } from './dto/document-response.dto';
+import {
+  ReparseDocumentDto,
+  toReparseMetadataOverrides,
+} from './dto/reparse-document.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
@@ -24,6 +30,7 @@ import { DocumentsParseDispatcherService } from './documents-parse-dispatcher.se
 import { DocumentsParseStatusSyncService } from './documents-parse-status-sync.service';
 import {
   applyParsingProfile,
+  applyMetadataOverrides,
   buildDocumentMetadata,
   buildDocumentMetadataFromEntity,
 } from './documents-profile.helpers';
@@ -31,6 +38,10 @@ import {
   buildEffectiveParserConfig,
   getParsingProfileForDocClass,
 } from './parsing/document-parsing-profiles';
+import {
+  REPARSE_SOURCE_UNAVAILABLE_MESSAGE,
+  assertDocumentCanReparse,
+} from './documents-reparse-policy';
 
 @Injectable()
 export class DocumentsIngestionService {
@@ -241,50 +252,97 @@ export class DocumentsIngestionService {
     }
   }
 
-  async reparse(document: DocumentEntity): Promise<DocumentResponseDto> {
-    if (!document.ragflowDatasetId || !document.ragflowDocumentId) {
-      throw new BadRequestException('Document is not uploaded to RAGFlow yet.');
+  async reparse(
+    document: DocumentEntity,
+    input: ReparseDocumentDto = {},
+  ): Promise<DocumentResponseDto> {
+    const freshDocument = await this.reloadDocument(document);
+    const previousStatus = freshDocument.parseStatus;
+    const previousRagflowDocumentId = freshDocument.ragflowDocumentId;
+
+    assertDocumentCanReparse(freshDocument.parseStatus);
+
+    this.logger.log(
+      `Queueing document reparse for ${freshDocument.id} ` +
+        `(ship=${freshDocument.shipId}, file="${freshDocument.originalFileName}", ` +
+        `previousStatus=${previousStatus}, previousRagflowDocumentId=${
+          previousRagflowDocumentId ?? 'none'
+        })`,
+    );
+
+    this.applyReparseUpdates(freshDocument, input);
+
+    if (!freshDocument.ragflowDocumentId) {
+      return this.queueLocalSourceReparse(
+        freshDocument,
+        previousStatus,
+        previousRagflowDocumentId,
+      );
     }
 
-    const profile = getParsingProfileForDocClass(document.docClass);
-    applyParsingProfile(document, profile);
-    document.parserConfigJson = buildEffectiveParserConfig(profile);
-    document.metadataJson = buildDocumentMetadataFromEntity(document);
+    if (!freshDocument.ragflowDatasetId) {
+      const reason =
+        'Cannot reparse because the remote document id exists but the dataset id is missing.';
+      this.logger.warn(
+        `Cannot queue document reparse for ${freshDocument.id}: ${reason}`,
+      );
+      throw new ConflictException(reason);
+    }
 
     try {
-      document.parseStatus = DocumentParseStatus.PENDING_CONFIG;
-      document.parseError = null;
-      document.parseProgressPercent = null;
-      await this.documentsRepository.save(document);
+      const remoteDocument = await this.ragService.fetchRemoteDocumentStatus(
+        freshDocument.ragflowDatasetId,
+        freshDocument.ragflowDocumentId,
+      );
+
+      if (!remoteDocument) {
+        return this.queueMissingRemoteReparse(
+          freshDocument,
+          previousStatus,
+          previousRagflowDocumentId,
+        );
+      }
 
       await this.ragService.updateRemoteDocumentConfig(
-        document.ragflowDatasetId,
-        document.ragflowDocumentId,
+        freshDocument.ragflowDatasetId,
+        freshDocument.ragflowDocumentId,
         {
-          metadata: document.metadataJson ?? {},
-          parsingProfile: profile,
+          metadata: freshDocument.metadataJson ?? {},
+          parsingProfile: getParsingProfileForDocClass(freshDocument.docClass),
         },
       );
 
-      document.parseStatus = DocumentParseStatus.PENDING_PARSE;
-      document.chunkCount = null;
-      document.parsedAt = null;
-      document.parseProgressPercent = null;
-      const savedDocument = await this.documentsRepository.save(document);
+      freshDocument.parseStatus = DocumentParseStatus.PENDING_PARSE;
+      freshDocument.parseError = null;
+      freshDocument.parseProgressPercent = null;
+      // RAGFlow reparsing resets chunk_num and deletes existing chunks/tasks
+      // for the same remote document before queueing new parse tasks.
+      freshDocument.chunkCount = null;
+      freshDocument.parsedAt = null;
+      freshDocument.lastSyncedAt = new Date();
+      const savedDocument = await this.documentsRepository.save(freshDocument);
+
+      this.logger.log(
+        `Document reparse queued for ${freshDocument.id} using existing ` +
+          `RAGFlow document ${freshDocument.ragflowDocumentId}.`,
+      );
 
       await this.parseDispatcher.dispatchPendingParses();
       this.parseDrain.wake();
       return toDocumentResponse(await this.reloadDocument(savedDocument));
     } catch (error) {
-      document.parseStatus = DocumentParseStatus.FAILED;
-      document.parseError = this.formatError(error);
-      document.lastSyncedAt = new Date();
+      if (error instanceof ConflictException) {
+        throw error;
+      }
+
+      const errorMessage = this.formatError(error);
       this.logger.warn(
-        `RAGFlow reparse failed for document ${document.id}: ${document.parseError}`,
+        `RAGFlow reparse could not be queued for document ${freshDocument.id}: ${errorMessage}`,
+      );
+      throw new BadGatewayException(
+        `RAGFlow reparse could not be queued: ${errorMessage}`,
       );
     }
-
-    return toDocumentResponse(await this.documentsRepository.save(document));
   }
 
   async syncStatus(document: DocumentEntity): Promise<DocumentResponseDto> {
@@ -394,6 +452,82 @@ export class DocumentsIngestionService {
 
   private formatError(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private applyCurrentParsingProfile(document: DocumentEntity): void {
+    const profile = getParsingProfileForDocClass(document.docClass);
+    applyParsingProfile(document, profile);
+    document.parserConfigJson = buildEffectiveParserConfig(profile);
+    document.metadataJson = buildDocumentMetadataFromEntity(document);
+  }
+
+  private applyReparseUpdates(
+    document: DocumentEntity,
+    input: ReparseDocumentDto,
+  ): void {
+    if (input.docClass) {
+      document.docClass = input.docClass;
+    }
+
+    applyMetadataOverrides(document, toReparseMetadataOverrides(input.metadata));
+    this.applyCurrentParsingProfile(document);
+  }
+
+  private async queueLocalSourceReparse(
+    document: DocumentEntity,
+    previousStatus: DocumentParseStatus,
+    previousRagflowDocumentId: string | null,
+  ): Promise<DocumentResponseDto> {
+    if (!(await this.uploadStorage.hasUpload(document.storageKey))) {
+      this.logger.warn(
+        `Cannot queue document reparse for ${document.id}: ` +
+          `${REPARSE_SOURCE_UNAVAILABLE_MESSAGE} ` +
+          `(ship=${document.shipId}, file="${document.originalFileName}", ` +
+          `previousStatus=${previousStatus}, previousRagflowDocumentId=${
+            previousRagflowDocumentId ?? 'none'
+          })`,
+      );
+      throw new ConflictException(REPARSE_SOURCE_UNAVAILABLE_MESSAGE);
+    }
+
+    document.parseStatus = DocumentParseStatus.UPLOADED;
+    document.parseError = null;
+    document.parseProgressPercent = null;
+    document.chunkCount = null;
+    document.parsedAt = null;
+    document.lastSyncedAt = new Date();
+
+    const queuedDocument = await this.documentsRepository.save(document);
+    this.logger.log(
+      `Document reparse queued for ${document.id} from local source upload.`,
+    );
+    return toDocumentResponse(queuedDocument);
+  }
+
+  private async queueMissingRemoteReparse(
+    document: DocumentEntity,
+    previousStatus: DocumentParseStatus,
+    previousRagflowDocumentId: string | null,
+  ): Promise<DocumentResponseDto> {
+    if (!(await this.uploadStorage.hasUpload(document.storageKey))) {
+      const reason =
+        'Cannot reparse because the RAGFlow document is missing and the source file is not available.';
+      this.logger.warn(
+        `Cannot queue document reparse for ${document.id}: ${reason} ` +
+          `(ship=${document.shipId}, file="${document.originalFileName}", ` +
+          `previousStatus=${previousStatus}, previousRagflowDocumentId=${
+            previousRagflowDocumentId ?? 'none'
+          })`,
+      );
+      throw new ConflictException(reason);
+    }
+
+    document.ragflowDocumentId = null;
+    return this.queueLocalSourceReparse(
+      document,
+      previousStatus,
+      previousRagflowDocumentId,
+    );
   }
 
   private async reloadDocument(document: DocumentEntity): Promise<DocumentEntity> {
