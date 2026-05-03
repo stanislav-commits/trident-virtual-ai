@@ -1,5 +1,6 @@
 import { DocumentRetrievalResponseDto } from '../../../documents/dto/document-retrieval-response.dto';
 import { DocumentDocClass } from '../../../documents/enums/document-doc-class.enum';
+import { DocumentRetrievalQuestionType } from '../../../documents/enums/document-retrieval-question-type.enum';
 import { getDocumentQuestionClassPolicy } from '../../../documents/retrieval/document-question-class-policy';
 import { ChatSemanticDocumentsRoute } from '../../routing/chat-semantic-router.types';
 
@@ -51,6 +52,13 @@ export function buildDocumentClassAttempts(
     });
   }
 
+  if (shouldTryManualMaintenanceFallback(documentsRoute)) {
+    attempts.push({
+      reason: 'secondary_fallback',
+      candidateDocClasses: [DocumentDocClass.MANUAL],
+    });
+  }
+
   if (!attempts.length) {
     attempts.push({
       reason: 'router_candidates',
@@ -61,6 +69,27 @@ export function buildDocumentClassAttempts(
   }
 
   return dedupeAttempts(attempts);
+}
+
+function shouldTryManualMaintenanceFallback(
+  documentsRoute: ChatSemanticDocumentsRoute,
+): boolean {
+  if (
+    documentsRoute.questionType !== DocumentRetrievalQuestionType.HISTORICAL_CASE
+  ) {
+    return false;
+  }
+
+  const contentFocus = documentsRoute.contentFocusHints
+    .join(' ')
+    .toLocaleLowerCase();
+
+  return (
+    /\bmaintenance\b/u.test(contentFocus) &&
+    /\b(?:next|due|schedule|scheduled|interval|periodic|running hours?)\b/u.test(
+      contentFocus,
+    )
+  );
 }
 
 export function isBetterRetrieval(

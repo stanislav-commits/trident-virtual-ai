@@ -26,8 +26,18 @@ export function extractCitedEvidenceRanks(answerText: string): Set<number> {
 export function validateDocumentAnswerGrounding(
   answerText: string,
   retrieval: DocumentRetrievalResponseDto,
+  options: {
+    supportedNumericContext?: string[];
+  } = {},
 ): DocumentAnswerGroundingValidation {
-  const claims = extractNumericValueClaims(answerText);
+  const claims = extractNumericValueClaims(answerText).filter(
+    (claim) =>
+      !isNumericValueClaimSupportedByContext(
+        claim,
+        options.supportedNumericContext ?? [],
+      ),
+  );
+
   if (!claims.length) {
     return { isGrounded: true };
   }
@@ -88,6 +98,7 @@ function extractNumericValueClaims(answerText: string): NumericValueClaim[] {
     'sec(?:onds?)?',
     'min(?:utes?)?',
     'hours?',
+    'hrs?',
     'h',
     'mm',
     'cm',
@@ -138,6 +149,19 @@ function isNumericValueClaimSupported(
   return localExpressionPattern.test(normalizedEvidence);
 }
 
+function isNumericValueClaimSupportedByContext(
+  claim: NumericValueClaim,
+  supportedNumericContext: string[],
+): boolean {
+  if (!supportedNumericContext.length) {
+    return false;
+  }
+
+  return supportedNumericContext.some((value) =>
+    isNumericValueClaimSupported(claim, value),
+  );
+}
+
 function normalizeNumericGroundingText(value: string): string {
   return value
     .toLowerCase()
@@ -150,6 +174,7 @@ function normalizeNumericGroundingText(value: string): string {
     .replace(/\bamps?\b/g, 'a')
     .replace(/\bseconds?\b/g, 'sec')
     .replace(/\bminutes?\b/g, 'min')
+    .replace(/\bhrs?\b/g, 'h')
     .replace(/\bhours?\b/g, 'h')
     .replace(/\bdegrees?\s*c\b/g, 'c')
     .replace(/\u00b0\s*c\b/g, 'c')
@@ -157,6 +182,8 @@ function normalizeNumericGroundingText(value: string): string {
       /(\d+(?:\.\d+)?)\s*(?:\u00f7|[-\u2013\u2014]|to)\s*(\d+(?:\.\d+)?)/gu,
       '$1-$2',
     )
+    .replace(/([\p{L}])(\d)/gu, '$1 $2')
+    .replace(/(\d)([\p{L}])/gu, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -184,6 +211,7 @@ function normalizeNumericUnit(value: string): string {
     .replace(/^amps?$/, 'a')
     .replace(/^seconds?$/, 'sec')
     .replace(/^minutes?$/, 'min')
+    .replace(/^hrs?$/, 'h')
     .replace(/^hours?$/, 'h')
     .replace(/^degrees?c$/, 'c')
     .replace(/^\u00b0c$/, 'c');

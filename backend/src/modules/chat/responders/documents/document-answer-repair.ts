@@ -31,10 +31,12 @@ export async function acceptOrRepairGroundedReply(input: {
   retrieval: DocumentRetrievalResponseDto;
   request: DocumentAnswerCompletionRequest;
   chatLlmService: DocumentAnswerLlm;
+  supportedNumericContext?: string[];
 }): Promise<GroundedDocumentAnswer> {
   const firstValidation = validateGeneratedDocumentAnswer(
     input.reply,
     input.retrieval,
+    input.supportedNumericContext,
   );
 
   if (firstValidation.isGrounded) {
@@ -58,6 +60,7 @@ export async function acceptOrRepairGroundedReply(input: {
       const retryValidation = validateGeneratedDocumentAnswer(
         retry,
         input.retrieval,
+        input.supportedNumericContext,
       );
 
       if (retryValidation.isGrounded) {
@@ -125,8 +128,11 @@ export function buildFallbackEvidenceSummary(
 function validateGeneratedDocumentAnswer(
   reply: string,
   retrieval: DocumentRetrievalResponseDto,
+  supportedNumericContext: string[] = [],
 ): DocumentAnswerGroundingValidation {
-  const groundingValidation = validateDocumentAnswerGrounding(reply, retrieval);
+  const groundingValidation = validateDocumentAnswerGrounding(reply, retrieval, {
+    supportedNumericContext,
+  });
 
   if (!groundingValidation.isGrounded) {
     return groundingValidation;

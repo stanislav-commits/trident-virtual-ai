@@ -1,4 +1,8 @@
 import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-question-type.enum';
+import {
+  isFuelFilterReplacementQuestion,
+  isMaintenanceScheduleQuestion,
+} from './documents-retrieval-query-signals';
 
 export interface QuestionSupportSignals {
   questionTokenCount: number;
@@ -87,6 +91,27 @@ const GENERIC_DOMAIN_TOKENS = new Set([
   'valid',
   'validity',
   'vessel',
+]);
+
+const MAINTENANCE_SCHEDULE_CONTEXT_TOKENS = new Set([
+  'due',
+  'next',
+  'running',
+  'schedule',
+  'scheduled',
+]);
+
+const FUEL_FILTER_PROCEDURE_CONTEXT_TOKENS = new Set([
+  'cartridge',
+  'cartridges',
+  'check',
+  'handpump',
+  'leak',
+  'leaks',
+  'main',
+  'open',
+  'procedure',
+  'tap',
 ]);
 
 // Weak generic text signals for reranking/evidence gating only; not routing rules.
@@ -209,22 +234,34 @@ export function getQuestionSupportSignals(
 }
 
 function getMeaningfulTokens(value: string): string[] {
-  return Array.from(
+  const tokens = Array.from(
     new Set(
       value
         .toLowerCase()
         .split(/[^\p{L}\p{N}]+/gu)
-        .map((token) => token.trim())
+        .map((token) => normalizeSupportToken(token.trim()))
         .filter((token) => token.length >= 3 && !BASIC_STOP_WORDS.has(token)),
     ),
   );
+
+  if (!isMaintenanceScheduleQuestion(value)) {
+    return isFuelFilterReplacementQuestion(value)
+      ? tokens.filter(
+          (token) => !FUEL_FILTER_PROCEDURE_CONTEXT_TOKENS.has(token),
+        )
+      : tokens;
+  }
+
+  return tokens
+    .filter((token) => !isNumericToken(token))
+    .filter((token) => !MAINTENANCE_SCHEDULE_CONTEXT_TOKENS.has(token));
 }
 
 function getSearchableTokens(value: string): string[] {
   return value
     .toLowerCase()
     .split(/[^\p{L}\p{N}]+/gu)
-    .map((token) => token.trim())
+    .map((token) => normalizeSupportToken(token.trim()))
     .filter((token) => token.length >= 2);
 }
 
@@ -241,10 +278,33 @@ function stripPluralSuffix(value: string): string {
   return value.length > 3 && value.endsWith('s') ? value.slice(0, -1) : value;
 }
 
+function normalizeSupportToken(value: string): string {
+  if (value === 'hr' || value === 'hrs') {
+    return 'hours';
+  }
+
+  if (
+    value === 'change' ||
+    value === 'changing' ||
+    value === 'renew' ||
+    value === 'renewing' ||
+    value === 'replacing' ||
+    value === 'replacement'
+  ) {
+    return 'replace';
+  }
+
+  return value;
+}
+
 function hasOrderedStepSignal(content: string): boolean {
   return /(^|\n)\s*(step\s+\d+|\d+[.)])\s+/i.test(content);
 }
 
 function hasAnyTerm(content: string, terms: string[]): boolean {
   return terms.some((term) => content.includes(term));
+}
+
+function isNumericToken(value: string): boolean {
+  return /^\d+(?:[.,]\d+)?$/u.test(value);
 }

@@ -6,6 +6,8 @@ import {
 import {
   RagflowCreateDatasetInput,
   RagflowDataset,
+  RagflowDocumentChunksInput,
+  RagflowDocumentChunksResponse,
   RagflowDocument,
   RagflowDocumentDownload,
   RagflowDocumentListResponse,
@@ -151,6 +153,29 @@ export class RagflowClient {
     );
 
     return data?.docs?.[0] ?? null;
+  }
+
+  async listDocumentChunks(
+    datasetId: string,
+    documentId: string,
+    input: RagflowDocumentChunksInput = {},
+  ): Promise<RagflowDocumentChunksResponse> {
+    const data = await this.requestJson<RagflowDocumentChunksResponse>(
+      `/datasets/${datasetId}/documents/${documentId}/chunks`,
+      {
+        method: 'GET',
+        query: {
+          page: String(input.page ?? 1),
+          page_size: String(input.pageSize ?? 100),
+        },
+      },
+    );
+
+    return {
+      chunks: Array.isArray(data?.chunks) ? data.chunks : [],
+      doc: data?.doc,
+      total: typeof data?.total === 'number' ? data.total : undefined,
+    };
   }
 
   async deleteDocumentsFromDataset(

@@ -11,8 +11,9 @@ import {
   DocumentRetrievalFilterContext,
   EnrichedDocumentRetrievalCandidate,
 } from './documents-retrieval.types';
+import { extractFirstChunkPage } from './documents-retrieval-chunk-utils';
 
-const MAX_SNIPPET_LENGTH = 900;
+const MAX_SNIPPET_LENGTH = 1600;
 
 interface BuildRetrievalResponseOptions {
   input: SearchDocumentsDto;
@@ -182,7 +183,7 @@ export class DocumentsRetrievalMapper {
         'document',
       docClass: candidate.document.docClass,
       parseProfile: candidate.document.parseProfile,
-      page: this.extractPage(candidate.chunk.positions),
+      page: extractFirstChunkPage(candidate.chunk.positions),
       section: null,
       snippet: this.trimSnippet(candidate.chunk.content ?? ''),
       highlightedSnippet:
@@ -271,27 +272,4 @@ export class DocumentsRetrievalMapper {
     return `${normalized.slice(0, MAX_SNIPPET_LENGTH - 1).trim()}\u2026`;
   }
 
-  private extractPage(positions: unknown[] | undefined): number | null {
-    for (const position of positions ?? []) {
-      if (
-        position &&
-        typeof position === 'object' &&
-        'page' in position &&
-        typeof position.page === 'number'
-      ) {
-        return position.page;
-      }
-
-      if (
-        position &&
-        typeof position === 'object' &&
-        'page_num' in position &&
-        typeof position.page_num === 'number'
-      ) {
-        return position.page_num;
-      }
-    }
-
-    return null;
-  }
 }

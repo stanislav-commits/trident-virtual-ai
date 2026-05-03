@@ -13,6 +13,7 @@ import { DocumentsService } from './documents.service';
 import { DocumentsUploadStorageService } from './documents-upload-storage.service';
 import { DocumentsRetrievalFilterBuilder } from './retrieval/documents-retrieval-filter-builder';
 import { DocumentsRetrievalMapper } from './retrieval/documents-retrieval-mapper';
+import { DocumentsRetrievalNeighborExpander } from './retrieval/documents-retrieval-neighbor-expander';
 import { DocumentsRetrievalReranker } from './retrieval/documents-retrieval-reranker';
 import { DocumentsRetrievalService } from './retrieval/documents-retrieval.service';
 
@@ -32,6 +33,7 @@ import { DocumentsRetrievalService } from './retrieval/documents-retrieval.servi
     DocumentsUploadStorageService,
     DocumentsRetrievalFilterBuilder,
     DocumentsRetrievalMapper,
+    DocumentsRetrievalNeighborExpander,
     DocumentsRetrievalReranker,
     DocumentsRetrievalService,
   ],

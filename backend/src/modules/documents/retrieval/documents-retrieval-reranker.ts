@@ -4,6 +4,7 @@ import { DocumentEntity } from '../entities/document.entity';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
 import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-question-type.enum';
 import { getPreferredDocumentClassesForQuestionType } from './document-question-class-policy';
+import { getQuestionContentSignalBonus } from './documents-retrieval-query-signals';
 import { getQuestionTypeSectionBonus } from './documents-retrieval-text-signals';
 import {
   DocumentRetrievalCandidateScoreInput,
@@ -19,6 +20,7 @@ export class DocumentsRetrievalReranker {
     chunks: RagflowRetrievalChunk[],
     documentsByRagflowId: Map<string, DocumentEntity>,
     context: DocumentRetrievalFilterContext,
+    question: string,
     questionType: DocumentRetrievalQuestionType | null,
   ): EnrichedDocumentRetrievalCandidate[] {
     return chunks
@@ -40,6 +42,7 @@ export class DocumentsRetrievalReranker {
           document,
           retrievalScore,
           rerankScore: scoreDocumentRetrievalCandidate({
+            question,
             retrievalScore,
             document,
             requestedDocClasses: context.requestedDocClasses,
@@ -124,6 +127,10 @@ export function scoreDocumentRetrievalCandidate(
     input.document.originalFileName,
     input.documentTitleHint,
   );
+  const questionContentBonus = getQuestionContentSignalBonus(
+    input.question,
+    input.content,
+  );
 
   return roundScore(
     baseScore +
@@ -132,7 +139,8 @@ export function scoreDocumentRetrievalCandidate(
       metadataBonus +
       priorityBonus +
       sectionBonus +
-      titleHintBonus,
+      titleHintBonus +
+      questionContentBonus,
   );
 }
 

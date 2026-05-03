@@ -8,6 +8,10 @@ interface BuildGroundedAnswerUserPromptInput {
   userQuestion: string;
   answerLanguage: string | null;
   retrieval: DocumentRetrievalResponseDto;
+  contextFacts?: {
+    maintenanceScheduleQuestion: boolean;
+    runningHours: string | null;
+  };
 }
 
 export function buildGroundedAnswerSystemPrompt(
@@ -44,6 +48,7 @@ export function buildGroundedAnswerUserPrompt(
     `Preferred response language: ${input.answerLanguage ?? 'infer from the user question'}`,
     'Answer in the preferred response language unless the user explicitly requested another language.',
     'Do not mention or reveal internal retrieval-query normalization.',
+    ...formatContextFacts(input.contextFacts),
     `Evidence quality: ${input.retrieval.evidenceQuality}`,
     `Answerability note: ${input.retrieval.answerability.reason}`,
     '',
@@ -54,6 +59,29 @@ export function buildGroundedAnswerUserPrompt(
     'Use [n] only when evidence item [n] directly supports the claim.',
     'If no evidence item directly supports the requested value, procedure, or fact, answer that the uploaded document evidence is insufficient and do not include citation markers.',
   ].join('\n');
+}
+
+function formatContextFacts(
+  contextFacts: BuildGroundedAnswerUserPromptInput['contextFacts'],
+): string[] {
+  if (!contextFacts?.maintenanceScheduleQuestion) {
+    return [];
+  }
+
+  return [
+    '',
+    'Relevant chat context:',
+    contextFacts.runningHours
+      ? `- Current running hours from the conversation: ${contextFacts.runningHours} running hours.`
+      : '- The user is asking a running-hour/interval based maintenance follow-up, but no current running-hours value was found in the conversation.',
+    '',
+    'Maintenance schedule answer rules:',
+    '- Manuals usually list recurring intervals, not the exact current running-hours value. Do not reject the question merely because the exact current-hour number is absent from the manual.',
+    '- Use the current running-hours value only as conversation context for interpreting retrieved schedule evidence; it does not need a document citation.',
+    '- Cite the manual evidence for interval/table claims.',
+    '- If the retrieved table text does not preserve row/column mapping well enough to list exact due tasks, say that clearly.',
+    '- Mention that the exact next work also depends on what service was last completed.',
+  ];
 }
 
 export function formatEvidenceItem(

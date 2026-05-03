@@ -12,6 +12,7 @@ import { SearchDocumentsDto } from '../dto/search-documents.dto';
 import { assessDocumentRetrievalEvidenceQuality } from './documents-retrieval-evidence-assessor';
 import { DocumentsRetrievalFilterBuilder } from './documents-retrieval-filter-builder';
 import { DocumentsRetrievalMapper } from './documents-retrieval-mapper';
+import { DocumentsRetrievalNeighborExpander } from './documents-retrieval-neighbor-expander';
 import { DocumentsRetrievalReranker } from './documents-retrieval-reranker';
 import { RAGFLOW_RETRIEVAL_TOP_K } from './documents-retrieval.types';
 
@@ -23,6 +24,7 @@ export class DocumentsRetrievalService {
     private readonly ragService: RagService,
     private readonly filterBuilder: DocumentsRetrievalFilterBuilder,
     private readonly reranker: DocumentsRetrievalReranker,
+    private readonly neighborExpander: DocumentsRetrievalNeighborExpander,
     private readonly mapper: DocumentsRetrievalMapper,
   ) {}
 
@@ -89,6 +91,7 @@ export class DocumentsRetrievalService {
       ragflowResponse.chunks ?? [],
       this.filterBuilder.indexByRagflowDocumentId(usableDocuments),
       context,
+      normalizedQuestion,
       input.questionType ?? null,
     );
     const selectedCandidates = this.reranker.selectResults(
@@ -96,9 +99,23 @@ export class DocumentsRetrievalService {
       context.topK,
       context.allowMultiDocument,
     );
-    const results = this.mapper.toResults(selectedCandidates);
-    const evidenceQuality = assessDocumentRetrievalEvidenceQuality({
+    const initialEvidenceQuality = assessDocumentRetrievalEvidenceQuality({
       candidates: selectedCandidates,
+      question: normalizedQuestion,
+      questionType: input.questionType ?? null,
+    });
+    const expandedCandidates = await this.neighborExpander.expand({
+      selectedCandidates,
+      allCandidates: enrichedCandidates,
+      datasetId: ship.ragflowDatasetId,
+      context,
+      question: normalizedQuestion,
+      questionType: input.questionType ?? null,
+      evidenceQuality: initialEvidenceQuality,
+    });
+    const results = this.mapper.toResults(expandedCandidates);
+    const evidenceQuality = assessDocumentRetrievalEvidenceQuality({
+      candidates: expandedCandidates,
       question: normalizedQuestion,
       questionType: input.questionType ?? null,
     });

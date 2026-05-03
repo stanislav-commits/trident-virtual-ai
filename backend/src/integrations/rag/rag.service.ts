@@ -5,6 +5,8 @@ import {
   RagflowCreateDatasetInput,
   RagflowDataset,
   RagflowDocument,
+  RagflowDocumentChunksInput,
+  RagflowDocumentChunksResponse,
   RagflowDocumentDownload,
   RagflowDocumentUploadFile,
   RagflowListDatasetsInput,
@@ -97,6 +99,14 @@ export class RagService {
     documentId: string,
   ): Promise<RagflowDocument | null> {
     return this.ragflowClient.fetchRemoteDocumentStatus(datasetId, documentId);
+  }
+
+  listDocumentChunks(
+    datasetId: string,
+    documentId: string,
+    input?: RagflowDocumentChunksInput,
+  ): Promise<RagflowDocumentChunksResponse> {
+    return this.ragflowClient.listDocumentChunks(datasetId, documentId, input);
   }
 
   getDocumentParseProgressPercent(

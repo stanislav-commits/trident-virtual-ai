@@ -27,6 +27,7 @@ export interface DocumentRetrievalFilterContext {
 }
 
 export interface DocumentRetrievalCandidateScoreInput {
+  question: string;
   retrievalScore: number | null;
   document: Pick<
     DocumentEntity,
@@ -50,6 +51,14 @@ export interface EnrichedDocumentRetrievalCandidate {
   document: DocumentEntity;
   retrievalScore: number | null;
   rerankScore: number;
+  expansion?: {
+    anchorChunkId: string;
+    reason:
+      | 'procedure_continuation'
+      | 'table_context'
+      | 'section_context'
+      | 'exact_title_weak_evidence';
+  };
 }
 
 export function matchesAnyRetrievalHint(

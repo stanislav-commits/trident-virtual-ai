@@ -54,6 +54,17 @@ export interface RagflowDocumentListResponse {
   docs: RagflowDocument[];
 }
 
+export interface RagflowDocumentChunksInput {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface RagflowDocumentChunksResponse {
+  chunks: RagflowRetrievalChunk[];
+  doc?: RagflowDocument;
+  total?: number;
+}
+
 export interface RagflowRetrievalInput {
   question: string;
   datasetIds?: string[];

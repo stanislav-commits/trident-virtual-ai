@@ -394,12 +394,23 @@ export class ChatDocumentsResponderService {
       };
     }
 
+    const maintenanceScheduleSafetySummary =
+      this.buildMaintenanceScheduleSafetySummary(retrieval, queryPlan);
+
+    if (maintenanceScheduleSafetySummary) {
+      return {
+        summary: maintenanceScheduleSafetySummary,
+        groundingStatus: 'grounded',
+      };
+    }
+
     const request = {
       systemPrompt: buildGroundedAnswerSystemPrompt(retrieval.evidenceQuality),
       userPrompt: buildGroundedAnswerUserPrompt({
         userQuestion: input.ask.question,
         answerLanguage: queryPlan.answerLanguage,
         retrieval,
+        contextFacts: queryPlan.contextFacts,
       }),
       temperature: 0.1,
       maxTokens: retrieval.evidenceQuality === 'strong' ? 650 : 420,
@@ -412,6 +423,7 @@ export class ChatDocumentsResponderService {
         retrieval,
         request,
         chatLlmService: this.chatLlmService,
+        supportedNumericContext: this.buildSupportedNumericContext(queryPlan),
       });
     }
 
@@ -451,6 +463,81 @@ export class ChatDocumentsResponderService {
 
   private formatError(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private buildSupportedNumericContext(queryPlan: DocumentQueryPlan): string[] {
+    const runningHours = queryPlan.contextFacts.runningHours;
+
+    if (!runningHours) {
+      return [];
+    }
+
+    return [`${runningHours} running hours`, `${runningHours} hours`];
+  }
+
+  private buildMaintenanceScheduleSafetySummary(
+    retrieval: DocumentRetrievalResponseDto,
+    queryPlan: DocumentQueryPlan,
+  ): string | null {
+    if (
+      retrieval.evidenceQuality !== 'weak' ||
+      !queryPlan.contextFacts.maintenanceScheduleQuestion
+    ) {
+      return null;
+    }
+
+    const scheduleResults = retrieval.results
+      .filter((result) => this.isMaintenanceScheduleEvidence(result.snippet))
+      .slice(0, 3);
+
+    if (!scheduleResults.length) {
+      return null;
+    }
+
+    const citationText = scheduleResults
+      .map((result) => `[${result.rank}]`)
+      .join('');
+    const intervalText = this.describeVisibleMaintenanceIntervals(
+      scheduleResults.map((result) => result.snippet).join(' '),
+    );
+    const runningHours = queryPlan.contextFacts.runningHours;
+    const contextSentence = runningHours
+      ? `I considered the current running-hours value from this chat: ${runningHours} running hours.`
+      : 'The manual should be interpreted as an interval-based schedule; I did not find a current running-hours value in the chat context.';
+    const scheduleSentence = runningHours
+      ? `The retrieved manual evidence is a periodic maintenance schedule, not an entry for the exact current-hour value.${intervalText} ${citationText}`
+      : `The retrieved manual evidence is a periodic maintenance schedule with running-hour based intervals.${intervalText} ${citationText}`;
+    const nextActionSentence = runningHours
+      ? 'Use the vessel service history to decide the next action: check which scheduled service interval was last completed, then compare the current running hours with the manual schedule. If the relevant prior interval has not been completed, treat that service as due; otherwise plan toward the next scheduled interval.'
+      : 'For a due-maintenance decision, the current running hours and the vessel service history are both needed to compare against the manual schedule.';
+
+    return [
+      contextSentence,
+      scheduleSentence,
+      `Because the indexed table text is weak and does not preserve the row/column mapping clearly enough, I cannot safely list the exact tasks due from these parsed chunks. ${citationText}`,
+      nextActionSentence,
+      'Confirm the exact task list against the original manual table before performing the work.',
+    ].join(' ');
+  }
+
+  private isMaintenanceScheduleEvidence(snippet: string): boolean {
+    const normalized = snippet.toLocaleLowerCase();
+
+    return (
+      normalized.includes('periodic checks and maintenance') ||
+      normalized.includes('periodicchecksandmaintenance') ||
+      normalized.includes('maintenance schedule') ||
+      normalized.includes('performservice at intervalsindicated') ||
+      /\bevery\s*\d{2,5}\s*(?:hrs?|hours?)\b/u.test(normalized)
+    );
+  }
+
+  private describeVisibleMaintenanceIntervals(snippet: string): string {
+    if (/\bevery\s*\d{2,5}\s*(?:hrs?|hours?)\b/iu.test(snippet)) {
+      return ' It shows visible recurring running-hour interval headers, although the extracted table remains ambiguous.';
+    }
+
+    return ' It shows maintenance should be performed at indicated intervals.';
   }
 
 }

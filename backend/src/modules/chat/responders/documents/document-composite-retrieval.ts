@@ -19,6 +19,10 @@ export interface DocumentQueryPlan {
   retrievalQuery: string | null;
   searchQuestion: string;
   answerLanguage: string | null;
+  contextFacts: {
+    maintenanceScheduleQuestion: boolean;
+    runningHours: string | null;
+  };
 }
 
 export interface DocumentCompositeComponentResult {
