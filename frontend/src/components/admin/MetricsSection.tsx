@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useShipMetricsAdminData } from "../../hooks/admin/useShipMetricsAdminData";
 import { useShipMetricsCatalogPageData } from "../../hooks/admin/useShipMetricsCatalogPageData";
@@ -15,6 +16,19 @@ interface MetricsTableRow {
   key: string;
   description: string | null;
   isEnabled: boolean;
+}
+
+interface MetricDescriptionCellProps {
+  metric: MetricsTableRow;
+  isEditing: boolean;
+  draftDescription: string;
+  isSaving: boolean;
+  error: string | null;
+  disabled: boolean;
+  onStartEditing: () => void;
+  onDraftChange: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
 }
 
 const syncDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -47,6 +61,110 @@ function formatSyncDate(value: string | null): string {
     : syncDateFormatter.format(parsedDate);
 }
 
+function MetricDescriptionCell({
+  metric,
+  isEditing,
+  draftDescription,
+  isSaving,
+  error,
+  disabled,
+  onStartEditing,
+  onDraftChange,
+  onSave,
+  onCancel,
+}: MetricDescriptionCellProps) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      onSave();
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="admin-panel__metric-inline-editor">
+        <textarea
+          className="admin-panel__metric-inline-textarea"
+          value={draftDescription}
+          onChange={(event) => onDraftChange(event.target.value)}
+          onBlur={onSave}
+          onKeyDown={handleKeyDown}
+          disabled={isSaving}
+          rows={3}
+          maxLength={5000}
+          placeholder="Describe what this metric represents..."
+          autoFocus
+        />
+        <div className="admin-panel__metric-inline-actions">
+          <span className="admin-panel__metric-inline-hint">
+            {isSaving ? "Saving..." : "Enter to save, Esc to cancel"}
+          </span>
+          <div className="admin-panel__metric-inline-buttons">
+            <button
+              type="button"
+              className="admin-panel__metric-inline-icon-btn"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onSave}
+              disabled={isSaving}
+              aria-label="Save description"
+              title="Save"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="admin-panel__metric-inline-icon-btn"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onCancel}
+              disabled={isSaving}
+              aria-label="Cancel description edit"
+              title="Cancel"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        {error && <div className="admin-panel__metric-inline-error">{error}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="admin-panel__metric-description-editable"
+      onClick={onStartEditing}
+      disabled={disabled}
+      title={
+        metric.description
+          ? `${metric.description} Click to edit.`
+          : "Click to add description."
+      }
+    >
+      {metric.description ? (
+        <span className="admin-panel__metric-description-text">
+          {metric.description}
+        </span>
+      ) : (
+        <span className="admin-panel__metric-description-placeholder">
+          Click to add description
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function MetricsSection({ token }: MetricsSectionProps) {
   const {
     availableShips,
@@ -56,11 +174,13 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     error: shipsError,
   } = useAdminShip();
   const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
-  const [editingMetricKey, setEditingMetricKey] = useState("");
+  const editingMetricIdRef = useRef<string | null>(null);
   const [draftDescription, setDraftDescription] = useState("");
   const [savingMetricId, setSavingMetricId] = useState<string | null>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [descriptionEditError, setDescriptionEditError] = useState<{
+    metricId: string;
+    message: string;
+  } | null>(null);
   const [selectedBucketFilter, setSelectedBucketFilter] =
     useState(ALL_BUCKETS_FILTER);
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -72,6 +192,11 @@ export function MetricsSection({ token }: MetricsSectionProps) {
   const deferredCatalogSearch = useDeferredValue(catalogSearch.trim());
   const isCatalogView = activeView === "catalog";
   const effectiveSelectedShipId = selectedShipId ?? availableShips[0]?.id ?? null;
+
+  const setActiveEditingMetric = useCallback((metricId: string | null) => {
+    editingMetricIdRef.current = metricId;
+    setEditingMetricId(metricId);
+  }, []);
 
   const {
     catalogPage,
@@ -117,13 +242,12 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     setSelectedBucketFilter(ALL_BUCKETS_FILTER);
     setCatalogSearch("");
     setCurrentPage(1);
-    setEditingMetricId(null);
-    setEditingMetricKey("");
+    setActiveEditingMetric(null);
     setDraftDescription("");
     setSavingMetricId(null);
-    setShowEditModal(false);
+    setDescriptionEditError(null);
     setActiveView("catalog");
-  }, []);
+  }, [setActiveEditingMetric]);
 
   const handleShipSelectionChange = useCallback(
     (nextShipId: string | null) => {
@@ -133,34 +257,57 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     [resetCatalogViewState, setSelectedShipId],
   );
 
-  const handleStartEditing = (metricId: string, metricKey: string, description: string | null) => {
+  const handleStartEditing = (metric: MetricsTableRow) => {
     setCatalogError("");
-    setEditingMetricId(metricId);
-    setEditingMetricKey(metricKey);
-    setDraftDescription(description ?? "");
-    setShowEditModal(true);
-    requestAnimationFrame(() => editTextareaRef.current?.focus());
+    setDescriptionEditError(null);
+    setActiveEditingMetric(metric.id);
+    setDraftDescription(metric.description ?? "");
   };
 
   const handleCancelEditing = useCallback(() => {
-    setShowEditModal(false);
-    setEditingMetricId(null);
-    setEditingMetricKey("");
+    setActiveEditingMetric(null);
     setDraftDescription("");
-  }, []);
+    setDescriptionEditError(null);
+  }, [setActiveEditingMetric]);
 
-  const handleSaveDescription = async (metricId: string) => {
-    setSavingMetricId(metricId);
+  const handleSaveDescription = async (metric: MetricsTableRow) => {
+    if (savingMetricId === metric.id) {
+      return;
+    }
+
+    const normalizedDescription = draftDescription.trim() || null;
+    const currentDescription = metric.description?.trim() || null;
+
+    if (normalizedDescription === currentDescription) {
+      handleCancelEditing();
+      return;
+    }
+
+    if (draftDescription.length > 5000) {
+      setDescriptionEditError({
+        metricId: metric.id,
+        message: "Description is too long.",
+      });
+      return;
+    }
+
+    setDescriptionEditError(null);
+    setSavingMetricId(metric.id);
     const updatedMetric = await updateDescription(
-      metricId,
-      draftDescription.trim() || null,
+      metric.id,
+      normalizedDescription,
     );
 
     if (updatedMetric) {
-      setShowEditModal(false);
-      setEditingMetricId(null);
-      setEditingMetricKey("");
-      setDraftDescription("");
+      if (editingMetricIdRef.current === metric.id) {
+        setActiveEditingMetric(null);
+        setDraftDescription("");
+      }
+    } else if (editingMetricIdRef.current === metric.id) {
+      setDescriptionEditError({
+        metricId: metric.id,
+        message: "Could not save description.",
+      });
     }
 
     setSavingMetricId(null);
@@ -491,7 +638,6 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                     <col style={{ width: '88px' }} />
                     <col style={{ width: '42%' }} />
                     <col />
-                    <col style={{ width: '72px' }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -499,13 +645,12 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                       <th className="admin-panel__th">Bucket</th>
                       <th className="admin-panel__th">Key</th>
                       <th className="admin-panel__th">Description</th>
-                      <th className="admin-panel__th" />
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedMetrics.length === 0 ? (
                       <tr className="admin-panel__row">
-                        <td className="admin-panel__td" colSpan={5}>
+                        <td className="admin-panel__td" colSpan={4}>
                           <span className="admin-panel__muted">
                             No metrics match the current filters.
                           </span>
@@ -537,31 +682,22 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                             </code>
                           </td>
                           <td className="admin-panel__td admin-panel__td--desc">
-                            {metric.description ? (
-                              <div className="admin-panel__metric-description-text" title={metric.description}>
-                                {metric.description}
-                              </div>
-                            ) : (
-                              <span className="admin-panel__muted">
-                                —
-                              </span>
-                            )}
-                          </td>
-                          <td className="admin-panel__td">
-                            <button
-                              type="button"
-                              className="admin-panel__metrics-edit-btn"
-                              onClick={() =>
-                                handleStartEditing(
-                                  metric.id,
-                                  metric.key,
-                                  metric.description,
-                                )
+                            <MetricDescriptionCell
+                              metric={metric}
+                              isEditing={editingMetricId === metric.id}
+                              draftDescription={draftDescription}
+                              isSaving={savingMetricId === metric.id}
+                              error={
+                                descriptionEditError?.metricId === metric.id
+                                  ? descriptionEditError.message
+                                  : null
                               }
-                            >
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                              Edit
-                            </button>
+                              disabled={catalogSyncing || catalogToggling}
+                              onStartEditing={() => handleStartEditing(metric)}
+                              onDraftChange={setDraftDescription}
+                              onSave={() => void handleSaveDescription(metric)}
+                              onCancel={handleCancelEditing}
+                            />
                           </td>
                         </tr>
                       ))
@@ -572,64 +708,6 @@ export function MetricsSection({ token }: MetricsSectionProps) {
             </div>
           )}
         </>
-      )}
-
-      {/* ── Edit description modal ── */}
-      {showEditModal && editingMetricId && (
-        <div className="admin-panel__modal-overlay" onClick={handleCancelEditing}>
-          <div
-            className="admin-panel__metrics-edit-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-label="Edit metric description"
-          >
-            <div className="admin-panel__metrics-edit-modal-head">
-              <div className="admin-panel__metrics-edit-modal-title">
-                <strong>Edit description</strong>
-                <code className="admin-panel__code-inline admin-panel__code-inline--metric">
-                  {editingMetricKey}
-                </code>
-              </div>
-              <button
-                type="button"
-                className="admin-panel__metrics-edit-modal-close"
-                onClick={handleCancelEditing}
-                aria-label="Close"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            <textarea
-              ref={editTextareaRef}
-              className="admin-panel__input admin-panel__textarea"
-              rows={5}
-              value={draftDescription}
-              onChange={(event) => setDraftDescription(event.target.value)}
-              disabled={savingMetricId === editingMetricId}
-              placeholder="Describe what this metric represents…"
-            />
-
-            <div className="admin-panel__metrics-edit-modal-actions">
-              <button
-                type="button"
-                className="admin-panel__btn admin-panel__btn--ghost"
-                onClick={handleCancelEditing}
-                disabled={savingMetricId === editingMetricId}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="admin-panel__btn admin-panel__btn--primary"
-                onClick={() => void handleSaveDescription(editingMetricId)}
-                disabled={savingMetricId === editingMetricId}
-              >
-                {savingMetricId === editingMetricId ? "Saving…" : "Save description"}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </section>
   );
