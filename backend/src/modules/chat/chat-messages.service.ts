@@ -66,10 +66,7 @@ export class ChatMessagesService {
     });
     const savedMessage = await this.chatMessagesRepository.save(message);
 
-    await this.chatSessionsService.applyUserMessageActivity(
-      session.id,
-      normalizedContent,
-    );
+    await this.chatSessionsService.applyUserMessageActivity(session.id);
 
     void this.generateAssistantReplyInBackground(session.id);
 
@@ -187,6 +184,11 @@ export class ChatMessagesService {
       await this.chatMessagesRepository.save(assistantMessage);
 
     await this.chatSessionsService.touchSession(sessionId);
+    void this.chatSessionsService.refreshAutoTitleAfterTurn({
+      sessionId,
+      messages: [...messages, savedAssistantMessage],
+      summary: context.summary,
+    });
 
     return savedAssistantMessage;
   }

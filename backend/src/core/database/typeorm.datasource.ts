@@ -22,6 +22,7 @@ import { AddShipMetricCatalogIsEnabled20260421000100 } from './migrations/202604
 import { AddDocumentsRagflowIngestion20260426000100 } from './migrations/20260426000100-add-documents-ragflow-ingestion';
 import { AddDocumentParseProgress20260428000100 } from './migrations/20260428000100-add-document-parse-progress';
 import { UseDecimalDocumentParseProgress20260428000200 } from './migrations/20260428000200-use-decimal-document-parse-progress';
+import { AddChatSessionTitleStatus20260504000100 } from './migrations/20260504000100-add-chat-session-title-status';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -58,6 +59,7 @@ const dataSource = new DataSource({
     AddDocumentsRagflowIngestion20260426000100,
     AddDocumentParseProgress20260428000100,
     UseDecimalDocumentParseProgress20260428000200,
+    AddChatSessionTitleStatus20260504000100,
   ],
   synchronize: false,
   ssl: db.ssl

@@ -11,6 +11,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ChatSessionMemoryEntity } from '../context/entities/chat-session-memory.entity';
+import { ChatSessionTitleStatus } from '../enums/chat-session-title-status.enum';
 import { ShipEntity } from '../../ships/entities/ship.entity';
 import { UserEntity } from '../../users/entities/user.entity';
 import { ChatMessageEntity } from './chat-message.entity';
@@ -22,6 +23,14 @@ export class ChatSessionEntity {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   title!: string | null;
+
+  @Column({
+    name: 'title_status',
+    type: 'varchar',
+    length: 32,
+    default: ChatSessionTitleStatus.AUTO_INITIAL,
+  })
+  titleStatus!: ChatSessionTitleStatus;
 
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;

@@ -79,6 +79,9 @@ export function ChatPage() {
           ) {
             addMessage(lastMessage);
             refreshSessions();
+            window.setTimeout(() => {
+              void refreshSessions();
+            }, 2500);
             break;
           }
         } catch {
