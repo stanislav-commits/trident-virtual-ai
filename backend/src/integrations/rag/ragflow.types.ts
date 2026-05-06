@@ -1,4 +1,4 @@
-import { DocumentParsingProfileDefinition } from '../../modules/documents/parsing/document-parsing-profiles';
+import { RagflowParsingProfileDefinition } from '../../modules/documents/parsing/document-parsing-profiles';
 
 export interface RagflowDataset {
   id: string;
@@ -46,7 +46,7 @@ export interface RagflowListDatasetsInput {
 
 export interface RagflowRemoteDocumentConfigInput {
   metadata: Record<string, unknown>;
-  parsingProfile: DocumentParsingProfileDefinition;
+  parsingProfile: RagflowParsingProfileDefinition;
 }
 
 export interface RagflowDocumentListResponse {

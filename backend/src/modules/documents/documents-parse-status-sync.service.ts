@@ -1,16 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RagService } from '../../integrations/rag/rag.service';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
+import { DocumentsParseFallbackService } from './documents-parse-fallback.service';
 
 @Injectable()
 export class DocumentsParseStatusSyncService {
+  private readonly logger = new Logger(DocumentsParseStatusSyncService.name);
+
   constructor(
     @InjectRepository(DocumentEntity)
     private readonly documentsRepository: Repository<DocumentEntity>,
     private readonly ragService: RagService,
+    private readonly parseFallback: DocumentsParseFallbackService,
   ) {}
 
   async syncRemoteParseStatus(document: DocumentEntity): Promise<DocumentEntity> {
@@ -29,6 +33,15 @@ export class DocumentsParseStatusSyncService {
       document.parseProgressPercent = null;
       document.lastSyncedAt = new Date();
       return this.documentsRepository.save(document);
+    }
+
+    const remoteFailureMessage = this.getRemoteFailureMessage(remoteDocument);
+
+    if (
+      remoteFailureMessage &&
+      (await this.tryQueueManualParserFallback(document, remoteFailureMessage))
+    ) {
+      return document;
     }
 
     this.applyRemoteStatus(document, remoteDocument);
@@ -54,11 +67,19 @@ export class DocumentsParseStatusSyncService {
       document.parseError = null;
       document.parseProgressPercent = 100;
       document.parsedAt = document.parsedAt ?? new Date();
+      this.parseFallback.markFallbackSucceeded(document);
     } else if (run === 'RUNNING') {
       document.parseStatus = DocumentParseStatus.PARSING;
     } else if (run === 'FAIL' || run === 'CANCEL') {
+      const failureMessage =
+        remoteDocument.progress_msg || 'RAGFlow parsing failed.';
       document.parseStatus = DocumentParseStatus.FAILED;
-      document.parseError = remoteDocument.progress_msg || 'RAGFlow parsing failed.';
+      document.parseError =
+        this.parseFallback.formatFailureAfterFallbackIfAttempted(
+          document,
+          failureMessage,
+        );
+      this.parseFallback.markFallbackFailed(document, failureMessage);
     } else if (
       run === 'UNSTART' &&
       document.parseStatus !== DocumentParseStatus.PARSING
@@ -71,5 +92,40 @@ export class DocumentsParseStatusSyncService {
         ? remoteDocument.chunk_count
         : document.chunkCount;
     document.lastSyncedAt = new Date();
+  }
+
+  private getRemoteFailureMessage(remoteDocument: {
+    run?: string;
+    progress_msg?: string;
+  }): string | null {
+    const run = String(remoteDocument.run ?? '').toUpperCase();
+
+    if (run !== 'FAIL' && run !== 'CANCEL') {
+      return null;
+    }
+
+    return remoteDocument.progress_msg || 'RAGFlow parsing failed.';
+  }
+
+  private async tryQueueManualParserFallback(
+    document: DocumentEntity,
+    failureMessage: string,
+  ): Promise<boolean> {
+    try {
+      return await this.parseFallback.queueManualParserFallback(
+        document,
+        failureMessage,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Manual parser fallback could not be queued for document ` +
+          `${document.id}: ${this.formatError(error)}`,
+      );
+      return false;
+    }
+  }
+
+  private formatError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }

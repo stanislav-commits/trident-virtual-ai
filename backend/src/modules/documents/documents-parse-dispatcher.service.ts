@@ -5,6 +5,7 @@ import { IsNull, Not, Repository } from 'typeorm';
 import { RagService } from '../../integrations/rag/rag.service';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
+import { DocumentsParseFallbackService } from './documents-parse-fallback.service';
 
 const DEFAULT_PARSE_DISPATCH_CONCURRENCY = 2;
 
@@ -19,6 +20,7 @@ export class DocumentsParseDispatcherService {
     private readonly documentsRepository: Repository<DocumentEntity>,
     private readonly configService: ConfigService,
     private readonly ragService: RagService,
+    private readonly parseFallback: DocumentsParseFallbackService,
   ) {}
 
   async dispatchPendingParses(): Promise<void> {
@@ -112,8 +114,20 @@ export class DocumentsParseDispatcherService {
       document.lastSyncedAt = new Date();
       await this.documentsRepository.save(document);
     } catch (error) {
+      const errorMessage = this.formatError(error);
+
+      if (await this.tryQueueManualParserFallback(document, errorMessage)) {
+        this.dispatchAgain = true;
+        return;
+      }
+
       document.parseStatus = DocumentParseStatus.FAILED;
-      document.parseError = this.formatError(error);
+      document.parseError =
+        this.parseFallback.formatFailureAfterFallbackIfAttempted(
+          document,
+          errorMessage,
+        );
+      this.parseFallback.markFallbackFailed(document, errorMessage);
       document.parseProgressPercent = null;
       document.lastSyncedAt = new Date();
       await this.documentsRepository.save(document);
@@ -125,5 +139,23 @@ export class DocumentsParseDispatcherService {
 
   private formatError(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private async tryQueueManualParserFallback(
+    document: DocumentEntity,
+    errorMessage: string,
+  ): Promise<boolean> {
+    try {
+      return await this.parseFallback.queueManualParserFallback(
+        document,
+        errorMessage,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Manual parser fallback could not be queued for document ` +
+          `${document.id}: ${this.formatError(error)}`,
+      );
+      return false;
+    }
   }
 }

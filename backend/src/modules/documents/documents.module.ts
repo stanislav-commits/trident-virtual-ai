@@ -7,6 +7,7 @@ import { DocumentsController } from './documents.controller';
 import { DocumentsIngestionService } from './documents-ingestion.service';
 import { DocumentsParseDrainService } from './documents-parse-drain.service';
 import { DocumentsParseDispatcherService } from './documents-parse-dispatcher.service';
+import { DocumentsParseFallbackService } from './documents-parse-fallback.service';
 import { DocumentsParseStatusSyncService } from './documents-parse-status-sync.service';
 import { DocumentsRemoteIngestionDispatcherService } from './documents-remote-ingestion-dispatcher.service';
 import { DocumentsService } from './documents.service';
@@ -28,6 +29,7 @@ import { DocumentsRetrievalService } from './retrieval/documents-retrieval.servi
     DocumentsIngestionService,
     DocumentsParseDrainService,
     DocumentsParseDispatcherService,
+    DocumentsParseFallbackService,
     DocumentsParseStatusSyncService,
     DocumentsRemoteIngestionDispatcherService,
     DocumentsUploadStorageService,

@@ -14,11 +14,17 @@ export interface RagflowParserConfigPayload {
   };
   chunk_token_num?: number;
   delimiter?: string;
+  task_page_size?: number;
   table_context_size?: number;
   image_context_size?: number;
   tag_kb_ids?: string[];
   enable_metadata?: false;
 }
+
+export const MANUAL_STABLE_FALLBACK_PROFILE = 'manual_stable' as const;
+
+export type DocumentFallbackParseProfile =
+  typeof MANUAL_STABLE_FALLBACK_PROFILE;
 
 export interface DocumentParsingProfileDefinition {
   parseProfile: DocumentParseProfile;
@@ -33,13 +39,28 @@ export interface DocumentParsingProfileDefinition {
   pageIndexEnabled: boolean;
   childChunksEnabled: boolean;
   imageTableContextWindow: number | null;
+  taskPageSize: number | null;
+  tableContextSize: number | null;
+  imageContextSize: number | null;
 }
+
+export interface DocumentFallbackParsingProfileDefinition
+  extends Omit<DocumentParsingProfileDefinition, 'parseProfile'> {
+  parseProfile: DocumentFallbackParseProfile;
+}
+
+export type RagflowParsingProfileDefinition =
+  | DocumentParsingProfileDefinition
+  | DocumentFallbackParsingProfileDefinition;
 
 const BASE_PROFILE_FLAGS = {
   pdfParser: 'DeepDOC',
   overlapPercent: null,
   pageIndexEnabled: false,
   childChunksEnabled: false,
+  taskPageSize: null,
+  tableContextSize: null,
+  imageContextSize: null,
 } as const;
 
 const PROFILE_DEFINITIONS: Record<
@@ -79,6 +100,8 @@ const PROFILE_DEFINITIONS: Record<
     delimiter: '\n',
     overlapPercent: 0,
     imageTableContextWindow: 0,
+    tableContextSize: 0,
+    imageContextSize: 0,
   },
   [DocumentParseProfile.REGULATION_BASELINE]: {
     parseProfile: DocumentParseProfile.REGULATION_BASELINE,
@@ -91,8 +114,26 @@ const PROFILE_DEFINITIONS: Record<
     delimiter: '\n',
     overlapPercent: 0,
     imageTableContextWindow: 0,
+    tableContextSize: 0,
+    imageContextSize: 0,
   },
 };
+
+const MANUAL_STABLE_PROFILE_DEFINITION: DocumentFallbackParsingProfileDefinition =
+  {
+    parseProfile: MANUAL_STABLE_FALLBACK_PROFILE,
+    chunkMethod: DocumentChunkMethod.MANUAL,
+    ragflowChunkMethod: 'manual',
+    ...BASE_PROFILE_FLAGS,
+    autoKeywords: 6,
+    autoQuestions: 0,
+    chunkSize: 384,
+    delimiter: '\n',
+    imageTableContextWindow: null,
+    taskPageSize: 6,
+    tableContextSize: 256,
+    imageContextSize: 128,
+  };
 
 const DOC_CLASS_PROFILE_MAP: Record<DocumentDocClass, DocumentParseProfile> = {
   [DocumentDocClass.MANUAL]: DocumentParseProfile.MANUAL_LONG,
@@ -108,8 +149,12 @@ export function getParsingProfileForDocClass(
   return PROFILE_DEFINITIONS[DOC_CLASS_PROFILE_MAP[docClass]];
 }
 
+export function getManualStableFallbackProfile(): DocumentFallbackParsingProfileDefinition {
+  return MANUAL_STABLE_PROFILE_DEFINITION;
+}
+
 export function buildRagflowParserConfig(
-  profile: DocumentParsingProfileDefinition,
+  profile: RagflowParsingProfileDefinition,
 ): RagflowParserConfigPayload {
   const payload: RagflowParserConfigPayload = {
     layout_recognize: profile.pdfParser,
@@ -129,16 +174,28 @@ export function buildRagflowParserConfig(
     payload.delimiter = profile.delimiter;
   }
 
-  if (profile.imageTableContextWindow !== null) {
-    payload.table_context_size = profile.imageTableContextWindow;
-    payload.image_context_size = profile.imageTableContextWindow;
+  if (profile.taskPageSize !== null) {
+    payload.task_page_size = profile.taskPageSize;
+  }
+
+  const tableContextSize =
+    profile.tableContextSize ?? profile.imageTableContextWindow;
+  const imageContextSize =
+    profile.imageContextSize ?? profile.imageTableContextWindow;
+
+  if (tableContextSize !== null) {
+    payload.table_context_size = tableContextSize;
+  }
+
+  if (imageContextSize !== null) {
+    payload.image_context_size = imageContextSize;
   }
 
   return payload;
 }
 
 export function buildEffectiveParserConfig(
-  profile: DocumentParsingProfileDefinition,
+  profile: RagflowParsingProfileDefinition,
 ): Record<string, unknown> {
   return {
     parseProfile: profile.parseProfile,
@@ -153,6 +210,9 @@ export function buildEffectiveParserConfig(
     pageIndexEnabled: profile.pageIndexEnabled,
     childChunksEnabled: profile.childChunksEnabled,
     imageTableContextWindow: profile.imageTableContextWindow,
+    taskPageSize: profile.taskPageSize,
+    tableContextSize: profile.tableContextSize,
+    imageContextSize: profile.imageContextSize,
     ragflowParserConfig: buildRagflowParserConfig(profile),
   };
 }
