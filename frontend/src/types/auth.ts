@@ -5,6 +5,9 @@ export interface AuthUser {
   userId: string;
   role: Role;
   shipId?: string | null;
+  email?: string | null;
+  firstName?: string | null;
+  displayName?: string | null;
   name?: string | null;
 }
 

@@ -253,10 +253,17 @@
 }
 
 .admin-panel__topbar-title {
+  flex: 1;
+  min-width: 0;
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--chat-text);
   letter-spacing: -0.01em;
+}
+
+.admin-panel__avatar {
+  width: 34px;
+  height: 34px;
 }
 
 /* Main scrollable area */
@@ -5122,6 +5129,65 @@
   width: 96px;
 }
 
+.admin-panel__metrics-group-table-wrap .admin-panel__table--metrics-catalog {
+  table-layout: fixed;
+}
+
+.admin-panel__table--metrics-catalog {
+  min-width: 860px;
+}
+
+.admin-panel__metrics-catalog-col--toggle {
+  width: 48px;
+}
+
+.admin-panel__metrics-catalog-col--bucket {
+  width: 148px;
+}
+
+.admin-panel__metrics-catalog-col--key {
+  width: 32%;
+}
+
+.admin-panel__metrics-catalog-col--description {
+  width: auto;
+}
+
+.admin-panel__table--metrics-catalog .admin-panel__td--key {
+  min-width: 0;
+}
+
+.admin-panel__table--metrics-catalog .admin-panel__td--metric-bucket {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.admin-panel__table--metrics-catalog
+  .admin-panel__td--metric-bucket
+  .admin-panel__metrics-bucket-badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-panel__table--metrics-catalog
+  .admin-panel__td--key
+  .admin-panel__code-inline {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.admin-panel__table--metrics-catalog .admin-panel__td--desc {
+  min-width: 280px;
+  max-width: none;
+}
+
+.admin-panel__table--metrics-catalog .admin-panel__metric-inline-editor {
+  width: 100%;
+}
+
 .admin-panel__metrics-group-table-wrap
   .admin-panel__td:first-child
   .admin-panel__code-inline,
@@ -5866,6 +5932,140 @@
   .admin-panel__metrics-group-table-wrap .admin-panel__th:nth-child(3),
   .admin-panel__metrics-group-table-wrap .admin-panel__td:nth-child(3) {
     display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .admin-panel__table--metrics-catalog {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .admin-panel__table--metrics-catalog colgroup,
+  .admin-panel__table--metrics-catalog thead {
+    display: none;
+  }
+
+  .admin-panel__table--metrics-catalog tbody {
+    display: grid;
+    gap: 8px;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__row {
+    display: grid;
+    grid-template-columns: 30px minmax(88px, max-content) minmax(0, 1fr);
+    grid-template-areas:
+      "metric-toggle metric-bucket metric-key"
+      "metric-description metric-description metric-description";
+    gap: 8px 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--chat-border);
+    border-radius: 12px;
+    background: var(--chat-surface);
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__row--metrics-empty {
+    display: block;
+  }
+
+  .admin-panel__metrics-group-table-wrap
+    .admin-panel__table--metrics-catalog
+    .admin-panel__td {
+    display: block;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+    border-bottom: 0;
+    background: transparent;
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+  }
+
+  .admin-panel__table--metrics-catalog
+    .admin-panel__row:hover
+    .admin-panel__td,
+  .admin-panel__table--metrics-catalog
+    .admin-panel__row:nth-child(even)
+    .admin-panel__td {
+    background: transparent;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__td--toggle {
+    grid-area: metric-toggle;
+    width: auto;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__td--metric-bucket {
+    grid-area: metric-bucket;
+    align-self: center;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__td--key {
+    grid-area: metric-key;
+    align-self: center;
+    overflow: hidden;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__td--desc {
+    grid-area: metric-description;
+    width: 100%;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__metrics-bucket-badge {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__metric-description-text {
+    max-width: 100%;
+  }
+
+  .admin-panel__table--metrics-catalog
+    .admin-panel__metric-description-editable {
+    min-height: 0;
+    padding: 8px 10px;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__metric-inline-textarea {
+    min-height: 94px;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__metric-inline-actions {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__metric-inline-buttons {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-panel__table--metrics-catalog .admin-panel__row {
+    grid-template-columns: 28px minmax(0, 1fr);
+    grid-template-areas:
+      "metric-toggle metric-bucket"
+      "metric-key metric-key"
+      "metric-description metric-description";
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__metric-inline-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-panel__table--metrics-catalog .admin-panel__metric-inline-buttons {
+    justify-content: flex-end;
+    margin-left: 0;
   }
 }
 

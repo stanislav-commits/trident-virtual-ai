@@ -15,6 +15,8 @@ import { DocumentsSection } from "../components/admin/DocumentsSection";
 import { MetricsSection } from "../components/admin/MetricsSection";
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
+import { UserAvatar } from "../components/layout/UserAvatar";
+import { getUserAvatarLabel } from "../components/layout/userAvatarUtils";
 import { useShipsAdminData } from "../hooks/admin/useShipsAdminData";
 import { useUsersAdminData } from "../hooks/admin/useUsersAdminData";
 import { Toast } from "../components/layout/Toast";
@@ -32,7 +34,7 @@ const SECTION_TITLES: Record<AdminSectionRoute, string> = {
 };
 
 export function AdminPanelPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
   const { section } = useParams<{ section: string }>();
   const activeSection: AdminSectionRoute = isAdminSectionRoute(section)
@@ -172,6 +174,11 @@ export function AdminPanelPage() {
           <span className="admin-panel__topbar-title">
             {SECTION_TITLES[activeSection]}
           </span>
+          <UserAvatar
+            user={user}
+            className="admin-panel__avatar"
+            ariaLabel={getUserAvatarLabel(user)}
+          />
         </header>
 
         <main className="admin-panel__main">

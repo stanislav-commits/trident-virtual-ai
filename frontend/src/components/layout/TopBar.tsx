@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import profileIcon from "../../assets/profile.svg";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
 import { appRoutes } from "../../utils/routes";
+import { UserAvatar } from "./UserAvatar";
+import { getUserAvatarLabel } from "./userAvatarUtils";
 
 function formatActiveVesselName(ship: { name: string }): string {
   return ship.name.trim() || "Unnamed vessel";
@@ -37,10 +38,7 @@ export function TopBar() {
     navigate(appRoutes.adminSection("users"));
   };
 
-  const initials =
-    user?.role === "admin"
-      ? "A"
-      : (user?.userId?.slice(0, 2).toUpperCase() ?? "U");
+  const profileLabel = getUserAvatarLabel(user);
   const selectedShipLabel = selectedShip
     ? formatActiveVesselName(selectedShip)
     : isLoading
@@ -87,23 +85,27 @@ export function TopBar() {
         )}
       </div>
       <div className="chat-topbar__right">
+        {user && user.role !== "admin" && (
+          <UserAvatar
+            user={user}
+            className="chat-topbar__avatar"
+            ariaLabel={profileLabel}
+          />
+        )}
         {user?.role === "admin" && (
           <div className="chat-topbar__profile-wrap" ref={wrapRef}>
             <button
               type="button"
               className="chat-topbar__profile-btn"
               onClick={() => setDropdownOpen((o) => !o)}
-              aria-label="Profile menu"
+              aria-label={`${profileLabel} profile menu`}
               aria-expanded={dropdownOpen}
             >
-              <div className="chat-topbar__avatar">
-                <img
-                  src={profileIcon}
-                  alt=""
-                  className="chat-topbar__profile-img"
-                />
-                <span className="chat-topbar__avatar-initials">{initials}</span>
-              </div>
+              <UserAvatar
+                user={user}
+                className="chat-topbar__avatar"
+                ariaLabel={profileLabel}
+              />
             </button>
             {dropdownOpen && (
               <div className="chat-topbar__profile-dropdown">

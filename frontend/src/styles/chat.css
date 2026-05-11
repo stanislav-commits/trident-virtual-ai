@@ -175,17 +175,25 @@
   vertical-align: middle;
 }
 
+.chat-sidebar__brand-copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .chat-sidebar__brand-name {
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 0;
-  font-size: 0.91rem;
+  font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--chat-text);
-  line-height: 1.02;
+  line-height: 1.04;
   white-space: nowrap;
   min-width: 0;
   max-width: 100%;
@@ -193,6 +201,21 @@
 
 .chat-sidebar__brand-line {
   display: block;
+}
+
+.chat-sidebar__brand-vessel {
+  display: block;
+  max-width: 100%;
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--chat-text-subtle);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .chat-sidebar__search-wrap {
@@ -2182,40 +2205,35 @@
 }
 
 /* Avatar circle — always visible */
-.chat-topbar__avatar {
+.user-avatar {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--chat-surface-3);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.04)),
+    var(--chat-surface-3);
   border: 1px solid var(--chat-border-strong);
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
+  flex: 0 0 auto;
   transition:
     border-color var(--transition-base),
     box-shadow var(--transition-base);
 }
 
-.chat-topbar__profile-btn:hover .chat-topbar__avatar {
+.chat-topbar__profile-btn:hover .user-avatar {
   border-color: var(--focus-border-lg);
   box-shadow: 0 0 0 3px var(--overlay-faint);
 }
 
-.chat-topbar__profile-img {
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  filter: var(--icon-invert);
-  opacity: 0.4;
-}
-
-.chat-topbar__avatar-initials {
+.user-avatar__initial {
   font-size: 0.75rem;
   font-weight: 700;
   color: var(--chat-text);
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   line-height: 1;
   position: relative;
   z-index: 1;

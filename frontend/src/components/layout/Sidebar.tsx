@@ -3,6 +3,7 @@ import searchIcon from "../../assets/look.svg";
 import timeIcon from "../../assets/time.svg";
 import plusAddIcon from "../../assets/plus-add.svg";
 import logoImg from "../../assets/logo-home.png";
+import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -48,10 +49,19 @@ export function SidebarBrand({
   collapsed,
   onToggleCollapsed,
 }: SidebarBrandProps) {
+  const { selectedShip } = useAdminShip();
   const toggleLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  const vesselName = selectedShip?.name.trim() || "";
+  const brandClassName = [
+    "chat-sidebar",
+    "chat-sidebar--brand",
+    collapsed ? "chat-sidebar--brand-collapsed" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <aside className="chat-sidebar chat-sidebar--brand">
+    <aside className={brandClassName}>
       <div className="chat-sidebar__brand">
         <img
           src={logoImg}
@@ -59,11 +69,18 @@ export function SidebarBrand({
           className="chat-sidebar__brand-logo"
           aria-hidden
         />
-        <span className="chat-sidebar__brand-name">
-          <span className="chat-sidebar__brand-line">Trident</span>
-          <span className="chat-sidebar__brand-line">Intelligence</span>
-          <span className="chat-sidebar__brand-line">Platform</span>
-        </span>
+        <div className="chat-sidebar__brand-copy">
+          <span className="chat-sidebar__brand-name">
+            <span className="chat-sidebar__brand-line">Trident</span>
+            <span className="chat-sidebar__brand-line">Intelligence</span>
+            <span className="chat-sidebar__brand-line">Platform</span>
+          </span>
+          {!collapsed && vesselName && (
+            <span className="chat-sidebar__brand-vessel" title={vesselName}>
+              {vesselName}
+            </span>
+          )}
+        </div>
         <button
           type="button"
           className="chat-sidebar__toggle"

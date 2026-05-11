@@ -62,14 +62,17 @@ export function AdminShipProvider({ children }: { children: ReactNode }) {
   const setSelectedShipId = useCallback(
     (shipId: string | null) => {
       setSelectedShipIdState(shipId);
-      persistSelection(shipId);
+      if (isAdmin) {
+        persistSelection(shipId);
+      }
     },
-    [persistSelection],
+    [isAdmin, persistSelection],
   );
 
   const refreshShips = useCallback(async () => {
-    if (!isAuthenticated || !token || !isAdmin) {
+    if (!isAuthenticated || !token) {
       setAvailableShips([]);
+      setSelectedShipIdState(null);
       setIsLoading(false);
       setError(null);
       return;
@@ -88,6 +91,15 @@ export function AdminShipProvider({ children }: { children: ReactNode }) {
 
       setAvailableShips(options);
       setSelectedShipIdState((current) => {
+        if (!isAdmin) {
+          const userShipId = user?.shipId ?? null;
+          return userShipId && options.some((ship) => ship.id === userShipId)
+            ? userShipId
+            : options.length === 1
+              ? options[0].id
+              : null;
+        }
+
         const isStillValid =
           current != null && options.some((ship) => ship.id === current);
         const nextShipId =
@@ -101,6 +113,7 @@ export function AdminShipProvider({ children }: { children: ReactNode }) {
       });
     } catch (fetchError) {
       setAvailableShips([]);
+      setSelectedShipIdState(null);
       setError(
         fetchError instanceof Error
           ? fetchError.message
@@ -109,21 +122,11 @@ export function AdminShipProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [isAdmin, isAuthenticated, persistSelection, token]);
+  }, [isAdmin, isAuthenticated, persistSelection, token, user?.shipId]);
 
   useEffect(() => {
     void refreshShips();
   }, [refreshShips]);
-
-  useEffect(() => {
-    if (isAdmin || !isAuthenticated) {
-      return;
-    }
-
-    setAvailableShips([]);
-    setSelectedShipIdState(null);
-    setError(null);
-  }, [isAdmin, isAuthenticated]);
 
   const selectedShip = useMemo(
     () =>

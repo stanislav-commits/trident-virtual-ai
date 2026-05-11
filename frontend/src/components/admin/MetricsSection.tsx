@@ -632,12 +632,12 @@ export function MetricsSection({ token }: MetricsSectionProps) {
               )}
 
               <div className="admin-panel__metrics-group-table-wrap">
-                <table className="admin-panel__table admin-panel__table--metrics">
+                <table className="admin-panel__table admin-panel__table--metrics admin-panel__table--metrics-catalog">
                   <colgroup>
-                    <col style={{ width: '40px' }} />
-                    <col style={{ width: '88px' }} />
-                    <col style={{ width: '42%' }} />
-                    <col />
+                    <col className="admin-panel__metrics-catalog-col admin-panel__metrics-catalog-col--toggle" />
+                    <col className="admin-panel__metrics-catalog-col admin-panel__metrics-catalog-col--bucket" />
+                    <col className="admin-panel__metrics-catalog-col admin-panel__metrics-catalog-col--key" />
+                    <col className="admin-panel__metrics-catalog-col admin-panel__metrics-catalog-col--description" />
                   </colgroup>
                   <thead>
                     <tr>
@@ -649,7 +649,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                   </thead>
                   <tbody>
                     {paginatedMetrics.length === 0 ? (
-                      <tr className="admin-panel__row">
+                      <tr className="admin-panel__row admin-panel__row--metrics-empty">
                         <td className="admin-panel__td" colSpan={4}>
                           <span className="admin-panel__muted">
                             No metrics match the current filters.
@@ -671,8 +671,11 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                               aria-label={`${metric.isEnabled ? "Disable" : "Enable"} metric ${metric.key}`}
                             />
                           </td>
-                          <td className="admin-panel__td">
-                            <span className="admin-panel__metrics-bucket-badge">
+                          <td className="admin-panel__td admin-panel__td--metric-bucket">
+                            <span
+                              className="admin-panel__metrics-bucket-badge"
+                              title={metric.bucket}
+                            >
                               {metric.bucket}
                             </span>
                           </td>
