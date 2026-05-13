@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   bootstrapShipMetricConcepts,
   createMetricConcept,
+  deleteMetricConcept,
   executeMetricConcept,
   listMetricConceptsPage,
   type MetricConceptBootstrapResult,
+  type MetricConceptDeleteResult,
   resolveMetricConcept,
   type MetricConcept,
   type MetricConceptExecutionResponse,
@@ -22,6 +24,7 @@ export interface MetricConceptsAdminData {
   loadingMore: boolean;
   saving: boolean;
   bootstrapping: boolean;
+  deleting: boolean;
   hasMore: boolean;
   error: string;
   setError: (nextError: string) => void;
@@ -32,6 +35,7 @@ export interface MetricConceptsAdminData {
     conceptId: string | null,
     input: SaveMetricConceptInput,
   ) => Promise<MetricConcept | null>;
+  deleteConcept: (conceptId: string) => Promise<MetricConceptDeleteResult | null>;
   resolveQuery: (
     query: string,
   ) => Promise<MetricConceptResolutionResult | null>;
@@ -56,6 +60,7 @@ export function useMetricConceptsAdminData(
   const [loadingMore, setLoadingMore] = useState(false);
   const [saving, setSaving] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState("");
   const latestRequestIdRef = useRef(0);
@@ -206,6 +211,33 @@ export function useMetricConceptsAdminData(
     [enabled, refreshConcepts, token],
   );
 
+  const deleteConcept = useCallback(
+    async (conceptId: string) => {
+      if (!enabled || !token || !shipId) {
+        return null;
+      }
+
+      setDeleting(true);
+      setError("");
+
+      try {
+        const result = await deleteMetricConcept(conceptId, shipId, token);
+        await refreshConcepts();
+        return result;
+      } catch (deleteError) {
+        setError(
+          deleteError instanceof Error
+            ? deleteError.message
+            : "Failed to delete metric concept",
+        );
+        return null;
+      } finally {
+        setDeleting(false);
+      }
+    },
+    [enabled, refreshConcepts, shipId, token],
+  );
+
   const resolveQuery = useCallback(
     async (query: string) => {
       if (!enabled || !token || !shipId) {
@@ -263,6 +295,7 @@ export function useMetricConceptsAdminData(
       setLoadingMore(false);
       setSaving(false);
       setBootstrapping(false);
+      setDeleting(false);
       setHasMore(false);
       setError("");
       return;
@@ -279,6 +312,7 @@ export function useMetricConceptsAdminData(
     loadingMore,
     saving,
     bootstrapping,
+    deleting,
     hasMore,
     error,
     setError,
@@ -286,6 +320,7 @@ export function useMetricConceptsAdminData(
     loadMoreConcepts,
     bootstrapConcepts,
     saveConcept,
+    deleteConcept,
     resolveQuery,
     executeConcept: executeConceptRequest,
   };
