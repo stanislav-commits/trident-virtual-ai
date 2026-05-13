@@ -34,15 +34,15 @@ export const KNOWLEDGE_BASE_CATEGORIES: KnowledgeBaseCategoryConfig[] = [
   },
   {
     id: "historical_procedure",
-    label: "Historical Procedures",
-    folderLabel: "Historical Procedures",
-    uploadHeading: "Upload historical procedures",
+    label: "Maintenance",
+    folderLabel: "Maintenance",
+    uploadHeading: "Upload maintenance documents",
     description:
-      "Use for historical procedure files. Table files are sent through table parsing, while text and PDF files keep the document flow already used in RAGFlow.",
+      "Use for maintenance files. Table files are sent through table parsing, while text and PDF files keep the document flow already used in RAGFlow.",
     acceptedExtensionsLabel: "PDF, CSV, MD, XLSX, TXT",
     accept: ".pdf,.csv,.md,.xlsx,.txt",
-    emptyState: "No historical procedures uploaded for this ship yet.",
-    rowLabel: "historical procedure files",
+    emptyState: "No maintenance documents uploaded for this ship yet.",
+    rowLabel: "maintenance files",
   },
   {
     id: "certificate",
@@ -62,7 +62,7 @@ export const KNOWLEDGE_BASE_CATEGORIES: KnowledgeBaseCategoryConfig[] = [
     folderLabel: "Regulations",
     uploadHeading: "Upload regulations",
     description:
-      "Use for regulation and policy documents that should stay searchable alongside manuals and historical procedures.",
+      "Use for regulation and policy documents that should stay searchable alongside manuals and maintenance documents.",
     acceptedExtensionsLabel: "PDF, DOC, DOCX, TXT, MD",
     accept: ".pdf,.doc,.docx,.txt,.md",
     emptyState: "No regulations uploaded for this ship yet.",
