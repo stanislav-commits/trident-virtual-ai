@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -128,6 +131,20 @@ export class MetricsController {
     @Body() body: UpdateMetricConceptDto,
   ) {
     return this.metricsSemanticCatalogService.updateConcept(conceptId, body);
+  }
+
+  @Delete('concepts/:conceptId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  deleteConcept(
+    @Param('conceptId') conceptId: string,
+    @Query('shipId') shipId?: string,
+  ) {
+    return this.metricsSemanticCatalogService.deleteConceptFromShip(
+      conceptId,
+      shipId,
+    );
   }
 
   @Post('concepts/resolve')
