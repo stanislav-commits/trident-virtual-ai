@@ -327,6 +327,28 @@ export async function reparseDocument(
   return response.json();
 }
 
+export async function updateDocumentPriority(
+  token: string,
+  documentId: string,
+  sourcePriority: number,
+): Promise<DocumentListItem> {
+  const response = await fetchWithAuth(`documents/${documentId}/classification`, {
+    token,
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ sourcePriority }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to update document priority");
+  }
+
+  return response.json();
+}
+
 export async function fetchDocumentFile(
   token: string,
   documentId: string,
