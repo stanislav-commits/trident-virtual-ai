@@ -1794,19 +1794,23 @@
 }
 
 .admin-panel__documents-col--file {
-  width: 40%;
+  width: 36%;
 }
 
 .admin-panel__documents-col--ship {
-  width: 16%;
-}
-
-.admin-panel__documents-col--class {
   width: 14%;
 }
 
+.admin-panel__documents-col--class {
+  width: 12%;
+}
+
+.admin-panel__documents-col--priority {
+  width: 104px;
+}
+
 .admin-panel__documents-col--status {
-  width: 22%;
+  width: 20%;
 }
 
 .admin-panel__documents-col--actions {
@@ -1836,6 +1840,7 @@
 
 .admin-panel__td--document-ship,
 .admin-panel__td--document-class,
+.admin-panel__td--document-priority,
 .admin-panel__td--status {
   min-width: 0;
 }
@@ -1914,6 +1919,52 @@
   border-radius: 999px;
   background: currentColor;
   opacity: 0.55;
+}
+
+.admin-panel__document-priority-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.admin-panel__document-priority-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.admin-panel__document-priority-input {
+  width: 62px;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--chat-text);
+  font: inherit;
+  line-height: 1.2;
+  outline: none;
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.admin-panel__document-priority-input:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.admin-panel__document-priority-input:focus {
+  border-color: var(--focus-border-md);
+  box-shadow: 0 0 0 2px var(--focus-glow);
+}
+
+.admin-panel__document-priority-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .admin-panel__document-mobile-class {
@@ -6914,7 +6965,7 @@
   }
 
   .admin-panel__documents-col--file {
-    width: 46%;
+    width: 40%;
   }
 
   .admin-panel__documents-col--ship {
@@ -6922,11 +6973,15 @@
   }
 
   .admin-panel__documents-col--class {
-    width: 16%;
+    width: 14%;
+  }
+
+  .admin-panel__documents-col--priority {
+    width: 92px;
   }
 
   .admin-panel__documents-col--status {
-    width: 28%;
+    width: 24%;
   }
 
   .admin-panel__documents-col--actions {
@@ -7033,6 +7088,10 @@
 
   .admin-panel__documents-col--class {
     width: 0;
+  }
+
+  .admin-panel__documents-col--priority {
+    width: 82px;
   }
 
   .admin-panel__documents-col--status {
