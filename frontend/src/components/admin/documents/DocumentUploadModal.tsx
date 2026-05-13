@@ -53,6 +53,9 @@ const EMPTY_METADATA: UploadMetadataForm = {
   contentFocus: "",
 };
 
+const DOCUMENT_UPLOAD_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.md,.txt";
+const DOCUMENT_UPLOAD_FORMATS_LABEL = "PDF, DOC/DOCX, XLS/XLSX, MD, TXT";
+
 function formatShipLabel(ship: ShipOption): string {
   return ship.organizationName
     ? `${ship.name} (${ship.organizationName})`
@@ -430,6 +433,7 @@ export function DocumentUploadModal({
                 type="file"
                 className="admin-panel__file-input"
                 multiple
+                accept={DOCUMENT_UPLOAD_ACCEPT}
                 disabled={submitting}
                 onChange={(event) => {
                   addFiles(event.target.files ? Array.from(event.target.files) : []);
@@ -457,7 +461,7 @@ export function DocumentUploadModal({
                     {queue.length > 0 ? "Add more files" : "Select files"}
                   </span>
                   <span className="admin-panel__document-upload-picker-note">
-                    Browse or drop one or many documents here.
+                    {`Browse or drop one or many documents here. Supported formats: ${DOCUMENT_UPLOAD_FORMATS_LABEL}.`}
                   </span>
                 </span>
               </button>
