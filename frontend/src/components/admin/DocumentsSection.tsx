@@ -11,6 +11,7 @@ import {
   fetchDocumentFile,
   reparseDocument,
   syncDocumentStatus,
+  updateDocumentPriority,
 } from "../../api/documentsApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
@@ -39,6 +40,8 @@ const ACTIVE_PARSE_STATUSES: DocumentParseStatus[] = [
 const STATUS_SYNC_INTERVAL_MS = 15000;
 const MAX_STATUS_SYNC_PER_TICK = 5;
 const EMPTY_DOCUMENTS: DocumentListItem[] = [];
+const SOURCE_PRIORITY_ERROR =
+  "Source priority must be a whole number from 0 to 1000.";
 
 interface DocumentFeedback {
   message: string;
@@ -95,6 +98,9 @@ export function DocumentsSection() {
   const [reparsingDocumentIds, setReparsingDocumentIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [updatingPriorityDocumentIds, setUpdatingPriorityDocumentIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [reparseTarget, setReparseTarget] = useState<DocumentListItem | null>(
     null,
   );
@@ -266,6 +272,65 @@ export function DocumentsSection() {
     }
 
     setReparseTarget(document);
+  };
+
+  const handlePriorityValidationError = (message: string) => {
+    setFeedback({ type: "error", message });
+  };
+
+  const handlePriorityChange = async (
+    documentId: string,
+    nextPriority: number,
+  ) => {
+    if (!token) {
+      setFeedback({ type: "error", message: "Authentication token is missing." });
+      return;
+    }
+
+    if (
+      !Number.isInteger(nextPriority) ||
+      nextPriority < 0 ||
+      nextPriority > 1000
+    ) {
+      setFeedback({ type: "error", message: SOURCE_PRIORITY_ERROR });
+      return;
+    }
+
+    const targetDocument = documents.find((document) => document.id === documentId);
+    if (!targetDocument || nextPriority === targetDocument.sourcePriority) {
+      return;
+    }
+
+    if (updatingPriorityDocumentIds.has(documentId)) {
+      return;
+    }
+
+    setUpdatingPriorityDocumentIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      nextIds.add(documentId);
+      return nextIds;
+    });
+    setFeedback(null);
+
+    try {
+      await updateDocumentPriority(token, documentId, nextPriority);
+      setFeedback({ type: "success", message: "Priority updated." });
+      await refreshDocuments();
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to update document priority.",
+      });
+    } finally {
+      setUpdatingPriorityDocumentIds((currentIds) => {
+        const nextIds = new Set(currentIds);
+        nextIds.delete(documentId);
+        return nextIds;
+      });
+    }
   };
 
   const handleCancelReparse = () => {
@@ -646,9 +711,14 @@ export function DocumentsSection() {
             onViewDocument={openDocumentInNewTab}
             onRequestDelete={requestSingleDelete}
             onRequestReparse={requestReparse}
+            onPriorityChange={(documentId, nextPriority) =>
+              void handlePriorityChange(documentId, nextPriority)
+            }
+            onPriorityValidationError={handlePriorityValidationError}
             openingDocumentId={openingDocumentId}
             deletingDocumentIds={deletingDocumentIds}
             reparsingDocumentIds={reparsingDocumentIds}
+            updatingPriorityDocumentIds={updatingPriorityDocumentIds}
           />
         </div>
       )}

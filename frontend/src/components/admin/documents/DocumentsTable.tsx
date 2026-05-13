@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import type {
   DocumentDocClass,
   DocumentListItem,
@@ -24,9 +25,12 @@ interface DocumentsTableProps {
   onViewDocument: (document: DocumentListItem) => void;
   onRequestDelete: (document: DocumentListItem) => void;
   onRequestReparse: (document: DocumentListItem) => void;
+  onPriorityChange: (documentId: string, nextPriority: number) => void;
+  onPriorityValidationError: (message: string) => void;
   openingDocumentId: string | null;
   deletingDocumentIds: Set<string>;
   reparsingDocumentIds: Set<string>;
+  updatingPriorityDocumentIds: Set<string>;
 }
 
 const fullDateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -52,6 +56,8 @@ const STATUS_BADGE_CLASS: Record<DocumentParseStatus, string> = {
   failed: "admin-panel__badge--manual-fail",
   reparse_required: "admin-panel__badge--manual-cancel",
 };
+const SOURCE_PRIORITY_ERROR =
+  "Source priority must be a whole number from 0 to 1000.";
 
 function formatDateTime(value: string): string {
   const parsedDate = new Date(value);
@@ -218,6 +224,96 @@ function DocumentStatusCell({ document }: DocumentStatusCellProps) {
   );
 }
 
+interface DocumentPriorityControlProps {
+  document: DocumentListItem;
+  disabled: boolean;
+  saving: boolean;
+  onPriorityChange: (documentId: string, nextPriority: number) => void;
+  onPriorityValidationError: (message: string) => void;
+}
+
+function DocumentPriorityControl({
+  document,
+  disabled,
+  saving,
+  onPriorityChange,
+  onPriorityValidationError,
+}: DocumentPriorityControlProps) {
+  const currentPriority = document.sourcePriority ?? 100;
+  const [draftValue, setDraftValue] = useState(String(currentPriority));
+  const skipNextBlurCommitRef = useRef(false);
+
+  const resetDraftValue = () => {
+    setDraftValue(String(currentPriority));
+  };
+
+  const commitValue = (value: string) => {
+    if (skipNextBlurCommitRef.current) {
+      skipNextBlurCommitRef.current = false;
+      resetDraftValue();
+      return;
+    }
+
+    const normalized = value.trim();
+    const parsedPriority = Number(normalized);
+
+    if (
+      !normalized ||
+      !Number.isInteger(parsedPriority) ||
+      parsedPriority < 0 ||
+      parsedPriority > 1000
+    ) {
+      onPriorityValidationError(SOURCE_PRIORITY_ERROR);
+      resetDraftValue();
+      return;
+    }
+
+    if (parsedPriority === currentPriority) {
+      resetDraftValue();
+      return;
+    }
+
+    onPriorityChange(document.id, parsedPriority);
+    resetDraftValue();
+  };
+
+  return (
+    <span className="admin-panel__document-priority-control">
+      <label
+        className="admin-panel__document-priority-field"
+        title="Lower number means higher priority"
+      >
+        <span className="admin-panel__visually-hidden">Priority</span>
+        <input
+          className="admin-panel__document-priority-input"
+          type="number"
+          min="0"
+          max="1000"
+          step="1"
+          value={draftValue}
+          disabled={disabled || saving}
+          aria-label={`Source priority for ${document.originalFileName}`}
+          onChange={(event) => setDraftValue(event.target.value)}
+          onBlur={(event) => commitValue(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+
+            if (event.key === "Escape") {
+              event.preventDefault();
+              skipNextBlurCommitRef.current = true;
+              resetDraftValue();
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      </label>
+    </span>
+  );
+}
+
 export function DocumentsTable({
   documents,
   shipsById,
@@ -228,9 +324,12 @@ export function DocumentsTable({
   onViewDocument,
   onRequestDelete,
   onRequestReparse,
+  onPriorityChange,
+  onPriorityValidationError,
   openingDocumentId,
   deletingDocumentIds,
   reparsingDocumentIds,
+  updatingPriorityDocumentIds,
 }: DocumentsTableProps) {
   return (
     <div className="admin-panel__table-wrap admin-panel__documents-table-wrap">
@@ -240,6 +339,7 @@ export function DocumentsTable({
           <col className="admin-panel__documents-col--file" />
           <col className="admin-panel__documents-col--ship" />
           <col className="admin-panel__documents-col--class" />
+          <col className="admin-panel__documents-col--priority" />
           <col className="admin-panel__documents-col--status" />
           <col className="admin-panel__documents-col--actions" />
         </colgroup>
@@ -257,6 +357,7 @@ export function DocumentsTable({
             <th className="admin-panel__th">File name</th>
             <th className="admin-panel__th">Ship</th>
             <th className="admin-panel__th">Class</th>
+            <th className="admin-panel__th">Priority</th>
             <th className="admin-panel__th">Status</th>
             <th className="admin-panel__th admin-panel__th--actions">
               <span className="admin-panel__visually-hidden">Actions</span>
@@ -268,6 +369,7 @@ export function DocumentsTable({
             const isSelected = selectedDocumentIds.has(document.id);
             const isDeleting = deletingDocumentIds.has(document.id);
             const isReparsing = reparsingDocumentIds.has(document.id);
+            const isUpdatingPriority = updatingPriorityDocumentIds.has(document.id);
             const canView = Boolean(
               document.ragflowDatasetId && document.ragflowDocumentId,
             );
@@ -343,6 +445,16 @@ export function DocumentsTable({
                   >
                     {documentClassChipLabel}
                   </span>
+                </td>
+                <td className="admin-panel__td admin-panel__td--document-priority">
+                  <DocumentPriorityControl
+                    key={`${document.id}:${document.sourcePriority}`}
+                    document={document}
+                    disabled={isDeleting || isReparsing}
+                    saving={isUpdatingPriority}
+                    onPriorityChange={onPriorityChange}
+                    onPriorityValidationError={onPriorityValidationError}
+                  />
                 </td>
                 <td className="admin-panel__td admin-panel__td--status">
                   <DocumentStatusCell document={document} />
