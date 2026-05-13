@@ -9,7 +9,7 @@ export const DOCUMENT_CLASS_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "manual", label: "Manuals" },
-  { value: "historical_procedure", label: "Historical Procedures" },
+  { value: "historical_procedure", label: "Maintenance" },
   { value: "certificate", label: "Certificates" },
   { value: "regulation", label: "Regulations" },
 ];
@@ -32,7 +32,7 @@ export const DOCUMENT_PARSE_PROFILE_LABELS: Record<
   string
 > = {
   manual_long: "Manual long",
-  procedure_bunkering: "Historical procedure profile",
+  procedure_bunkering: "Maintenance profile",
   safety_hard_parse: "Certificate parse profile",
   regulation_baseline: "Regulation baseline",
 };
