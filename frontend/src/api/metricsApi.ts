@@ -64,6 +64,7 @@ export interface ShipMetricsSyncResult {
     totalMetrics: number;
     conceptsCreated: number;
     conceptsUpdated: number;
+    descriptionsFilled: number;
     membersAdded: number;
     skippedBindings: number;
   } | null;
@@ -78,6 +79,7 @@ export interface MetricConceptBootstrapResult {
   totalMetrics: number;
   conceptsCreated: number;
   conceptsUpdated: number;
+  descriptionsFilled: number;
   membersAdded: number;
   skippedBindings: number;
   sampleConcepts: Array<{
@@ -174,6 +176,12 @@ export interface SaveMetricConceptInput {
   unit?: string | null;
   isActive?: boolean;
   members?: MetricConceptMemberInput[];
+}
+
+export interface MetricConceptDeleteResult {
+  conceptId: string;
+  removedMembers: number;
+  deletedConcept: boolean;
 }
 
 export interface MetricConceptExecutionResponse {
@@ -410,6 +418,28 @@ export async function updateMetricConcept(
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(errorBody.message ?? "Failed to update metric concept");
+  }
+
+  return response.json();
+}
+
+export async function deleteMetricConcept(
+  conceptId: string,
+  shipId: string,
+  token: string,
+): Promise<MetricConceptDeleteResult> {
+  const searchParams = new URLSearchParams({ shipId });
+  const response = await fetchWithAuth(
+    `metrics/concepts/${conceptId}?${searchParams.toString()}`,
+    {
+      token,
+      method: "DELETE",
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to delete metric concept");
   }
 
   return response.json();
