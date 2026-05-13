@@ -407,6 +407,7 @@ export function MetricsSemanticConceptsPanel({
     loadingMore,
     saving,
     bootstrapping,
+    deleting,
     hasMore,
     error,
     setError,
@@ -414,6 +415,7 @@ export function MetricsSemanticConceptsPanel({
     loadMoreConcepts,
     bootstrapConcepts,
     saveConcept,
+    deleteConcept,
     resolveQuery,
     executeConcept,
   } = useMetricConceptsAdminData(
@@ -436,6 +438,8 @@ export function MetricsSemanticConceptsPanel({
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; displayName: string } | null>(null);
   const templateMenuRef = useRef<HTMLDivElement>(null);
   const conceptListRef = useRef<HTMLDivElement>(null);
   const conceptListSentinelRef = useRef<HTMLDivElement>(null);
@@ -465,6 +469,8 @@ export function MetricsSemanticConceptsPanel({
     setExecutionError("");
     setBootstrapResult(null);
     setSaveSuccess(false);
+    setDeleteSuccess(false);
+    setDeleteTarget(null);
   }, [shipId]);
 
   useEffect(() => {
@@ -558,6 +564,8 @@ export function MetricsSemanticConceptsPanel({
     setExecutionError("");
     setError("");
     setSaveSuccess(false);
+    setDeleteSuccess(false);
+    setDeleteTarget(null);
   }, [setError]);
 
   const applyTemplate = (templateId: string) => {
@@ -582,6 +590,7 @@ export function MetricsSemanticConceptsPanel({
     setExecutionError("");
     setError("");
     setSaveSuccess(false);
+    setDeleteSuccess(false);
     setShowTemplateMenu(false);
   };
 
@@ -595,6 +604,7 @@ export function MetricsSemanticConceptsPanel({
     setExecutionError("");
     setError("");
     setSaveSuccess(false);
+    setDeleteSuccess(false);
   };
 
   const handleDraftChange = (field: keyof Omit<ConceptDraft, "members">, value: string | boolean) => {
@@ -604,8 +614,17 @@ export function MetricsSemanticConceptsPanel({
   const addMetricMember = (metricId: string) => {
     const metric = flatMetrics.find((m) => m.id === metricId);
     if (!metric) return;
+    const rawDescription = metric.description?.trim() ?? "";
     setDraft((prev) => ({
       ...prev,
+      description:
+        !prev.id &&
+        prev.type === "single" &&
+        prev.members.length === 0 &&
+        !prev.description.trim() &&
+        rawDescription
+          ? rawDescription
+          : prev.description,
       members: [
         ...prev.members,
         {
@@ -663,6 +682,31 @@ export function MetricsSemanticConceptsPanel({
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     }
+  };
+
+  const handleDeleteRequest = () => {
+    if (!draft.id) return;
+    setError("");
+    setDeleteSuccess(false);
+    setDeleteTarget({
+      id: draft.id,
+      displayName: draft.displayName.trim() || "this concept",
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    const targetId = deleteTarget.id;
+    const result = await deleteConcept(targetId);
+
+    if (!result) return;
+
+    setDeleteTarget(null);
+    if (draft.id === targetId) {
+      resetEditor();
+    }
+    setDeleteSuccess(true);
+    setTimeout(() => setDeleteSuccess(false), 3000);
   };
 
   const handleResolve = async () => {
@@ -954,13 +998,24 @@ export function MetricsSemanticConceptsPanel({
               </span>
             </div>
             {draft.id && (
-              <button
-                type="button"
-                className="admin-panel__metrics-edit-btn"
-                onClick={resetEditor}
-              >
-                Clear
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                  onClick={resetEditor}
+                  disabled={deleting}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="admin-panel__btn admin-panel__btn--danger admin-panel__btn--compact"
+                  onClick={handleDeleteRequest}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting..." : "Delete concept"}
+                </button>
+              </div>
             )}
           </div>
 
@@ -969,6 +1024,12 @@ export function MetricsSemanticConceptsPanel({
             <div className="admin-panel__semantic-save-toast">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
               Concept saved successfully
+            </div>
+          )}
+          {deleteSuccess && (
+            <div className="admin-panel__semantic-save-toast">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+              Concept removed from selected ship
             </div>
           )}
 
@@ -1300,6 +1361,55 @@ export function MetricsSemanticConceptsPanel({
           onAdd={addMetricMember}
           onClose={() => setShowMemberModal(false)}
         />
+      )}
+      {deleteTarget && (
+        <div
+          className="admin-panel__modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ap-delete-concept-title"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !deleting) {
+              setDeleteTarget(null);
+            }
+          }}
+        >
+          <div className="admin-panel__modal">
+            <div className="admin-panel__modal-icon admin-panel__modal-icon--danger">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </div>
+            <h2 id="ap-delete-concept-title" className="admin-panel__modal-title">
+              Remove this concept?
+            </h2>
+            <p className="admin-panel__modal-desc">
+              Remove{" "}
+              <code className="admin-panel__code">{deleteTarget.displayName}</code>{" "}
+              from the selected ship? If it is not used by any other ship, it
+              will be deleted completely.
+            </p>
+            <div className="admin-panel__modal-actions">
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--ghost"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--danger"
+                onClick={() => void handleDeleteConfirm()}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete concept"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
