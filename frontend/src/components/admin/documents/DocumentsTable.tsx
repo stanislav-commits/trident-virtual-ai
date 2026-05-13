@@ -92,7 +92,7 @@ function getCompactParseProfileLabel(document: DocumentListItem): string {
 
 function getClassChipLabel(docClass: DocumentDocClass): string {
   if (docClass === "historical_procedure") {
-    return "Historical Proc.";
+    return "Maintenance";
   }
 
   return getDocumentClassLabel(docClass);
