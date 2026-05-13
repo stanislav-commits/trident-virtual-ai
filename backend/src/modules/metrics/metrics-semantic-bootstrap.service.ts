@@ -18,6 +18,7 @@ export interface MetricsSemanticBootstrapResultDto {
   totalMetrics: number;
   conceptsCreated: number;
   conceptsUpdated: number;
+  descriptionsFilled: number;
   membersAdded: number;
   skippedBindings: number;
   sampleConcepts: Array<{
@@ -80,6 +81,7 @@ export class MetricsSemanticBootstrapService {
 
     let conceptsCreated = 0;
     let conceptsUpdated = 0;
+    let descriptionsFilled = 0;
     let membersAdded = 0;
     let skippedBindings = 0;
     const sampleConcepts: Array<{
@@ -110,12 +112,18 @@ export class MetricsSemanticBootstrapService {
         });
         metricMembersByConceptId.set(concept.id, new Set());
         conceptsCreated += 1;
+        if (blueprint.description) {
+          descriptionsFilled += 1;
+        }
       } else {
-        const conceptChanged = this.patchExistingConcept(concept, blueprint);
+        const patchResult = this.patchExistingConcept(concept, blueprint);
 
-        if (conceptChanged) {
+        if (patchResult.changed) {
           concept = await this.metricConceptRepository.save(concept);
           conceptsUpdated += 1;
+        }
+        if (patchResult.descriptionFilled) {
+          descriptionsFilled += 1;
         }
       }
 
@@ -155,6 +163,7 @@ export class MetricsSemanticBootstrapService {
       totalMetrics: metrics.length,
       conceptsCreated,
       conceptsUpdated,
+      descriptionsFilled,
       membersAdded,
       skippedBindings,
       sampleConcepts,
@@ -164,12 +173,14 @@ export class MetricsSemanticBootstrapService {
   private patchExistingConcept(
     concept: MetricConceptEntity,
     blueprint: ReturnType<typeof buildMetricSemanticBlueprint>,
-  ): boolean {
+  ): { changed: boolean; descriptionFilled: boolean } {
     let changed = false;
+    let descriptionFilled = false;
 
-    if (!concept.description && blueprint.description) {
+    if (!concept.description?.trim() && blueprint.description) {
       concept.description = blueprint.description;
       changed = true;
+      descriptionFilled = true;
     }
 
     if (!concept.category && blueprint.category) {
@@ -188,7 +199,7 @@ export class MetricsSemanticBootstrapService {
     }
 
     if (concept.type !== MetricConceptType.SINGLE) {
-      return changed;
+      return { changed, descriptionFilled };
     }
 
     if (concept.aggregationRule !== MetricAggregationRule.LAST) {
@@ -196,6 +207,6 @@ export class MetricsSemanticBootstrapService {
       changed = true;
     }
 
-    return changed;
+    return { changed, descriptionFilled };
   }
 }
