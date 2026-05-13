@@ -70,6 +70,12 @@ export interface MetricConceptPageDto {
   hasMore: boolean;
 }
 
+export interface MetricConceptDeleteResultDto {
+  conceptId: string;
+  removedMembers: number;
+  deletedConcept: boolean;
+}
+
 interface MetricConceptScoredMatch {
   concept: MetricConceptEntity;
   score: number;
@@ -340,6 +346,61 @@ export class MetricsSemanticCatalogService {
     }
 
     return this.getRequiredConcept(concept.id);
+  }
+
+  async deleteConceptFromShip(
+    conceptId: string,
+    shipId?: string,
+  ): Promise<MetricConceptDeleteResultDto> {
+    const normalizedShipId = shipId?.trim();
+
+    if (!normalizedShipId) {
+      throw new BadRequestException('shipId is required');
+    }
+
+    return this.metricConceptRepository.manager.transaction(async (manager) => {
+      const conceptRepository = manager.getRepository(MetricConceptEntity);
+      const memberRepository = manager.getRepository(MetricConceptMemberEntity);
+      const concept = await conceptRepository.findOne({
+        where: { id: conceptId },
+        select: { id: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!concept) {
+        throw new NotFoundException('Metric concept not found');
+      }
+
+      const scopedMemberRows = await memberRepository
+        .createQueryBuilder('member')
+        .innerJoin('member.metricCatalog', 'metric')
+        .select('member.id', 'id')
+        .where('member.conceptId = :conceptId', { conceptId })
+        .andWhere('metric.shipId = :shipId', { shipId: normalizedShipId })
+        .getRawMany<{ id: string }>();
+      const scopedMemberIds = scopedMemberRows.map((member) => member.id);
+
+      if (scopedMemberIds.length > 0) {
+        await memberRepository.delete({
+          id: In(scopedMemberIds),
+        });
+      }
+
+      const remainingMembers = await memberRepository.count({
+        where: { conceptId },
+      });
+      const deletedConcept = remainingMembers === 0;
+
+      if (deletedConcept) {
+        await conceptRepository.delete({ id: conceptId });
+      }
+
+      return {
+        conceptId,
+        removedMembers: scopedMemberIds.length,
+        deletedConcept,
+      };
+    });
   }
 
   async resolveConcept(
