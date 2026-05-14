@@ -3,6 +3,7 @@ import {
   DocumentRetrievalEvidenceQuality,
   DocumentRetrievalResponseDto,
 } from '../../../documents/dto/document-retrieval-response.dto';
+import { DocumentDocClass } from '../../../documents/enums/document-doc-class.enum';
 import { DocumentsService } from '../../../documents/documents.service';
 import { ChatLlmService } from '../../chat-llm.service';
 import {
@@ -36,6 +37,7 @@ import {
   buildDocumentClassAttempts,
   DocumentClassAttempt,
   isBetterRetrieval,
+  shouldSkipAttemptForCurrentRetrieval,
 } from './document-retrieval-attempts';
 import {
   acceptOrRepairGroundedReply,
@@ -83,12 +85,25 @@ export class ChatDocumentsResponderService {
     shipId: string,
   ): Promise<ChatTurnResponderOutput> {
     let retrieval: DocumentRetrievalResponseDto | null = null;
-    const attempts = buildDocumentClassAttempts(documentsRoute);
     const queryPlan = buildDocumentQueryPlan(input, documentsRoute);
+    const intentText = this.buildDocumentIntentText(documentsRoute, queryPlan);
+    const attempts = buildDocumentClassAttempts(documentsRoute, {
+      intentText,
+    });
     let completedAttempt: DocumentClassAttempt | null = null;
 
     try {
       for (const attempt of attempts) {
+        if (
+          shouldSkipAttemptForCurrentRetrieval({
+            attempt,
+            current: retrieval,
+            intentText,
+          })
+        ) {
+          continue;
+        }
+
         const attemptRetrieval = await this.documentsService.search(
           buildDocumentRetrievalRequest(
             input,
@@ -269,14 +284,27 @@ export class ChatDocumentsResponderService {
       parentRoute,
       component,
     );
-    const attempts = buildDocumentClassAttempts(documentsRoute);
     const queryPlan = buildComponentQueryPlan(input, parentRoute, component);
+    const intentText = this.buildDocumentIntentText(documentsRoute, queryPlan);
+    const attempts = buildDocumentClassAttempts(documentsRoute, {
+      intentText,
+    });
     let retrieval: DocumentRetrievalResponseDto | null = null;
     let completedAttempt: DocumentClassAttempt | null = null;
 
     for (const attempt of attempts) {
+      if (
+        shouldSkipAttemptForCurrentRetrieval({
+          attempt,
+          current: retrieval,
+          intentText,
+        })
+      ) {
+        continue;
+      }
+
       const attemptRetrieval = await this.documentsService.search(
-            buildDocumentRetrievalRequest(
+        buildDocumentRetrievalRequest(
           input,
           documentsRoute,
           shipId,
@@ -465,6 +493,25 @@ export class ChatDocumentsResponderService {
     return error instanceof Error ? error.message : String(error);
   }
 
+  private buildDocumentIntentText(
+    documentsRoute: ChatSemanticDocumentsRoute,
+    queryPlan: DocumentQueryPlan,
+  ): string {
+    return [
+      queryPlan.originalQuestion,
+      queryPlan.retrievalQuery,
+      queryPlan.searchQuestion,
+      documentsRoute.retrievalQuery,
+      documentsRoute.documentTitleHint,
+      ...documentsRoute.contentFocusHints,
+      ...documentsRoute.equipmentOrSystemHints,
+      ...documentsRoute.manufacturerHints,
+      ...documentsRoute.modelHints,
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .join(' ');
+  }
+
   private buildSupportedNumericContext(queryPlan: DocumentQueryPlan): string[] {
     const runningHours = queryPlan.contextFacts.runningHours;
 
@@ -487,7 +534,11 @@ export class ChatDocumentsResponderService {
     }
 
     const scheduleResults = retrieval.results
-      .filter((result) => this.isMaintenanceScheduleEvidence(result.snippet))
+      .filter(
+        (result) =>
+          result.docClass === DocumentDocClass.MANUAL &&
+          this.isMaintenanceScheduleEvidence(result.snippet),
+      )
       .slice(0, 3);
 
     if (!scheduleResults.length) {

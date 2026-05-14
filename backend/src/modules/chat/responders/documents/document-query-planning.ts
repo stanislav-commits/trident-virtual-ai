@@ -18,6 +18,7 @@ import {
   extractRelevantRunningHours,
   isMaintenanceScheduleQuestion,
 } from './document-query-enrichment';
+import { isMaintenanceRecordIntent } from './document-maintenance-intent';
 
 export function buildDocumentQueryPlan(
   input: ChatTurnResponderInput,
@@ -112,7 +113,8 @@ export function buildDocumentRetrievalRequest(
     shipId,
     candidateDocClasses: attempt.candidateDocClasses,
     questionType:
-      resolveRetrievalQuestionType(documentsRoute, attempt) ?? undefined,
+      resolveRetrievalQuestionType(documentsRoute, attempt, queryPlan) ??
+      undefined,
     equipmentOrSystemHints: documentsRoute.equipmentOrSystemHints.length
       ? documentsRoute.equipmentOrSystemHints
       : undefined,
@@ -146,11 +148,22 @@ export function buildDocumentRetrievalRequest(
 function resolveRetrievalQuestionType(
   documentsRoute: ChatSemanticDocumentsRoute,
   attempt: DocumentClassAttempt,
+  queryPlan: DocumentQueryPlan,
 ): DocumentRetrievalQuestionType | null {
+  const intentText = buildIntentText(documentsRoute, queryPlan);
+  const maintenanceRecordIntent = isMaintenanceRecordIntent(intentText);
+
+  if (maintenanceRecordIntent) {
+    return attempt.candidateDocClasses?.includes(DocumentDocClass.MANUAL) &&
+      hasMaintenanceScheduleFocus(documentsRoute, queryPlan)
+      ? DocumentRetrievalQuestionType.EQUIPMENT_REFERENCE
+      : DocumentRetrievalQuestionType.HISTORICAL_CASE;
+  }
+
   if (
     documentsRoute.questionType === DocumentRetrievalQuestionType.HISTORICAL_CASE &&
     attempt.candidateDocClasses?.includes(DocumentDocClass.MANUAL) &&
-    hasMaintenanceScheduleFocus(documentsRoute)
+    hasMaintenanceScheduleFocus(documentsRoute, queryPlan)
   ) {
     return DocumentRetrievalQuestionType.EQUIPMENT_REFERENCE;
   }
@@ -160,10 +173,9 @@ function resolveRetrievalQuestionType(
 
 function hasMaintenanceScheduleFocus(
   documentsRoute: ChatSemanticDocumentsRoute,
+  queryPlan: DocumentQueryPlan,
 ): boolean {
-  const contentFocus = documentsRoute.contentFocusHints
-    .join(' ')
-    .toLocaleLowerCase();
+  const contentFocus = buildIntentText(documentsRoute, queryPlan).toLocaleLowerCase();
 
   return (
     /\bmaintenance\b/u.test(contentFocus) &&
@@ -171,6 +183,25 @@ function hasMaintenanceScheduleFocus(
       contentFocus,
     )
   );
+}
+
+function buildIntentText(
+  documentsRoute: ChatSemanticDocumentsRoute,
+  queryPlan: DocumentQueryPlan,
+): string {
+  return [
+    queryPlan.originalQuestion,
+    queryPlan.retrievalQuery,
+    queryPlan.searchQuestion,
+    documentsRoute.retrievalQuery,
+    documentsRoute.documentTitleHint,
+    ...documentsRoute.contentFocusHints,
+    ...documentsRoute.equipmentOrSystemHints,
+    ...documentsRoute.manufacturerHints,
+    ...documentsRoute.modelHints,
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ');
 }
 
 function buildDocumentQueryContextFacts(input: {

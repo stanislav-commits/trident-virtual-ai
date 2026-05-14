@@ -3,6 +3,7 @@ import { DocumentDocClass } from '../../../documents/enums/document-doc-class.en
 import { DocumentRetrievalQuestionType } from '../../../documents/enums/document-retrieval-question-type.enum';
 import { getDocumentQuestionClassPolicy } from '../../../documents/retrieval/document-question-class-policy';
 import { ChatSemanticDocumentsRoute } from '../../routing/chat-semantic-router.types';
+import { isMaintenanceRecordIntent } from './document-maintenance-intent';
 
 export interface DocumentClassAttempt {
   reason:
@@ -15,11 +16,30 @@ export interface DocumentClassAttempt {
 
 export function buildDocumentClassAttempts(
   documentsRoute: ChatSemanticDocumentsRoute,
+  options: { intentText?: string } = {},
 ): DocumentClassAttempt[] {
   const attempts: DocumentClassAttempt[] = [];
+  const intentText = buildIntentText(documentsRoute, options.intentText);
+  const maintenanceRecordIntent = isMaintenanceRecordIntent(intentText);
 
   if (documentsRoute.documentTitleHint?.trim()) {
     attempts.push({ reason: 'title_hint' });
+  }
+
+  if (maintenanceRecordIntent) {
+    attempts.push({
+      reason: 'primary',
+      candidateDocClasses: [DocumentDocClass.HISTORICAL_PROCEDURE],
+    });
+
+    if (shouldTryManualMaintenanceFallback(documentsRoute, intentText)) {
+      attempts.push({
+        reason: 'secondary_fallback',
+        candidateDocClasses: [DocumentDocClass.MANUAL],
+      });
+    }
+
+    return dedupeAttempts(attempts);
   }
 
   const policy = getDocumentQuestionClassPolicy(documentsRoute.questionType);
@@ -52,7 +72,7 @@ export function buildDocumentClassAttempts(
     });
   }
 
-  if (shouldTryManualMaintenanceFallback(documentsRoute)) {
+  if (shouldTryManualMaintenanceFallback(documentsRoute, intentText)) {
     attempts.push({
       reason: 'secondary_fallback',
       candidateDocClasses: [DocumentDocClass.MANUAL],
@@ -71,11 +91,34 @@ export function buildDocumentClassAttempts(
   return dedupeAttempts(attempts);
 }
 
+export function shouldSkipAttemptForCurrentRetrieval(input: {
+  attempt: DocumentClassAttempt;
+  current: DocumentRetrievalResponseDto | null;
+  intentText: string;
+}): boolean {
+  if (
+    !input.current ||
+    !isMaintenanceRecordIntent(input.intentText) ||
+    !isManualAttempt(input.attempt)
+  ) {
+    return false;
+  }
+
+  return (
+    hasUsableAnswerability(input.current) &&
+    input.current.results.some(
+      (result) => result.docClass === DocumentDocClass.HISTORICAL_PROCEDURE,
+    )
+  );
+}
+
 function shouldTryManualMaintenanceFallback(
   documentsRoute: ChatSemanticDocumentsRoute,
+  intentText: string,
 ): boolean {
   if (
     documentsRoute.questionType !== DocumentRetrievalQuestionType.HISTORICAL_CASE
+    && !isMaintenanceRecordIntent(intentText)
   ) {
     return false;
   }
@@ -89,6 +132,30 @@ function shouldTryManualMaintenanceFallback(
     /\b(?:next|due|schedule|scheduled|interval|periodic|running hours?)\b/u.test(
       contentFocus,
     )
+  );
+}
+
+function buildIntentText(
+  documentsRoute: ChatSemanticDocumentsRoute,
+  additionalText = '',
+): string {
+  return [
+    additionalText,
+    documentsRoute.retrievalQuery,
+    documentsRoute.documentTitleHint,
+    ...documentsRoute.contentFocusHints,
+    ...documentsRoute.equipmentOrSystemHints,
+    ...documentsRoute.manufacturerHints,
+    ...documentsRoute.modelHints,
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ');
+}
+
+function isManualAttempt(attempt: DocumentClassAttempt): boolean {
+  return (
+    attempt.candidateDocClasses?.length === 1 &&
+    attempt.candidateDocClasses[0] === DocumentDocClass.MANUAL
   );
 }
 

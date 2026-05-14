@@ -1,5 +1,6 @@
 import { ChatMessageEntity } from '../../entities/chat-message.entity';
 import { ChatMessageRole } from '../../enums/chat-message-role.enum';
+import { isMaintenanceRecordIntent } from './document-maintenance-intent';
 
 const MAX_ENRICHED_SEARCH_QUESTION_LENGTH = 320;
 
@@ -27,7 +28,10 @@ export function enrichDocumentSearchQuestion(
     enrichmentParts.push(FUEL_FILTER_REPLACEMENT_QUERY);
   }
 
-  if (isMaintenanceScheduleQuestion(sourceText)) {
+  if (
+    isMaintenanceScheduleQuestion(sourceText) &&
+    !isMaintenanceRecordIntent(sourceText)
+  ) {
     const runningHours = extractRelevantRunningHours(input);
     enrichmentParts.push(MAINTENANCE_SCHEDULE_QUERY);
 
