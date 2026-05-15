@@ -3,7 +3,10 @@ import { DocumentDocClass } from '../../../documents/enums/document-doc-class.en
 import { DocumentRetrievalQuestionType } from '../../../documents/enums/document-retrieval-question-type.enum';
 import { getDocumentQuestionClassPolicy } from '../../../documents/retrieval/document-question-class-policy';
 import { ChatSemanticDocumentsRoute } from '../../routing/chat-semantic-router.types';
-import { isMaintenanceRecordIntent } from './document-maintenance-intent';
+import {
+  isAdministrativeComplianceIntent,
+  isMaintenanceRecordIntent,
+} from './document-maintenance-intent';
 
 export interface DocumentClassAttempt {
   reason:
@@ -21,9 +24,36 @@ export function buildDocumentClassAttempts(
   const attempts: DocumentClassAttempt[] = [];
   const intentText = buildIntentText(documentsRoute, options.intentText);
   const maintenanceRecordIntent = isMaintenanceRecordIntent(intentText);
+  const administrativeComplianceIntent =
+    isAdministrativeComplianceIntent(intentText);
 
   if (documentsRoute.documentTitleHint?.trim()) {
     attempts.push({ reason: 'title_hint' });
+  }
+
+  if (
+    administrativeComplianceIntent &&
+    hasHistoricalProcedureBias(documentsRoute)
+  ) {
+    const compliancePolicy = getDocumentQuestionClassPolicy(
+      DocumentRetrievalQuestionType.COMPLIANCE_OR_CERTIFICATE,
+    );
+
+    if (compliancePolicy?.primary.length) {
+      attempts.push({
+        reason: 'primary',
+        candidateDocClasses: compliancePolicy.primary,
+      });
+    }
+
+    if (compliancePolicy?.secondary.length) {
+      attempts.push({
+        reason: 'secondary_fallback',
+        candidateDocClasses: compliancePolicy.secondary,
+      });
+    }
+
+    return dedupeAttempts(attempts);
   }
 
   if (maintenanceRecordIntent) {
@@ -193,6 +223,17 @@ function toOptionalClasses(
   return candidateDocClasses.length
     ? mergeClasses(candidateDocClasses, [])
     : undefined;
+}
+
+function hasHistoricalProcedureBias(
+  documentsRoute: ChatSemanticDocumentsRoute,
+): boolean {
+  return (
+    documentsRoute.questionType === DocumentRetrievalQuestionType.HISTORICAL_CASE ||
+    documentsRoute.candidateDocClasses.includes(
+      DocumentDocClass.HISTORICAL_PROCEDURE,
+    )
+  );
 }
 
 function dedupeAttempts(

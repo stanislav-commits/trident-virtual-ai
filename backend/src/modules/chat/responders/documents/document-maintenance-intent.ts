@@ -12,6 +12,19 @@ export function isMaintenanceRecordIntent(value: string): boolean {
   );
 }
 
+export function isAdministrativeComplianceIntent(value: string): boolean {
+  const normalized = normalizeIntentText(value);
+
+  if (!normalized || hasManualInstructionSignal(normalized)) {
+    return false;
+  }
+
+  return (
+    hasAdministrativeComplianceSignal(normalized) &&
+    !hasExplicitMaintenanceRecordOverride(normalized)
+  );
+}
+
 export function isManualInstructionIntent(value: string): boolean {
   const normalized = normalizeIntentText(value);
 
@@ -25,9 +38,29 @@ export function isManualInstructionIntent(value: string): boolean {
 function hasExplicitNonRecordDocumentIntent(value: string): boolean {
   return (
     hasManualInstructionSignal(value) ||
-    /\b(?:certificate|certificates|certification|approval|issuer|validity|valid until|expires?|expiry|expiration|registration|permit|compliance|regulation|regulatory|survey|marpol|solas|sop|checklist|emergency procedure)\b/u.test(
+    (hasAdministrativeComplianceSignal(value) &&
+      !hasExplicitMaintenanceRecordOverride(value))
+  );
+}
+
+function hasAdministrativeComplianceSignal(value: string): boolean {
+  return /\b(?:certificate|certificates|certification|approval|issuer|validity|valid until|valid|expires?|expiry|expiration|registration|permit|compliance|regulation|regulatory|survey|marpol|solas|sop|checklist|emergency procedure|class approval)\b/u.test(
+    value,
+  );
+}
+
+function hasExplicitMaintenanceRecordOverride(value: string): boolean {
+  return (
+    /\bpms\b/u.test(value) ||
+    /\bmaintenance (?:records?|history|tasks?|jobs?|work orders?)\b/u.test(
       value,
-    )
+    ) ||
+    (/\b(?:tasks?|jobs?|work orders?)\b/u.test(value) &&
+      /\b(?:maintenance|service|inspection|test|overhaul)\b/u.test(value)) ||
+    (/\b(?:work scope|scope of work|responsible|responsibility|performed by|approved by|engineer(?:s|'s)? notes?)\b/u.test(
+      value,
+    ) &&
+      hasMaintenanceRecordContext(value))
   );
 }
 
@@ -51,8 +84,7 @@ function hasMaintenanceRecordSignal(value: string): boolean {
     /\bmaintenance history\b/u.test(value) ||
     /\bplanned maintenance\b/u.test(value) ||
     /\bcompleted maintenance\b/u.test(value) ||
-    hasMaintenanceDueSignal(value) ||
-    /\bnext service\b/u.test(value) ||
+    hasTemporalMaintenanceRecordSignal(value) ||
     /\bcurrent (?:equipment )?(?:hours?|running hours?)\b/u.test(value) ||
     /\b(?:task|job|work order|service) (?:status|reference|ref(?:erence)? id)\b/u.test(
       value,
@@ -62,9 +94,9 @@ function hasMaintenanceRecordSignal(value: string): boolean {
   );
 }
 
-function hasMaintenanceDueSignal(value: string): boolean {
+function hasTemporalMaintenanceRecordSignal(value: string): boolean {
   return (
-    /\b(?:due|overdue|upcoming)\b/u.test(value) &&
+    /\b(?:when|next|scheduled|planned|upcoming|due|overdue)\b/u.test(value) &&
     hasMaintenanceRecordContext(value)
   );
 }

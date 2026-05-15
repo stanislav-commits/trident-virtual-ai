@@ -1,6 +1,9 @@
 import { ChatMessageEntity } from '../../entities/chat-message.entity';
 import { ChatMessageRole } from '../../enums/chat-message-role.enum';
-import { isMaintenanceRecordIntent } from './document-maintenance-intent';
+import {
+  isAdministrativeComplianceIntent,
+  isMaintenanceRecordIntent,
+} from './document-maintenance-intent';
 
 const MAX_ENRICHED_SEARCH_QUESTION_LENGTH = 320;
 
@@ -64,8 +67,13 @@ export function isFuelFilterReplacementQuestion(value: string): boolean {
 
 export function isMaintenanceScheduleQuestion(value: string): boolean {
   const normalized = normalizeComparableText(value);
+
+  if (isAdministrativeComplianceIntent(normalized)) {
+    return false;
+  }
+
   const hasMaintenanceIntent =
-    /\b(?:maintenance|maintain|service|servicing|scheduled|schedule|interval|periodic checks|checks and maintenance|due|next)\b/u.test(
+    /\b(?:maintenance|maintain|service|servicing|schedule|interval|periodic checks|checks and maintenance)\b/u.test(
       normalized,
     );
   const hasScheduleSignal =

@@ -18,7 +18,10 @@ import {
   extractRelevantRunningHours,
   isMaintenanceScheduleQuestion,
 } from './document-query-enrichment';
-import { isMaintenanceRecordIntent } from './document-maintenance-intent';
+import {
+  isAdministrativeComplianceIntent,
+  isMaintenanceRecordIntent,
+} from './document-maintenance-intent';
 
 export function buildDocumentQueryPlan(
   input: ChatTurnResponderInput,
@@ -151,6 +154,11 @@ function resolveRetrievalQuestionType(
   queryPlan: DocumentQueryPlan,
 ): DocumentRetrievalQuestionType | null {
   const intentText = buildIntentText(documentsRoute, queryPlan);
+
+  if (isAdministrativeComplianceIntent(intentText)) {
+    return DocumentRetrievalQuestionType.COMPLIANCE_OR_CERTIFICATE;
+  }
+
   const maintenanceRecordIntent = isMaintenanceRecordIntent(intentText);
 
   if (maintenanceRecordIntent) {
