@@ -12,6 +12,9 @@ interface BuildGroundedAnswerUserPromptInput {
     maintenanceScheduleQuestion: boolean;
     runningHours: string | null;
   };
+  answerStyle?: {
+    structuredMaintenanceRecord: boolean;
+  };
 }
 
 export function buildGroundedAnswerSystemPrompt(
@@ -48,7 +51,8 @@ export function buildGroundedAnswerUserPrompt(
     `Preferred response language: ${input.answerLanguage ?? 'infer from the user question'}`,
     'Answer in the preferred response language unless the user explicitly requested another language.',
     'Do not mention or reveal internal retrieval-query normalization.',
-    ...formatContextFacts(input.contextFacts),
+    ...formatContextFacts(input.contextFacts, input.answerStyle),
+    ...formatAnswerStyle(input.answerStyle, input.userQuestion),
     `Evidence quality: ${input.retrieval.evidenceQuality}`,
     `Answerability note: ${input.retrieval.answerability.reason}`,
     '',
@@ -63,7 +67,12 @@ export function buildGroundedAnswerUserPrompt(
 
 function formatContextFacts(
   contextFacts: BuildGroundedAnswerUserPromptInput['contextFacts'],
+  answerStyle: BuildGroundedAnswerUserPromptInput['answerStyle'],
 ): string[] {
+  if (answerStyle?.structuredMaintenanceRecord) {
+    return [];
+  }
+
   if (!contextFacts?.maintenanceScheduleQuestion) {
     return [];
   }
@@ -82,6 +91,66 @@ function formatContextFacts(
     '- If the retrieved table text does not preserve row/column mapping well enough to list exact due tasks, say that clearly.',
     '- Mention that the exact next work also depends on what service was last completed.',
   ];
+}
+
+function formatAnswerStyle(
+  answerStyle: BuildGroundedAnswerUserPromptInput['answerStyle'],
+  userQuestion: string,
+): string[] {
+  if (!answerStyle?.structuredMaintenanceRecord) {
+    return [];
+  }
+
+  const maintenanceTaskSelectionRules = isMaintenanceTaskSelectionQuestion(
+    userQuestion,
+  )
+      ? [
+        '',
+        'PMS maintenance-record task selection rules:',
+        '- For a generic next-maintenance or next scheduled-maintenance question, mention supported OVERDUE task evidence separately as an important warning, then make the primary answer the next non-overdue scheduled task: prefer DUE_SOON, otherwise the earliest UPCOMING task by due date or due hours.',
+        '- For overdue, due-now, needs-attention, or current-due questions, choose the primary task in this order when supported evidence is available: OVERDUE first, then DUE_SOON.',
+        '- Do not choose a later UPCOMING task as the primary answer when earlier DUE_SOON or earlier UPCOMING task evidence is available.',
+        '- If the user explicitly asks for next upcoming, future scheduled, or not overdue maintenance, choose the next non-overdue scheduled task: prefer DUE_SOON, otherwise the earliest UPCOMING task by due date or due hours.',
+        '- For an upcoming or future request, present a task as the next non-overdue task only when cited evidence gives enough coverage to establish that no earlier non-overdue task is available. A single later UPCOMING record alone is not enough; say the uploaded evidence is insufficient or limited instead of presenting it as certain.',
+        '- If overdue evidence is present for an upcoming or future request, mention it only as a separate important note, not as the upcoming task.',
+        '- If cited equipment-summary evidence lists all tasks or names a Next upcoming task, use that to support the non-overdue task selection and any overdue warning.',
+      ]
+    : [];
+
+  return [
+    '',
+    'PMS maintenance-record answer style:',
+    '- Start with one short summary sentence that directly answers the user.',
+    '- Then use compact Markdown bullet lines for supported fields such as Task, Status, Last completed, Next due, Current hours, Remaining hours, Overdue days, Responsible, or Work scope.',
+    '- For next, due, overdue, or upcoming PMS questions, keep the bullet list focused on task-selection fields; do not add equipment specifications, make/model fields, side, reference IDs, or total task counts unless the user specifically asks for them.',
+    '- Include only fields that are explicitly present in the cited maintenance-record evidence.',
+    '- Do not copy task-specific fields such as Responsible, Last completed, Work scope, remaining hours, or overdue days from one PMS task to another; use those fields only when the cited evidence ties them to the same selected task.',
+    '- If the selected task is supported only by an equipment-summary task list, limit that task\'s bullet lines to the fields visible in that summary, such as Task, Status, Next due, and current equipment hours.',
+    '- Do not invent missing fields or calculate derived values; include remaining hours or overdue days only when the exact value appears in the cited evidence.',
+    '- Put a citation marker at the end of every factual bullet line; do not use a single citation after an entire bullet block.',
+    '- Include a Work scope bullet only when concrete work-scope text for the same selected task is visible in cited evidence.',
+    '- Add a short final note only when the cited evidence directly supports it.',
+    ...maintenanceTaskSelectionRules,
+  ];
+}
+
+function isMaintenanceTaskSelectionQuestion(value: string): boolean {
+  const normalized = value
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+  const hasMaintenanceRecordContext =
+    /\b(?:maintenance|service|tasks?|pms|tests?|inspections?|checks?|overhauls?)\b/u.test(
+      normalized,
+    );
+  const hasSelectionSignal =
+    /\b(?:next|due|overdue|scheduled|planned|upcoming|current|status)\b/u.test(
+      normalized,
+    );
+
+  return hasMaintenanceRecordContext && hasSelectionSignal;
 }
 
 export function formatEvidenceItem(

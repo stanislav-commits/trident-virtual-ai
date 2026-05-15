@@ -39,6 +39,7 @@ import {
   isBetterRetrieval,
   shouldSkipAttemptForCurrentRetrieval,
 } from './document-retrieval-attempts';
+import { isMaintenanceRecordIntent } from './document-maintenance-intent';
 import {
   acceptOrRepairGroundedReply,
   buildFallbackEvidenceSummary,
@@ -432,6 +433,11 @@ export class ChatDocumentsResponderService {
       };
     }
 
+    const structuredMaintenanceRecordAnswer =
+      this.shouldUseStructuredMaintenanceRecordAnswer(
+        input.ask.question,
+        retrieval,
+      );
     const request = {
       systemPrompt: buildGroundedAnswerSystemPrompt(retrieval.evidenceQuality),
       userPrompt: buildGroundedAnswerUserPrompt({
@@ -439,6 +445,9 @@ export class ChatDocumentsResponderService {
         answerLanguage: queryPlan.answerLanguage,
         retrieval,
         contextFacts: queryPlan.contextFacts,
+        answerStyle: {
+          structuredMaintenanceRecord: structuredMaintenanceRecordAnswer,
+        },
       }),
       temperature: 0.1,
       maxTokens: retrieval.evidenceQuality === 'strong' ? 650 : 420,
@@ -451,7 +460,10 @@ export class ChatDocumentsResponderService {
         retrieval,
         request,
         chatLlmService: this.chatLlmService,
-        supportedNumericContext: this.buildSupportedNumericContext(queryPlan),
+        supportedNumericContext: structuredMaintenanceRecordAnswer
+          ? []
+          : this.buildSupportedNumericContext(queryPlan),
+        preserveMarkdownStructure: structuredMaintenanceRecordAnswer,
       });
     }
 
@@ -589,6 +601,41 @@ export class ChatDocumentsResponderService {
     }
 
     return ' It shows maintenance should be performed at indicated intervals.';
+  }
+
+  private shouldUseStructuredMaintenanceRecordAnswer(
+    userQuestion: string,
+    retrieval: DocumentRetrievalResponseDto,
+  ): boolean {
+    return (
+      isMaintenanceRecordIntent(userQuestion) &&
+      retrieval.results.some(
+        (result) =>
+          result.docClass === DocumentDocClass.HISTORICAL_PROCEDURE &&
+          this.isMaintenanceRecordEvidence(result.snippet),
+      )
+    );
+  }
+
+  private isMaintenanceRecordEvidence(snippet: string): boolean {
+    const normalized = snippet.toLocaleLowerCase();
+    const structuredFieldCount = [
+      'task_name:',
+      'last_completed_date:',
+      'last_completed_hours:',
+      'next_due_date:',
+      'next_due_hours:',
+      'current_equipment_hours:',
+      'status:',
+      'responsible:',
+      'work_scope:',
+    ].filter((field) => normalized.includes(field)).length;
+
+    return (
+      normalized.includes('doc_type: maintenance_record') ||
+      normalized.includes('maintenance record for') ||
+      structuredFieldCount >= 2
+    );
   }
 
 }

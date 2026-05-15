@@ -32,6 +32,7 @@ export async function acceptOrRepairGroundedReply(input: {
   request: DocumentAnswerCompletionRequest;
   chatLlmService: DocumentAnswerLlm;
   supportedNumericContext?: string[];
+  preserveMarkdownStructure?: boolean;
 }): Promise<GroundedDocumentAnswer> {
   const firstValidation = validateGeneratedDocumentAnswer(
     input.reply,
@@ -53,6 +54,7 @@ export async function acceptOrRepairGroundedReply(input: {
       userPrompt: buildCitationRepairPrompt(
         input.request.userPrompt,
         input.reply,
+        input.preserveMarkdownStructure === true,
       ),
     });
 
@@ -155,6 +157,7 @@ function validateGeneratedDocumentAnswer(
 function buildCitationRepairPrompt(
   originalUserPrompt: string,
   previousReply: string,
+  preserveMarkdownStructure: boolean,
 ): string {
   return [
     originalUserPrompt,
@@ -162,6 +165,9 @@ function buildCitationRepairPrompt(
     'The previous draft omitted required citation markers.',
     'Rewrite the answer using only the same retrieved evidence.',
     'Keep the same language, but add citation markers like [1] to every evidence-backed factual claim.',
+    ...(preserveMarkdownStructure
+      ? ['Preserve the previous draft Markdown structure and labeled bullet layout while adding citations.']
+      : []),
     'Do not add new facts, sources, metrics, or web knowledge.',
     '',
     'Previous draft:',
