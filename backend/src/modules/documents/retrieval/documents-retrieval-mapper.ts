@@ -14,6 +14,7 @@ import {
 import { extractFirstChunkPage } from './documents-retrieval-chunk-utils';
 
 const MAX_SNIPPET_LENGTH = 1600;
+const PMS_SUMMARY_LEAD_LENGTH = 560;
 
 interface BuildRetrievalResponseOptions {
   input: SearchDocumentsDto;
@@ -264,12 +265,66 @@ export class DocumentsRetrievalMapper {
 
   private trimSnippet(content: string): string {
     const normalized = content.replace(/\s+/g, ' ').trim();
+    const pmsEquipmentSummarySnippet =
+      this.buildPmsEquipmentSummarySnippet(normalized);
+
+    if (pmsEquipmentSummarySnippet) {
+      return pmsEquipmentSummarySnippet;
+    }
 
     if (normalized.length <= MAX_SNIPPET_LENGTH) {
       return normalized;
     }
 
     return `${normalized.slice(0, MAX_SNIPPET_LENGTH - 1).trim()}\u2026`;
+  }
+
+  private buildPmsEquipmentSummarySnippet(content: string): string | null {
+    if (
+      !/\bdoc_type:\s*equipment_summary\b/i.test(content) ||
+      !/\b(?:all registered maintenance tasks|next upcoming task|tasks_due_soon|tasks_overdue)\b/i.test(
+        content,
+      )
+    ) {
+      return null;
+    }
+
+    const overviewStart = this.findFirstIndex(content, [
+      /\bThis equipment has\b/i,
+      /\bAll registered maintenance tasks\b/i,
+      /\bNext upcoming task\b/i,
+    ]);
+
+    if (overviewStart < 0 || content.length <= MAX_SNIPPET_LENGTH) {
+      return this.trimToSnippetLength(content);
+    }
+
+    const lead = content.slice(0, PMS_SUMMARY_LEAD_LENGTH).trim();
+    const overview = content.slice(overviewStart).trim();
+    const separator = lead && overview ? ' … ' : '';
+    const combined = `${lead}${separator}${overview}`;
+
+    return this.trimToSnippetLength(combined);
+  }
+
+  private findFirstIndex(content: string, patterns: RegExp[]): number {
+    return patterns.reduce((first, pattern) => {
+      const match = pattern.exec(content);
+
+      if (!match?.index && match?.index !== 0) {
+        return first;
+      }
+
+      return first < 0 ? match.index : Math.min(first, match.index);
+    }, -1);
+  }
+
+  private trimToSnippetLength(content: string): string {
+    if (content.length <= MAX_SNIPPET_LENGTH) {
+      return content;
+    }
+
+    return `${content.slice(0, MAX_SNIPPET_LENGTH - 1).trim()}\u2026`;
   }
 
 }

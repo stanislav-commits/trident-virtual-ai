@@ -113,9 +113,14 @@ export class DocumentsRetrievalService {
       questionType: input.questionType ?? null,
       evidenceQuality: initialEvidenceQuality,
     });
-    const results = this.mapper.toResults(expandedCandidates);
+    const orderedExpandedCandidates = this.reranker.orderExpandedResultsForPrompt(
+      expandedCandidates,
+      context,
+      normalizedQuestion,
+    );
+    const results = this.mapper.toResults(orderedExpandedCandidates);
     const evidenceQuality = assessDocumentRetrievalEvidenceQuality({
-      candidates: expandedCandidates,
+      candidates: orderedExpandedCandidates,
       question: normalizedQuestion,
       questionType: input.questionType ?? null,
     });

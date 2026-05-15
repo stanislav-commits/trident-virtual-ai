@@ -7,6 +7,10 @@ import { getPreferredDocumentClassesForQuestionType } from './document-question-
 import { getQuestionContentSignalBonus } from './documents-retrieval-query-signals';
 import { getQuestionTypeSectionBonus } from './documents-retrieval-text-signals';
 import {
+  applyPmsFutureTaskOrderBonuses,
+  getPmsTaskSelectionBonus,
+} from './documents-retrieval-pms-signals';
+import {
   DocumentRetrievalCandidateScoreInput,
   DocumentRetrievalFilterContext,
   EnrichedDocumentRetrievalCandidate,
@@ -23,7 +27,7 @@ export class DocumentsRetrievalReranker {
     question: string,
     questionType: DocumentRetrievalQuestionType | null,
   ): EnrichedDocumentRetrievalCandidate[] {
-    return chunks
+    const candidates = chunks
       .map((chunk) => {
         const document = chunk.document_id
           ? documentsByRagflowId.get(chunk.document_id)
@@ -53,7 +57,13 @@ export class DocumentsRetrievalReranker {
           }),
         };
       })
-      .filter((item): item is EnrichedDocumentRetrievalCandidate => item !== null)
+      .filter((item): item is EnrichedDocumentRetrievalCandidate => item !== null);
+
+    return applyPmsFutureTaskOrderBonuses(
+      candidates,
+      question,
+      context.hints,
+    )
       .sort((left, right) => right.rerankScore - left.rerankScore);
   }
 
@@ -97,6 +107,26 @@ export class DocumentsRetrievalReranker {
 
     return selected;
   }
+
+  orderExpandedResultsForPrompt(
+    candidates: EnrichedDocumentRetrievalCandidate[],
+    context: DocumentRetrievalFilterContext,
+    question: string,
+  ): EnrichedDocumentRetrievalCandidate[] {
+    const adjustedCandidates = applyPmsFutureTaskOrderBonuses(
+      candidates,
+      question,
+      context.hints,
+    );
+
+    if (adjustedCandidates === candidates) {
+      return candidates;
+    }
+
+    return [...adjustedCandidates].sort(
+      (left, right) => right.rerankScore - left.rerankScore,
+    );
+  }
 }
 
 export function scoreDocumentRetrievalCandidate(
@@ -131,6 +161,7 @@ export function scoreDocumentRetrievalCandidate(
     input.question,
     input.content,
   );
+  const pmsTaskSelectionBonus = getPmsTaskSelectionBonus(input);
 
   return roundScore(
     baseScore +
@@ -140,7 +171,8 @@ export function scoreDocumentRetrievalCandidate(
       priorityBonus +
       sectionBonus +
       titleHintBonus +
-      questionContentBonus,
+      questionContentBonus +
+      pmsTaskSelectionBonus,
   );
 }
 
