@@ -60,7 +60,13 @@ export function validateDocumentAnswerGrounding(
   );
 
   for (const claim of claims) {
-    if (!isNumericValueClaimSupportedByResults(claim, citedEvidenceResults)) {
+    if (
+      !isNumericValueClaimSupportedByResults(
+        claim,
+        citedEvidenceResults,
+        answerText,
+      )
+    ) {
       return {
         isGrounded: false,
         reason: `The answer included "${claim.raw}", but that exact value/unit was not found in the cited evidence snippets.`,
@@ -74,11 +80,17 @@ export function validateDocumentAnswerGrounding(
 function isNumericValueClaimSupportedByResults(
   claim: NumericValueClaim,
   results: DocumentRetrievalResultDto[],
+  answerText: string,
 ): boolean {
   return results.some(
     (result) =>
       isNumericValueClaimSupported(claim, result.snippet) ||
-      isHistoricalMaintenanceHourClaimSupported(claim, result),
+      isHistoricalMaintenanceHourClaimSupported(claim, result) ||
+      isHistoricalMaintenanceTaskNameIntervalClaimSupported(
+        claim,
+        answerText,
+        result,
+      ),
   );
 }
 
@@ -202,6 +214,35 @@ function isHistoricalMaintenanceHourClaimSupported(
   return descriptorHourPattern.test(normalizedEvidence);
 }
 
+function isHistoricalMaintenanceTaskNameIntervalClaimSupported(
+  claim: NumericValueClaim,
+  answerText: string,
+  result: DocumentRetrievalResultDto,
+): boolean {
+  if (
+    result.docClass !== DocumentDocClass.HISTORICAL_PROCEDURE ||
+    !isMaintenanceRecordEvidence(result.snippet)
+  ) {
+    return false;
+  }
+
+  const normalizedClaim = normalizeTaskNameText(claim.raw);
+  const normalizedAnswer = normalizeTaskNameText(answerText);
+
+  if (!normalizedClaim || !normalizedAnswer) {
+    return false;
+  }
+
+  return extractMaintenanceTaskNames(result.snippet).some((taskName) => {
+    const normalizedTaskName = normalizeTaskNameText(taskName);
+
+    return (
+      normalizedTaskName.includes(normalizedClaim) &&
+      normalizedAnswer.includes(normalizedTaskName)
+    );
+  });
+}
+
 function isMaintenanceRecordEvidence(snippet: string): boolean {
   const normalized = snippet.toLowerCase();
 
@@ -209,6 +250,28 @@ function isMaintenanceRecordEvidence(snippet: string): boolean {
     normalized.includes('doc_type: maintenance_record') ||
     normalized.includes('maintenance record for')
   );
+}
+
+function extractMaintenanceTaskNames(snippet: string): string[] {
+  const taskNames = new Set<string>();
+  const yamlMatch = snippet.match(
+    /\btask_name\s*:\s*(.+?)(?=\s+(?:priority|interval|last_completed_date|last_completed_hours|next_due_date|next_due_hours|current_equipment_hours|hours_remaining|days_remaining|status|postponed|responsible|work_scope)\s*:|\s+```|\s+Maintenance record for|$)/iu,
+  );
+  const proseMatches = snippet.matchAll(/\bMaintenance task:\s*"([^"]+)"/giu);
+
+  if (yamlMatch?.[1]?.trim()) {
+    taskNames.add(yamlMatch[1].trim());
+  }
+
+  for (const match of proseMatches) {
+    const taskName = match[1]?.trim();
+
+    if (taskName) {
+      taskNames.add(taskName);
+    }
+  }
+
+  return [...taskNames];
 }
 
 function isNumericValueClaimSupportedByContext(
@@ -279,6 +342,15 @@ function normalizeNumericUnit(value: string): string {
     .replace(/^hours?$/, 'h')
     .replace(/^degrees?c$/, 'c')
     .replace(/^\u00b0c$/, 'c');
+}
+
+function normalizeTaskNameText(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .replace(/\u00a0/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
 }
 
 function escapeRegExp(value: string): string {
