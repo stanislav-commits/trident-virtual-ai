@@ -1,4 +1,8 @@
-import { DocumentRetrievalResponseDto } from '../../../documents/dto/document-retrieval-response.dto';
+import {
+  DocumentRetrievalResponseDto,
+  DocumentRetrievalResultDto,
+} from '../../../documents/dto/document-retrieval-response.dto';
+import { DocumentDocClass } from '../../../documents/enums/document-doc-class.enum';
 
 interface NumericValueClaim {
   raw: string;
@@ -51,13 +55,12 @@ export function validateDocumentAnswerGrounding(
     };
   }
 
-  const citedEvidence = retrieval.results
-    .filter((result) => citedRanks.has(result.rank))
-    .map((result) => result.snippet)
-    .join('\n');
+  const citedEvidenceResults = retrieval.results.filter((result) =>
+    citedRanks.has(result.rank),
+  );
 
   for (const claim of claims) {
-    if (!isNumericValueClaimSupported(claim, citedEvidence)) {
+    if (!isNumericValueClaimSupportedByResults(claim, citedEvidenceResults)) {
       return {
         isGrounded: false,
         reason: `The answer included "${claim.raw}", but that exact value/unit was not found in the cited evidence snippets.`,
@@ -66,6 +69,17 @@ export function validateDocumentAnswerGrounding(
   }
 
   return { isGrounded: true };
+}
+
+function isNumericValueClaimSupportedByResults(
+  claim: NumericValueClaim,
+  results: DocumentRetrievalResultDto[],
+): boolean {
+  return results.some(
+    (result) =>
+      isNumericValueClaimSupported(claim, result.snippet) ||
+      isHistoricalMaintenanceHourClaimSupported(claim, result),
+  );
 }
 
 function extractNumericValueClaims(answerText: string): NumericValueClaim[] {
@@ -97,6 +111,7 @@ function extractNumericValueClaims(answerText: string): NumericValueClaim[] {
     'hz',
     'sec(?:onds?)?',
     'min(?:utes?)?',
+    'days?',
     'hours?',
     'hrs?',
     'h',
@@ -149,6 +164,53 @@ function isNumericValueClaimSupported(
   return localExpressionPattern.test(normalizedEvidence);
 }
 
+function isHistoricalMaintenanceHourClaimSupported(
+  claim: NumericValueClaim,
+  result: DocumentRetrievalResultDto,
+): boolean {
+  if (
+    result.docClass !== DocumentDocClass.HISTORICAL_PROCEDURE ||
+    !isMaintenanceRecordEvidence(result.snippet)
+  ) {
+    return false;
+  }
+
+  const numericValue = normalizeNumericValue(claim.numericValue);
+  const unit = normalizeNumericUnit(claim.unit);
+
+  if (!numericValue || unit !== 'h' || !/^\d+(?:\.\d+)?$/u.test(numericValue)) {
+    return false;
+  }
+
+  const rawEvidence = result.snippet.toLowerCase().replace(/\u00a0/g, ' ');
+  const yamlHourFieldPattern = new RegExp(
+    String.raw`\b(?:last_completed_hours|next_due_hours|current_equipment_hours|running_hours|hours_remaining)\s*:\s*${escapeRegExp(numericValue)}(?![\d.])`,
+    'u',
+  );
+
+  if (yamlHourFieldPattern.test(rawEvidence)) {
+    return true;
+  }
+
+  const normalizedEvidence = normalizeNumericGroundingText(result.snippet);
+  const valuePattern = escapeRegExp(numericValue);
+  const descriptorHourPattern = new RegExp(
+    String.raw`(?:^|[^\p{L}\p{N}.])${valuePattern}\s+(?:equipment|operating|running)\s+h(?![\p{L}\p{N}/])`,
+    'u',
+  );
+
+  return descriptorHourPattern.test(normalizedEvidence);
+}
+
+function isMaintenanceRecordEvidence(snippet: string): boolean {
+  const normalized = snippet.toLowerCase();
+
+  return (
+    normalized.includes('doc_type: maintenance_record') ||
+    normalized.includes('maintenance record for')
+  );
+}
+
 function isNumericValueClaimSupportedByContext(
   claim: NumericValueClaim,
   supportedNumericContext: string[],
@@ -174,6 +236,7 @@ function normalizeNumericGroundingText(value: string): string {
     .replace(/\bamps?\b/g, 'a')
     .replace(/\bseconds?\b/g, 'sec')
     .replace(/\bminutes?\b/g, 'min')
+    .replace(/\bdays?\b/g, 'd')
     .replace(/\bhrs?\b/g, 'h')
     .replace(/\bhours?\b/g, 'h')
     .replace(/\bdegrees?\s*c\b/g, 'c')
@@ -211,6 +274,7 @@ function normalizeNumericUnit(value: string): string {
     .replace(/^amps?$/, 'a')
     .replace(/^seconds?$/, 'sec')
     .replace(/^minutes?$/, 'min')
+    .replace(/^days?$/, 'd')
     .replace(/^hrs?$/, 'h')
     .replace(/^hours?$/, 'h')
     .replace(/^degrees?c$/, 'c')
