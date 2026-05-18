@@ -37,6 +37,81 @@ const SUPPORTED_DOCUMENT_COMPOSITION_MODES: ChatSemanticDocumentCompositionMode[
     'summarize_by_source',
   ];
 const MAX_DOCUMENT_COMPOSITE_COMPONENTS = 3;
+const EXPLICIT_WEB_SOURCE_PHRASES = [
+  'find in web',
+  'find on the web',
+  'find online',
+  'search the web',
+  'search online',
+  'look it up online',
+  'look up online',
+  'look online',
+  'internet',
+  'public source',
+  'public sources',
+  'outside our documents',
+  'outside the documents',
+  'outside uploaded documents',
+  'not from our manuals',
+  'not from the manuals',
+  'not from uploaded manuals',
+  'not from our documents',
+  'not from uploaded documents',
+  'not from uploaded files',
+  'в інтернеті',
+  'в інтернет',
+  'пошукай в інтернеті',
+  'знайди в інтернеті',
+  'пошукай онлайн',
+  'знайди онлайн',
+  'подивись онлайн',
+  'публічне джерело',
+  'публічні джерела',
+  'не з наших мануалів',
+  'не з наших документів',
+];
+const EXPLICIT_DOCUMENT_SOURCE_PHRASES = [
+  'uploaded documents',
+  'uploaded docs',
+  'ship documents',
+  'ship docs',
+  'our documents',
+  'our manuals',
+  'ship manuals',
+  'vessel manuals',
+  'uploaded manuals',
+  'according to the manual',
+  'according to manual',
+  'in the manual',
+  'from the manual',
+  'from our manuals',
+  'in uploaded files',
+  'uploaded files',
+  'завантажені документи',
+  'завантажених документах',
+  'суднові документи',
+  'наші документи',
+  'наших документах',
+  'наші мануали',
+  'наших мануалах',
+  'у мануалі',
+  'в мануалі',
+  'з мануалу',
+  'згідно з мануалом',
+];
+const EXPLICIT_DOCUMENT_EXCLUSION_PHRASES = [
+  'not from our manuals',
+  'not from the manuals',
+  'not from uploaded manuals',
+  'not from our documents',
+  'not from uploaded documents',
+  'not from uploaded files',
+  'outside our documents',
+  'outside the documents',
+  'outside uploaded documents',
+  'не з наших мануалів',
+  'не з наших документів',
+];
 
 @Injectable()
 export class ChatSemanticRouterService {
@@ -53,12 +128,15 @@ export class ChatSemanticRouterService {
     const parsed = this.parseDecision(rawResult, input);
 
     if (parsed) {
-      return parsed;
+      return this.applyExplicitSourcePolicy(parsed, input);
     }
 
-    return this.buildFallbackDecision(
+    return this.applyExplicitSourcePolicy(
+      this.buildFallbackDecision(
+        input,
+        'The semantic router could not parse a valid routing decision.',
+      ),
       input,
-      'The semantic router could not parse a valid routing decision.',
     );
   }
 
@@ -132,6 +210,9 @@ export class ChatSemanticRouterService {
       '- Keep documents.documentTitleHint separate from documents.retrievalQuery. Do not use retrievalQuery to replace a title hint.',
       '- documents.languageHint is optional document metadata language, not the user answer language; leave it null unless the user explicitly asks for documents in a particular stored document language.',
       '- When setting documents.languageHint, use the exact document-language wording from the ask or retrievalQuery rather than an inferred ISO code.',
+      'Explicit source policy:',
+      '- If the user explicitly asks for public web, online, internet, public-source, or outside-uploaded-document information, route web unless the same ask explicitly requires uploaded/ship documents or manuals.',
+      '- If the user explicitly asks for uploaded documents, ship documents, uploaded files, or manuals, keep the route documents when the ask is document-answerable.',
       'If a ship context exists and the ask likely refers to onboard/manual knowledge, prefer documents over generic web.',
       'Do not use web as a fallback for weak or missing document evidence; fallback policy is a later orchestration concern.',
       'If the ask needs ship documents but no shipId is available, route unclear and require clarification.',
@@ -218,6 +299,68 @@ export class ChatSemanticRouterService {
       web: this.buildDefaultWebRoute(),
       internalDebugNote: reason,
     };
+  }
+
+  private applyExplicitSourcePolicy(
+    decision: ChatSemanticRouteDecision,
+    input: ChatSemanticRouterInput,
+  ): ChatSemanticRouteDecision {
+    const sourcePreference = this.detectExplicitSourcePreference(input.question);
+
+    if (!sourcePreference.web || sourcePreference.documents) {
+      return decision;
+    }
+
+    return {
+      ...decision,
+      route: ChatSemanticRoute.WEB,
+      confidence: Math.max(decision.confidence, 0.85),
+      requiresClarification: false,
+      clarificationQuestion: null,
+      sourcePolicy: this.buildSourcePolicy(ChatSemanticRoute.WEB),
+      web: {
+        ...decision.web,
+        externalKnowledgeExplicit: true,
+      },
+      internalDebugNote: [
+        decision.internalDebugNote,
+        'Explicit web source request overrode document-biased routing.',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    };
+  }
+
+  private detectExplicitSourcePreference(question: string): {
+    web: boolean;
+    documents: boolean;
+  } {
+    const normalized = this.normalizeForSourcePolicy(question);
+    const hasDocumentExclusion = this.hasSourcePhrase(
+      normalized,
+      EXPLICIT_DOCUMENT_EXCLUSION_PHRASES,
+    );
+
+    return {
+      web: this.hasSourcePhrase(normalized, EXPLICIT_WEB_SOURCE_PHRASES),
+      documents:
+        !hasDocumentExclusion &&
+        this.hasSourcePhrase(normalized, EXPLICIT_DOCUMENT_SOURCE_PHRASES),
+    };
+  }
+
+  private hasSourcePhrase(normalizedQuestion: string, phrases: string[]): boolean {
+    return phrases.some((phrase) =>
+      normalizedQuestion.includes(this.normalizeForSourcePolicy(phrase)),
+    );
+  }
+
+  private normalizeForSourcePolicy(value: string): string {
+    return ` ${value
+      .toLocaleLowerCase()
+      .replace(/[\p{P}\p{S}]+/gu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim()} `;
   }
 
   private parseRoute(value: unknown): ChatSemanticRoute | null {
