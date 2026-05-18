@@ -3,7 +3,6 @@ import {
   DocumentRetrievalEvidenceQuality,
   DocumentRetrievalResponseDto,
 } from '../../../documents/dto/document-retrieval-response.dto';
-import { DocumentDocClass } from '../../../documents/enums/document-doc-class.enum';
 import { DocumentsService } from '../../../documents/documents.service';
 import { ChatLlmService } from '../../chat-llm.service';
 import {
@@ -19,12 +18,12 @@ import {
 import {
   buildGroundedAnswerSystemPrompt,
   buildGroundedAnswerUserPrompt,
-} from './document-grounded-answer-prompt';
+} from './answering/document-grounded-answer-prompt';
 import {
   buildCompositeDocumentAnswerSystemPrompt,
   buildCompositeDocumentAnswerUserPrompt,
   CompositeDocumentPromptComponent,
-} from './document-composite-answer-prompt';
+} from './answering/document-composite-answer-prompt';
 import {
   buildComponentDocumentsRoute,
   buildCompositeEvidence,
@@ -32,31 +31,43 @@ import {
   DocumentQueryPlan,
   getComponentLabel,
   getValidCompositeComponents,
-} from './document-composite-retrieval';
+} from './composite/document-composite-retrieval';
 import {
   buildDocumentClassAttempts,
   DocumentClassAttempt,
   isBetterRetrieval,
   shouldSkipAttemptForCurrentRetrieval,
-} from './document-retrieval-attempts';
-import { isMaintenanceRecordIntent } from './document-maintenance-intent';
+} from './retrieval/document-retrieval-attempts';
+import { isMaintenanceRecordIntent } from './retrieval/document-maintenance-intent';
 import {
   acceptOrRepairGroundedReply,
   buildFallbackEvidenceSummary,
   GroundedDocumentAnswer,
-} from './document-answer-repair';
-import { buildDocumentContextReferences } from './document-context-references';
+} from './grounding/document-answer-repair';
+import { buildDocumentContextReferences } from './composite/document-context-references';
 import {
   buildComponentQueryPlan,
   buildDocumentQueryPlan,
   buildDocumentRetrievalRequest,
-} from './document-query-planning';
+} from './retrieval/document-query-planning';
+import { DocumentIntentPlannerService } from './intent/document-intent-planner.service';
+import { DocumentIntentPlan } from './intent/document-intent-plan.types';
+import { getDirectProcedureEvidenceRanks } from './grounding/document-procedure-evidence';
+import {
+  buildDocumentAnswerStyle,
+  shouldUseStructuredMaintenanceRecordAnswer,
+} from './answering/document-answer-style';
+import {
+  buildMaintenanceScheduleSafetySummary,
+  buildProcedureEvidenceSafetySummary,
+} from './answering/document-evidence-summary';
 
 @Injectable()
 export class ChatDocumentsResponderService {
   constructor(
     private readonly documentsService: DocumentsService,
     private readonly chatLlmService: ChatLlmService,
+    private readonly documentIntentPlannerService?: DocumentIntentPlannerService,
   ) {}
 
   async respond(
@@ -86,10 +97,18 @@ export class ChatDocumentsResponderService {
     shipId: string,
   ): Promise<ChatTurnResponderOutput> {
     let retrieval: DocumentRetrievalResponseDto | null = null;
-    const queryPlan = buildDocumentQueryPlan(input, documentsRoute);
+    const documentIntentPlan = await this.buildDocumentIntentPlan(
+      input,
+      documentsRoute,
+      input.ask.question,
+    );
+    const queryPlan = buildDocumentQueryPlan(input, documentsRoute, {
+      documentIntentPlan,
+    });
     const intentText = this.buildDocumentIntentText(documentsRoute, queryPlan);
     const attempts = buildDocumentClassAttempts(documentsRoute, {
       intentText,
+      intentPlan: queryPlan.intentPlan,
     });
     let completedAttempt: DocumentClassAttempt | null = null;
 
@@ -285,10 +304,18 @@ export class ChatDocumentsResponderService {
       parentRoute,
       component,
     );
-    const queryPlan = buildComponentQueryPlan(input, parentRoute, component);
+    const documentIntentPlan = await this.buildDocumentIntentPlan(
+      input,
+      documentsRoute,
+      component.question,
+    );
+    const queryPlan = buildComponentQueryPlan(input, parentRoute, component, {
+      documentIntentPlan,
+    });
     const intentText = this.buildDocumentIntentText(documentsRoute, queryPlan);
     const attempts = buildDocumentClassAttempts(documentsRoute, {
       intentText,
+      intentPlan: queryPlan.intentPlan,
     });
     let retrieval: DocumentRetrievalResponseDto | null = null;
     let completedAttempt: DocumentClassAttempt | null = null;
@@ -424,7 +451,7 @@ export class ChatDocumentsResponderService {
     }
 
     const maintenanceScheduleSafetySummary =
-      this.buildMaintenanceScheduleSafetySummary(retrieval, queryPlan);
+      buildMaintenanceScheduleSafetySummary(retrieval, queryPlan);
 
     if (maintenanceScheduleSafetySummary) {
       return {
@@ -433,11 +460,28 @@ export class ChatDocumentsResponderService {
       };
     }
 
+    const procedureEvidenceSafety =
+      buildProcedureEvidenceSafetySummary(retrieval, queryPlan);
+
+    if (procedureEvidenceSafety) {
+      return {
+        summary: procedureEvidenceSafety.summary,
+        groundingStatus: procedureEvidenceSafety.groundingStatus,
+        groundingReason: procedureEvidenceSafety.groundingReason,
+      };
+    }
+
     const structuredMaintenanceRecordAnswer =
-      this.shouldUseStructuredMaintenanceRecordAnswer(
-        input.ask.question,
+      shouldUseStructuredMaintenanceRecordAnswer({
+        userQuestion: input.ask.question,
         retrieval,
-      );
+        intentPlan: queryPlan.intentPlan ?? null,
+        legacyMaintenanceIntent: isMaintenanceRecordIntent(input.ask.question),
+      });
+    const answerStyle = buildDocumentAnswerStyle({
+      structuredMaintenanceRecord: structuredMaintenanceRecordAnswer,
+      intentPlan: queryPlan.intentPlan ?? null,
+    });
     const request = {
       systemPrompt: buildGroundedAnswerSystemPrompt(retrieval.evidenceQuality),
       userPrompt: buildGroundedAnswerUserPrompt({
@@ -445,9 +489,7 @@ export class ChatDocumentsResponderService {
         answerLanguage: queryPlan.answerLanguage,
         retrieval,
         contextFacts: queryPlan.contextFacts,
-        answerStyle: {
-          structuredMaintenanceRecord: structuredMaintenanceRecordAnswer,
-        },
+        answerStyle,
       }),
       temperature: 0.1,
       maxTokens: retrieval.evidenceQuality === 'strong' ? 650 : 420,
@@ -455,6 +497,12 @@ export class ChatDocumentsResponderService {
     const reply = await this.chatLlmService.completeText(request);
 
     if (reply) {
+      const procedureEvidenceRequired =
+        answerStyle?.procedureEvidenceRequired === true;
+      const requiredProcedureEvidenceRanks = procedureEvidenceRequired
+        ? getDirectProcedureEvidenceRanks(retrieval, queryPlan.intentPlan)
+        : [];
+
       return acceptOrRepairGroundedReply({
         reply,
         retrieval,
@@ -464,6 +512,9 @@ export class ChatDocumentsResponderService {
           ? []
           : this.buildSupportedNumericContext(queryPlan),
         preserveMarkdownStructure: structuredMaintenanceRecordAnswer,
+        requireCitationMarkers: procedureEvidenceRequired,
+        requireProcedureEvidenceCitation: procedureEvidenceRequired,
+        requiredProcedureEvidenceRanks,
       });
     }
 
@@ -515,13 +566,34 @@ export class ChatDocumentsResponderService {
       queryPlan.searchQuestion,
       documentsRoute.retrievalQuery,
       documentsRoute.documentTitleHint,
-      ...documentsRoute.contentFocusHints,
-      ...documentsRoute.equipmentOrSystemHints,
-      ...documentsRoute.manufacturerHints,
-      ...documentsRoute.modelHints,
+      ...(documentsRoute.contentFocusHints ?? []),
+      ...(documentsRoute.equipmentOrSystemHints ?? []),
+      ...(documentsRoute.manufacturerHints ?? []),
+      ...(documentsRoute.modelHints ?? []),
     ]
       .filter((value): value is string => typeof value === 'string')
       .join(' ');
+  }
+
+  private async buildDocumentIntentPlan(
+    input: ChatTurnResponderInput,
+    documentsRoute: ChatSemanticDocumentsRoute,
+    question: string,
+  ): Promise<DocumentIntentPlan | null> {
+    if (!this.documentIntentPlannerService) {
+      return null;
+    }
+
+    try {
+      return await this.documentIntentPlannerService.plan({
+        question,
+        responseLanguage: input.plan.responseLanguage,
+        documentsRoute,
+        messages: input.messages,
+      });
+    } catch {
+      return null;
+    }
   }
 
   private buildSupportedNumericContext(queryPlan: DocumentQueryPlan): string[] {
@@ -532,110 +604,6 @@ export class ChatDocumentsResponderService {
     }
 
     return [`${runningHours} running hours`, `${runningHours} hours`];
-  }
-
-  private buildMaintenanceScheduleSafetySummary(
-    retrieval: DocumentRetrievalResponseDto,
-    queryPlan: DocumentQueryPlan,
-  ): string | null {
-    if (
-      retrieval.evidenceQuality !== 'weak' ||
-      !queryPlan.contextFacts.maintenanceScheduleQuestion
-    ) {
-      return null;
-    }
-
-    const scheduleResults = retrieval.results
-      .filter(
-        (result) =>
-          result.docClass === DocumentDocClass.MANUAL &&
-          this.isMaintenanceScheduleEvidence(result.snippet),
-      )
-      .slice(0, 3);
-
-    if (!scheduleResults.length) {
-      return null;
-    }
-
-    const citationText = scheduleResults
-      .map((result) => `[${result.rank}]`)
-      .join('');
-    const intervalText = this.describeVisibleMaintenanceIntervals(
-      scheduleResults.map((result) => result.snippet).join(' '),
-    );
-    const runningHours = queryPlan.contextFacts.runningHours;
-    const contextSentence = runningHours
-      ? `I considered the current running-hours value from this chat: ${runningHours} running hours.`
-      : 'The manual should be interpreted as an interval-based schedule; I did not find a current running-hours value in the chat context.';
-    const scheduleSentence = runningHours
-      ? `The retrieved manual evidence is a periodic maintenance schedule, not an entry for the exact current-hour value.${intervalText} ${citationText}`
-      : `The retrieved manual evidence is a periodic maintenance schedule with running-hour based intervals.${intervalText} ${citationText}`;
-    const nextActionSentence = runningHours
-      ? 'Use the vessel service history to decide the next action: check which scheduled service interval was last completed, then compare the current running hours with the manual schedule. If the relevant prior interval has not been completed, treat that service as due; otherwise plan toward the next scheduled interval.'
-      : 'For a due-maintenance decision, the current running hours and the vessel service history are both needed to compare against the manual schedule.';
-
-    return [
-      contextSentence,
-      scheduleSentence,
-      `Because the indexed table text is weak and does not preserve the row/column mapping clearly enough, I cannot safely list the exact tasks due from these parsed chunks. ${citationText}`,
-      nextActionSentence,
-      'Confirm the exact task list against the original manual table before performing the work.',
-    ].join(' ');
-  }
-
-  private isMaintenanceScheduleEvidence(snippet: string): boolean {
-    const normalized = snippet.toLocaleLowerCase();
-
-    return (
-      normalized.includes('periodic checks and maintenance') ||
-      normalized.includes('periodicchecksandmaintenance') ||
-      normalized.includes('maintenance schedule') ||
-      normalized.includes('performservice at intervalsindicated') ||
-      /\bevery\s*\d{2,5}\s*(?:hrs?|hours?)\b/u.test(normalized)
-    );
-  }
-
-  private describeVisibleMaintenanceIntervals(snippet: string): string {
-    if (/\bevery\s*\d{2,5}\s*(?:hrs?|hours?)\b/iu.test(snippet)) {
-      return ' It shows visible recurring running-hour interval headers, although the extracted table remains ambiguous.';
-    }
-
-    return ' It shows maintenance should be performed at indicated intervals.';
-  }
-
-  private shouldUseStructuredMaintenanceRecordAnswer(
-    userQuestion: string,
-    retrieval: DocumentRetrievalResponseDto,
-  ): boolean {
-    return (
-      isMaintenanceRecordIntent(userQuestion) &&
-      retrieval.results.some(
-        (result) =>
-          result.docClass === DocumentDocClass.HISTORICAL_PROCEDURE &&
-          this.isMaintenanceRecordEvidence(result.snippet),
-      )
-    );
-  }
-
-  private isMaintenanceRecordEvidence(snippet: string): boolean {
-    const normalized = snippet.toLocaleLowerCase();
-    const structuredFieldCount = [
-      'task_name:',
-      'last_completed_date:',
-      'last_completed_hours:',
-      'next_due_date:',
-      'next_due_hours:',
-      'current_equipment_hours:',
-      'status:',
-      'responsible:',
-      'work_scope:',
-    ].filter((field) => normalized.includes(field)).length;
-
-    return (
-      normalized.includes('doc_type: maintenance_record') ||
-      normalized.includes('maintenance record for') ||
-      structuredFieldCount >= 2
-    );
   }
 
 }

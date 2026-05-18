@@ -1,12 +1,13 @@
-import { DocumentRetrievalResponseDto } from '../../../documents/dto/document-retrieval-response.dto';
-import { DocumentDocClass } from '../../../documents/enums/document-doc-class.enum';
-import { DocumentRetrievalQuestionType } from '../../../documents/enums/document-retrieval-question-type.enum';
-import { getDocumentQuestionClassPolicy } from '../../../documents/retrieval/document-question-class-policy';
-import { ChatSemanticDocumentsRoute } from '../../routing/chat-semantic-router.types';
+import { DocumentRetrievalResponseDto } from '../../../../documents/dto/document-retrieval-response.dto';
+import { DocumentDocClass } from '../../../../documents/enums/document-doc-class.enum';
+import { DocumentRetrievalQuestionType } from '../../../../documents/enums/document-retrieval-question-type.enum';
+import { getDocumentQuestionClassPolicy } from '../../../../documents/retrieval/document-question-class-policy';
+import { ChatSemanticDocumentsRoute } from '../../../routing/chat-semantic-router.types';
 import {
   isAdministrativeComplianceIntent,
   isMaintenanceRecordIntent,
 } from './document-maintenance-intent';
+import { DocumentIntentPlan } from '../intent/document-intent-plan.types';
 
 export interface DocumentClassAttempt {
   reason:
@@ -19,16 +20,24 @@ export interface DocumentClassAttempt {
 
 export function buildDocumentClassAttempts(
   documentsRoute: ChatSemanticDocumentsRoute,
-  options: { intentText?: string } = {},
+  options: { intentText?: string; intentPlan?: DocumentIntentPlan | null } = {},
 ): DocumentClassAttempt[] {
   const attempts: DocumentClassAttempt[] = [];
   const intentText = buildIntentText(documentsRoute, options.intentText);
   const maintenanceRecordIntent = isMaintenanceRecordIntent(intentText);
   const administrativeComplianceIntent =
     isAdministrativeComplianceIntent(intentText);
+  const plannedClasses = getPlannedDocumentClasses(options.intentPlan);
 
   if (documentsRoute.documentTitleHint?.trim()) {
     attempts.push({ reason: 'title_hint' });
+  }
+
+  if (plannedClasses.length) {
+    attempts.push({
+      reason: 'primary',
+      candidateDocClasses: plannedClasses,
+    });
   }
 
   if (
@@ -173,10 +182,10 @@ function buildIntentText(
     additionalText,
     documentsRoute.retrievalQuery,
     documentsRoute.documentTitleHint,
-    ...documentsRoute.contentFocusHints,
-    ...documentsRoute.equipmentOrSystemHints,
-    ...documentsRoute.manufacturerHints,
-    ...documentsRoute.modelHints,
+    ...(documentsRoute.contentFocusHints ?? []),
+    ...(documentsRoute.equipmentOrSystemHints ?? []),
+    ...(documentsRoute.manufacturerHints ?? []),
+    ...(documentsRoute.modelHints ?? []),
   ]
     .filter((value): value is string => typeof value === 'string')
     .join(' ');
@@ -234,6 +243,42 @@ function hasHistoricalProcedureBias(
       DocumentDocClass.HISTORICAL_PROCEDURE,
     )
   );
+}
+
+function getPlannedDocumentClasses(
+  intentPlan: DocumentIntentPlan | null | undefined,
+): DocumentDocClass[] {
+  if (!intentPlan || intentPlan.confidence < 0.2) {
+    return [];
+  }
+
+  const plannedClasses = [
+    ...intentPlan.targetDocClasses,
+    ...intentPlan.retrievalQueries.flatMap((query) => query.candidateDocClasses),
+  ];
+
+  if (plannedClasses.length) {
+    return mergeClasses(plannedClasses, []);
+  }
+
+  if (
+    intentPlan.answerFormattingHints.structuredPms ||
+    !['none', 'unknown'].includes(intentPlan.maintenanceIntent) ||
+    ['schedule_due', 'task_list', 'work_scope'].includes(intentPlan.evidenceNeed)
+  ) {
+    return [DocumentDocClass.HISTORICAL_PROCEDURE];
+  }
+
+  if (
+    intentPlan.asksForSteps ||
+    intentPlan.answerMode === 'procedure' ||
+    intentPlan.evidenceNeed === 'procedure_steps' ||
+    intentPlan.evidenceNeed === 'technical_reference'
+  ) {
+    return [DocumentDocClass.MANUAL];
+  }
+
+  return [];
 }
 
 function dedupeAttempts(

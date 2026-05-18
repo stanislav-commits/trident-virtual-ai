@@ -1,9 +1,11 @@
-import { ChatMessageEntity } from '../../entities/chat-message.entity';
-import { ChatMessageRole } from '../../enums/chat-message-role.enum';
+import { ChatMessageEntity } from '../../../entities/chat-message.entity';
+import { ChatMessageRole } from '../../../enums/chat-message-role.enum';
 import {
   isAdministrativeComplianceIntent,
   isMaintenanceRecordIntent,
 } from './document-maintenance-intent';
+import { DocumentIntentPlan } from '../intent/document-intent-plan.types';
+import { hasUsablePlannedRetrievalQuery } from '../intent/document-intent-query';
 
 const MAX_ENRICHED_SEARCH_QUESTION_LENGTH = 320;
 
@@ -16,6 +18,7 @@ interface EnrichDocumentSearchQuestionInput {
   originalQuestion: string;
   searchQuestion: string;
   messages?: ChatMessageEntity[];
+  documentIntentPlan?: DocumentIntentPlan | null;
 }
 
 export function enrichDocumentSearchQuestion(
@@ -27,7 +30,10 @@ export function enrichDocumentSearchQuestion(
   );
   const enrichmentParts: string[] = [];
 
-  if (isFuelFilterReplacementQuestion(sourceText)) {
+  if (
+    !hasUsablePlannedRetrievalQuery(input.documentIntentPlan) &&
+    isFuelFilterReplacementQuestion(sourceText)
+  ) {
     enrichmentParts.push(FUEL_FILTER_REPLACEMENT_QUERY);
   }
 

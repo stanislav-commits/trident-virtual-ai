@@ -1,8 +1,8 @@
 import {
   DocumentRetrievalResponseDto,
   DocumentRetrievalResultDto,
-} from '../../../documents/dto/document-retrieval-response.dto';
-import { DocumentDocClass } from '../../../documents/enums/document-doc-class.enum';
+} from '../../../../documents/dto/document-retrieval-response.dto';
+import { DocumentDocClass } from '../../../../documents/enums/document-doc-class.enum';
 
 interface NumericValueClaim {
   raw: string;
@@ -86,6 +86,7 @@ function isNumericValueClaimSupportedByResults(
     (result) =>
       isNumericValueClaimSupported(claim, result.snippet) ||
       isHistoricalMaintenanceHourClaimSupported(claim, result) ||
+      isHistoricalMaintenanceDayClaimSupported(claim, result, answerText) ||
       isHistoricalMaintenanceTaskNameIntervalClaimSupported(
         claim,
         answerText,
@@ -212,6 +213,47 @@ function isHistoricalMaintenanceHourClaimSupported(
   );
 
   return descriptorHourPattern.test(normalizedEvidence);
+}
+
+function isHistoricalMaintenanceDayClaimSupported(
+  claim: NumericValueClaim,
+  result: DocumentRetrievalResultDto,
+  answerText: string,
+): boolean {
+  if (
+    result.docClass !== DocumentDocClass.HISTORICAL_PROCEDURE ||
+    !isMaintenanceRecordEvidence(result.snippet)
+  ) {
+    return false;
+  }
+
+  const numericValue = normalizeNumericValue(claim.numericValue);
+  const unit = normalizeNumericUnit(claim.unit);
+
+  if (!numericValue || unit !== 'd' || !/^\d+(?:\.\d+)?$/u.test(numericValue)) {
+    return false;
+  }
+
+  const rawEvidence = result.snippet.toLowerCase().replace(/\u00a0/g, ' ');
+  const positiveDaysFieldPattern = new RegExp(
+    String.raw`\bdays_remaining\s*:\s*${escapeRegExp(numericValue)}(?![\d.])`,
+    'u',
+  );
+
+  if (positiveDaysFieldPattern.test(rawEvidence)) {
+    return true;
+  }
+
+  if (!/\boverdue\b/iu.test(answerText)) {
+    return false;
+  }
+
+  const overdueDaysFieldPattern = new RegExp(
+    String.raw`\bdays_remaining\s*:\s*-${escapeRegExp(numericValue)}(?![\d.])`,
+    'u',
+  );
+
+  return overdueDaysFieldPattern.test(rawEvidence);
 }
 
 function isHistoricalMaintenanceTaskNameIntervalClaimSupported(

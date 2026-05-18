@@ -1,5 +1,5 @@
-import { DocumentRetrievalResponseDto } from '../../../documents/dto/document-retrieval-response.dto';
-import { extractCitedEvidenceRanks } from './document-answer-grounding';
+import { DocumentRetrievalResponseDto } from '../../../../documents/dto/document-retrieval-response.dto';
+import { extractCitedEvidenceRanks } from '../grounding/document-answer-grounding';
 
 export function buildDocumentContextReferences(
   retrieval: DocumentRetrievalResponseDto,

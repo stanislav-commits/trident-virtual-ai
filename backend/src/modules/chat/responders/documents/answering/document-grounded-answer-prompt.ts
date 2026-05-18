@@ -2,7 +2,24 @@ import {
   DocumentRetrievalEvidenceQuality,
   DocumentRetrievalResponseDto,
   DocumentRetrievalResultDto,
-} from '../../../documents/dto/document-retrieval-response.dto';
+} from '../../../../documents/dto/document-retrieval-response.dto';
+
+export interface DocumentGroundedAnswerStyle {
+  structuredMaintenanceRecord: boolean;
+  showWorkScope?: boolean;
+  summarizeLongLists?: boolean;
+  separateTaskExistsFromProcedureSteps?: boolean;
+  maintenanceIntent?:
+    | 'none'
+    | 'next_due'
+    | 'due_tasks'
+    | 'work_scope'
+    | 'history'
+    | 'interval'
+    | 'unknown';
+  procedureEvidenceRequired?: boolean;
+  maintenanceTaskSelection?: boolean;
+}
 
 interface BuildGroundedAnswerUserPromptInput {
   userQuestion: string;
@@ -12,9 +29,7 @@ interface BuildGroundedAnswerUserPromptInput {
     maintenanceScheduleQuestion: boolean;
     runningHours: string | null;
   };
-  answerStyle?: {
-    structuredMaintenanceRecord: boolean;
-  };
+  answerStyle?: DocumentGroundedAnswerStyle;
 }
 
 export function buildGroundedAnswerSystemPrompt(
@@ -57,7 +72,9 @@ export function buildGroundedAnswerUserPrompt(
     `Answerability note: ${input.retrieval.answerability.reason}`,
     '',
     'Retrieved evidence:',
-    ...input.retrieval.results.map((result) => formatEvidenceItem(result)),
+    ...input.retrieval.results.map((result) =>
+      formatEvidenceItem(result, input.answerStyle),
+    ),
     '',
     'Citation rule:',
     'Use [n] only when evidence item [n] directly supports the claim.',
@@ -98,39 +115,79 @@ function formatAnswerStyle(
   userQuestion: string,
 ): string[] {
   if (!answerStyle?.structuredMaintenanceRecord) {
-    return [];
+    return formatProcedureEvidenceStyle(answerStyle);
   }
 
-  const maintenanceTaskSelectionRules = isMaintenanceTaskSelectionQuestion(
-    userQuestion,
-  )
+  const maintenanceTaskSelectionRules =
+    (answerStyle.maintenanceTaskSelection ??
+    isMaintenanceTaskSelectionQuestion(userQuestion))
       ? [
-        '',
-        'PMS maintenance-record task selection rules:',
-        '- For a generic next-maintenance or next scheduled-maintenance question, mention supported OVERDUE task evidence separately as an important warning, then make the primary answer the next non-overdue scheduled task: prefer DUE_SOON, otherwise the earliest UPCOMING task by due date or due hours.',
-        '- For overdue, due-now, needs-attention, or current-due questions, choose the primary task in this order when supported evidence is available: OVERDUE first, then DUE_SOON.',
-        '- Do not choose a later UPCOMING task as the primary answer when earlier DUE_SOON or earlier UPCOMING task evidence is available.',
-        '- If the user explicitly asks for next upcoming, future scheduled, or not overdue maintenance, choose the next non-overdue scheduled task: prefer DUE_SOON, otherwise the earliest UPCOMING task by due date or due hours.',
-        '- For an upcoming or future request, present a task as the next non-overdue task only when cited evidence gives enough coverage to establish that no earlier non-overdue task is available. A single later UPCOMING record alone is not enough; say the uploaded evidence is insufficient or limited instead of presenting it as certain.',
-        '- If overdue evidence is present for an upcoming or future request, mention it only as a separate important note, not as the upcoming task.',
-        '- If cited equipment-summary evidence lists all tasks or names a Next upcoming task, use that to support the non-overdue task selection and any overdue warning.',
+          '',
+          'PMS maintenance-record task selection rules:',
+          '- For a generic next-maintenance or next scheduled-maintenance question, mention supported OVERDUE task evidence separately as an important warning, then make the primary answer the next non-overdue scheduled task: prefer DUE_SOON, otherwise the earliest UPCOMING task by due date or due hours.',
+          '- For overdue, due-now, needs-attention, or current-due questions, choose the primary task in this order when supported evidence is available: OVERDUE first, then DUE_SOON.',
+          '- Do not choose a later UPCOMING task as the primary answer when earlier DUE_SOON or earlier UPCOMING task evidence is available.',
+          '- If the user explicitly asks for next upcoming, future scheduled, or not overdue maintenance, choose the next non-overdue scheduled task: prefer DUE_SOON, otherwise the earliest UPCOMING task by due date or due hours.',
+          '- For an upcoming or future request, present a task as the next non-overdue task only when cited evidence gives enough coverage to establish that no earlier non-overdue task is available. A single later UPCOMING record alone is not enough; say the uploaded evidence is insufficient or limited instead of presenting it as certain.',
+          '- If overdue evidence is present for an upcoming or future request, mention it only as a separate important note, not as the upcoming task.',
+          '- If cited equipment-summary evidence lists all tasks or names a Next upcoming task, use that to support the non-overdue task selection and any overdue warning.',
+        ]
+      : [];
+  const workScopeRules = answerStyle.showWorkScope
+    ? [
+        '- The user asked for Work scope/tasks included; include Work scope only when concrete work-scope text for the same selected task is visible in cited evidence.',
+        '- Make Work scope readable: summarize it or split it into short cited bullets. Never dump a long all-caps PMS Work scope as one bullet.',
       ]
-    : [];
+    : [
+        '- Do not include a Work scope bullet for next, due, overdue, or upcoming PMS answers unless the user explicitly asked for work scope/tasks included.',
+      ];
+  const historyRules =
+    answerStyle.maintenanceIntent === 'history'
+      ? [
+          '- For history questions, focus on completed/performed/approved fields, notes, and dates that are explicitly present in cited evidence.',
+        ]
+      : [];
 
   return [
     '',
     'PMS maintenance-record answer style:',
     '- Start with one short summary sentence that directly answers the user.',
-    '- Then use compact Markdown bullet lines for supported fields such as Task, Status, Last completed, Next due, Current hours, Remaining hours, Overdue days, Responsible, or Work scope.',
+    answerStyle.showWorkScope
+      ? '- Then use compact Markdown bullet lines for supported fields such as Task, Status, Last completed, Next due, Current hours, Remaining hours, Overdue days, Responsible, or Work scope.'
+      : '- Then use compact Markdown bullet lines for supported fields such as Task, Status, Last completed, Next due, Current hours, Remaining hours, Overdue days, or Responsible.',
     '- For next, due, overdue, or upcoming PMS questions, keep the bullet list focused on task-selection fields; do not add equipment specifications, make/model fields, side, reference IDs, or total task counts unless the user specifically asks for them.',
     '- Include only fields that are explicitly present in the cited maintenance-record evidence.',
     '- Do not copy task-specific fields such as Responsible, Last completed, Work scope, remaining hours, or overdue days from one PMS task to another; use those fields only when the cited evidence ties them to the same selected task.',
     '- If the selected task is supported only by an equipment-summary task list, limit that task\'s bullet lines to the fields visible in that summary, such as Task, Status, Next due, and current equipment hours.',
     '- Do not invent missing fields or calculate derived values; include remaining hours or overdue days only when the exact value appears in the cited evidence.',
+    '- Keep structured PMS field units fixed: current_equipment_hours, next_due_hours, last_completed_hours, running_hours, and hours_remaining are hours; days_remaining is days; last_completed_date and next_due_date are dates.',
+    '- Do not convert, relabel, or restate an hours field as days, or a days field as hours.',
     '- Put a citation marker at the end of every factual bullet line; do not use a single citation after an entire bullet block.',
-    '- Include a Work scope bullet only when concrete work-scope text for the same selected task is visible in cited evidence.',
+    ...workScopeRules,
+    ...historyRules,
     '- Add a short final note only when the cited evidence directly supports it.',
     ...maintenanceTaskSelectionRules,
+    ...formatProcedureEvidenceStyle(answerStyle),
+  ];
+}
+
+function formatProcedureEvidenceStyle(
+  answerStyle: BuildGroundedAnswerUserPromptInput['answerStyle'],
+): string[] {
+  if (!answerStyle?.procedureEvidenceRequired) {
+    return [];
+  }
+
+  return [
+    '',
+    'Procedure evidence rules:',
+    '- The user is asking for procedure/step evidence.',
+    '- If the retrieved evidence only confirms that a task exists in a PMS schedule, maintenance record, or task list, say that the task is confirmed but step-by-step procedure evidence was not found.',
+    '- Do not create step-by-step instructions unless the cited evidence itself contains procedure steps or procedural instructions.',
+    '- A procedural answer must cite the evidence item that contains the actual procedure steps or procedural instructions.',
+    '- Keep task-existence evidence separate from actual procedure-step evidence.',
+    '- If the user asks for combined or alternative operations on the same subject, and one cited evidence section supports them together, answer once as one coherent procedure instead of splitting into repeated pseudo-questions.',
+    '- Do not say one requested operation is missing when cited procedure-step evidence supports the combined procedure; only call out specific unsupported details.',
   ];
 }
 
@@ -155,14 +212,59 @@ function isMaintenanceTaskSelectionQuestion(value: string): boolean {
 
 export function formatEvidenceItem(
   result: DocumentRetrievalResultDto,
+  answerStyle?: BuildGroundedAnswerUserPromptInput['answerStyle'],
 ): string {
+  const snippet = shouldHideWorkScope(answerStyle)
+    ? stripStructuredWorkScopeField(result.snippet)
+    : result.snippet;
+
   return [
     `[${result.rank}] ${result.filename}`,
     `docClass: ${result.docClass}`,
     result.page ? `page: ${result.page}` : 'page: unknown',
     result.section ? `section: ${result.section}` : null,
-    `snippet: ${result.snippet}`,
+    `snippet: ${snippet}`,
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+function shouldHideWorkScope(
+  answerStyle: BuildGroundedAnswerUserPromptInput['answerStyle'],
+): boolean {
+  return Boolean(
+    answerStyle?.structuredMaintenanceRecord && answerStyle.showWorkScope === false,
+  );
+}
+
+function stripStructuredWorkScopeField(snippet: string): string {
+  const structuredFieldNames = [
+    'doc_type',
+    'task_name',
+    'priority',
+    'interval',
+    'last_completed_date',
+    'last_completed_hours',
+    'next_due_date',
+    'next_due_hours',
+    'current_equipment_hours',
+    'running_hours',
+    'hours_remaining',
+    'days_remaining',
+    'status',
+    'postponed',
+    'responsible',
+    'approval',
+    'maintenance_record',
+  ];
+  const nextFieldPattern = structuredFieldNames
+    .map((fieldName) => fieldName.replace(/_/g, String.raw`[_\s-]*`))
+    .join('|');
+  const workScopePattern = new RegExp(
+    String.raw`\bwork\s*[_\s-]*scope\s*:\s*.*?(?=\s+\b(?:${nextFieldPattern})\s*:|$)`,
+    'giu',
+  );
+  const stripped = snippet.replace(workScopePattern, '').replace(/\s+/gu, ' ').trim();
+
+  return stripped || '[Work scope omitted for this answer mode.]';
 }
