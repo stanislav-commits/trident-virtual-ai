@@ -84,6 +84,7 @@ export interface ChatSemanticRouteDecision {
 
 export interface ChatSemanticRouterInput {
   question: string;
+  sourcePolicyText?: string | null;
   shipId: string | null;
   responseLanguage: string | null;
 }

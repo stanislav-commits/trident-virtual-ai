@@ -305,7 +305,10 @@ export class ChatSemanticRouterService {
     decision: ChatSemanticRouteDecision,
     input: ChatSemanticRouterInput,
   ): ChatSemanticRouteDecision {
-    const sourcePreference = this.detectExplicitSourcePreference(input.question);
+    const sourcePreference = this.detectExplicitSourcePreference(
+      input.question,
+      input.sourcePolicyText,
+    );
 
     if (!sourcePreference.web || sourcePreference.documents) {
       return decision;
@@ -331,21 +334,38 @@ export class ChatSemanticRouterService {
     };
   }
 
-  private detectExplicitSourcePreference(question: string): {
+  private detectExplicitSourcePreference(
+    question: string,
+    sourcePolicyText?: string | null,
+  ): {
     web: boolean;
     documents: boolean;
   } {
-    const normalized = this.normalizeForSourcePolicy(question);
-    const hasDocumentExclusion = this.hasSourcePhrase(
-      normalized,
-      EXPLICIT_DOCUMENT_EXCLUSION_PHRASES,
+    const normalizedTexts = Array.from(
+      new Set(
+        [question, sourcePolicyText]
+          .filter((value): value is string => typeof value === 'string')
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .map((value) => this.normalizeForSourcePolicy(value)),
+      ),
     );
 
     return {
-      web: this.hasSourcePhrase(normalized, EXPLICIT_WEB_SOURCE_PHRASES),
-      documents:
-        !hasDocumentExclusion &&
-        this.hasSourcePhrase(normalized, EXPLICIT_DOCUMENT_SOURCE_PHRASES),
+      web: normalizedTexts.some((normalized) =>
+        this.hasSourcePhrase(normalized, EXPLICIT_WEB_SOURCE_PHRASES),
+      ),
+      documents: normalizedTexts.some((normalized) => {
+        const hasDocumentExclusion = this.hasSourcePhrase(
+          normalized,
+          EXPLICIT_DOCUMENT_EXCLUSION_PHRASES,
+        );
+
+        return (
+          !hasDocumentExclusion &&
+          this.hasSourcePhrase(normalized, EXPLICIT_DOCUMENT_SOURCE_PHRASES)
+        );
+      }),
     };
   }
 
