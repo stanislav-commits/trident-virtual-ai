@@ -19,6 +19,7 @@ export interface DocumentGroundedAnswerStyle {
     | 'unknown';
   procedureEvidenceRequired?: boolean;
   maintenanceTaskSelection?: boolean;
+  equipmentRegisterIntent?: boolean;
 }
 
 interface BuildGroundedAnswerUserPromptInput {
@@ -115,7 +116,10 @@ function formatAnswerStyle(
   userQuestion: string,
 ): string[] {
   if (!answerStyle?.structuredMaintenanceRecord) {
-    return formatProcedureEvidenceStyle(answerStyle);
+    return [
+      ...formatEquipmentRegisterAnswerStyle(answerStyle),
+      ...formatProcedureEvidenceStyle(answerStyle),
+    ];
   }
 
   const maintenanceTaskSelectionRules =
@@ -169,7 +173,27 @@ function formatAnswerStyle(
     ...historyRules,
     '- Add a short final note only when the cited evidence directly supports it.',
     ...maintenanceTaskSelectionRules,
+    ...formatEquipmentRegisterAnswerStyle(answerStyle),
     ...formatProcedureEvidenceStyle(answerStyle),
+  ];
+}
+
+function formatEquipmentRegisterAnswerStyle(
+  answerStyle: BuildGroundedAnswerUserPromptInput['answerStyle'],
+): string[] {
+  if (!answerStyle?.equipmentRegisterIntent) {
+    return [];
+  }
+
+  return [
+    '',
+    'Temporary equipment-list / asset-register answer rules:',
+    '- Treat evidence containing Equipment List, asset_id_internal, or display_name fields as plausible equipment-register evidence when it directly supports the question.',
+    '- For a general equipment-list/register request, say that an equipment list or asset register document was found, then show only a small cited sample of retrieved rows or items, preferably 10-20 items maximum.',
+    '- State that the sample is not the complete vessel equipment list and that the full register should be opened in the uploaded file or export.',
+    '- For an item/entity lookup, answer only from matching cited rows or snippets; if the requested item is not in the retrieved evidence, say it was not found in the retrieved evidence.',
+    '- If only a manual-specific equipment or parts list is cited, clearly say it is manual-specific and not the full vessel asset register.',
+    '- Do not fabricate rows, total row counts, vessel-wide completeness, or unsupported equipment existence.',
   ];
 }
 

@@ -10,6 +10,7 @@ import {
   applyPmsFutureTaskOrderBonuses,
   getPmsTaskSelectionBonus,
 } from './documents-retrieval-pms-signals';
+import { getEquipmentRegisterEvidenceBonus } from './documents-retrieval-equipment-register-signals';
 import {
   DocumentRetrievalCandidateScoreInput,
   DocumentRetrievalFilterContext,
@@ -161,6 +162,11 @@ export function scoreDocumentRetrievalCandidate(
     input.question,
     input.content,
   );
+  const equipmentRegisterBonus = getEquipmentRegisterEvidenceBonus({
+    question: input.question,
+    content: input.content,
+    fileName: input.document.originalFileName,
+  });
   const pmsTaskSelectionBonus = getPmsTaskSelectionBonus(input);
 
   return roundScore(
@@ -172,6 +178,7 @@ export function scoreDocumentRetrievalCandidate(
       sectionBonus +
       titleHintBonus +
       questionContentBonus +
+      equipmentRegisterBonus +
       pmsTaskSelectionBonus,
   );
 }

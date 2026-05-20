@@ -2,6 +2,10 @@ import { DocumentRetrievalResponseDto } from '../../../../documents/dto/document
 import { DocumentDocClass } from '../../../../documents/enums/document-doc-class.enum';
 import { DocumentRetrievalQuestionType } from '../../../../documents/enums/document-retrieval-question-type.enum';
 import { getDocumentQuestionClassPolicy } from '../../../../documents/retrieval/document-question-class-policy';
+import {
+  EQUIPMENT_REGISTER_COMPAT_DOC_CLASSES,
+  isEquipmentRegisterQuestion,
+} from '../../../../documents/retrieval/documents-retrieval-equipment-register-signals';
 import { ChatSemanticDocumentsRoute } from '../../../routing/chat-semantic-router.types';
 import {
   isAdministrativeComplianceIntent,
@@ -28,9 +32,19 @@ export function buildDocumentClassAttempts(
   const administrativeComplianceIntent =
     isAdministrativeComplianceIntent(intentText);
   const plannedClasses = getPlannedDocumentClasses(options.intentPlan);
+  const equipmentRegisterIntent = isEquipmentRegisterQuestion(intentText);
 
-  if (documentsRoute.documentTitleHint?.trim()) {
+  if (documentsRoute.documentTitleHint?.trim() && !equipmentRegisterIntent) {
     attempts.push({ reason: 'title_hint' });
+  }
+
+  if (equipmentRegisterIntent) {
+    attempts.push({
+      reason: 'primary',
+      candidateDocClasses: EQUIPMENT_REGISTER_COMPAT_DOC_CLASSES,
+    });
+
+    return dedupeAttempts(attempts);
   }
 
   if (

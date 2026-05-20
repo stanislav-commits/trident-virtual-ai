@@ -12,6 +12,11 @@ import {
   countProcedureSubjectSupportedCandidates,
   hasProcedureSubjectEvidence,
 } from './documents-retrieval-procedure-support';
+import {
+  hasEquipmentRegisterEntitySupport,
+  isEquipmentRegisterQuestion,
+  isEquipmentRegisterStyleEvidence,
+} from './documents-retrieval-equipment-register-signals';
 
 const MIN_SPECIFIC_SUPPORT_SCORE = 0.6;
 
@@ -65,6 +70,12 @@ export function assessDocumentRetrievalEvidenceQuality(
       questionType: input.questionType,
       candidates: input.candidates,
     });
+  const equipmentRegisterEvidenceQuality =
+    assessEquipmentRegisterEvidenceQuality(input);
+
+  if (equipmentRegisterEvidenceQuality) {
+    return equipmentRegisterEvidenceQuality;
+  }
 
   if (
     topRetrievalScore < 0.18 ||
@@ -129,6 +140,44 @@ export function assessDocumentRetrievalEvidenceQuality(
   }
 
   return 'weak';
+}
+
+function assessEquipmentRegisterEvidenceQuality(
+  input: DocumentRetrievalEvidenceAssessmentInput,
+): DocumentRetrievalEvidenceQuality | null {
+  if (!isEquipmentRegisterQuestion(input.question)) {
+    return null;
+  }
+
+  const registerCandidates = input.candidates.filter((candidate) =>
+    isEquipmentRegisterStyleEvidence({
+      question: input.question,
+      content: buildCandidateSupportText(candidate),
+      fileName: candidate.document.originalFileName,
+    }),
+  );
+
+  if (!registerCandidates.length) {
+    return null;
+  }
+
+  const supportedRegisterCandidates = registerCandidates.filter((candidate) =>
+    hasEquipmentRegisterEntitySupport({
+      question: input.question,
+      content: buildCandidateSupportText(candidate),
+    }),
+  );
+
+  if (!supportedRegisterCandidates.length) {
+    return 'none';
+  }
+
+  const [topRegisterCandidate] = supportedRegisterCandidates;
+  const topRetrievalScore = topRegisterCandidate.retrievalScore ?? 0;
+
+  return topRetrievalScore >= 0.16 || topRegisterCandidate.rerankScore >= 0.3
+    ? 'strong'
+    : 'weak';
 }
 
 function hasUsableQuestionSupport(

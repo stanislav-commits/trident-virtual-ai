@@ -481,6 +481,7 @@ export class ChatDocumentsResponderService {
     const answerStyle = buildDocumentAnswerStyle({
       structuredMaintenanceRecord: structuredMaintenanceRecordAnswer,
       intentPlan: queryPlan.intentPlan ?? null,
+      userQuestion: input.ask.question,
     });
     const request = {
       systemPrompt: buildGroundedAnswerSystemPrompt(retrieval.evidenceQuality),

@@ -3,6 +3,7 @@ import { DocumentDocClass } from '../../../../documents/enums/document-doc-class
 import { DocumentIntentPlan } from '../intent/document-intent-plan.types';
 import { shouldRequireProcedureStepEvidence } from '../grounding/document-procedure-evidence';
 import { DocumentGroundedAnswerStyle } from './document-grounded-answer-prompt';
+import { isEquipmentRegisterQuestion } from '../../../../documents/retrieval/documents-retrieval-equipment-register-signals';
 
 export function shouldUseStructuredMaintenanceRecordAnswer(input: {
   userQuestion: string;
@@ -36,6 +37,7 @@ export function shouldUseStructuredMaintenanceRecordAnswer(input: {
 export function buildDocumentAnswerStyle(input: {
   structuredMaintenanceRecord: boolean;
   intentPlan: DocumentIntentPlan | null;
+  userQuestion?: string;
 }): DocumentGroundedAnswerStyle {
   const effectiveIntentPlan = getEffectiveIntentPlan(input.intentPlan);
   const procedureEvidenceRequired =
@@ -65,6 +67,9 @@ export function buildDocumentAnswerStyle(input: {
     maintenanceIntent: effectiveIntentPlan?.maintenanceIntent ?? 'unknown',
     procedureEvidenceRequired,
     maintenanceTaskSelection,
+    equipmentRegisterIntent: input.userQuestion
+      ? isEquipmentRegisterQuestion(input.userQuestion)
+      : false,
   };
 }
 

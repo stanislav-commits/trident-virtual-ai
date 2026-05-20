@@ -24,6 +24,10 @@ import {
 } from './document-maintenance-intent';
 import { DocumentIntentPlan } from '../intent/document-intent-plan.types';
 import { buildDocumentIntentSearchQuestion } from '../intent/document-intent-query';
+import {
+  appendEquipmentRegisterSearchHints,
+  isEquipmentRegisterQuestion,
+} from '../../../../documents/retrieval/documents-retrieval-equipment-register-signals';
 
 interface BuildDocumentQueryPlanOptions {
   documentIntentPlan?: DocumentIntentPlan | null;
@@ -53,12 +57,16 @@ export function buildDocumentQueryPlan(
     baseSearchQuestion: plannerBaseSearchQuestion,
     intentPlan: options.documentIntentPlan,
   });
-  const searchQuestion = enrichDocumentSearchQuestion({
+  const enrichedSearchQuestion = enrichDocumentSearchQuestion({
     originalQuestion,
     searchQuestion: plannedSearchQuestion,
     messages: input.messages,
     documentIntentPlan: options.documentIntentPlan,
   });
+  const searchQuestion = appendEquipmentRegisterSearchHints(
+    enrichedSearchQuestion,
+    originalQuestion,
+  );
   const enriched = searchQuestion !== baseSearchQuestion;
   const contextFacts = buildDocumentQueryContextFacts({
     originalQuestion,
@@ -102,12 +110,16 @@ export function buildComponentQueryPlan(
     baseSearchQuestion: plannerBaseSearchQuestion,
     intentPlan: options.documentIntentPlan,
   });
-  const searchQuestion = enrichDocumentSearchQuestion({
+  const enrichedSearchQuestion = enrichDocumentSearchQuestion({
     originalQuestion,
     searchQuestion: plannedSearchQuestion,
     messages: input.messages,
     documentIntentPlan: options.documentIntentPlan,
   });
+  const searchQuestion = appendEquipmentRegisterSearchHints(
+    enrichedSearchQuestion,
+    originalQuestion,
+  );
   const enriched = searchQuestion !== baseSearchQuestion;
   const contextFacts = buildDocumentQueryContextFacts({
     originalQuestion,
@@ -157,8 +169,13 @@ export function buildDocumentRetrievalRequest(
   } = {},
 ): SearchDocumentsDto {
   const requireDocumentTitleMatch =
-    options.requireDocumentTitleMatch === true ||
-    attempt.reason === 'title_hint';
+    !isEquipmentRegisterQuestion(buildIntentText(documentsRoute, queryPlan)) &&
+    (options.requireDocumentTitleMatch === true || attempt.reason === 'title_hint');
+  const documentTitleHint = requireDocumentTitleMatch
+    ? documentsRoute.documentTitleHint
+    : shouldSuppressEquipmentRegisterTitleHint(documentsRoute, queryPlan)
+      ? null
+      : documentsRoute.documentTitleHint;
 
   return {
     question: queryPlan.searchQuestion,
@@ -179,7 +196,7 @@ export function buildDocumentRetrievalRequest(
     contentFocusHints: documentsRoute.contentFocusHints.length
       ? documentsRoute.contentFocusHints
       : undefined,
-    documentTitleHint: documentsRoute.documentTitleHint ?? undefined,
+    documentTitleHint: documentTitleHint ?? undefined,
     requireDocumentTitleMatch: requireDocumentTitleMatch || undefined,
     languageHint:
       normalizeDocumentLanguageHint({
@@ -202,6 +219,10 @@ function resolveRetrievalQuestionType(
   attempt: DocumentClassAttempt,
   queryPlan: DocumentQueryPlan,
 ): DocumentRetrievalQuestionType | null {
+  if (isEquipmentRegisterQuestion(buildIntentText(documentsRoute, queryPlan))) {
+    return null;
+  }
+
   const plannedQuestionType = resolvePlannedRetrievalQuestionType(queryPlan);
 
   if (plannedQuestionType) {
@@ -240,6 +261,36 @@ function resolveRetrievalQuestionType(
   }
 
   return documentsRoute.questionType;
+}
+
+function shouldSuppressEquipmentRegisterTitleHint(
+  documentsRoute: ChatSemanticDocumentsRoute,
+  queryPlan: DocumentQueryPlan,
+): boolean {
+  const titleHint = documentsRoute.documentTitleHint?.trim();
+
+  if (!titleHint) {
+    return false;
+  }
+
+  if (!isEquipmentRegisterQuestion(buildIntentText(documentsRoute, queryPlan))) {
+    return false;
+  }
+
+  return !hasExplicitDocumentTitleSignal(queryPlan.originalQuestion);
+}
+
+function hasExplicitDocumentTitleSignal(question: string): boolean {
+  const normalizedQuestion = question.toLocaleLowerCase();
+
+  return (
+    /\b[\p{L}\p{N}][^\s]{2,}\.(?:pdf|xlsx?|csv|docx?|txt|md)\b/iu.test(
+      question,
+    ) ||
+    /\b(?:file|document|doc)\s+(?:named|called|titled)\b/u.test(
+      normalizedQuestion,
+    )
+  );
 }
 
 function resolvePlannedRetrievalQuestionType(
