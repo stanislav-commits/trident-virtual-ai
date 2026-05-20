@@ -29,6 +29,8 @@ export function enrichDocumentSearchQuestion(
     `${input.originalQuestion} ${baseQuestion}`,
   );
   const enrichmentParts: string[] = [];
+  const pmsFollowUpContext = extractPmsFollowUpContext(input);
+  const aliasTerms = buildEquipmentAliasTerms(sourceText);
 
   if (
     !hasUsablePlannedRetrievalQuery(input.documentIntentPlan) &&
@@ -37,8 +39,17 @@ export function enrichDocumentSearchQuestion(
     enrichmentParts.push(FUEL_FILTER_REPLACEMENT_QUERY);
   }
 
+  if (pmsFollowUpContext) {
+    enrichmentParts.push(pmsFollowUpContext);
+  }
+
+  if (aliasTerms) {
+    enrichmentParts.push(aliasTerms);
+  }
+
   if (
     isMaintenanceScheduleQuestion(sourceText) &&
+    !pmsFollowUpContext &&
     !isMaintenanceRecordIntent(sourceText)
   ) {
     const runningHours = extractRelevantRunningHours(input);
@@ -83,11 +94,55 @@ export function isMaintenanceScheduleQuestion(value: string): boolean {
       normalized,
     );
   const hasScheduleSignal =
-    /\b(?:next|due|scheduled|schedule|interval|periodic|running hours|run hours|hours|hrs|perform|performed)\b/u.test(
+    /\b(?:next|due|scheduled|schedule|interval|periodic|running hours|run hours|hours|hrs)\b/u.test(
       normalized,
     );
+  const hasManufacturerServiceSignal =
+    /\b(?:manufacturer|maker|oem|manual)\b/u.test(normalized) &&
+    /\b(?:service|servicing|maintenance)\b/u.test(normalized);
 
-  return hasMaintenanceIntent && hasScheduleSignal;
+  return hasMaintenanceIntent && (hasScheduleSignal || hasManufacturerServiceSignal);
+}
+
+export function extractPmsFollowUpContext(
+  input: Pick<
+    EnrichDocumentSearchQuestionInput,
+    'originalQuestion' | 'messages'
+  >,
+): string | null {
+  if (!isPmsTaskFollowUpQuestion(input.originalQuestion)) {
+    return null;
+  }
+
+  const recentTexts = collectRecentAssistantPmsTexts(input.messages);
+
+  for (const text of recentTexts) {
+    const taskName =
+      extractStructuredField(text, 'task_name') ??
+      extractLabeledValue(text, ['Next maintenance', 'Task', 'Maintenance task']);
+    const equipment =
+      extractStructuredField(text, 'equipment_name') ??
+      extractStructuredField(text, 'component_aliases') ??
+      extractMaintenanceRecordSubject(text);
+
+    if (!taskName && !equipment) {
+      continue;
+    }
+
+    return limitSearchQuestionLength(
+      normalizeWhitespace(
+        [
+          taskName,
+          equipment,
+          'PMS maintenance record work_scope scope of work job description tasks included historical_procedure',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      ),
+    );
+  }
+
+  return null;
 }
 
 export function extractRelevantRunningHours(
@@ -133,6 +188,166 @@ function extractLastRunningHoursValue(value: string): string | null {
   const rawValue = lastMatch?.value?.replace(',', '.');
 
   return rawValue ?? null;
+}
+
+function buildEquipmentAliasTerms(value: string): string | null {
+  const normalized = normalizeComparableText(value);
+  const aliases: string[] = [];
+
+  if (
+    /\b(?:port|portside|port side|ps)\s+(?:generator|genset|gen\s*set)\b/u.test(
+      normalized,
+    )
+  ) {
+    aliases.push('port generator portside generator port side generator PS GENSET');
+  }
+
+  if (
+    /\b(?:starboard|stbd|sb)\s+(?:generator|genset|gen\s*set)\b/u.test(
+      normalized,
+    )
+  ) {
+    aliases.push(
+      'starboard generator starboard side generator STBD generator SB GENSET',
+    );
+  }
+
+  if (/\b(?:fuel oil purifier|fuel purifier|purifier)\b/u.test(normalized)) {
+    aliases.push('fuel purifier fuel oil purifier fuel oil separator purifier');
+  }
+
+  return aliases.length ? aliases.join(' ') : null;
+}
+
+function isPmsTaskFollowUpQuestion(value: string): boolean {
+  const normalized = normalizeComparableText(value);
+  const hasFollowUpReference =
+    /\b(?:this|that|it|its|the)\s+(?:maintenance|task|job|service|work|scope)\b/u.test(
+      normalized,
+    ) ||
+    /\b(?:for it|for this|on it|at this maintenance|for this maintenance)\b/u.test(
+      normalized,
+    ) ||
+    /\b(?:це|ця|цей|цього|нього|неї|эту|это|этого|него|нее)\b/u.test(
+      normalized,
+    );
+  const hasScopeOrActionIntent =
+    /\b(?:work scope|scope of work|scope|job description|task description|what should be performed|what to perform|what do i need to do|what should i do|what needs to be done|tasks included|included work|perform at|perform for)\b/u.test(
+      normalized,
+    ) ||
+    /\b(?:how should i perform|how do i perform|perform this|perform the)\b/u.test(
+      normalized,
+    ) ||
+    /\b(?:обсяг робіт|опис робіт|що виконати|що робити|які роботи|роботи входять|объем работ|описание работ|что выполнить|что делать|какие работы)\b/u.test(
+      normalized,
+    );
+
+  return hasFollowUpReference && hasScopeOrActionIntent;
+}
+
+function collectRecentAssistantPmsTexts(
+  messages: ChatMessageEntity[] | undefined,
+): string[] {
+  return (messages ?? [])
+    .filter((message) => !message.deletedAt)
+    .filter((message) => message.role === ChatMessageRole.ASSISTANT)
+    .slice(-8)
+    .reverse()
+    .flatMap((message) => {
+      const values = [message.content, ...extractContextReferenceSnippets(message)];
+
+      return values.filter((value) => isPmsText(value));
+    });
+}
+
+function extractContextReferenceSnippets(message: ChatMessageEntity): string[] {
+  const snippets: string[] = [];
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== 'object') {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    const entry = value as Record<string, unknown>;
+
+    if (typeof entry.snippet === 'string') {
+      snippets.push(entry.snippet);
+    }
+
+    for (const child of Object.values(entry)) {
+      if (child && typeof child === 'object') {
+        visit(child);
+      }
+    }
+  };
+
+  visit(message.ragflowContext);
+  return snippets;
+}
+
+function isPmsText(value: string): boolean {
+  const normalized = normalizeComparableText(value);
+
+  return (
+    normalized.includes('doc type maintenance record') ||
+    normalized.includes('maintenance record for') ||
+    normalized.includes('task name') ||
+    normalized.includes('work scope')
+  );
+}
+
+function extractStructuredField(value: string, fieldName: string): string | null {
+  const escapedField = fieldName.replace(/_/g, String.raw`[_\s-]*`);
+  const match = value.match(
+    new RegExp(
+      String.raw`\b${escapedField}\s*:\s*(.+?)(?=\s+\b(?:doc[_\s-]*type|equipment[_\s-]*name|component[_\s-]*aliases|task[_\s-]*name|priority|interval|last[_\s-]*completed[_\s-]*(?:date|hours)|next[_\s-]*due[_\s-]*(?:date|hours)|current[_\s-]*equipment[_\s-]*hours|running[_\s-]*hours|hours[_\s-]*remaining|days[_\s-]*remaining|status|responsible|approval|work[_\s-]*scope)\s*:|$)`,
+      'iu',
+    ),
+  );
+
+  return cleanupExtractedText(match?.[1] ?? null);
+}
+
+function extractLabeledValue(value: string, labels: string[]): string | null {
+  for (const label of labels) {
+    const match = value.match(
+      new RegExp(String.raw`\b${escapeRegExp(label)}\s*[:\-]\s*(.+)`, 'iu'),
+    );
+    const extracted = cleanupExtractedText(match?.[1] ?? null);
+
+    if (extracted) {
+      return extracted;
+    }
+  }
+
+  return null;
+}
+
+function extractMaintenanceRecordSubject(value: string): string | null {
+  const match = value.match(/\bMaintenance record for\s+(.+?)(?:[.;\n]|$)/iu);
+
+  return cleanupExtractedText(match?.[1] ?? null);
+}
+
+function cleanupExtractedText(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const cleaned = normalizeWhitespace(value)
+    .replace(/^[\["'`]+|[\]"'`,.;:]+$/gu, '')
+    .slice(0, 160)
+    .trim();
+
+  return cleaned || null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function appendUniqueSearchTerms(

@@ -124,7 +124,8 @@ function formatAnswerStyle(
       ? [
           '',
           'PMS maintenance-record task selection rules:',
-          '- For a generic next-maintenance or next scheduled-maintenance question, mention supported OVERDUE task evidence separately as an important warning, then make the primary answer the next non-overdue scheduled task: prefer DUE_SOON, otherwise the earliest UPCOMING task by due date or due hours.',
+          '- For a generic next-maintenance or next scheduled-maintenance question, if supported OVERDUE task evidence is present for the requested equipment, make the overdue task the primary answer.',
+          '- If a future DUE_SOON or UPCOMING task is also supported, mention it separately as the next upcoming non-overdue task, not as the primary next maintenance while an overdue task exists.',
           '- For overdue, due-now, needs-attention, or current-due questions, choose the primary task in this order when supported evidence is available: OVERDUE first, then DUE_SOON.',
           '- Do not choose a later UPCOMING task as the primary answer when earlier DUE_SOON or earlier UPCOMING task evidence is available.',
           '- If the user explicitly asks for next upcoming, future scheduled, or not overdue maintenance, choose the next non-overdue scheduled task: prefer DUE_SOON, otherwise the earliest UPCOMING task by due date or due hours.',
@@ -135,8 +136,9 @@ function formatAnswerStyle(
       : [];
   const workScopeRules = answerStyle.showWorkScope
     ? [
-        '- The user asked for Work scope/tasks included; include Work scope only when concrete work-scope text for the same selected task is visible in cited evidence.',
+        '- Include Work scope for the selected PMS maintenance task when concrete work-scope text for the same selected task is visible in cited evidence.',
         '- Make Work scope readable: summarize it or split it into short cited bullets. Never dump a long all-caps PMS Work scope as one bullet.',
+        '- If the selected PMS record does not include detailed Work scope, say that the PMS record does not include detailed scope; do not fabricate scope from a manual schedule or a different task.',
       ]
     : [
         '- Do not include a Work scope bullet for next, due, overdue, or upcoming PMS answers unless the user explicitly asked for work scope/tasks included.',

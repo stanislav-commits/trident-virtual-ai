@@ -8,6 +8,10 @@ import {
   hasQuestionTypeSectionSignal,
   QuestionSupportSignals,
 } from './documents-retrieval-text-signals';
+import {
+  countProcedureSubjectSupportedCandidates,
+  hasProcedureSubjectEvidence,
+} from './documents-retrieval-procedure-support';
 
 const MIN_SPECIFIC_SUPPORT_SCORE = 0.6;
 
@@ -55,6 +59,12 @@ export function assessDocumentRetrievalEvidenceQuality(
   const classFitCandidateCount = input.candidates.filter((candidate) =>
     hasQuestionTypeClassFit(input.questionType, candidate),
   ).length;
+  const procedureSubjectSupportedCandidateCount =
+    countProcedureSubjectSupportedCandidates({
+      question: input.question,
+      questionType: input.questionType,
+      candidates: input.candidates,
+    });
 
   if (
     topRetrievalScore < 0.18 ||
@@ -72,6 +82,12 @@ export function assessDocumentRetrievalEvidenceQuality(
       classFitCandidateCount,
       topSupportSignals,
       topQuestionSupport,
+    ) ||
+    hasInsufficientProcedureSubjectSupport(
+      input.question,
+      input.questionType,
+      topCandidate,
+      procedureSubjectSupportedCandidateCount,
     )
   ) {
     return 'none';
@@ -82,6 +98,11 @@ export function assessDocumentRetrievalEvidenceQuality(
     topSupportSignals,
     specificSupportedCandidateCount,
     topClassFitsQuestion,
+    hasProcedureSubjectEvidence({
+      question: input.question,
+      questionType: input.questionType,
+      candidate: topCandidate,
+    }),
   );
 
   if (
@@ -101,6 +122,7 @@ export function assessDocumentRetrievalEvidenceQuality(
       topQuestionSupport >= 0.5 &&
       hasSectionSignal &&
       supportedCandidateCount >= 2 &&
+      procedureSubjectSupportedCandidateCount > 0 &&
       hasStrongSupport)
   ) {
     return 'strong';
@@ -190,8 +212,13 @@ function hasStrongEvidenceSupport(
   supportSignals: QuestionSupportSignals,
   specificSupportedCandidateCount: number,
   topClassFitsQuestion: boolean,
+  topProcedureSubjectSupported: boolean,
 ): boolean {
   if (!topClassFitsQuestion) {
+    return false;
+  }
+
+  if (!topProcedureSubjectSupported) {
     return false;
   }
 
@@ -208,6 +235,21 @@ function hasStrongEvidenceSupport(
   }
 
   return topQuestionSupport >= 0.5 || !supportSignals.hasSpecificTokens;
+}
+
+function hasInsufficientProcedureSubjectSupport(
+  question: string,
+  questionType: DocumentRetrievalQuestionType | null,
+  topCandidate: EnrichedDocumentRetrievalCandidate,
+  procedureSubjectSupportedCandidateCount: number,
+): boolean {
+  return (
+    !hasProcedureSubjectEvidence({
+      question,
+      questionType,
+      candidate: topCandidate,
+    }) && procedureSubjectSupportedCandidateCount === 0
+  );
 }
 
 function hasAdequateSpecificSupport(

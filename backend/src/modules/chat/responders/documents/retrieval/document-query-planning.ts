@@ -251,6 +251,10 @@ function resolvePlannedRetrievalQuestionType(
     return null;
   }
 
+  if (isManualProcedureIntent(intentPlan)) {
+    return DocumentRetrievalQuestionType.STEP_BY_STEP_PROCEDURE;
+  }
+
   if (
     intentPlan.answerFormattingHints.structuredPms ||
     !['none', 'unknown'].includes(intentPlan.maintenanceIntent) ||
@@ -272,6 +276,16 @@ function resolvePlannedRetrievalQuestionType(
   }
 
   return null;
+}
+
+function isManualProcedureIntent(intentPlan: DocumentIntentPlan): boolean {
+  return (
+    intentPlan.targetDocClasses.includes(DocumentDocClass.MANUAL) &&
+    !intentPlan.targetDocClasses.includes(DocumentDocClass.HISTORICAL_PROCEDURE) &&
+    (intentPlan.asksForSteps ||
+      intentPlan.answerMode === 'procedure' ||
+      intentPlan.evidenceNeed === 'procedure_steps')
+  );
 }
 
 function hasMaintenanceScheduleFocus(

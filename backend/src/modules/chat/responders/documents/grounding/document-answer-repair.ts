@@ -10,6 +10,11 @@ import {
   buildStructuredPmsFallbackSummary,
   isStructuredPmsUnitMismatchReason,
 } from './document-pms-fallback-answer';
+import {
+  buildPmsOverduePrimaryFallbackSummary,
+  isPmsOverduePrimarySelectionReason,
+  validatePmsOverduePrimarySelection,
+} from './document-pms-task-selection';
 
 export interface GroundedDocumentAnswer {
   summary: string;
@@ -43,6 +48,7 @@ export async function acceptOrRepairGroundedReply(input: {
   requireCitationMarkers?: boolean;
   requireProcedureEvidenceCitation?: boolean;
   requiredProcedureEvidenceRanks?: number[];
+  pmsTaskSelectionQuestion?: string;
 }): Promise<GroundedDocumentAnswer> {
   const firstValidation = validateGeneratedDocumentAnswer(
     input.reply,
@@ -52,6 +58,7 @@ export async function acceptOrRepairGroundedReply(input: {
       requireCitationMarkers: input.requireCitationMarkers,
       requireProcedureEvidenceCitation: input.requireProcedureEvidenceCitation,
       requiredProcedureEvidenceRanks: input.requiredProcedureEvidenceRanks,
+      pmsTaskSelectionQuestion: input.pmsTaskSelectionQuestion,
     },
   );
 
@@ -87,6 +94,7 @@ export async function acceptOrRepairGroundedReply(input: {
           requireCitationMarkers: input.requireCitationMarkers,
           requireProcedureEvidenceCitation: input.requireProcedureEvidenceCitation,
           requiredProcedureEvidenceRanks: input.requiredProcedureEvidenceRanks,
+          pmsTaskSelectionQuestion: input.pmsTaskSelectionQuestion,
         },
       );
 
@@ -107,6 +115,19 @@ export async function acceptOrRepairGroundedReply(input: {
             ),
             groundingStatus: 'grounded',
           };
+        }
+
+        if (isPmsOverduePrimarySelectionReason(retryValidation.reason)) {
+          const pmsFallback = buildPmsOverduePrimaryFallbackSummary(
+            input.retrieval,
+          );
+
+          if (pmsFallback) {
+            return {
+              summary: pmsFallback,
+              groundingStatus: 'grounded',
+            };
+          }
         }
 
         const structuredPmsFallback = input.preserveMarkdownStructure
@@ -188,6 +209,7 @@ function validateGeneratedDocumentAnswer(
     requireCitationMarkers?: boolean;
     requireProcedureEvidenceCitation?: boolean;
     requiredProcedureEvidenceRanks?: number[];
+    pmsTaskSelectionQuestion?: string;
   } = {},
 ): DocumentAnswerGroundingValidation {
   const groundingValidation = validateDocumentAnswerGrounding(reply, retrieval, {
@@ -228,6 +250,19 @@ function validateGeneratedDocumentAnswer(
     }
   }
 
+  const pmsTaskSelectionReason = validatePmsOverduePrimarySelection({
+    reply,
+    retrieval,
+    userQuestion: options.pmsTaskSelectionQuestion,
+  });
+
+  if (pmsTaskSelectionReason) {
+    return {
+      isGrounded: false as const,
+      reason: pmsTaskSelectionReason,
+    };
+  }
+
   return groundingValidation;
 }
 
@@ -260,7 +295,8 @@ function buildCitationRepairPrompt(
 function isRepairableGroundingReason(reason: string): boolean {
   return (
     reason.includes('concrete numeric or technical values') ||
-    reason.includes('exact value/unit was not found')
+    reason.includes('exact value/unit was not found') ||
+    isPmsOverduePrimarySelectionReason(reason)
   );
 }
 

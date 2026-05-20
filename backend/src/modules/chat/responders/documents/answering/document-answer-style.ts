@@ -40,18 +40,19 @@ export function buildDocumentAnswerStyle(input: {
   const effectiveIntentPlan = getEffectiveIntentPlan(input.intentPlan);
   const procedureEvidenceRequired =
     shouldRequireProcedureStepEvidence(effectiveIntentPlan);
-  const showWorkScope = effectiveIntentPlan
-    ? effectiveIntentPlan.asksForWorkScope ||
-      effectiveIntentPlan.answerMode === 'scope' ||
-      effectiveIntentPlan.maintenanceIntent === 'work_scope' ||
-      effectiveIntentPlan.answerFormattingHints.showWorkScope
-    : true;
   const maintenanceTaskSelection = effectiveIntentPlan
     ? effectiveIntentPlan.asksForNextDueMaintenance ||
       effectiveIntentPlan.asksForDueTasks ||
       effectiveIntentPlan.maintenanceIntent === 'next_due' ||
       effectiveIntentPlan.maintenanceIntent === 'due_tasks'
     : undefined;
+  const showWorkScope = effectiveIntentPlan
+    ? maintenanceTaskSelection ||
+      effectiveIntentPlan.asksForWorkScope ||
+      effectiveIntentPlan.answerMode === 'scope' ||
+      effectiveIntentPlan.maintenanceIntent === 'work_scope' ||
+      effectiveIntentPlan.answerFormattingHints.showWorkScope
+    : true;
 
   return {
     structuredMaintenanceRecord: input.structuredMaintenanceRecord,

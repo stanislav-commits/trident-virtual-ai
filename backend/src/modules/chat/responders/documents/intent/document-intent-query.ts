@@ -1,4 +1,5 @@
 import { DocumentIntentPlan } from './document-intent-plan.types';
+import { DocumentDocClass } from '../../../../documents/enums/document-doc-class.enum';
 
 const MAX_PLANNED_SEARCH_QUESTION_LENGTH = 360;
 const MIN_PLANNER_CONFIDENCE_FOR_QUERY = 0.2;
@@ -55,13 +56,38 @@ function buildComponentOperationQueries(plan: DocumentIntentPlan): string[] {
 
   const subject = joinTerms([equipment, component]);
   const operationSubject = joinTerms([operation, component, equipment]);
-
-  return [
+  const queries = [
     joinTerms([subject, operation, 'procedure']),
     operationSubject,
-    joinTerms(['service', component, equipment]),
-    joinTerms(['maintenance', component, operation]),
-  ].filter(Boolean);
+  ];
+
+  if (hasExplicitMaintenanceProcedureContext(plan)) {
+    queries.push(
+      joinTerms(['service', component, equipment]),
+      joinTerms(['maintenance', component, operation]),
+    );
+  }
+
+  return queries.filter(Boolean);
+}
+
+function hasExplicitMaintenanceProcedureContext(plan: DocumentIntentPlan): boolean {
+  const text = normalizeComparableText(
+    [
+      plan.equipmentMentioned,
+      plan.componentMentioned,
+      plan.operationMentioned,
+      ...plan.retrievalQueries.map((query) => query.query),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+
+  return (
+    !['none', 'unknown'].includes(plan.maintenanceIntent) ||
+    ['schedule_due', 'task_list', 'work_scope'].includes(plan.evidenceNeed) ||
+    /\b(?:maintenance|pms|service|servicing|inspection|overhaul)\b/u.test(text)
+  );
 }
 
 function buildTechnicalReferenceQueries(plan: DocumentIntentPlan): string[] {
@@ -82,15 +108,43 @@ function buildTechnicalReferenceQueries(plan: DocumentIntentPlan): string[] {
     return [];
   }
 
-  return [
+  const queries = [
     joinTerms([subject, operation, 'manual']),
     joinTerms([subject, operation, 'technical reference']),
     joinTerms([subject, operation, 'safety warning caution']),
     joinTerms([subject, operation, 'check inspect verify before']),
-  ].filter(Boolean);
+  ];
+
+  if (plan.answerMode === 'troubleshooting') {
+    queries.push(joinTerms([subject, operation, 'troubleshooting fault finding section']));
+  }
+
+  if (isMaintenanceSectionLookup(plan)) {
+    queries.push(joinTerms([subject, operation, 'maintenance section manual table']));
+  }
+
+  return queries.filter(Boolean);
+}
+
+function isMaintenanceSectionLookup(plan: DocumentIntentPlan): boolean {
+  const text = normalizeComparableText(
+    [
+      plan.componentMentioned,
+      plan.operationMentioned,
+      ...plan.retrievalQueries.map((query) => query.query),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+
+  return /\bmaintenance\s+(?:section|chapter|table)\b/u.test(text);
 }
 
 function buildMaintenanceRecordQueries(plan: DocumentIntentPlan): string[] {
+  if (isManualProcedureIntent(plan)) {
+    return [];
+  }
+
   const hasMaintenanceIntent =
     plan.answerFormattingHints.structuredPms ||
     !['none', 'unknown'].includes(plan.maintenanceIntent) ||
@@ -121,6 +175,16 @@ function buildMaintenanceRecordQueries(plan: DocumentIntentPlan): string[] {
     joinTerms([base, 'next due schedule status']),
     joinTerms([base, 'current hours next due remaining']),
   ].filter(Boolean);
+}
+
+function isManualProcedureIntent(plan: DocumentIntentPlan): boolean {
+  return (
+    plan.targetDocClasses.includes(DocumentDocClass.MANUAL) &&
+    !plan.targetDocClasses.includes(DocumentDocClass.HISTORICAL_PROCEDURE) &&
+    (plan.asksForSteps ||
+      plan.answerMode === 'procedure' ||
+      plan.evidenceNeed === 'procedure_steps')
+  );
 }
 
 function appendUniqueSearchParts(parts: string[]): string {

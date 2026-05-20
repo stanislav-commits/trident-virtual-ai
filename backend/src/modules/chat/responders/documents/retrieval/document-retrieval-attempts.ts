@@ -33,13 +33,6 @@ export function buildDocumentClassAttempts(
     attempts.push({ reason: 'title_hint' });
   }
 
-  if (plannedClasses.length) {
-    attempts.push({
-      reason: 'primary',
-      candidateDocClasses: plannedClasses,
-    });
-  }
-
   if (
     administrativeComplianceIntent &&
     hasHistoricalProcedureBias(documentsRoute)
@@ -79,6 +72,13 @@ export function buildDocumentClassAttempts(
     }
 
     return dedupeAttempts(attempts);
+  }
+
+  if (plannedClasses.length) {
+    attempts.push({
+      reason: 'primary',
+      candidateDocClasses: plannedClasses,
+    });
   }
 
   const policy = getDocumentQuestionClassPolicy(documentsRoute.questionType);

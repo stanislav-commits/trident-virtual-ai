@@ -48,12 +48,19 @@ export function getPmsTaskSelectionBonus(
     return bonus;
   }
 
+  if (intent === 'next_scheduled') {
+    if (signals.status === 'OVERDUE') bonus += 0.22;
+    if (signals.status === 'DUE_SOON') bonus += 0.14;
+    if (signals.status === 'UPCOMING') bonus += 0.06;
+    return bonus;
+  }
+
   if (signals.status === 'DUE_SOON') {
     bonus += 0.18;
   } else if (signals.status === 'UPCOMING') {
     bonus += 0.08;
   } else if (signals.status === 'OVERDUE') {
-    bonus += intent === 'next_scheduled' ? 0.12 : 0.06;
+    bonus += 0.06;
   }
 
   return bonus;
@@ -70,7 +77,7 @@ export function applyPmsFutureTaskOrderBonuses(
     return candidates;
   }
 
-  const futureCandidates = candidates
+  const orderedCandidates = candidates
     .map((candidate) => ({
       candidate,
       signals: getPmsCandidateSignals(
@@ -82,18 +89,20 @@ export function applyPmsFutureTaskOrderBonuses(
     .filter(({ signals }) =>
       signals.sameEquipment &&
       signals.isMaintenanceRecord &&
-      (signals.status === 'DUE_SOON' || signals.status === 'UPCOMING') &&
+      isCandidateStatusForSelectionIntent(signals.status, intent) &&
       (signals.nextDueDate !== null || signals.nextDueHours !== null),
     )
-    .sort((left, right) => compareFutureTaskSignals(left.signals, right.signals));
+    .sort((left, right) =>
+      compareTaskSignalsForSelection(left.signals, right.signals, intent),
+    );
 
-  if (!futureCandidates.length) {
+  if (!orderedCandidates.length) {
     return candidates;
   }
 
   const orderBonusByChunkId = new Map<string, number>();
 
-  futureCandidates.forEach(({ candidate }, index) => {
+  orderedCandidates.forEach(({ candidate }, index) => {
     orderBonusByChunkId.set(
       candidate.chunk.id,
       Math.max(0, 0.06 - index * 0.01),
@@ -114,11 +123,14 @@ export function applyPmsFutureTaskOrderBonuses(
   });
 }
 
-function compareFutureTaskSignals(
+function compareTaskSignalsForSelection(
   left: PmsCandidateSignals,
   right: PmsCandidateSignals,
+  intent: PmsSelectionIntent,
 ): number {
-  const statusDelta = getFutureStatusRank(left.status) - getFutureStatusRank(right.status);
+  const statusDelta =
+    getSelectionStatusRank(left.status, intent) -
+    getSelectionStatusRank(right.status, intent);
   if (statusDelta !== 0) {
     return statusDelta;
   }
@@ -319,7 +331,28 @@ function extractDueHours(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function getFutureStatusRank(status: PmsTaskStatus | null): number {
+function isCandidateStatusForSelectionIntent(
+  status: PmsTaskStatus | null,
+  intent: PmsSelectionIntent,
+): boolean {
+  if (intent === 'next_scheduled') {
+    return status === 'OVERDUE' || status === 'DUE_SOON' || status === 'UPCOMING';
+  }
+
+  return status === 'DUE_SOON' || status === 'UPCOMING';
+}
+
+function getSelectionStatusRank(
+  status: PmsTaskStatus | null,
+  intent: PmsSelectionIntent,
+): number {
+  if (intent === 'next_scheduled') {
+    if (status === 'OVERDUE') return 0;
+    if (status === 'DUE_SOON') return 1;
+    if (status === 'UPCOMING') return 2;
+    return 3;
+  }
+
   if (status === 'DUE_SOON') return 0;
   if (status === 'UPCOMING') return 1;
   return 2;

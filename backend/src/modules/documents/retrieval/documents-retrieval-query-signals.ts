@@ -71,7 +71,7 @@ export function isMaintenanceScheduleQuestion(value: string): boolean {
     /\b(?:maintenance|maintain|service|servicing|scheduled|schedule|interval|periodic checks|checks and maintenance|due|next)\b/u.test(
       normalized,
     ) &&
-    /\b(?:next|due|scheduled|schedule|interval|periodic|running hours|run hours|hours|hrs|perform|performed)\b/u.test(
+    /\b(?:next|due|scheduled|schedule|interval|periodic|running hours|run hours|hours|hrs)\b/u.test(
       normalized,
     )
   );

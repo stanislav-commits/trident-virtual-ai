@@ -390,7 +390,7 @@ export class ChatDocumentsResponderService {
         summary: [
           'I could not find sufficient evidence in the uploaded ship documents to answer this composite document question confidently.',
           mergedRetrieval.answerability.reason,
-          'I did not use metrics or web fallback for this document-only request.',
+          this.buildWebFallbackStatusSentence(input),
         ].join(' '),
         groundingStatus: 'insufficient',
         groundingReason: mergedRetrieval.answerability.reason,
@@ -443,7 +443,7 @@ export class ChatDocumentsResponderService {
         summary: [
           'I could not find sufficient evidence in the uploaded ship documents to answer this confidently.',
           retrieval.answerability.reason,
-          'I did not use web fallback for this document-only request.',
+          this.buildWebFallbackStatusSentence(input),
         ].join(' '),
         groundingStatus: 'insufficient',
         groundingReason: retrieval.answerability.reason,
@@ -515,6 +515,9 @@ export class ChatDocumentsResponderService {
         requireCitationMarkers: procedureEvidenceRequired,
         requireProcedureEvidenceCitation: procedureEvidenceRequired,
         requiredProcedureEvidenceRanks,
+        pmsTaskSelectionQuestion: structuredMaintenanceRecordAnswer
+          ? input.ask.question
+          : undefined,
       });
     }
 
@@ -573,6 +576,14 @@ export class ChatDocumentsResponderService {
     ]
       .filter((value): value is string => typeof value === 'string')
       .join(' ');
+  }
+
+  private buildWebFallbackStatusSentence(input: ChatTurnResponderInput): string {
+    if (input.ask.semanticRoute.sourcePolicy?.allowWebFallback) {
+      return 'Web fallback was requested or allowed, but automatic document-to-web fallback is not safely wired into this responder yet.';
+    }
+
+    return 'I did not use web fallback for this document-only request.';
   }
 
   private async buildDocumentIntentPlan(
