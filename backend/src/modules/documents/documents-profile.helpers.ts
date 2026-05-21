@@ -1,4 +1,5 @@
 import { DocumentEntity } from './entities/document.entity';
+import { DocumentRole } from './enums/document-role.enum';
 import { DocumentTimeScope } from './enums/document-time-scope.enum';
 import {
   DocumentParsingProfileDefinition,
@@ -20,8 +21,13 @@ export interface DocumentMetadataInput {
 export interface DocumentMetadataOverrides {
   language?: string | null;
   equipmentOrSystem?: string | null;
+  equipmentName?: string | null;
+  equipmentAliases?: string | null;
   manufacturer?: string | null;
   model?: string | null;
+  systemArea?: string | null;
+  documentPurpose?: string | null;
+  documentRole?: DocumentRole | null;
   revision?: string | null;
   timeScope?: DocumentTimeScope;
   sourcePriority?: number;
@@ -53,10 +59,25 @@ export function applyMetadataOverrides(
   if (input.equipmentOrSystem !== undefined) {
     document.equipmentOrSystem = input.equipmentOrSystem ?? null;
   }
+  if (input.equipmentName !== undefined) {
+    document.equipmentName = input.equipmentName ?? null;
+  }
+  if (input.equipmentAliases !== undefined) {
+    document.equipmentAliases = input.equipmentAliases ?? null;
+  }
   if (input.manufacturer !== undefined) {
     document.manufacturer = input.manufacturer ?? null;
   }
   if (input.model !== undefined) document.model = input.model ?? null;
+  if (input.systemArea !== undefined) {
+    document.systemArea = input.systemArea ?? null;
+  }
+  if (input.documentPurpose !== undefined) {
+    document.documentPurpose = input.documentPurpose ?? null;
+  }
+  if (input.documentRole !== undefined) {
+    document.documentRole = input.documentRole ?? null;
+  }
   if (input.revision !== undefined) document.revision = input.revision ?? null;
   if (input.timeScope !== undefined) document.timeScope = input.timeScope;
   if (input.sourcePriority !== undefined) {

@@ -1,15 +1,41 @@
 import { Transform } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
+import { DocumentRole } from '../enums/document-role.enum';
 import { DocumentTimeScope } from '../enums/document-time-scope.enum';
 
-function normalizeOptionalText(value: unknown): string | undefined {
+function normalizeOptionalText(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
   if (typeof value !== 'string') {
     return undefined;
   }
 
   const normalized = value.trim();
-  return normalized || undefined;
+  return normalized || null;
+}
+
+function normalizeOptionalEnum(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized || null;
 }
 
 function normalizeOptionalInteger(value: unknown): number | undefined {
@@ -29,27 +55,56 @@ export class UpdateDocumentClassificationDto {
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
-  language?: string;
+  language?: string | null;
 
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
-  equipmentOrSystem?: string;
+  equipmentOrSystem?: string | null;
 
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
-  manufacturer?: string;
+  @MaxLength(255)
+  equipmentName?: string | null;
 
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
-  model?: string;
+  @MaxLength(2000)
+  equipmentAliases?: string | null;
 
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
-  revision?: string;
+  manufacturer?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  model?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  systemArea?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  documentPurpose?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalEnum(value))
+  @IsOptional()
+  @IsEnum(DocumentRole)
+  documentRole?: DocumentRole | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  revision?: string | null;
 
   @IsOptional()
   @IsEnum(DocumentTimeScope)
@@ -65,5 +120,5 @@ export class UpdateDocumentClassificationDto {
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
-  contentFocus?: string;
+  contentFocus?: string | null;
 }

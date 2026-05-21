@@ -10,6 +10,7 @@ import {
   getDocumentClassLabel,
   getDocumentParseProfileLabel,
   getDocumentParseStatusLabel,
+  getDocumentRoleLabel,
 } from "./documentOptions";
 
 interface DocumentsTableProps {
@@ -23,6 +24,7 @@ interface DocumentsTableProps {
   onTogglePageSelection: () => void;
   onToggleDocumentSelection: (documentId: string) => void;
   onViewDocument: (document: DocumentListItem) => void;
+  onRequestMetadataEdit: (document: DocumentListItem) => void;
   onRequestDelete: (document: DocumentListItem) => void;
   onRequestReparse: (document: DocumentListItem) => void;
   onPriorityChange: (documentId: string, nextPriority: number) => void;
@@ -30,6 +32,7 @@ interface DocumentsTableProps {
   openingDocumentId: string | null;
   deletingDocumentIds: Set<string>;
   reparsingDocumentIds: Set<string>;
+  updatingMetadataDocumentIds: Set<string>;
   updatingPriorityDocumentIds: Set<string>;
 }
 
@@ -322,6 +325,7 @@ export function DocumentsTable({
   onTogglePageSelection,
   onToggleDocumentSelection,
   onViewDocument,
+  onRequestMetadataEdit,
   onRequestDelete,
   onRequestReparse,
   onPriorityChange,
@@ -329,6 +333,7 @@ export function DocumentsTable({
   openingDocumentId,
   deletingDocumentIds,
   reparsingDocumentIds,
+  updatingMetadataDocumentIds,
   updatingPriorityDocumentIds,
 }: DocumentsTableProps) {
   return (
@@ -369,6 +374,7 @@ export function DocumentsTable({
             const isSelected = selectedDocumentIds.has(document.id);
             const isDeleting = deletingDocumentIds.has(document.id);
             const isReparsing = reparsingDocumentIds.has(document.id);
+            const isUpdatingMetadata = updatingMetadataDocumentIds.has(document.id);
             const isUpdatingPriority = updatingPriorityDocumentIds.has(document.id);
             const canView = Boolean(
               document.ragflowDatasetId && document.ragflowDocumentId,
@@ -391,6 +397,41 @@ export function DocumentsTable({
               },
             ].filter((item): item is { label: string; title?: string } =>
               Boolean(item.label),
+            );
+            const equipmentModel = [document.manufacturer, document.model]
+              .filter(Boolean)
+              .join(" ");
+            const rawMetadataMetaItems: Array<{
+              label: string;
+              title: string;
+            } | null> = [
+              document.documentRole
+                ? {
+                    label: getDocumentRoleLabel(document.documentRole),
+                    title: "Document role",
+                  }
+                : null,
+              document.equipmentName
+                ? {
+                    label: document.equipmentName,
+                    title: document.equipmentAliases ?? "Equipment name",
+                  }
+                : null,
+              equipmentModel
+                ? {
+                    label: equipmentModel,
+                    title: "Manufacturer and model",
+                  }
+                : null,
+              document.systemArea
+                ? {
+                    label: document.systemArea,
+                    title: "System/Area",
+                  }
+                : null,
+            ];
+            const metadataMetaItems = rawMetadataMetaItems.filter(
+              (item): item is { label: string; title: string } => item !== null,
             );
 
             return (
@@ -431,6 +472,15 @@ export function DocumentsTable({
                         {documentClassChipLabel}
                       </span>
                     </div>
+                    {metadataMetaItems.length > 0 && (
+                      <div className="admin-panel__document-metadata-meta">
+                        {metadataMetaItems.map((item) => (
+                          <span key={item.label} title={item.title}>
+                            {item.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </td>
                 <td className="admin-panel__td admin-panel__td--document-ship">
@@ -464,6 +514,8 @@ export function DocumentsTable({
                     document={document}
                     isDeleting={isDeleting}
                     isReparsing={isReparsing}
+                    isUpdatingMetadata={isUpdatingMetadata}
+                    onRequestMetadataEdit={onRequestMetadataEdit}
                     onRequestDelete={onRequestDelete}
                     onRequestReparse={onRequestReparse}
                   />

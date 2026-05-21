@@ -23,6 +23,7 @@ import { AddDocumentsRagflowIngestion20260426000100 } from './migrations/2026042
 import { AddDocumentParseProgress20260428000100 } from './migrations/20260428000100-add-document-parse-progress';
 import { UseDecimalDocumentParseProgress20260428000200 } from './migrations/20260428000200-use-decimal-document-parse-progress';
 import { AddChatSessionTitleStatus20260504000100 } from './migrations/20260504000100-add-chat-session-title-status';
+import { AddDocumentBusinessMetadata20260521000100 } from './migrations/20260521000100-add-document-business-metadata';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -60,6 +61,7 @@ const dataSource = new DataSource({
     AddDocumentParseProgress20260428000100,
     UseDecimalDocumentParseProgress20260428000200,
     AddChatSessionTitleStatus20260504000100,
+    AddDocumentBusinessMetadata20260521000100,
   ],
   synchronize: false,
   ssl: db.ssl

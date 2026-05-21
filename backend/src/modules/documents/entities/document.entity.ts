@@ -15,6 +15,7 @@ import { DocumentChunkMethod } from '../enums/document-chunk-method.enum';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
 import { DocumentParseProfile } from '../enums/document-parse-profile.enum';
 import { DocumentParseStatus } from '../enums/document-parse-status.enum';
+import { DocumentRole } from '../enums/document-role.enum';
 import { DocumentTimeScope } from '../enums/document-time-scope.enum';
 
 const bigintNumberTransformer: ValueTransformer = {
@@ -100,11 +101,31 @@ export class DocumentEntity {
   @Column({ name: 'equipment_or_system', type: 'varchar', length: 255, nullable: true })
   equipmentOrSystem!: string | null;
 
+  @Column({ name: 'equipment_name', type: 'varchar', length: 255, nullable: true })
+  equipmentName!: string | null;
+
+  @Column({ name: 'equipment_aliases', type: 'text', nullable: true })
+  equipmentAliases!: string | null;
+
   @Column({ type: 'varchar', length: 255, nullable: true })
   manufacturer!: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   model!: string | null;
+
+  @Column({ name: 'system_area', type: 'varchar', length: 255, nullable: true })
+  systemArea!: string | null;
+
+  @Column({ name: 'document_purpose', type: 'text', nullable: true })
+  documentPurpose!: string | null;
+
+  @Column({
+    name: 'document_role',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  documentRole!: DocumentRole | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   revision!: string | null;

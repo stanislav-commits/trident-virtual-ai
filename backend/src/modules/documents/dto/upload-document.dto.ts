@@ -1,6 +1,15 @@
 import { Transform } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
+import { DocumentRole } from '../enums/document-role.enum';
 import { DocumentTimeScope } from '../enums/document-time-scope.enum';
 
 function normalizeOptionalText(value: unknown): string | undefined {
@@ -43,12 +52,41 @@ export class UploadDocumentDto {
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  equipmentName?: string;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  equipmentAliases?: string;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
   manufacturer?: string;
 
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
   model?: string;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  systemArea?: string;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  documentPurpose?: string;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsEnum(DocumentRole)
+  documentRole?: DocumentRole;
 
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()

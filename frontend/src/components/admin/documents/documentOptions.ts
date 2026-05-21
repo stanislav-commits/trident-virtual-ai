@@ -2,6 +2,7 @@ import type {
   DocumentDocClass,
   DocumentParseProfile,
   DocumentParseStatus,
+  DocumentRole,
 } from "../../../api/documentsApi";
 
 export const DOCUMENT_CLASS_OPTIONS: Array<{
@@ -37,6 +38,20 @@ export const DOCUMENT_PARSE_PROFILE_LABELS: Record<
   regulation_baseline: "Regulation baseline",
 };
 
+export const DOCUMENT_ROLE_OPTIONS: Array<{
+  value: DocumentRole;
+  label: string;
+}> = [
+  { value: "manual", label: "Manual" },
+  { value: "equipment_register", label: "Equipment register" },
+  { value: "asset_register", label: "Asset register" },
+  { value: "pms_record", label: "PMS record" },
+  { value: "specification", label: "Specification" },
+  { value: "certificate", label: "Certificate" },
+  { value: "regulation", label: "Regulation" },
+  { value: "other", label: "Other" },
+];
+
 export function getDocumentClassLabel(docClass: DocumentDocClass): string {
   return (
     DOCUMENT_CLASS_OPTIONS.find((option) => option.value === docClass)?.label ??
@@ -57,4 +72,11 @@ export function getDocumentParseProfileLabel(
   parseProfile: DocumentParseProfile,
 ): string {
   return DOCUMENT_PARSE_PROFILE_LABELS[parseProfile] ?? parseProfile;
+}
+
+export function getDocumentRoleLabel(documentRole: DocumentRole): string {
+  return (
+    DOCUMENT_ROLE_OPTIONS.find((option) => option.value === documentRole)
+      ?.label ?? documentRole
+  );
 }

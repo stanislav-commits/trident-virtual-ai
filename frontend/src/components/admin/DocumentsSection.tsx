@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   DocumentDocClass,
   DocumentListItem,
+  DocumentMetadataInput,
   DocumentParseStatus,
   ReparseDocumentInput,
 } from "../../api/documentsApi";
@@ -11,6 +12,7 @@ import {
   fetchDocumentFile,
   reparseDocument,
   syncDocumentStatus,
+  updateDocumentMetadata,
   updateDocumentPriority,
 } from "../../api/documentsApi";
 import { useAdminShip } from "../../context/AdminShipContext";
@@ -19,6 +21,7 @@ import { useDocumentsAdminData } from "../../hooks/admin/useDocumentsAdminData";
 import { Toast } from "../layout/Toast";
 import { DocumentsIcon, UploadIcon } from "./AdminPanelIcons";
 import { DocumentDeleteDialog } from "./documents/DocumentDeleteDialog";
+import { DocumentMetadataDialog } from "./documents/DocumentMetadataDialog";
 import { DocumentReparseDialog } from "./documents/DocumentReparseDialog";
 import { DocumentUploadModal } from "./documents/DocumentUploadModal";
 import { DocumentsTable } from "./documents/DocumentsTable";
@@ -98,9 +101,15 @@ export function DocumentsSection() {
   const [reparsingDocumentIds, setReparsingDocumentIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [updatingMetadataDocumentIds, setUpdatingMetadataDocumentIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [updatingPriorityDocumentIds, setUpdatingPriorityDocumentIds] = useState<
     Set<string>
   >(() => new Set());
+  const [metadataTarget, setMetadataTarget] = useState<DocumentListItem | null>(
+    null,
+  );
   const [reparseTarget, setReparseTarget] = useState<DocumentListItem | null>(
     null,
   );
@@ -274,6 +283,10 @@ export function DocumentsSection() {
     setReparseTarget(document);
   };
 
+  const requestMetadataEdit = (document: DocumentListItem) => {
+    setMetadataTarget(document);
+  };
+
   const handlePriorityValidationError = (message: string) => {
     setFeedback({ type: "error", message });
   };
@@ -328,6 +341,49 @@ export function DocumentsSection() {
       setUpdatingPriorityDocumentIds((currentIds) => {
         const nextIds = new Set(currentIds);
         nextIds.delete(documentId);
+        return nextIds;
+      });
+    }
+  };
+
+  const handleCancelMetadataEdit = () => {
+    if (!metadataTarget || updatingMetadataDocumentIds.has(metadataTarget.id)) {
+      return;
+    }
+
+    setMetadataTarget(null);
+  };
+
+  const handleConfirmMetadataEdit = async (input: DocumentMetadataInput) => {
+    if (!token || !metadataTarget) {
+      return;
+    }
+
+    const targetDocument = metadataTarget;
+    setUpdatingMetadataDocumentIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      nextIds.add(targetDocument.id);
+      return nextIds;
+    });
+    setFeedback(null);
+
+    try {
+      await updateDocumentMetadata(token, targetDocument.id, input);
+      setFeedback({ type: "success", message: "Metadata updated." });
+      setMetadataTarget(null);
+      await refreshDocuments();
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to update document metadata.",
+      });
+    } finally {
+      setUpdatingMetadataDocumentIds((currentIds) => {
+        const nextIds = new Set(currentIds);
+        nextIds.delete(targetDocument.id);
         return nextIds;
       });
     }
@@ -709,6 +765,7 @@ export function DocumentsSection() {
             onTogglePageSelection={handleTogglePageSelection}
             onToggleDocumentSelection={handleToggleDocumentSelection}
             onViewDocument={openDocumentInNewTab}
+            onRequestMetadataEdit={requestMetadataEdit}
             onRequestDelete={requestSingleDelete}
             onRequestReparse={requestReparse}
             onPriorityChange={(documentId, nextPriority) =>
@@ -718,6 +775,7 @@ export function DocumentsSection() {
             openingDocumentId={openingDocumentId}
             deletingDocumentIds={deletingDocumentIds}
             reparsingDocumentIds={reparsingDocumentIds}
+            updatingMetadataDocumentIds={updatingMetadataDocumentIds}
             updatingPriorityDocumentIds={updatingPriorityDocumentIds}
           />
         </div>
@@ -739,6 +797,16 @@ export function DocumentsSection() {
           deleting={deletingDocumentIds.size > 0}
           onCancel={() => setDeleteTargets([])}
           onConfirm={() => void handleConfirmDelete()}
+        />
+      )}
+
+      {metadataTarget && (
+        <DocumentMetadataDialog
+          key={metadataTarget.id}
+          document={metadataTarget}
+          saving={updatingMetadataDocumentIds.has(metadataTarget.id)}
+          onCancel={handleCancelMetadataEdit}
+          onConfirm={(input) => void handleConfirmMetadataEdit(input)}
         />
       )}
 

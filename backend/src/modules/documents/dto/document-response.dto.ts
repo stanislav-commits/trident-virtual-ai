@@ -2,6 +2,7 @@ import { DocumentChunkMethod } from '../enums/document-chunk-method.enum';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
 import { DocumentParseProfile } from '../enums/document-parse-profile.enum';
 import { DocumentParseStatus } from '../enums/document-parse-status.enum';
+import { DocumentRole } from '../enums/document-role.enum';
 import { DocumentTimeScope } from '../enums/document-time-scope.enum';
 
 export class DocumentResponseDto {
@@ -19,8 +20,13 @@ export class DocumentResponseDto {
   docClass!: DocumentDocClass;
   language!: string | null;
   equipmentOrSystem!: string | null;
+  equipmentName!: string | null;
+  equipmentAliases!: string | null;
   manufacturer!: string | null;
   model!: string | null;
+  systemArea!: string | null;
+  documentPurpose!: string | null;
+  documentRole!: DocumentRole | null;
   revision!: string | null;
   timeScope!: DocumentTimeScope;
   sourcePriority!: number;

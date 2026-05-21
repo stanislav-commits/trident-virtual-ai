@@ -6,10 +6,12 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
+import { DocumentRole } from '../enums/document-role.enum';
 import { DocumentTimeScope } from '../enums/document-time-scope.enum';
 
 function normalizeOptionalText(value: unknown): string | null | undefined {
@@ -48,12 +50,41 @@ export class ReparseDocumentMetadataDto {
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  equipmentName?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  equipmentAliases?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
   manufacturer?: string | null;
 
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()
   model?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  systemArea?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  documentPurpose?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsEnum(DocumentRole)
+  documentRole?: DocumentRole | null;
 
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()

@@ -23,6 +23,16 @@ export type DocumentParseProfile =
 
 export type DocumentTimeScope = "current" | "past" | "future";
 
+export type DocumentRole =
+  | "manual"
+  | "equipment_register"
+  | "asset_register"
+  | "pms_record"
+  | "specification"
+  | "certificate"
+  | "regulation"
+  | "other";
+
 export interface DocumentListItem {
   id: string;
   shipId: string;
@@ -38,8 +48,13 @@ export interface DocumentListItem {
   docClass: DocumentDocClass;
   language: string | null;
   equipmentOrSystem: string | null;
+  equipmentName: string | null;
+  equipmentAliases: string | null;
   manufacturer: string | null;
   model: string | null;
+  systemArea: string | null;
+  documentPurpose: string | null;
+  documentRole: DocumentRole | null;
   revision: string | null;
   timeScope: DocumentTimeScope;
   sourcePriority: number;
@@ -115,8 +130,13 @@ export interface UploadDocumentInput {
   docClass: DocumentDocClass;
   language?: string;
   equipmentOrSystem?: string;
+  equipmentName?: string;
+  equipmentAliases?: string;
   manufacturer?: string;
   model?: string;
+  systemArea?: string;
+  documentPurpose?: string;
+  documentRole?: DocumentRole;
   revision?: string;
   timeScope?: DocumentTimeScope;
   sourcePriority?: number;
@@ -126,8 +146,13 @@ export interface UploadDocumentInput {
 export interface ReparseDocumentMetadataInput {
   language?: string | null;
   equipmentOrSystem?: string | null;
+  equipmentName?: string | null;
+  equipmentAliases?: string | null;
   manufacturer?: string | null;
   model?: string | null;
+  systemArea?: string | null;
+  documentPurpose?: string | null;
+  documentRole?: DocumentRole | null;
   revision?: string | null;
   timeScope?: DocumentTimeScope;
   sourcePriority?: number;
@@ -137,6 +162,17 @@ export interface ReparseDocumentMetadataInput {
 export interface ReparseDocumentInput {
   docClass?: DocumentDocClass;
   metadata?: ReparseDocumentMetadataInput;
+}
+
+export interface DocumentMetadataInput {
+  equipmentName?: string | null;
+  equipmentAliases?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  systemArea?: string | null;
+  documentPurpose?: string | null;
+  documentRole?: DocumentRole | null;
+  sourcePriority?: number;
 }
 
 export interface UploadDocumentProgress {
@@ -230,13 +266,21 @@ export async function uploadDocument(
   form.append("docClass", input.docClass);
   appendOptionalText(form, "language", input.language);
   appendOptionalText(form, "equipmentOrSystem", input.equipmentOrSystem);
+  appendOptionalText(form, "equipmentName", input.equipmentName);
+  appendOptionalText(form, "equipmentAliases", input.equipmentAliases);
   appendOptionalText(form, "manufacturer", input.manufacturer);
   appendOptionalText(form, "model", input.model);
+  appendOptionalText(form, "systemArea", input.systemArea);
+  appendOptionalText(form, "documentPurpose", input.documentPurpose);
   appendOptionalText(form, "revision", input.revision);
   appendOptionalText(form, "contentFocus", input.contentFocus);
 
   if (input.timeScope) {
     form.append("timeScope", input.timeScope);
+  }
+
+  if (input.documentRole) {
+    form.append("documentRole", input.documentRole);
   }
 
   if (typeof input.sourcePriority === "number") {
@@ -344,6 +388,28 @@ export async function updateDocumentPriority(
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(errorBody.message ?? "Failed to update document priority");
+  }
+
+  return response.json();
+}
+
+export async function updateDocumentMetadata(
+  token: string,
+  documentId: string,
+  input: DocumentMetadataInput,
+): Promise<DocumentListItem> {
+  const response = await fetchWithAuth(`documents/${documentId}/classification`, {
+    token,
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to update document metadata");
   }
 
   return response.json();
