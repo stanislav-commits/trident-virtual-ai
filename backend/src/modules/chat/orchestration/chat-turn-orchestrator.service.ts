@@ -18,6 +18,10 @@ import {
   composeDocumentOnlyResults,
   filterContextReferencesForAnswer,
 } from './document-results/document-result-composition';
+import {
+  buildChatPlannerDiagnosticsContext,
+  ChatPlannerDiagnosticsContext,
+} from './chat-planner-diagnostics';
 
 @Injectable()
 export class ChatTurnOrchestratorService {
@@ -188,18 +192,21 @@ export class ChatTurnOrchestratorService {
     return results;
   }
 
-  private buildPlannerContext(plan: ChatTurnPlan): {
-    reasoning: string;
-    asks: Array<Omit<ChatTurnPlanAsk, 'semanticRoute'>>;
-  } {
-    return {
-      reasoning: plan.reasoning,
-      asks: plan.asks.map((ask) => {
-        const { semanticRoute: _semanticRoute, ...contextAsk } = ask;
+  private buildPlannerContext(plan: ChatTurnPlan): ChatPlannerDiagnosticsContext {
+    return buildChatPlannerDiagnosticsContext({
+      plan,
+      resolveSelectedResponder: (ask) => this.resolveSelectedResponderKind(ask),
+    });
+  }
 
-        return contextAsk;
-      }),
-    };
+  private resolveSelectedResponderKind(
+    ask: ChatTurnPlanAsk,
+  ): ChatTurnResponderKind {
+    if (this.shouldUseDocumentsResponder(ask)) {
+      return ChatTurnResponderKind.DOCUMENTS;
+    }
+
+    return ask.responder;
   }
 
   private shouldUseDocumentsResponder(ask: ChatTurnPlanAsk): boolean {
