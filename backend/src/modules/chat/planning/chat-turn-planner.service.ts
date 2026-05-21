@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ChatConversationContext } from '../context/chat-conversation-context.types';
-import {
-  ChatCapabilityDefinition,
-  ChatCapabilityRegistryService,
-} from './chat-capability-registry.service';
+import { ChatCapabilityRegistryService } from './chat-capability-registry.service';
 import { ChatTurnClassifierService } from './chat-turn-classifier.service';
 import { ChatTurnDecomposerService } from './chat-turn-decomposer.service';
 import { ChatMetricsTimeNormalizerService } from './chat-metrics-time-normalizer.service';
@@ -27,9 +24,6 @@ export class ChatTurnPlannerService {
 
   async plan(context: ChatConversationContext): Promise<ChatTurnPlan> {
     const decomposition = await this.chatTurnDecomposerService.decompose(context);
-    const rawLatestUserQuestion = context.latestUserMessage?.content.trim() || null;
-    const singleAskSourcePolicyText =
-      decomposition.asks.length === 1 ? rawLatestUserQuestion : null;
     const classifiedAsks = await Promise.all(
       decomposition.asks.map((ask) =>
         this.chatTurnClassifierService.classifyAsk({
@@ -47,7 +41,6 @@ export class ChatTurnPlannerService {
       normalizedAsks.map((ask) =>
         this.chatSemanticRouterService.route({
           question: ask.question,
-          sourcePolicyText: singleAskSourcePolicyText,
           shipId: context.session.shipId,
           responseLanguage: decomposition.responseLanguage,
         }),
@@ -88,11 +81,7 @@ export class ChatTurnPlannerService {
 
     return {
       asks: normalizedAsks.map((ask, index) => {
-        const semanticRoute = semanticRoutes[index];
-        const capability = this.resolveCapabilityForSemanticRoute(
-          ask.intent,
-          semanticRoute,
-        );
+        const capability = this.chatCapabilityRegistryService.resolve(ask.intent);
 
         return {
           id: `ask-${index + 1}`,
@@ -105,7 +94,7 @@ export class ChatTurnPlannerService {
           timestamp: ask.timestamp,
           rangeStart: ask.rangeStart,
           rangeEnd: ask.rangeEnd,
-          semanticRoute,
+          semanticRoute: semanticRoutes[index],
         };
       }),
       responseLanguage: decomposition.responseLanguage,
@@ -113,17 +102,6 @@ export class ChatTurnPlannerService {
         ? `${decomposition.reasoning} Document-only composite routing kept the user turn as one documents ask.`
         : decomposition.reasoning,
     };
-  }
-
-  private resolveCapabilityForSemanticRoute(
-    classifiedIntent: ChatTurnIntent,
-    semanticRoute: ChatSemanticRouteDecision,
-  ): ChatCapabilityDefinition {
-    if (semanticRoute.route === ChatSemanticRoute.WEB) {
-      return this.chatCapabilityRegistryService.resolve(ChatTurnIntent.WEB_SEARCH);
-    }
-
-    return this.chatCapabilityRegistryService.resolve(classifiedIntent);
   }
 
   private async resolveDocumentOnlyCompositeRoute(input: {

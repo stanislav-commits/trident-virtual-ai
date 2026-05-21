@@ -1,6 +1,5 @@
 import { ChatTurnAskResult } from '../../responders/interfaces/chat-turn-responder.types';
-import { extractCitedEvidenceRanks } from '../../responders/documents/grounding/document-answer-grounding';
-import { shouldOmitDocumentOnlyQuestionHeading } from './document-result-intent';
+import { extractCitedEvidenceRanks } from '../../responders/documents/document-answer-grounding';
 
 export function composeDocumentOnlyResults(
   askResults: ChatTurnAskResult[],
@@ -21,24 +20,13 @@ export function composeDocumentOnlyResults(
 
     nextRank = renumbered.nextRank;
     contextReferences.push(...renumbered.contextReferences);
-    sections.push(formatDocumentOnlySection(result, renumbered.summary));
+    sections.push([result.question, renumbered.summary].filter(Boolean).join('\n'));
   }
 
   return {
     content: sections.join('\n\n'),
     contextReferences,
   };
-}
-
-function formatDocumentOnlySection(
-  result: ChatTurnAskResult,
-  summary: string,
-): string {
-  if (shouldOmitDocumentOnlyQuestionHeading(result)) {
-    return summary;
-  }
-
-  return [result.question, summary].filter(Boolean).join('\n');
 }
 
 export function filterContextReferencesForAnswer(

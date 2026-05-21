@@ -1,18 +1,18 @@
-import { SearchDocumentsDto } from '../../../../documents/dto/search-documents.dto';
-import { DocumentDocClass } from '../../../../documents/enums/document-doc-class.enum';
-import { DocumentRetrievalQuestionType } from '../../../../documents/enums/document-retrieval-question-type.enum';
-import { ChatTurnResponderInput } from '../../interfaces/chat-turn-responder.types';
+import { SearchDocumentsDto } from '../../../documents/dto/search-documents.dto';
+import { DocumentDocClass } from '../../../documents/enums/document-doc-class.enum';
+import { DocumentRetrievalQuestionType } from '../../../documents/enums/document-retrieval-question-type.enum';
+import { ChatTurnResponderInput } from '../interfaces/chat-turn-responder.types';
 import {
   ChatSemanticDocumentComponent,
   ChatSemanticDocumentsRoute,
-} from '../../../routing/chat-semantic-router.types';
+} from '../../routing/chat-semantic-router.types';
 import {
   normalizeDocumentAnswerLanguage,
   normalizeDocumentLanguageHint,
   normalizeDocumentRetrievalQuery,
-} from '../../../routing/chat-document-retrieval-query';
+} from '../../routing/chat-document-retrieval-query';
 import { DocumentClassAttempt } from './document-retrieval-attempts';
-import { DocumentQueryPlan } from '../composite/document-composite-retrieval';
+import { DocumentQueryPlan } from './document-composite-retrieval';
 import {
   enrichDocumentSearchQuestion,
   extractRelevantRunningHours,
@@ -22,21 +22,10 @@ import {
   isAdministrativeComplianceIntent,
   isMaintenanceRecordIntent,
 } from './document-maintenance-intent';
-import { DocumentIntentPlan } from '../intent/document-intent-plan.types';
-import { buildDocumentIntentSearchQuestion } from '../intent/document-intent-query';
-import {
-  appendEquipmentRegisterSearchHints,
-  isEquipmentRegisterQuestion,
-} from '../../../../documents/retrieval/documents-retrieval-equipment-register-signals';
-
-interface BuildDocumentQueryPlanOptions {
-  documentIntentPlan?: DocumentIntentPlan | null;
-}
 
 export function buildDocumentQueryPlan(
   input: ChatTurnResponderInput,
   documentsRoute: ChatSemanticDocumentsRoute,
-  options: BuildDocumentQueryPlanOptions = {},
 ): DocumentQueryPlan {
   const originalQuestion = input.ask.question;
   const retrievalQuery = normalizeDocumentRetrievalQuery({
@@ -48,25 +37,11 @@ export function buildDocumentQueryPlan(
     normalizeDocumentAnswerLanguage(documentsRoute.answerLanguage) ??
     normalizeDocumentAnswerLanguage(input.plan.responseLanguage);
   const baseSearchQuestion = retrievalQuery ?? originalQuestion;
-  const plannerBaseSearchQuestion = buildPlannerBaseSearchQuestion({
+  const searchQuestion = enrichDocumentSearchQuestion({
     originalQuestion,
-    baseSearchQuestion,
-    documentIntentPlan: options.documentIntentPlan,
-  });
-  const plannedSearchQuestion = buildDocumentIntentSearchQuestion({
-    baseSearchQuestion: plannerBaseSearchQuestion,
-    intentPlan: options.documentIntentPlan,
-  });
-  const enrichedSearchQuestion = enrichDocumentSearchQuestion({
-    originalQuestion,
-    searchQuestion: plannedSearchQuestion,
+    searchQuestion: baseSearchQuestion,
     messages: input.messages,
-    documentIntentPlan: options.documentIntentPlan,
   });
-  const searchQuestion = appendEquipmentRegisterSearchHints(
-    enrichedSearchQuestion,
-    originalQuestion,
-  );
   const enriched = searchQuestion !== baseSearchQuestion;
   const contextFacts = buildDocumentQueryContextFacts({
     originalQuestion,
@@ -80,7 +55,6 @@ export function buildDocumentQueryPlan(
     retrievalQuery: enriched ? searchQuestion : retrievalQuery,
     searchQuestion,
     answerLanguage,
-    intentPlan: options.documentIntentPlan ?? null,
     contextFacts,
   };
 }
@@ -89,7 +63,6 @@ export function buildComponentQueryPlan(
   input: ChatTurnResponderInput,
   parentRoute: ChatSemanticDocumentsRoute,
   component: ChatSemanticDocumentComponent,
-  options: BuildDocumentQueryPlanOptions = {},
 ): DocumentQueryPlan {
   const originalQuestion = component.question;
   const retrievalQuery = normalizeDocumentRetrievalQuery({
@@ -101,25 +74,11 @@ export function buildComponentQueryPlan(
     normalizeDocumentAnswerLanguage(parentRoute.answerLanguage) ??
     normalizeDocumentAnswerLanguage(input.plan.responseLanguage);
   const baseSearchQuestion = retrievalQuery ?? originalQuestion;
-  const plannerBaseSearchQuestion = buildPlannerBaseSearchQuestion({
+  const searchQuestion = enrichDocumentSearchQuestion({
     originalQuestion,
-    baseSearchQuestion,
-    documentIntentPlan: options.documentIntentPlan,
-  });
-  const plannedSearchQuestion = buildDocumentIntentSearchQuestion({
-    baseSearchQuestion: plannerBaseSearchQuestion,
-    intentPlan: options.documentIntentPlan,
-  });
-  const enrichedSearchQuestion = enrichDocumentSearchQuestion({
-    originalQuestion,
-    searchQuestion: plannedSearchQuestion,
+    searchQuestion: baseSearchQuestion,
     messages: input.messages,
-    documentIntentPlan: options.documentIntentPlan,
   });
-  const searchQuestion = appendEquipmentRegisterSearchHints(
-    enrichedSearchQuestion,
-    originalQuestion,
-  );
   const enriched = searchQuestion !== baseSearchQuestion;
   const contextFacts = buildDocumentQueryContextFacts({
     originalQuestion,
@@ -133,28 +92,8 @@ export function buildComponentQueryPlan(
     retrievalQuery: enriched ? searchQuestion : retrievalQuery,
     searchQuestion,
     answerLanguage,
-    intentPlan: options.documentIntentPlan ?? null,
     contextFacts,
   };
-}
-
-function buildPlannerBaseSearchQuestion(input: {
-  originalQuestion: string;
-  baseSearchQuestion: string;
-  documentIntentPlan?: DocumentIntentPlan | null;
-}): string {
-  const intentPlan = input.documentIntentPlan;
-
-  if (
-    !intentPlan ||
-    intentPlan.confidence < 0.2 ||
-    intentPlan.evidenceNeed !== 'technical_reference' ||
-    input.baseSearchQuestion === input.originalQuestion
-  ) {
-    return input.baseSearchQuestion;
-  }
-
-  return `${input.baseSearchQuestion} ${input.originalQuestion}`;
 }
 
 export function buildDocumentRetrievalRequest(
@@ -169,13 +108,8 @@ export function buildDocumentRetrievalRequest(
   } = {},
 ): SearchDocumentsDto {
   const requireDocumentTitleMatch =
-    !isEquipmentRegisterQuestion(buildIntentText(documentsRoute, queryPlan)) &&
-    (options.requireDocumentTitleMatch === true || attempt.reason === 'title_hint');
-  const documentTitleHint = requireDocumentTitleMatch
-    ? documentsRoute.documentTitleHint
-    : shouldSuppressEquipmentRegisterTitleHint(documentsRoute, queryPlan)
-      ? null
-      : documentsRoute.documentTitleHint;
+    options.requireDocumentTitleMatch === true ||
+    attempt.reason === 'title_hint';
 
   return {
     question: queryPlan.searchQuestion,
@@ -196,7 +130,7 @@ export function buildDocumentRetrievalRequest(
     contentFocusHints: documentsRoute.contentFocusHints.length
       ? documentsRoute.contentFocusHints
       : undefined,
-    documentTitleHint: documentTitleHint ?? undefined,
+    documentTitleHint: documentsRoute.documentTitleHint ?? undefined,
     requireDocumentTitleMatch: requireDocumentTitleMatch || undefined,
     languageHint:
       normalizeDocumentLanguageHint({
@@ -219,24 +153,6 @@ function resolveRetrievalQuestionType(
   attempt: DocumentClassAttempt,
   queryPlan: DocumentQueryPlan,
 ): DocumentRetrievalQuestionType | null {
-  if (isEquipmentRegisterQuestion(buildIntentText(documentsRoute, queryPlan))) {
-    return null;
-  }
-
-  const plannedQuestionType = resolvePlannedRetrievalQuestionType(queryPlan);
-
-  if (plannedQuestionType) {
-    if (
-      plannedQuestionType === DocumentRetrievalQuestionType.HISTORICAL_CASE &&
-      attempt.candidateDocClasses?.includes(DocumentDocClass.MANUAL) &&
-      !attempt.candidateDocClasses.includes(DocumentDocClass.HISTORICAL_PROCEDURE)
-    ) {
-      return DocumentRetrievalQuestionType.EQUIPMENT_REFERENCE;
-    }
-
-    return plannedQuestionType;
-  }
-
   const intentText = buildIntentText(documentsRoute, queryPlan);
 
   if (isAdministrativeComplianceIntent(intentText)) {
@@ -263,82 +179,6 @@ function resolveRetrievalQuestionType(
   return documentsRoute.questionType;
 }
 
-function shouldSuppressEquipmentRegisterTitleHint(
-  documentsRoute: ChatSemanticDocumentsRoute,
-  queryPlan: DocumentQueryPlan,
-): boolean {
-  const titleHint = documentsRoute.documentTitleHint?.trim();
-
-  if (!titleHint) {
-    return false;
-  }
-
-  if (!isEquipmentRegisterQuestion(buildIntentText(documentsRoute, queryPlan))) {
-    return false;
-  }
-
-  return !hasExplicitDocumentTitleSignal(queryPlan.originalQuestion);
-}
-
-function hasExplicitDocumentTitleSignal(question: string): boolean {
-  const normalizedQuestion = question.toLocaleLowerCase();
-
-  return (
-    /\b[\p{L}\p{N}][^\s]{2,}\.(?:pdf|xlsx?|csv|docx?|txt|md)\b/iu.test(
-      question,
-    ) ||
-    /\b(?:file|document|doc)\s+(?:named|called|titled)\b/u.test(
-      normalizedQuestion,
-    )
-  );
-}
-
-function resolvePlannedRetrievalQuestionType(
-  queryPlan: DocumentQueryPlan,
-): DocumentRetrievalQuestionType | null {
-  const intentPlan = queryPlan.intentPlan;
-
-  if (!intentPlan || intentPlan.confidence < 0.2) {
-    return null;
-  }
-
-  if (isManualProcedureIntent(intentPlan)) {
-    return DocumentRetrievalQuestionType.STEP_BY_STEP_PROCEDURE;
-  }
-
-  if (
-    intentPlan.answerFormattingHints.structuredPms ||
-    !['none', 'unknown'].includes(intentPlan.maintenanceIntent) ||
-    ['schedule_due', 'task_list', 'work_scope'].includes(intentPlan.evidenceNeed)
-  ) {
-    return DocumentRetrievalQuestionType.HISTORICAL_CASE;
-  }
-
-  if (
-    intentPlan.asksForSteps ||
-    intentPlan.answerMode === 'procedure' ||
-    intentPlan.evidenceNeed === 'procedure_steps'
-  ) {
-    return DocumentRetrievalQuestionType.STEP_BY_STEP_PROCEDURE;
-  }
-
-  if (intentPlan.evidenceNeed === 'technical_reference') {
-    return DocumentRetrievalQuestionType.EQUIPMENT_REFERENCE;
-  }
-
-  return null;
-}
-
-function isManualProcedureIntent(intentPlan: DocumentIntentPlan): boolean {
-  return (
-    intentPlan.targetDocClasses.includes(DocumentDocClass.MANUAL) &&
-    !intentPlan.targetDocClasses.includes(DocumentDocClass.HISTORICAL_PROCEDURE) &&
-    (intentPlan.asksForSteps ||
-      intentPlan.answerMode === 'procedure' ||
-      intentPlan.evidenceNeed === 'procedure_steps')
-  );
-}
-
 function hasMaintenanceScheduleFocus(
   documentsRoute: ChatSemanticDocumentsRoute,
   queryPlan: DocumentQueryPlan,
@@ -363,10 +203,10 @@ function buildIntentText(
     queryPlan.searchQuestion,
     documentsRoute.retrievalQuery,
     documentsRoute.documentTitleHint,
-    ...(documentsRoute.contentFocusHints ?? []),
-    ...(documentsRoute.equipmentOrSystemHints ?? []),
-    ...(documentsRoute.manufacturerHints ?? []),
-    ...(documentsRoute.modelHints ?? []),
+    ...documentsRoute.contentFocusHints,
+    ...documentsRoute.equipmentOrSystemHints,
+    ...documentsRoute.manufacturerHints,
+    ...documentsRoute.modelHints,
   ]
     .filter((value): value is string => typeof value === 'string')
     .join(' ');

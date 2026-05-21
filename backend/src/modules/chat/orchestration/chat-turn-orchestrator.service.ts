@@ -7,7 +7,6 @@ import { ChatSessionEntity } from '../entities/chat-session.entity';
 import { ChatTurnPlan, ChatTurnPlanAsk } from '../planning/chat-turn-plan.types';
 import { ChatTurnPlannerService } from '../planning/chat-turn-planner.service';
 import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum';
-import { buildCurrentDateReply } from '../planning/chat-current-date';
 import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
 import { ChatDocumentsResponderService } from '../responders/documents/chat-documents-responder.service';
 import { ChatInDevelopmentResponderService } from '../responders/chat-in-development-responder.service';
@@ -19,7 +18,6 @@ import {
   composeDocumentOnlyResults,
   filterContextReferencesForAnswer,
 } from './document-results/document-result-composition';
-import { buildMetricThresholdSafetyReply } from './metric-threshold-safety';
 
 @Injectable()
 export class ChatTurnOrchestratorService {
@@ -44,22 +42,6 @@ export class ChatTurnOrchestratorService {
     content: string;
     ragflowContext: Record<string, unknown> | null;
   }> {
-    const currentDateReply = buildCurrentDateReply(
-      input.context.latestUserMessage?.content ?? '',
-    );
-
-    if (currentDateReply) {
-      return {
-        content: currentDateReply,
-        ragflowContext: {
-          directAnswer: {
-            type: 'current_date',
-            source: 'server_time',
-          },
-        },
-      };
-    }
-
     const plan = await this.chatTurnPlannerService.plan(input.context);
     const asks = plan.asks;
 
@@ -126,25 +108,6 @@ export class ChatTurnOrchestratorService {
           contextReferences: documentOnlyReply.contextReferences,
           planner: this.buildPlannerContext(plan),
           askResults,
-        },
-      };
-    }
-
-    const metricThresholdSafetyReply = buildMetricThresholdSafetyReply({
-      latestUserMessage: input.context.latestUserMessage?.content ?? '',
-      askResults,
-    });
-
-    if (metricThresholdSafetyReply) {
-      return {
-        content: metricThresholdSafetyReply.content,
-        ragflowContext: {
-          contextReferences: metricThresholdSafetyReply.contextReferences,
-          planner: this.buildPlannerContext(plan),
-          askResults,
-          safety: {
-            metricThresholdJudgmentGuarded: true,
-          },
         },
       };
     }

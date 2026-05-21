@@ -1,15 +1,7 @@
 export function isMaintenanceRecordIntent(value: string): boolean {
   const normalized = normalizeIntentText(value);
 
-  if (!normalized) {
-    return false;
-  }
-
-  if (hasResolvedPmsFollowUpSignal(normalized)) {
-    return true;
-  }
-
-  if (hasExplicitNonRecordDocumentIntent(normalized)) {
+  if (!normalized || hasExplicitNonRecordDocumentIntent(normalized)) {
     return false;
   }
 
@@ -99,15 +91,6 @@ function hasMaintenanceRecordSignal(value: string): boolean {
     ) ||
     (/\bstatus\b/u.test(value) &&
       /\b(?:maintenance|service|task|work order|pms)\b/u.test(value))
-  );
-}
-
-function hasResolvedPmsFollowUpSignal(value: string): boolean {
-  return (
-    /\bpms maintenance record\b/u.test(value) &&
-    /\b(?:work scope|scope of work|job description|tasks included|historical procedure)\b/u.test(
-      value,
-    )
   );
 }
 

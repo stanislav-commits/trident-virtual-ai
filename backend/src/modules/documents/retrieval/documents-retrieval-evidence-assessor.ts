@@ -8,15 +8,6 @@ import {
   hasQuestionTypeSectionSignal,
   QuestionSupportSignals,
 } from './documents-retrieval-text-signals';
-import {
-  countProcedureSubjectSupportedCandidates,
-  hasProcedureSubjectEvidence,
-} from './documents-retrieval-procedure-support';
-import {
-  hasEquipmentRegisterEntitySupport,
-  isEquipmentRegisterQuestion,
-  isEquipmentRegisterStyleEvidence,
-} from './documents-retrieval-equipment-register-signals';
 
 const MIN_SPECIFIC_SUPPORT_SCORE = 0.6;
 
@@ -64,18 +55,6 @@ export function assessDocumentRetrievalEvidenceQuality(
   const classFitCandidateCount = input.candidates.filter((candidate) =>
     hasQuestionTypeClassFit(input.questionType, candidate),
   ).length;
-  const procedureSubjectSupportedCandidateCount =
-    countProcedureSubjectSupportedCandidates({
-      question: input.question,
-      questionType: input.questionType,
-      candidates: input.candidates,
-    });
-  const equipmentRegisterEvidenceQuality =
-    assessEquipmentRegisterEvidenceQuality(input);
-
-  if (equipmentRegisterEvidenceQuality) {
-    return equipmentRegisterEvidenceQuality;
-  }
 
   if (
     topRetrievalScore < 0.18 ||
@@ -93,12 +72,6 @@ export function assessDocumentRetrievalEvidenceQuality(
       classFitCandidateCount,
       topSupportSignals,
       topQuestionSupport,
-    ) ||
-    hasInsufficientProcedureSubjectSupport(
-      input.question,
-      input.questionType,
-      topCandidate,
-      procedureSubjectSupportedCandidateCount,
     )
   ) {
     return 'none';
@@ -109,11 +82,6 @@ export function assessDocumentRetrievalEvidenceQuality(
     topSupportSignals,
     specificSupportedCandidateCount,
     topClassFitsQuestion,
-    hasProcedureSubjectEvidence({
-      question: input.question,
-      questionType: input.questionType,
-      candidate: topCandidate,
-    }),
   );
 
   if (
@@ -133,51 +101,12 @@ export function assessDocumentRetrievalEvidenceQuality(
       topQuestionSupport >= 0.5 &&
       hasSectionSignal &&
       supportedCandidateCount >= 2 &&
-      procedureSubjectSupportedCandidateCount > 0 &&
       hasStrongSupport)
   ) {
     return 'strong';
   }
 
   return 'weak';
-}
-
-function assessEquipmentRegisterEvidenceQuality(
-  input: DocumentRetrievalEvidenceAssessmentInput,
-): DocumentRetrievalEvidenceQuality | null {
-  if (!isEquipmentRegisterQuestion(input.question)) {
-    return null;
-  }
-
-  const registerCandidates = input.candidates.filter((candidate) =>
-    isEquipmentRegisterStyleEvidence({
-      question: input.question,
-      content: buildCandidateSupportText(candidate),
-      fileName: candidate.document.originalFileName,
-    }),
-  );
-
-  if (!registerCandidates.length) {
-    return null;
-  }
-
-  const supportedRegisterCandidates = registerCandidates.filter((candidate) =>
-    hasEquipmentRegisterEntitySupport({
-      question: input.question,
-      content: buildCandidateSupportText(candidate),
-    }),
-  );
-
-  if (!supportedRegisterCandidates.length) {
-    return 'none';
-  }
-
-  const [topRegisterCandidate] = supportedRegisterCandidates;
-  const topRetrievalScore = topRegisterCandidate.retrievalScore ?? 0;
-
-  return topRetrievalScore >= 0.16 || topRegisterCandidate.rerankScore >= 0.3
-    ? 'strong'
-    : 'weak';
 }
 
 function hasUsableQuestionSupport(
@@ -261,13 +190,8 @@ function hasStrongEvidenceSupport(
   supportSignals: QuestionSupportSignals,
   specificSupportedCandidateCount: number,
   topClassFitsQuestion: boolean,
-  topProcedureSubjectSupported: boolean,
 ): boolean {
   if (!topClassFitsQuestion) {
-    return false;
-  }
-
-  if (!topProcedureSubjectSupported) {
     return false;
   }
 
@@ -284,21 +208,6 @@ function hasStrongEvidenceSupport(
   }
 
   return topQuestionSupport >= 0.5 || !supportSignals.hasSpecificTokens;
-}
-
-function hasInsufficientProcedureSubjectSupport(
-  question: string,
-  questionType: DocumentRetrievalQuestionType | null,
-  topCandidate: EnrichedDocumentRetrievalCandidate,
-  procedureSubjectSupportedCandidateCount: number,
-): boolean {
-  return (
-    !hasProcedureSubjectEvidence({
-      question,
-      questionType,
-      candidate: topCandidate,
-    }) && procedureSubjectSupportedCandidateCount === 0
-  );
 }
 
 function hasAdequateSpecificSupport(

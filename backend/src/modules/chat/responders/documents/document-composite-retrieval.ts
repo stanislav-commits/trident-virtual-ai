@@ -2,16 +2,15 @@ import {
   DocumentRetrievalEvidenceQuality,
   DocumentRetrievalResponseDto,
   DocumentRetrievalResultDto,
-} from '../../../../documents/dto/document-retrieval-response.dto';
+} from '../../../documents/dto/document-retrieval-response.dto';
 import {
   ChatSemanticDocumentComponent,
   ChatSemanticDocumentsRoute,
-} from '../../../routing/chat-semantic-router.types';
+} from '../../routing/chat-semantic-router.types';
 import {
   CompositeDocumentPromptComponent,
-} from '../answering/document-composite-answer-prompt';
-import { DocumentClassAttempt } from '../retrieval/document-retrieval-attempts';
-import { DocumentIntentPlan } from '../intent/document-intent-plan.types';
+} from './document-composite-answer-prompt';
+import { DocumentClassAttempt } from './document-retrieval-attempts';
 
 export const MAX_DOCUMENT_COMPOSITE_COMPONENTS = 3;
 
@@ -20,7 +19,6 @@ export interface DocumentQueryPlan {
   retrievalQuery: string | null;
   searchQuestion: string;
   answerLanguage: string | null;
-  intentPlan?: DocumentIntentPlan | null;
   contextFacts: {
     maintenanceScheduleQuestion: boolean;
     runningHours: string | null;

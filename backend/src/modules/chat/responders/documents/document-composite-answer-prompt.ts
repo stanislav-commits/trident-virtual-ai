@@ -1,8 +1,8 @@
 import {
   DocumentRetrievalEvidenceQuality,
   DocumentRetrievalResultDto,
-} from '../../../../documents/dto/document-retrieval-response.dto';
-import { ChatSemanticDocumentCompositionMode } from '../../../routing/chat-semantic-router.types';
+} from '../../../documents/dto/document-retrieval-response.dto';
+import { ChatSemanticDocumentCompositionMode } from '../../routing/chat-semantic-router.types';
 import { formatEvidenceItem } from './document-grounded-answer-prompt';
 
 export interface CompositeDocumentPromptComponent {

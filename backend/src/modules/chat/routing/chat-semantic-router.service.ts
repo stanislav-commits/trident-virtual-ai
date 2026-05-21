@@ -37,97 +37,6 @@ const SUPPORTED_DOCUMENT_COMPOSITION_MODES: ChatSemanticDocumentCompositionMode[
     'summarize_by_source',
   ];
 const MAX_DOCUMENT_COMPOSITE_COMPONENTS = 3;
-const EXPLICIT_WEB_SOURCE_PHRASES = [
-  'find in web',
-  'find on the web',
-  'find online',
-  'search the web',
-  'search online',
-  'look it up online',
-  'look up online',
-  'look online',
-  'internet',
-  'public source',
-  'public sources',
-  'outside our documents',
-  'outside the documents',
-  'outside uploaded documents',
-  'not from our manuals',
-  'not from the manuals',
-  'not from uploaded manuals',
-  'not from our documents',
-  'not from uploaded documents',
-  'not from uploaded files',
-  'в інтернеті',
-  'в інтернет',
-  'пошукай в інтернеті',
-  'знайди в інтернеті',
-  'пошукай онлайн',
-  'знайди онлайн',
-  'подивись онлайн',
-  'публічне джерело',
-  'публічні джерела',
-  'не з наших мануалів',
-  'не з наших документів',
-];
-const EXPLICIT_WEB_FALLBACK_PHRASES = [
-  'use web if needed',
-  'use the web if needed',
-  'use web if necessary',
-  'use the web if necessary',
-  'search web if needed',
-  'search the web if needed',
-  'search online if needed',
-  'look online if needed',
-  'check web if needed',
-  'check the web if needed',
-  'internet if needed',
-  'web fallback',
-  'fallback to web',
-  'fallback to the web',
-];
-const EXPLICIT_DOCUMENT_SOURCE_PHRASES = [
-  'uploaded documents',
-  'uploaded docs',
-  'ship documents',
-  'ship docs',
-  'our documents',
-  'our manuals',
-  'ship manuals',
-  'vessel manuals',
-  'uploaded manuals',
-  'according to the manual',
-  'according to manual',
-  'in the manual',
-  'from the manual',
-  'from our manuals',
-  'in uploaded files',
-  'uploaded files',
-  'завантажені документи',
-  'завантажених документах',
-  'суднові документи',
-  'наші документи',
-  'наших документах',
-  'наші мануали',
-  'наших мануалах',
-  'у мануалі',
-  'в мануалі',
-  'з мануалу',
-  'згідно з мануалом',
-];
-const EXPLICIT_DOCUMENT_EXCLUSION_PHRASES = [
-  'not from our manuals',
-  'not from the manuals',
-  'not from uploaded manuals',
-  'not from our documents',
-  'not from uploaded documents',
-  'not from uploaded files',
-  'outside our documents',
-  'outside the documents',
-  'outside uploaded documents',
-  'не з наших мануалів',
-  'не з наших документів',
-];
 
 @Injectable()
 export class ChatSemanticRouterService {
@@ -144,15 +53,12 @@ export class ChatSemanticRouterService {
     const parsed = this.parseDecision(rawResult, input);
 
     if (parsed) {
-      return this.applyExplicitSourcePolicy(parsed, input);
+      return parsed;
     }
 
-    return this.applyExplicitSourcePolicy(
-      this.buildFallbackDecision(
-        input,
-        'The semantic router could not parse a valid routing decision.',
-      ),
+    return this.buildFallbackDecision(
       input,
+      'The semantic router could not parse a valid routing decision.',
     );
   }
 
@@ -197,7 +103,6 @@ export class ChatSemanticRouterService {
       'Procedure intent policy:',
       '- Formal procedure instructions, SOPs, checklists, required actions, and emergency procedure asks are step_by_step_procedure with regulation as the primary class; include manual when equipment-specific.',
       '- Equipment maintenance/removal/replacement/repair/service/cleaning instructions are equipment_reference with manual as the primary class unless the user clearly asks for formal rules, SOP, checklist, compliance, or emergency actions.',
-      '- Generic "perform", "do", or "operation" wording is not PMS/maintenance intent by itself. Operations such as bunkering or fuel transfer should be treated as formal procedure/regulation/SOP-style asks unless explicit maintenance/PMS/service/inspection/due/overdue/running-hours context is present.',
       '- Procedure records, schedules, history, status, due dates, planned work, and completed work are historical_case with historical_procedure as the class.',
       '- PMS/current maintenance record asks are historical_case with historical_procedure: due or overdue work, upcoming tasks, next maintenance, scheduled or planned maintenance, next service, current status, current equipment hours, responsible person, performed by, approved by, work scope, task references, planned or completed maintenance, breakdown events, corrective events, and engineer notes.',
       '- Administrative or compliance due-date asks are compliance_or_certificate or regulation/certificate, not historical_procedure: registration, permits, approvals, certificate validity/expiry, surveys, and regulations. Only use historical_procedure for these words when the user explicitly asks for PMS, maintenance records, maintenance tasks, or work orders.',
@@ -223,15 +128,10 @@ export class ChatSemanticRouterService {
       '- For English questions, documents.retrievalQuery may be the same as the ask or a concise normalized equivalent.',
       '- Preserve technical terms, acronyms, model numbers, vessel/system names, and document titles exactly.',
       '- Do not broaden the retrievalQuery beyond the user intent, and do not invent missing context.',
-      '- For section lookup asks, preserve section-type words such as troubleshooting, fault finding, maintenance section, chapter, table, or manual section in the retrievalQuery together with the equipment/model/alias.',
       '- Do not translate quoted document titles or filename-like strings.',
       '- Keep documents.documentTitleHint separate from documents.retrievalQuery. Do not use retrievalQuery to replace a title hint.',
       '- documents.languageHint is optional document metadata language, not the user answer language; leave it null unless the user explicitly asks for documents in a particular stored document language.',
       '- When setting documents.languageHint, use the exact document-language wording from the ask or retrievalQuery rather than an inferred ISO code.',
-      'Explicit source policy:',
-      '- If the user explicitly asks for public web, online, internet, public-source, or outside-uploaded-document information, route web unless the same ask explicitly requires uploaded/ship documents or manuals.',
-      '- If the user says to use web only if needed, keep the primary source implied by the ask and set allowWebFallback true.',
-      '- If the user explicitly asks for uploaded documents, ship documents, uploaded files, or manuals, keep the route documents when the ask is document-answerable.',
       'If a ship context exists and the ask likely refers to onboard/manual knowledge, prefer documents over generic web.',
       'Do not use web as a fallback for weak or missing document evidence; fallback policy is a later orchestration concern.',
       'If the ask needs ship documents but no shipId is available, route unclear and require clarification.',
@@ -318,108 +218,6 @@ export class ChatSemanticRouterService {
       web: this.buildDefaultWebRoute(),
       internalDebugNote: reason,
     };
-  }
-
-  private applyExplicitSourcePolicy(
-    decision: ChatSemanticRouteDecision,
-    input: ChatSemanticRouterInput,
-  ): ChatSemanticRouteDecision {
-    const sourcePreference = this.detectExplicitSourcePreference(
-      input.question,
-      input.sourcePolicyText,
-    );
-
-    if (sourcePreference.webFallback) {
-      return {
-        ...decision,
-        sourcePolicy: {
-          ...decision.sourcePolicy,
-          allowWebFallback: true,
-        },
-        internalDebugNote: [
-          decision.internalDebugNote,
-          'Explicit web fallback request was preserved in source policy.',
-        ]
-          .filter(Boolean)
-          .join(' '),
-      };
-    }
-
-    if (!sourcePreference.web || sourcePreference.documents) {
-      return decision;
-    }
-
-    return {
-      ...decision,
-      route: ChatSemanticRoute.WEB,
-      confidence: Math.max(decision.confidence, 0.85),
-      requiresClarification: false,
-      clarificationQuestion: null,
-      sourcePolicy: this.buildSourcePolicy(ChatSemanticRoute.WEB),
-      web: {
-        ...decision.web,
-        externalKnowledgeExplicit: true,
-      },
-      internalDebugNote: [
-        decision.internalDebugNote,
-        'Explicit web source request overrode document-biased routing.',
-      ]
-        .filter(Boolean)
-        .join(' '),
-    };
-  }
-
-  private detectExplicitSourcePreference(
-    question: string,
-    sourcePolicyText?: string | null,
-  ): {
-    web: boolean;
-    webFallback: boolean;
-    documents: boolean;
-  } {
-    const normalizedTexts = Array.from(
-      new Set(
-        [question, sourcePolicyText]
-          .filter((value): value is string => typeof value === 'string')
-          .map((value) => value.trim())
-          .filter(Boolean)
-          .map((value) => this.normalizeForSourcePolicy(value)),
-      ),
-    );
-
-    return {
-      web: normalizedTexts.some((normalized) =>
-        this.hasSourcePhrase(normalized, EXPLICIT_WEB_SOURCE_PHRASES),
-      ),
-      webFallback: normalizedTexts.some((normalized) =>
-        this.hasSourcePhrase(normalized, EXPLICIT_WEB_FALLBACK_PHRASES),
-      ),
-      documents: normalizedTexts.some((normalized) => {
-        const hasDocumentExclusion = this.hasSourcePhrase(
-          normalized,
-          EXPLICIT_DOCUMENT_EXCLUSION_PHRASES,
-        );
-
-        return (
-          !hasDocumentExclusion &&
-          this.hasSourcePhrase(normalized, EXPLICIT_DOCUMENT_SOURCE_PHRASES)
-        );
-      }),
-    };
-  }
-
-  private hasSourcePhrase(normalizedQuestion: string, phrases: string[]): boolean {
-    return phrases.some((phrase) =>
-      normalizedQuestion.includes(this.normalizeForSourcePolicy(phrase)),
-    );
-  }
-
-  private normalizeForSourcePolicy(value: string): string {
-    return ` ${value
-      .toLocaleLowerCase()
-      .replace(/[\p{P}\p{S}]+/gu, ' ')
-      .replace(/\s+/gu, ' ')
-      .trim()} `;
   }
 
   private parseRoute(value: unknown): ChatSemanticRoute | null {
