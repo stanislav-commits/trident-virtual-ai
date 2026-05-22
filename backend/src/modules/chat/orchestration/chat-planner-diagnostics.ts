@@ -1,10 +1,17 @@
 import { ChatTurnPlan, ChatTurnPlanAsk } from '../planning/chat-turn-plan.types';
 import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum';
 import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
+import {
+  DocumentsWebFallbackDiagnostics,
+  isDocumentsWebFallbackRoute,
+} from './chat-documents-web-fallback';
 
 interface BuildChatPlannerDiagnosticsContextInput {
   plan: ChatTurnPlan;
   resolveSelectedResponder: (ask: ChatTurnPlanAsk) => ChatTurnResponderKind;
+  resolveWebFallbackDiagnostics?: (
+    ask: ChatTurnPlanAsk,
+  ) => DocumentsWebFallbackDiagnostics | null;
 }
 
 export interface ChatPlannerDiagnosticsContext {
@@ -12,7 +19,7 @@ export interface ChatPlannerDiagnosticsContext {
   diagnostics: {
     schemaVersion: 1;
     safeForClient: true;
-    runtimeBehaviorChanged: false;
+    runtimeBehaviorChanged: boolean;
     note: string;
   };
   asks: Array<
@@ -83,19 +90,31 @@ export interface ChatPlannerAskSemanticDiagnostics {
     externalKnowledgeExplicit: boolean;
     freshnessRequired: boolean;
   };
+  webFallback: DocumentsWebFallbackDiagnostics | null;
   executionLimitations: string[];
 }
 
 export function buildChatPlannerDiagnosticsContext(
   input: BuildChatPlannerDiagnosticsContextInput,
 ): ChatPlannerDiagnosticsContext {
+  const webFallbackDiagnostics = input.plan.asks
+    .map((ask) => input.resolveWebFallbackDiagnostics?.(ask) ?? null)
+    .filter((value): value is DocumentsWebFallbackDiagnostics => value !== null);
+  const runtimeBehaviorChanged = webFallbackDiagnostics.some(
+    (diagnostics) =>
+      diagnostics.action !== 'skipped' &&
+      diagnostics.action !== 'not_applicable',
+  );
+
   return {
     reasoning: input.plan.reasoning,
     diagnostics: {
       schemaVersion: 1,
       safeForClient: true,
-      runtimeBehaviorChanged: false,
-      note: 'Semantic routing diagnostics only. These fields do not change selected responders or source execution.',
+      runtimeBehaviorChanged,
+      note: runtimeBehaviorChanged
+        ? 'Semantic routing diagnostics include documents-first web-fallback execution details.'
+        : 'Semantic routing diagnostics only. These fields do not change selected responders or source execution.',
     },
     asks: input.plan.asks.map((ask) => {
       const { semanticRoute: _semanticRoute, ...contextAsk } = ask;
@@ -105,6 +124,8 @@ export function buildChatPlannerDiagnosticsContext(
         semanticDiagnostics: buildAskSemanticDiagnostics({
           ask,
           selectedResponder: input.resolveSelectedResponder(ask),
+          webFallback:
+            input.resolveWebFallbackDiagnostics?.(ask) ?? null,
         }),
       };
     }),
@@ -114,11 +135,15 @@ export function buildChatPlannerDiagnosticsContext(
 function buildAskSemanticDiagnostics(input: {
   ask: ChatTurnPlanAsk;
   selectedResponder: ChatTurnResponderKind;
+  webFallback: DocumentsWebFallbackDiagnostics | null;
 }): ChatPlannerAskSemanticDiagnostics {
   const route = input.ask.semanticRoute;
   const sourcePolicy = route.sourcePolicy;
-  const explicitWebFallback = hasExplicitWebFallbackIntent(input.ask);
+  const explicitWebFallback =
+    input.webFallback?.explicitWebFallback ?? hasExplicitWebFallbackIntent(input.ask);
   const mixedSourceIntent = hasMixedSourceIntent(input.ask);
+  const freshnessRequired =
+    input.webFallback?.freshnessRequired ?? route.web.freshnessRequired;
 
   return {
     classifierIntent: input.ask.intent,
@@ -137,11 +162,14 @@ function buildAskSemanticDiagnostics(input: {
     },
     allowWebFallback: sourcePolicy.allowWebFallback,
     explicitWebFallback,
-    freshnessRequired: route.web.freshnessRequired,
-    latestInfoIntent: route.web.freshnessRequired,
+    freshnessRequired,
+    latestInfoIntent: freshnessRequired,
     mixedSourceIntent,
     fallbackRoutes:
-      explicitWebFallback || sourcePolicy.allowWebFallback
+      explicitWebFallback ||
+      sourcePolicy.allowWebFallback ||
+      freshnessRequired ||
+      input.webFallback?.automaticFallback
         ? [ChatSemanticRoute.WEB]
         : [],
     documents: {
@@ -182,13 +210,15 @@ function buildAskSemanticDiagnostics(input: {
     },
     web: {
       externalKnowledgeExplicit: route.web.externalKnowledgeExplicit,
-      freshnessRequired: route.web.freshnessRequired,
+      freshnessRequired,
     },
+    webFallback: input.webFallback,
     executionLimitations: buildExecutionLimitations({
       ask: input.ask,
       selectedResponder: input.selectedResponder,
       explicitWebFallback,
       mixedSourceIntent,
+      webFallback: input.webFallback,
     }),
   };
 }
@@ -223,21 +253,30 @@ function buildExecutionLimitations(input: {
   selectedResponder: ChatTurnResponderKind;
   explicitWebFallback: boolean;
   mixedSourceIntent: boolean;
+  webFallback: DocumentsWebFallbackDiagnostics | null;
 }): string[] {
   const limitations: string[] = [];
   const route = input.ask.semanticRoute;
+  const mixedHandledByDocumentsWebFallback =
+    Boolean(input.webFallback) && isDocumentsWebFallbackRoute(input.ask);
 
-  if (input.mixedSourceIntent) {
+  if (input.mixedSourceIntent && !mixedHandledByDocumentsWebFallback) {
     limitations.push('mixed_source_execution_not_implemented');
   }
 
-  if (input.explicitWebFallback || route.sourcePolicy.allowWebFallback) {
+  if (input.webFallback?.action === 'failed') {
+    limitations.push('web_fallback_execution_failed');
+  } else if (
+    !input.webFallback &&
+    (input.explicitWebFallback || route.sourcePolicy.allowWebFallback)
+  ) {
     limitations.push('web_fallback_execution_not_implemented');
   }
 
   if (
     route.web.freshnessRequired &&
-    input.selectedResponder !== ChatTurnResponderKind.WEB_SEARCH
+    input.selectedResponder !== ChatTurnResponderKind.WEB_SEARCH &&
+    input.webFallback?.action !== 'executed'
   ) {
     limitations.push('freshness_followup_not_executed');
   }

@@ -34,6 +34,15 @@ export function validateDocumentAnswerGrounding(
     supportedNumericContext?: string[];
   } = {},
 ): DocumentAnswerGroundingValidation {
+  const externalSourceClaim = findExternalSourceUsageClaim(answerText);
+
+  if (externalSourceClaim) {
+    return {
+      isGrounded: false,
+      reason: `The document answer claimed external source usage ("${externalSourceClaim}") even though document answers may only use retrieved ship-document evidence.`,
+    };
+  }
+
   const claims = extractNumericValueClaims(answerText).filter(
     (claim) =>
       !isNumericValueClaimSupportedByContext(
@@ -75,6 +84,25 @@ export function validateDocumentAnswerGrounding(
   }
 
   return { isGrounded: true };
+}
+
+function findExternalSourceUsageClaim(answerText: string): string | null {
+  const normalized = answerText.replace(/\s+/g, ' ').trim();
+  const patterns = [
+    /\b(?:using|via|from|on)\s+(?:the\s+)?(?:web|internet|online|external|public)\b[^.?!]*/iu,
+    /\b(?:searched|searching|checked|checking|looked\s+up|found)\s+(?:it\s+)?(?:on|from|via|using)\s+(?:the\s+)?(?:web|internet|online|external|public)\b[^.?!]*/iu,
+    /\b(?:web|internet|online|external|public)\s+(?:sources?|search|information)\s+(?:show|shows|indicate|indicates|suggest|suggests|found|returned|returns)\b[^.?!]*/iu,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern)?.[0]?.trim();
+
+    if (match && !/\b(?:did\s+not|didn't|do\s+not|don't|not)\b/iu.test(match)) {
+      return match;
+    }
+  }
+
+  return null;
 }
 
 function isNumericValueClaimSupportedByResults(

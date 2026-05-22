@@ -22,6 +22,20 @@ import {
   buildChatPlannerDiagnosticsContext,
   ChatPlannerDiagnosticsContext,
 } from './chat-planner-diagnostics';
+import {
+  composeDocumentsAndWebResults,
+  composeFallbackAwareDocumentResults,
+} from './chat-source-result-composition';
+import {
+  buildDocumentsWebFallbackSearchQuestion,
+  DocumentsWebFallbackDiagnostics,
+  evaluateDocumentsWebFallback,
+  getDocumentsWebFallbackDiagnostics,
+  isDocumentsWebFallbackRoute,
+  markDocumentsWebFallbackExecuted,
+  markDocumentsWebFallbackFailed,
+  withDocumentsWebFallbackDiagnostics,
+} from './chat-documents-web-fallback';
 
 @Injectable()
 export class ChatTurnOrchestratorService {
@@ -65,7 +79,7 @@ export class ChatTurnOrchestratorService {
       return {
         content: singleResult.summary,
         ragflowContext: {
-          planner: this.buildPlannerContext(plan),
+          planner: this.buildPlannerContext(plan, [singleResult]),
           askResults: [singleResult],
         },
       };
@@ -92,7 +106,21 @@ export class ChatTurnOrchestratorService {
         content: askResults[0].summary,
         ragflowContext: {
           contextReferences: askResults[0].contextReferences ?? [],
-          planner: this.buildPlannerContext(plan),
+          planner: this.buildPlannerContext(plan, askResults),
+          askResults,
+        },
+      };
+    }
+
+    const fallbackAwareDocumentReply =
+      composeFallbackAwareDocumentResults(askResults);
+
+    if (fallbackAwareDocumentReply) {
+      return {
+        content: fallbackAwareDocumentReply.content,
+        ragflowContext: {
+          contextReferences: fallbackAwareDocumentReply.contextReferences,
+          planner: this.buildPlannerContext(plan, askResults),
           askResults,
         },
       };
@@ -110,7 +138,20 @@ export class ChatTurnOrchestratorService {
         content: documentOnlyReply.content,
         ragflowContext: {
           contextReferences: documentOnlyReply.contextReferences,
-          planner: this.buildPlannerContext(plan),
+          planner: this.buildPlannerContext(plan, askResults),
+          askResults,
+        },
+      };
+    }
+
+    const documentsAndWebReply = composeDocumentsAndWebResults(askResults);
+
+    if (documentsAndWebReply) {
+      return {
+        content: documentsAndWebReply.content,
+        ragflowContext: {
+          contextReferences: documentsAndWebReply.contextReferences,
+          planner: this.buildPlannerContext(plan, askResults),
           askResults,
         },
       };
@@ -130,13 +171,13 @@ export class ChatTurnOrchestratorService {
       content,
       ragflowContext: {
         contextReferences,
-        planner: this.buildPlannerContext(plan),
+        planner: this.buildPlannerContext(plan, askResults),
         askResults,
       },
     };
   }
 
-  private executeAsk(input: {
+  private async executeAsk(input: {
     plan: ChatTurnPlan;
     ask: ChatTurnPlanAsk;
     session: ChatSessionEntity;
@@ -144,7 +185,9 @@ export class ChatTurnOrchestratorService {
     context: ChatConversationContext;
   }): Promise<ChatTurnAskResult> {
     if (this.shouldUseDocumentsResponder(input.ask)) {
-      return this.chatDocumentsResponderService.respond(input);
+      const documentResult = await this.chatDocumentsResponderService.respond(input);
+
+      return this.executeDocumentsWebFallbackIfNeeded(input, documentResult);
     }
 
     switch (input.ask.responder) {
@@ -192,11 +235,91 @@ export class ChatTurnOrchestratorService {
     return results;
   }
 
-  private buildPlannerContext(plan: ChatTurnPlan): ChatPlannerDiagnosticsContext {
+  private buildPlannerContext(
+    plan: ChatTurnPlan,
+    askResults: ChatTurnAskResult[] = [],
+  ): ChatPlannerDiagnosticsContext {
+    const webFallbackDiagnosticsByAskId = new Map<
+      string,
+      DocumentsWebFallbackDiagnostics
+    >();
+
+    for (const result of askResults) {
+      const diagnostics = getDocumentsWebFallbackDiagnostics(result);
+
+      if (diagnostics) {
+        webFallbackDiagnosticsByAskId.set(result.askId, diagnostics);
+      }
+    }
+
     return buildChatPlannerDiagnosticsContext({
       plan,
       resolveSelectedResponder: (ask) => this.resolveSelectedResponderKind(ask),
+      resolveWebFallbackDiagnostics: (ask) =>
+        webFallbackDiagnosticsByAskId.get(ask.id) ?? null,
     });
+  }
+
+  private async executeDocumentsWebFallbackIfNeeded(
+    input: {
+      plan: ChatTurnPlan;
+      ask: ChatTurnPlanAsk;
+      session: ChatSessionEntity;
+      messages: ChatMessageEntity[];
+      context: ChatConversationContext;
+    },
+    documentResult: ChatTurnAskResult,
+  ): Promise<ChatTurnAskResult> {
+    const diagnostics = evaluateDocumentsWebFallback({
+      ask: input.ask,
+      selectedResponder: this.resolveSelectedResponderKind(input.ask),
+      documentResult,
+    });
+
+    if (diagnostics.action !== 'executed') {
+      return withDocumentsWebFallbackDiagnostics(documentResult, diagnostics);
+    }
+
+    try {
+      const fallbackQuestion = buildDocumentsWebFallbackSearchQuestion({
+        ask: input.ask,
+        diagnostics,
+      });
+      const fallbackAsk = {
+        ...input.ask,
+        id: `${input.ask.id}-web-fallback`,
+        question: fallbackQuestion,
+        responder: ChatTurnResponderKind.WEB_SEARCH,
+        capabilityEnabled: true,
+        capabilityLabel: 'web fallback',
+      };
+      const webResult = await this.chatWebSearchResponderService.respond({
+        ...input,
+        plan: {
+          ...input.plan,
+          asks:
+            input.plan.asks.length === 1
+              ? [input.ask, fallbackAsk]
+              : input.plan.asks,
+        },
+        ask: fallbackAsk,
+      });
+      const executedDiagnostics = markDocumentsWebFallbackExecuted(
+        diagnostics,
+        webResult,
+      );
+
+      return withDocumentsWebFallbackDiagnostics(
+        documentResult,
+        executedDiagnostics,
+        webResult,
+      );
+    } catch (error) {
+      return withDocumentsWebFallbackDiagnostics(
+        documentResult,
+        markDocumentsWebFallbackFailed(diagnostics, error),
+      );
+    }
   }
 
   private resolveSelectedResponderKind(
@@ -213,7 +336,8 @@ export class ChatTurnOrchestratorService {
     return (
       this.configService.get<boolean>('chat.documentsResponderEnabled', false) ===
         true &&
-      ask.semanticRoute.route === ChatSemanticRoute.DOCUMENTS
+      (ask.semanticRoute.route === ChatSemanticRoute.DOCUMENTS ||
+        isDocumentsWebFallbackRoute(ask))
     );
   }
 }
