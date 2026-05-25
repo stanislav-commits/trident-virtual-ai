@@ -6,6 +6,7 @@ import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum
 import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
 import { ChatTurnAskResult } from '../responders/interfaces/chat-turn-responder.types';
 import { buildDocumentFallbackWebQuery } from './chat-document-web-query';
+import { formatSourceAwareSection } from './chat-source-aware-answer-formatting';
 
 export type DocumentsWebFallbackCondition =
   | 'if_documents_insufficient'
@@ -377,11 +378,18 @@ function composeDocumentsWebFallbackSummary(
     documentResult.summary,
   );
   const sections = [
-    ['Ship documents', documentSummary].join('\n'),
-    ['Web information', buildWebFallbackSection(diagnostics, webResult)].join('\n'),
+    formatSourceAwareSection('Ship documents', [
+      {
+        summary: documentSummary,
+        repeatedLeadingText: documentResult.question,
+      },
+    ]),
+    formatSourceAwareSection('Web information', [
+      { summary: buildWebFallbackSection(diagnostics, webResult) },
+    ]),
   ];
 
-  return sections.join('\n\n');
+  return sections.filter(Boolean).join('\n\n');
 }
 
 function buildWebFallbackSection(
@@ -396,10 +404,7 @@ function buildWebFallbackSection(
   }
 
   if (diagnostics.action === 'failed') {
-    return [
-      buildDocumentInsufficientSentence(diagnostics),
-      `${diagnostics.reason}. I could not use web information for this answer.`,
-    ].join(' ');
+    return `${diagnostics.reason}. I could not use web information for this answer.`;
   }
 
   return diagnostics.reason;
@@ -415,16 +420,10 @@ function buildWebFallbackIntro(
   }
 
   if (diagnostics.shipSpecificCaution) {
-    return [
-      buildDocumentInsufficientSentence(diagnostics),
-      'The web section below is general public background only and must not be treated as this vessel\'s confirmed PMS schedule, certificate status, equipment register, or current onboard state.',
-    ].join(' ');
+    return 'The web section below is general public background only and must not be treated as this vessel\'s confirmed PMS schedule, certificate status, equipment register, or current onboard state.';
   }
 
-  return [
-    buildDocumentInsufficientSentence(diagnostics),
-    'Web sources suggest the following general information.',
-  ].join(' ');
+  return 'Web sources suggest the following general information.';
 }
 
 function buildDocumentInsufficientSentence(

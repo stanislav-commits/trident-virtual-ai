@@ -4,6 +4,7 @@ import {
   getDocumentsWebFallbackDiagnostics,
   sanitizeDocumentSummaryForWebFallback,
 } from './chat-documents-web-fallback';
+import { formatSourceAwareSection } from './chat-source-aware-answer-formatting';
 
 interface ComposedSourceResult {
   content: string;
@@ -13,8 +14,14 @@ interface ComposedSourceResult {
 export function composeDocumentsAndWebResults(
   askResults: ChatTurnAskResult[],
 ): ComposedSourceResult | null {
-  const documentSummaries: string[] = [];
-  const webSummaries: string[] = [];
+  const documentSummaries: Array<{
+    summary: string;
+    repeatedLeadingText?: string;
+  }> = [];
+  const webSummaries: Array<{
+    summary: string;
+    repeatedLeadingText?: string;
+  }> = [];
   const unsupportedResults = askResults.filter(
     (result) =>
       result.responder !== ChatTurnResponderKind.DOCUMENTS &&
@@ -29,21 +36,28 @@ export function composeDocumentsAndWebResults(
     if (result.responder === ChatTurnResponderKind.DOCUMENTS) {
       const fallbackSections = getFallbackSummarySections(result);
 
-      documentSummaries.push(
-        sanitizeDocumentSummaryForWebFallback(
+      documentSummaries.push({
+        summary: sanitizeDocumentSummaryForWebFallback(
           fallbackSections.documentSummary ?? result.summary,
         ),
-      );
+        repeatedLeadingText: result.question,
+      });
 
       if (fallbackSections.webSummary) {
-        webSummaries.push(fallbackSections.webSummary);
+        webSummaries.push({
+          summary: fallbackSections.webSummary,
+          repeatedLeadingText: result.question,
+        });
       }
 
       continue;
     }
 
     if (result.responder === ChatTurnResponderKind.WEB_SEARCH) {
-      webSummaries.push(result.summary);
+      webSummaries.push({
+        summary: result.summary,
+        repeatedLeadingText: result.question,
+      });
     }
   }
 
@@ -53,9 +67,11 @@ export function composeDocumentsAndWebResults(
 
   return {
     content: [
-      formatSummarySection('Ship documents', documentSummaries),
-      formatSummarySection('Web information', webSummaries),
-    ].join('\n\n'),
+      formatSourceAwareSection('Ship documents', documentSummaries),
+      formatSourceAwareSection('Web information', webSummaries),
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
     contextReferences: askResults.flatMap(
       (result) => result.contextReferences ?? [],
     ),
@@ -75,17 +91,34 @@ export function composeFallbackAwareDocumentResults(
     return null;
   }
 
+  const documentSummaries = askResults.map((result) => {
+    const sections = getFallbackSummarySections(result);
+
+    return {
+      summary: sanitizeDocumentSummaryForWebFallback(
+        sections.documentSummary ?? result.summary,
+      ),
+      repeatedLeadingText: result.question,
+    };
+  });
+  const webSummaries = askResults.flatMap((result) => {
+    const sections = getFallbackSummarySections(result);
+    const failedFallbackSummary = getFailedFallbackWebSummary(result);
+
+    return sections.webSummary
+      ? [{ summary: sections.webSummary, repeatedLeadingText: result.question }]
+      : failedFallbackSummary
+        ? [{ summary: failedFallbackSummary }]
+        : [];
+  });
+
   return {
-    content:
-      askResults.length === 1
-        ? getFallbackAwareSummary(askResults[0])
-        : askResults
-            .map((result) =>
-              [result.question, getFallbackAwareSummary(result)]
-                .filter(Boolean)
-                .join('\n'),
-            )
-            .join('\n\n'),
+    content: [
+      formatSourceAwareSection('Ship documents', documentSummaries),
+      formatSourceAwareSection('Web information', webSummaries),
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
     contextReferences: askResults.flatMap(
       (result) => result.contextReferences ?? [],
     ),
@@ -98,40 +131,6 @@ export function hasDocumentWebFallbackOutput(
   const diagnostics = getDocumentsWebFallbackDiagnostics(result);
 
   return diagnostics?.action === 'executed' || diagnostics?.action === 'failed';
-}
-
-function formatSummarySection(
-  title: string,
-  summaries: string[],
-): string {
-  if (summaries.length === 1) {
-    return [title, summaries[0]].join('\n');
-  }
-
-  return [
-    title,
-    ...summaries.map((summary, index) =>
-      [`Source ${index + 1}`, summary].join('\n'),
-    ),
-  ].join('\n\n');
-}
-
-function getFallbackAwareSummary(result: ChatTurnAskResult): string {
-  const sections = getFallbackSummarySections(result);
-
-  if (!sections.webSummary) {
-    return result.summary;
-  }
-
-  return [
-    [
-      'Ship documents',
-      sanitizeDocumentSummaryForWebFallback(
-        sections.documentSummary ?? result.summary,
-      ),
-    ].join('\n'),
-    ['Web information', sections.webSummary].join('\n'),
-  ].join('\n\n');
 }
 
 function getFallbackSummarySections(result: ChatTurnAskResult): {
@@ -155,4 +154,18 @@ function getFallbackSummarySections(result: ChatTurnAskResult): {
     webSummary:
       typeof webFallback?.webSummary === 'string' ? webFallback.webSummary : null,
   };
+}
+
+function getFailedFallbackWebSummary(result: ChatTurnAskResult): string | null {
+  const diagnostics = getDocumentsWebFallbackDiagnostics(result);
+
+  if (diagnostics?.action !== 'failed') {
+    return null;
+  }
+
+  const match = result.summary.match(
+    /(?:^|\n)## Web information\s*\n+([\s\S]*?)(?=\n\n## |\s*$)/u,
+  );
+
+  return match?.[1]?.trim() || null;
 }
