@@ -167,6 +167,7 @@ export class ChatDocumentsResponderService {
             reason: attempt.reason,
             candidateDocClasses: attempt.candidateDocClasses ?? null,
           })),
+          webQueryContext: this.buildWebQueryContext(retrieval),
           resultCount: retrieval.results.length,
           answerGrounding: {
             status: groundedAnswer.groundingStatus,
@@ -243,6 +244,9 @@ export class ChatDocumentsResponderService {
           compositionMode: documentsRoute.compositionMode ?? 'synthesize',
           evidenceQuality: compositeEvidence.mergedRetrieval.evidenceQuality,
           answerability: compositeEvidence.mergedRetrieval.answerability,
+          webQueryContext: this.buildWebQueryContext(
+            compositeEvidence.mergedRetrieval,
+          ),
           components: componentResults.map((result) => ({
             id: result.component.id,
             label: getComponentLabel(result.component),
@@ -259,6 +263,7 @@ export class ChatDocumentsResponderService {
               reason: attempt.reason,
               candidateDocClasses: attempt.candidateDocClasses ?? null,
             })),
+            webQueryContext: this.buildWebQueryContext(result.retrieval),
             resultCount: result.retrieval.results.length,
           })),
           answerGrounding: {
@@ -532,6 +537,26 @@ export class ChatDocumentsResponderService {
     }
 
     return [`${runningHours} running hours`, `${runningHours} hours`];
+  }
+
+  private buildWebQueryContext(
+    retrieval: DocumentRetrievalResponseDto,
+  ): Record<string, unknown>[] {
+    return retrieval.results.slice(0, 3).map((result) => ({
+      sourceTitle: result.filename,
+      snippet: this.trimWebQueryContextSnippet(result.snippet),
+      metadataSummary: result.metadataSummary,
+    }));
+  }
+
+  private trimWebQueryContextSnippet(snippet: string): string {
+    const normalized = snippet.replace(/\s+/g, ' ').trim();
+
+    if (normalized.length <= 320) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, 319).trim()}\u2026`;
   }
 
   private buildMaintenanceScheduleSafetySummary(

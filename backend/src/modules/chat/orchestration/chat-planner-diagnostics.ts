@@ -102,8 +102,7 @@ export function buildChatPlannerDiagnosticsContext(
     .filter((value): value is DocumentsWebFallbackDiagnostics => value !== null);
   const runtimeBehaviorChanged = webFallbackDiagnostics.some(
     (diagnostics) =>
-      diagnostics.action !== 'skipped' &&
-      diagnostics.action !== 'not_applicable',
+      diagnostics.action === 'executed' || diagnostics.action === 'failed',
   );
 
   return {

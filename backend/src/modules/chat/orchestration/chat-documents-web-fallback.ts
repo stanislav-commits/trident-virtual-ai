@@ -5,6 +5,7 @@ import { ChatTurnPlanAsk } from '../planning/chat-turn-plan.types';
 import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum';
 import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
 import { ChatTurnAskResult } from '../responders/interfaces/chat-turn-responder.types';
+import { buildDocumentFallbackWebQuery } from './chat-document-web-query';
 
 export type DocumentsWebFallbackCondition =
   | 'if_documents_insufficient'
@@ -14,6 +15,7 @@ export type DocumentsWebFallbackCondition =
 export type DocumentsWebFallbackAction =
   | 'not_applicable'
   | 'skipped'
+  | 'skipped_document_answer_usable'
   | 'executed'
   | 'failed';
 
@@ -37,7 +39,10 @@ export interface DocumentsWebFallbackDiagnostics {
   reason: string;
   documentEvidenceQuality: DocumentRetrievalEvidenceQuality | null;
   documentGroundingStatus: string | null;
+  documentAnswerUsable: boolean;
+  documentAnswerUsabilityReason: string;
   shipSpecificCaution: boolean;
+  webSearchQuestion: string | null;
   webEvidenceAvailable: boolean | null;
   webSourceCount: number | null;
 }
@@ -49,11 +54,15 @@ export function evaluateDocumentsWebFallback(input: {
 }): DocumentsWebFallbackDiagnostics {
   const documentEvidenceQuality = getDocumentEvidenceQuality(input.documentResult);
   const documentGroundingStatus = getDocumentGroundingStatus(input.documentResult);
+  const documentAnswerUsability = assessDocumentAnswerUsability(
+    input.documentResult,
+  );
   const explicitWebFallback = hasExplicitWebFallbackIntent(input.ask);
   const freshnessRequired = hasFreshnessIntent(input.ask);
   const documentsInsufficient =
-    documentEvidenceQuality !== 'strong' ||
-    documentGroundingStatus === 'insufficient';
+    !documentAnswerUsability.usable &&
+    (documentEvidenceQuality !== 'strong' ||
+      documentGroundingStatus === 'insufficient');
   const automaticFallback = documentsInsufficient && !freshnessRequired;
   const requested = explicitWebFallback || freshnessRequired;
   const documentsFirst =
@@ -86,7 +95,10 @@ export function evaluateDocumentsWebFallback(input: {
       reason: 'Web fallback is only evaluated for document-primary asks.',
       documentEvidenceQuality,
       documentGroundingStatus,
+      documentAnswerUsable: documentAnswerUsability.usable,
+      documentAnswerUsabilityReason: documentAnswerUsability.reason,
       shipSpecificCaution,
+      webSearchQuestion: null,
       webEvidenceAvailable: null,
       webSourceCount: null,
     };
@@ -108,7 +120,10 @@ export function evaluateDocumentsWebFallback(input: {
         'Latest/current external information was requested after ship-document lookup.',
       documentEvidenceQuality,
       documentGroundingStatus,
+      documentAnswerUsable: documentAnswerUsability.usable,
+      documentAnswerUsabilityReason: documentAnswerUsability.reason,
       shipSpecificCaution,
+      webSearchQuestion: null,
       webEvidenceAvailable: null,
       webSourceCount: null,
     };
@@ -129,10 +144,38 @@ export function evaluateDocumentsWebFallback(input: {
       reason:
         documentGroundingStatus === 'insufficient'
           ? 'Ship-document answer grounding was insufficient, so web fallback will run after document lookup.'
-          : 'Ship-document evidence was not strong, so web fallback will run after document lookup.',
+          : 'Ship documents did not produce a usable grounded answer, so web fallback will run after document lookup.',
       documentEvidenceQuality,
       documentGroundingStatus,
+      documentAnswerUsable: documentAnswerUsability.usable,
+      documentAnswerUsabilityReason: documentAnswerUsability.reason,
       shipSpecificCaution,
+      webSearchQuestion: null,
+      webEvidenceAvailable: null,
+      webSourceCount: null,
+    };
+  }
+
+  if (documentAnswerUsability.usable && documentEvidenceQuality !== 'strong') {
+    return {
+      requested,
+      automaticFallback: false,
+      documentsFirst,
+      explicitWebFallback,
+      freshnessRequired,
+      latestInfoIntent: freshnessRequired,
+      documentsInsufficient,
+      fallbackCondition,
+      trigger: 'none',
+      action: 'skipped_document_answer_usable',
+      reason:
+        'Ship-document evidence was weak, but the document answer was grounded, cited, and usable, so web fallback was not needed.',
+      documentEvidenceQuality,
+      documentGroundingStatus,
+      documentAnswerUsable: documentAnswerUsability.usable,
+      documentAnswerUsabilityReason: documentAnswerUsability.reason,
+      shipSpecificCaution,
+      webSearchQuestion: null,
       webEvidenceAvailable: null,
       webSourceCount: null,
     };
@@ -153,7 +196,10 @@ export function evaluateDocumentsWebFallback(input: {
       'Ship-document evidence was strong, and no latest/current external-information supplement was requested.',
     documentEvidenceQuality,
     documentGroundingStatus,
+    documentAnswerUsable: documentAnswerUsability.usable,
+    documentAnswerUsabilityReason: documentAnswerUsability.reason,
     shipSpecificCaution,
+    webSearchQuestion: null,
     webEvidenceAvailable: null,
     webSourceCount: null,
   };
@@ -177,6 +223,7 @@ export function isDocumentsWebFallbackRoute(ask: ChatTurnPlanAsk): boolean {
 export function markDocumentsWebFallbackExecuted(
   diagnostics: DocumentsWebFallbackDiagnostics,
   webResult: ChatTurnAskResult,
+  webSearchQuestion: string,
 ): DocumentsWebFallbackDiagnostics {
   const sourceCount =
     typeof webResult.data?.sourceCount === 'number'
@@ -186,6 +233,7 @@ export function markDocumentsWebFallbackExecuted(
   return {
     ...diagnostics,
     action: 'executed',
+    webSearchQuestion,
     webEvidenceAvailable: sourceCount > 0 || Boolean(webResult.summary.trim()),
     webSourceCount: sourceCount,
   };
@@ -261,6 +309,12 @@ export function sanitizeDocumentSummaryForWebFallback(summary: string): string {
     .trim();
 }
 
+export function isDocumentAnswerUsableForFallbackDecision(
+  result: ChatTurnAskResult,
+): boolean {
+  return assessDocumentAnswerUsability(result).usable;
+}
+
 export function getDocumentsWebFallbackDiagnostics(
   result: ChatTurnAskResult,
 ): DocumentsWebFallbackDiagnostics | null {
@@ -277,8 +331,12 @@ export function getDocumentsWebFallbackDiagnostics(
 export function buildDocumentsWebFallbackSearchQuestion(input: {
   ask: ChatTurnPlanAsk;
   diagnostics: DocumentsWebFallbackDiagnostics;
+  documentResult?: ChatTurnAskResult | null;
 }): string {
-  const question = input.ask.question.trim();
+  const question = buildDocumentFallbackWebQuery({
+    ask: input.ask,
+    documentResult: input.documentResult,
+  });
 
   if (input.diagnostics.shipSpecificCaution) {
     return [
@@ -307,7 +365,11 @@ function composeDocumentsWebFallbackSummary(
   diagnostics: DocumentsWebFallbackDiagnostics,
   webResult?: ChatTurnAskResult,
 ): string {
-  if (diagnostics.action === 'skipped' || diagnostics.action === 'not_applicable') {
+  if (
+    diagnostics.action === 'skipped' ||
+    diagnostics.action === 'skipped_document_answer_usable' ||
+    diagnostics.action === 'not_applicable'
+  ) {
     return documentResult.summary;
   }
 
@@ -442,6 +504,61 @@ function getDocumentGroundingStatus(result: ChatTurnAskResult): string | null {
   return typeof status === 'string' ? status : null;
 }
 
+function assessDocumentAnswerUsability(
+  result: ChatTurnAskResult,
+): { usable: boolean; reason: string } {
+  const evidenceQuality = getDocumentEvidenceQuality(result);
+  const groundingStatus = getDocumentGroundingStatus(result);
+  const status = typeof result.data?.status === 'string' ? result.data.status : null;
+  const summary = sanitizeDocumentSummaryForWebFallback(result.summary);
+  const hasContextReferences = (result.contextReferences?.length ?? 0) > 0;
+  const hasCitationMarkers = /\[\d{1,2}\]/u.test(summary);
+
+  if (status === 'retrieval_failed' || status === 'missing_ship_context') {
+    return { usable: false, reason: `Document responder status was ${status}.` };
+  }
+
+  if (evidenceQuality === 'none' || status === 'no_evidence') {
+    return {
+      usable: false,
+      reason: 'Document retrieval found no usable evidence.',
+    };
+  }
+
+  if (groundingStatus === 'insufficient') {
+    return {
+      usable: false,
+      reason: 'Document answer grounding status was insufficient.',
+    };
+  }
+
+  if (isInsufficientEvidenceFallbackSummary(summary)) {
+    return {
+      usable: false,
+      reason: 'Document answer was an insufficient-evidence fallback.',
+    };
+  }
+
+  if (!hasContextReferences && !hasCitationMarkers) {
+    return {
+      usable: false,
+      reason: 'Document answer did not expose document citations or context references.',
+    };
+  }
+
+  if (!hasMeaningfulAnswerContent(summary)) {
+    return {
+      usable: false,
+      reason: 'Document answer did not contain enough meaningful content.',
+    };
+  }
+
+  return {
+    usable: true,
+    reason: 'Document answer was grounded, cited, and contained meaningful content.',
+  };
+}
+
 function hasExplicitWebFallbackIntent(ask: ChatTurnPlanAsk): boolean {
   const route = ask.semanticRoute;
 
@@ -500,6 +617,24 @@ function hasFreshnessWording(question: string): boolean {
   return /\b(?:latest|newest|most\s+recent|up[-\s]?to[-\s]?date|current\s+(?:external|online|web|public)?\s*(?:version|info|information|manual)?)\b/u.test(
     normalized,
   );
+}
+
+function isInsufficientEvidenceFallbackSummary(summary: string): boolean {
+  const normalized = normalizeQuestion(summary);
+
+  return /\b(?:could not find|cannot find|did not find|no relevant|no parsed documents?|no usable|not enough|insufficient|ambiguous|do not clearly support|does not clearly support|did not support|cannot safely|could not safely|not confidently|answer model did not return|not found in (?:the )?(?:uploaded )?(?:ship )?documents?)\b/u.test(
+    normalized,
+  );
+}
+
+function hasMeaningfulAnswerContent(summary: string): boolean {
+  const normalized = summary
+    .replace(/\[\d{1,2}\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = normalized.match(/\b[\p{L}\p{N}][\p{L}\p{N}'-]*\b/gu) ?? [];
+
+  return normalized.length >= 32 && words.length >= 6;
 }
 
 function normalizeQuestion(question: string): string {

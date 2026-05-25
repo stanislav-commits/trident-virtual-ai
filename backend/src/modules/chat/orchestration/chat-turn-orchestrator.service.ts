@@ -26,6 +26,7 @@ import {
   composeDocumentsAndWebResults,
   composeFallbackAwareDocumentResults,
 } from './chat-source-result-composition';
+import { buildDocumentFallbackWebQuery } from './chat-document-web-query';
 import {
   buildDocumentsWebFallbackSearchQuestion,
   DocumentsWebFallbackDiagnostics,
@@ -85,18 +86,26 @@ export class ChatTurnOrchestratorService {
       };
     }
 
-    const askResults = await this.mapWithConcurrencyLimit(
-      asks,
-      this.askExecutionConcurrency,
-      (ask) =>
-        this.executeAsk({
+    const askResults = this.shouldUseDocumentContextualWebExecution(asks)
+      ? await this.executeDocumentContextualWebPlan({
           plan,
-          ask,
+          asks,
           session: input.session,
           messages: input.messages,
           context: input.context,
-        }),
-    );
+        })
+      : await this.mapWithConcurrencyLimit(
+          asks,
+          this.askExecutionConcurrency,
+          (ask) =>
+            this.executeAsk({
+              plan,
+              ask,
+              session: input.session,
+              messages: input.messages,
+              context: input.context,
+            }),
+        );
 
     if (
       askResults.length === 1 &&
@@ -235,6 +244,88 @@ export class ChatTurnOrchestratorService {
     return results;
   }
 
+  private async executeDocumentContextualWebPlan(input: {
+    plan: ChatTurnPlan;
+    asks: ChatTurnPlanAsk[];
+    session: ChatSessionEntity;
+    messages: ChatMessageEntity[];
+    context: ChatConversationContext;
+  }): Promise<ChatTurnAskResult[]> {
+    const results = new Array<ChatTurnAskResult>(input.asks.length);
+    const documentIndexes = input.asks
+      .map((ask, index) => ({ ask, index }))
+      .filter(({ ask }) => this.shouldUseDocumentsResponder(ask));
+
+    await Promise.all(
+      documentIndexes.map(async ({ ask, index }) => {
+        results[index] = await this.executeAsk({
+          plan: input.plan,
+          ask,
+          session: input.session,
+          messages: input.messages,
+          context: input.context,
+        });
+      }),
+    );
+
+    for (const [index, ask] of input.asks.entries()) {
+      if (results[index]) {
+        continue;
+      }
+
+      const contextualAsk =
+        ask.responder === ChatTurnResponderKind.WEB_SEARCH
+          ? this.buildDocumentContextualWebAsk(ask, results)
+          : ask;
+      const contextualPlan =
+        contextualAsk === ask
+          ? input.plan
+          : {
+              ...input.plan,
+              asks: input.plan.asks.map((planAsk) =>
+                planAsk.id === contextualAsk.id ? contextualAsk : planAsk,
+              ),
+            };
+
+      results[index] = await this.executeAsk({
+        plan: contextualPlan,
+        ask: contextualAsk,
+        session: input.session,
+        messages: input.messages,
+        context: input.context,
+      });
+    }
+
+    return results;
+  }
+
+  private buildDocumentContextualWebAsk(
+    ask: ChatTurnPlanAsk,
+    askResults: ChatTurnAskResult[],
+  ): ChatTurnPlanAsk {
+    const documentResult = askResults.find(
+      (result) => result?.responder === ChatTurnResponderKind.DOCUMENTS,
+    );
+
+    if (!documentResult) {
+      return ask;
+    }
+
+    const contextualQuestion = buildDocumentFallbackWebQuery({
+      ask,
+      documentResult,
+    });
+
+    if (!contextualQuestion || contextualQuestion === ask.question) {
+      return ask;
+    }
+
+    return {
+      ...ask,
+      question: contextualQuestion,
+    };
+  }
+
   private buildPlannerContext(
     plan: ChatTurnPlan,
     askResults: ChatTurnAskResult[] = [],
@@ -284,6 +375,7 @@ export class ChatTurnOrchestratorService {
       const fallbackQuestion = buildDocumentsWebFallbackSearchQuestion({
         ask: input.ask,
         diagnostics,
+        documentResult,
       });
       const fallbackAsk = {
         ...input.ask,
@@ -307,6 +399,7 @@ export class ChatTurnOrchestratorService {
       const executedDiagnostics = markDocumentsWebFallbackExecuted(
         diagnostics,
         webResult,
+        fallbackQuestion,
       );
 
       return withDocumentsWebFallbackDiagnostics(
@@ -339,5 +432,21 @@ export class ChatTurnOrchestratorService {
       (ask.semanticRoute.route === ChatSemanticRoute.DOCUMENTS ||
         isDocumentsWebFallbackRoute(ask))
     );
+  }
+
+  private shouldUseDocumentContextualWebExecution(
+    asks: ChatTurnPlanAsk[],
+  ): boolean {
+    const hasDocumentAsk = asks.some((ask) => this.shouldUseDocumentsResponder(ask));
+    const hasWebAsk = asks.some(
+      (ask) => ask.responder === ChatTurnResponderKind.WEB_SEARCH,
+    );
+    const hasMetricsAsk = asks.some(
+      (ask) =>
+        ask.responder === ChatTurnResponderKind.METRICS ||
+        ask.semanticRoute.sourcePolicy.allowMetrics,
+    );
+
+    return hasDocumentAsk && hasWebAsk && !hasMetricsAsk;
   }
 }
