@@ -1,134 +1,137 @@
+import { ChatSemanticDocumentsRoute } from '../routing/chat-semantic-router.types';
 import { ChatTurnPlanAsk } from '../planning/chat-turn-plan.types';
 import { ChatTurnAskResult } from '../responders/interfaces/chat-turn-responder.types';
 
-interface DocumentWebQueryContext {
+interface DocumentWebQueryMetadata {
+  equipmentOrSystem: string | null;
+  equipmentName: string | null;
+  equipmentAliases: string | null;
   manufacturer: string | null;
   model: string | null;
-  equipment: string | null;
-  purpose: string | null;
-  freshness: boolean;
-  supportingBrand: string | null;
-  residualFocus: string[];
+  systemArea: string | null;
+  documentPurpose: string | null;
+  documentRole: string | null;
+  contentFocus: string | null;
 }
+
+interface DocumentWebQuerySource {
+  sourceTitle: string | null;
+  metadata: DocumentWebQueryMetadata;
+}
+
+const GENERIC_DOCUMENT_TITLE_TOKENS = new Set([
+  'doc',
+  'document',
+  'documents',
+  'file',
+  'manual',
+  'manuals',
+  'pdf',
+  'revision',
+  'rev',
+  'version',
+]);
 
 export function buildDocumentFallbackWebQuery(input: {
   ask: ChatTurnPlanAsk;
   documentResult?: ChatTurnAskResult | null;
 }): string {
-  const context = buildDocumentWebQueryContext(input);
-  const manufacturerPart =
-    context.manufacturer &&
-    context.model
-      ?.toLocaleLowerCase()
-      .includes(context.manufacturer.toLocaleLowerCase())
-      ? null
-      : context.manufacturer;
-  const queryParts = [
-    manufacturerPart,
-    context.model,
-    ...context.residualFocus,
-    context.equipment,
-    context.purpose,
-    context.freshness ? 'latest revision' : null,
-    context.supportingBrand,
-  ]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .map((value) => value.trim());
-  const contextualQuery = dedupePhrases(queryParts).join(' ').trim();
+  const originalQuestion = normalizeSearchText(input.ask.question);
+  const documentsRoute = input.ask.semanticRoute.documents;
+  const semanticIdentity = collectSemanticIdentity(documentsRoute);
+  const semanticPurpose = collectSemanticPurpose(documentsRoute);
+  const documentSource = selectDocumentSource(input.documentResult);
+  const useDocumentSource =
+    documentSource !== null &&
+    isSpecificDocumentSource(documentSource) &&
+    !conflictsWithSemanticIdentity(documentSource, documentsRoute);
+  const documentIdentity = useDocumentSource
+    ? collectDocumentIdentity(documentSource)
+    : [];
+  const documentPurpose = useDocumentSource
+    ? collectDocumentPurpose(documentSource.metadata)
+    : [];
+  const documentTitle =
+    useDocumentSource && shouldIncludeDocumentTitle(documentSource, documentIdentity)
+      ? documentSource.sourceTitle
+      : null;
+  const semanticTitle = normalizeSpecificTitle(documentsRoute.documentTitleHint);
+  const hasAttributableContext =
+    documentIdentity.length > 0 ||
+    Boolean(documentTitle) ||
+    semanticIdentity.length > 0 ||
+    Boolean(semanticTitle);
 
-  return contextualQuery || normalizeSearchText(input.ask.question);
-}
-
-function buildDocumentWebQueryContext(input: {
-  ask: ChatTurnPlanAsk;
-  documentResult?: ChatTurnAskResult | null;
-}): DocumentWebQueryContext {
-  const askText = collectAskText(input.ask);
-  const documentText = collectDocumentResultText(input.documentResult);
-  const combinedText = [askText, documentText].filter(Boolean).join(' ');
-  const askModel = extractModel(askText);
-  const documentModel = extractModel(documentText);
-  const askManufacturer = extractManufacturer(askText, askModel);
-  const documentManufacturer = extractManufacturer(documentText, documentModel);
-  const manufacturer = askManufacturer ?? documentManufacturer;
-  const model = askModel ?? documentModel;
-  const equipment = extractEquipment(combinedText, manufacturer, model);
-  const purpose = extractDocumentPurpose(askText, combinedText);
-  const freshness = hasFreshnessIntent(askText);
-
-  return {
-    manufacturer,
-    model,
-    equipment,
-    purpose,
-    freshness,
-    supportingBrand: buildSupportingBrand(manufacturer),
-    residualFocus: buildResidualFocus(input.ask.question, {
-      manufacturer,
-      model,
-      equipment,
-      purpose,
-    }),
-  };
-}
-
-function collectAskText(ask: ChatTurnPlanAsk): string {
-  const documentsRoute = ask.semanticRoute.documents;
-
-  return [
-    ask.question,
-    documentsRoute.documentTitleHint,
-    documentsRoute.retrievalQuery,
-    ...documentsRoute.manufacturerHints,
-    ...documentsRoute.modelHints,
-    ...documentsRoute.equipmentOrSystemHints,
-    ...documentsRoute.contentFocusHints,
-  ]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .map(normalizeSearchText)
-    .join(' ');
-}
-
-function collectDocumentResultText(
-  result?: ChatTurnAskResult | null,
-): string {
-  if (!result) {
-    return '';
+  if (!hasAttributableContext) {
+    return originalQuestion;
   }
 
-  const contextReferences = Array.isArray(result.contextReferences)
-    ? result.contextReferences
-    : [];
-  const referenceText = contextReferences
-    .flatMap((reference) => {
-      if (!reference || typeof reference !== 'object') {
-        return [];
-      }
+  const preserveOriginalQuestion =
+    !useDocumentSource || semanticIdentity.length === 0;
+  const queryParts = [
+    ...documentIdentity,
+    documentTitle,
+    ...semanticIdentity,
+    semanticTitle,
+    ...documentPurpose,
+    ...semanticPurpose,
+    preserveOriginalQuestion ? originalQuestion : null,
+    hasFreshnessIntent(input.ask) ? 'latest revision' : null,
+  ].filter((value): value is string => Boolean(value?.trim()));
 
-      const entry = reference as Record<string, unknown>;
-
-      return [
-        typeof entry.sourceTitle === 'string' ? entry.sourceTitle : null,
-        typeof entry.snippet === 'string' ? entry.snippet : null,
-      ];
-    })
-    .filter((value): value is string => Boolean(value?.trim()));
-  const webQueryContextText = collectWebQueryContextText(result.data);
-
-  return [
-    result.question,
-    result.summary,
-    ...referenceText,
-    ...webQueryContextText,
-  ]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .map(normalizeSearchText)
-    .join(' ');
+  return dedupePhrases(queryParts.map(normalizeSearchText)).join(' ').trim() ||
+    originalQuestion;
 }
 
-function collectWebQueryContextText(
+function collectSemanticIdentity(documentsRoute: ChatSemanticDocumentsRoute): string[] {
+  return dedupePhrases(
+    [
+      ...documentsRoute.manufacturerHints,
+      ...documentsRoute.modelHints,
+      ...documentsRoute.equipmentOrSystemHints,
+    ].map(normalizeSearchText),
+  );
+}
+
+function collectSemanticPurpose(documentsRoute: ChatSemanticDocumentsRoute): string[] {
+  return dedupePhrases(documentsRoute.contentFocusHints.map(normalizeSearchText));
+}
+
+function selectDocumentSource(
+  result?: ChatTurnAskResult | null,
+): DocumentWebQuerySource | null {
+  const webQuerySources = collectWebQuerySources(result?.data);
+
+  if (webQuerySources.length > 0) {
+    return webQuerySources[0];
+  }
+
+  if (!Array.isArray(result?.contextReferences)) {
+    return null;
+  }
+
+  for (const reference of result.contextReferences) {
+    if (!reference || typeof reference !== 'object') {
+      continue;
+    }
+
+    const entry = reference as Record<string, unknown>;
+    const sourceTitle = readText(entry, 'sourceTitle');
+
+    if (sourceTitle) {
+      return {
+        sourceTitle,
+        metadata: emptyMetadata(),
+      };
+    }
+  }
+
+  return null;
+}
+
+function collectWebQuerySources(
   data?: Record<string, unknown> | null,
-): string[] {
+): DocumentWebQuerySource[] {
   if (!data?.retrieval || typeof data.retrieval !== 'object') {
     return [];
   }
@@ -138,167 +141,195 @@ function collectWebQueryContextText(
     ? retrieval.webQueryContext
     : [];
 
-  return contexts
-    .flatMap((context) => {
-      if (!context || typeof context !== 'object') {
-        return [];
-      }
+  return contexts.flatMap((context) => {
+    if (!context || typeof context !== 'object') {
+      return [];
+    }
 
-      const entry = context as Record<string, unknown>;
-      const metadata =
-        entry.metadataSummary && typeof entry.metadataSummary === 'object'
-          ? (entry.metadataSummary as Record<string, unknown>)
-          : null;
+    const entry = context as Record<string, unknown>;
+    const metadata =
+      entry.metadataSummary && typeof entry.metadataSummary === 'object'
+        ? (entry.metadataSummary as Record<string, unknown>)
+        : null;
 
-      return [
-        typeof entry.sourceTitle === 'string' ? entry.sourceTitle : null,
-        typeof entry.snippet === 'string' ? entry.snippet : null,
-        metadata && typeof metadata.equipmentOrSystem === 'string'
-          ? metadata.equipmentOrSystem
-          : null,
-        metadata && typeof metadata.manufacturer === 'string'
-          ? metadata.manufacturer
-          : null,
-        metadata && typeof metadata.model === 'string' ? metadata.model : null,
-        metadata && typeof metadata.contentFocus === 'string'
-          ? metadata.contentFocus
-          : null,
-      ];
-    })
-    .filter((value): value is string => Boolean(value?.trim()));
+    return [
+      {
+        sourceTitle: readText(entry, 'sourceTitle'),
+        metadata: {
+          equipmentOrSystem: readText(metadata, 'equipmentOrSystem'),
+          equipmentName: readText(metadata, 'equipmentName'),
+          equipmentAliases: readText(metadata, 'equipmentAliases'),
+          manufacturer: readText(metadata, 'manufacturer'),
+          model: readText(metadata, 'model'),
+          systemArea: readText(metadata, 'systemArea'),
+          documentPurpose: readText(metadata, 'documentPurpose'),
+          documentRole: readText(metadata, 'documentRole'),
+          contentFocus: readText(metadata, 'contentFocus'),
+        },
+      },
+    ];
+  });
 }
 
-function extractManufacturer(text: string, model: string | null): string | null {
-  const normalized = text.toLocaleLowerCase();
-
-  if (model?.toLocaleLowerCase().startsWith('vs ')) {
-    return 'MASE';
-  }
-
-  if (model === 'Volvo Penta D13') {
-    return 'Volvo Penta';
-  }
-
-  if (/\bvolvo\s+penta\b/u.test(normalized)) {
-    return 'Volvo Penta';
-  }
-
-  if (/\bmase\b/u.test(normalized)) {
-    return 'MASE';
-  }
-
-  return null;
+function emptyMetadata(): DocumentWebQueryMetadata {
+  return {
+    equipmentOrSystem: null,
+    equipmentName: null,
+    equipmentAliases: null,
+    manufacturer: null,
+    model: null,
+    systemArea: null,
+    documentPurpose: null,
+    documentRole: null,
+    contentFocus: null,
+  };
 }
 
-function extractModel(text: string): string | null {
-  const maseVsModel = text.match(/\bvs\s*[-_ ]?\s*(\d{2,4})\s*(sv|vls)?\b/iu);
+function collectDocumentIdentity(source: DocumentWebQuerySource): string[] {
+  const metadata = source.metadata;
+  const equipment =
+    metadata.equipmentName ??
+    metadata.equipmentOrSystem ??
+    metadata.equipmentAliases ??
+    metadata.systemArea;
 
-  if (
-    maseVsModel?.[1] &&
-    (/\bmase\b/iu.test(text) || /\b(?:generator|genset|gen\s*set)\b/iu.test(text))
-  ) {
-    return ['VS', maseVsModel[1], maseVsModel[2]?.toUpperCase()]
-      .filter(Boolean)
-      .join(' ');
-  }
-
-  const volvoPentaD13 = text.match(/\bvolvo\s+penta\s+d13\b/iu)?.[0];
-
-  if (volvoPentaD13) {
-    return 'Volvo Penta D13';
-  }
-
-  if (/\bvolvo\b/iu.test(text) && /\bd13\b/iu.test(text)) {
-    return 'Volvo Penta D13';
-  }
-
-  if (maseVsModel?.[1]) {
-    return ['VS', maseVsModel[1], maseVsModel[2]?.toUpperCase()]
-      .filter(Boolean)
-      .join(' ');
-  }
-
-  return null;
-}
-
-function extractEquipment(
-  text: string,
-  manufacturer: string | null,
-  model: string | null,
-): string | null {
-  const normalized = text.toLocaleLowerCase();
-
-  if (
-    manufacturer === 'Volvo Penta' &&
-    model?.toLocaleLowerCase().includes('d13')
-  ) {
-    return null;
-  }
-
-  if (/\b(?:generator|genset|gen\s*set)\b/u.test(normalized)) {
-    return 'generator';
-  }
-
-  return null;
-}
-
-function extractDocumentPurpose(askText: string, combinedText: string): string {
-  const normalizedAsk = askText.toLocaleLowerCase();
-  const normalizedCombined = combinedText.toLocaleLowerCase();
-
-  if (/\bservice\s+manual\b/u.test(normalizedAsk)) {
-    return 'service manual';
-  }
-
-  if (/\b(?:use|maintenance|installation)\b/u.test(normalizedCombined)) {
-    return 'use maintenance installation manual';
-  }
-
-  return 'manual';
-}
-
-function buildSupportingBrand(manufacturer: string | null): string | null {
-  if (manufacturer === 'MASE') {
-    return 'Mase Generators';
-  }
-
-  return null;
-}
-
-function buildResidualFocus(
-  question: string,
-  context: {
-    manufacturer: string | null;
-    model: string | null;
-    equipment: string | null;
-    purpose: string | null;
-  },
-): string[] {
-  const normalized = normalizeSearchText(question);
-
-  // Generic equipment/purpose terms do not replace the user's requested subject.
-  if (context.manufacturer || context.model) {
-    return [];
-  }
-
-  return [stripGenericOperationalAliases(normalized)].filter(Boolean);
-}
-
-function hasFreshnessIntent(text: string): boolean {
-  return /\b(?:latest|newest|most\s+recent|up[-\s]?to[-\s]?date|current\s+(?:external|online|web|public)?\s*(?:version|info|information|manual)?|online\s+version|latest\s+revision)\b/iu.test(
-    text,
+  return dedupePhrases(
+    [metadata.manufacturer, metadata.model, equipment]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map(normalizeSearchText),
   );
 }
 
-function stripGenericOperationalAliases(text: string): string {
-  return text
-    .replace(
-      /\b(?:port|starboard|ps|sb)\s+(?:side\s+)?(?:generator|genset|gen\s*set)\b/giu,
-      'generator',
+function collectDocumentPurpose(metadata: DocumentWebQueryMetadata): string[] {
+  const purpose =
+    metadata.documentPurpose ?? metadata.documentRole ?? metadata.contentFocus;
+
+  return purpose ? [normalizeSearchText(purpose)] : [];
+}
+
+function isSpecificDocumentSource(source: DocumentWebQuerySource): boolean {
+  const metadata = source.metadata;
+
+  if (
+    metadata.manufacturer ||
+    metadata.model ||
+    metadata.equipmentName ||
+    metadata.equipmentOrSystem ||
+    metadata.equipmentAliases ||
+    metadata.systemArea
+  ) {
+    return true;
+  }
+
+  return Boolean(normalizeSpecificTitle(source.sourceTitle));
+}
+
+function shouldIncludeDocumentTitle(
+  source: DocumentWebQuerySource,
+  identity: string[],
+): boolean {
+  const title = normalizeSpecificTitle(source.sourceTitle);
+
+  if (!title) {
+    return false;
+  }
+
+  const identityTokens = tokenizeSignificantText(identity.join(' '));
+
+  return [...tokenizeSignificantText(title)].some(
+    (token) => !identityTokens.has(token),
+  );
+}
+
+function conflictsWithSemanticIdentity(
+  source: DocumentWebQuerySource,
+  documentsRoute: ChatSemanticDocumentsRoute,
+): boolean {
+  const metadata = source.metadata;
+
+  if (
+    metadata.manufacturer &&
+    documentsRoute.manufacturerHints.length > 0 &&
+    !hasTextOverlap(metadata.manufacturer, documentsRoute.manufacturerHints)
+  ) {
+    return true;
+  }
+
+  if (
+    metadata.model &&
+    documentsRoute.modelHints.length > 0 &&
+    !hasTextOverlap(metadata.model, documentsRoute.modelHints)
+  ) {
+    return true;
+  }
+
+  const equipment = [
+    metadata.equipmentName,
+    metadata.equipmentOrSystem,
+    metadata.equipmentAliases,
+    metadata.systemArea,
+  ].filter((value): value is string => Boolean(value?.trim()));
+
+  if (documentsRoute.equipmentOrSystemHints.length === 0) {
+    return false;
+  }
+
+  if (equipment.length > 0) {
+    return !hasTextOverlap(equipment.join(' '), documentsRoute.equipmentOrSystemHints);
+  }
+
+  return Boolean(
+    source.sourceTitle &&
+      !hasTextOverlap(source.sourceTitle, documentsRoute.equipmentOrSystemHints),
+  );
+}
+
+function hasTextOverlap(value: string, hints: string[]): boolean {
+  const valueTokens = tokenizeSignificantText(value);
+
+  return hints.some((hint) =>
+    [...tokenizeSignificantText(hint)].some((token) => valueTokens.has(token)),
+  );
+}
+
+function normalizeSpecificTitle(value: string | null | undefined): string | null {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  const normalized = normalizeSearchText(value);
+  const significantTokens = [...tokenizeSignificantText(normalized)].filter(
+    (token) => !GENERIC_DOCUMENT_TITLE_TOKENS.has(token),
+  );
+
+  return significantTokens.length > 0 ? normalized : null;
+}
+
+function tokenizeSignificantText(value: string): Set<string> {
+  return new Set(
+    normalizeSearchText(value)
+      .toLocaleLowerCase()
+      .split(/\s+/u)
+      .filter((token) => token.length >= 2 && !GENERIC_DOCUMENT_TITLE_TOKENS.has(token)),
+  );
+}
+
+function hasFreshnessIntent(ask: ChatTurnPlanAsk): boolean {
+  return (
+    ask.semanticRoute.web?.freshnessRequired === true ||
+    /\b(?:latest|newest|most\s+recent|up[-\s]?to[-\s]?date|current\s+(?:external|online|web|public)?\s*(?:version|info|information|manual)?|online\s+version|latest\s+revision)\b/iu.test(
+      ask.question,
     )
-    .replace(/\b(?:ps|sb)\s+(?:genset|gen\s*set)\b/giu, 'generator')
-    .replace(/\s+/g, ' ')
-    .trim();
+  );
+}
+
+function readText(
+  value: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const entry = value?.[key];
+
+  return typeof entry === 'string' && entry.trim() ? entry.trim() : null;
 }
 
 function dedupePhrases(values: string[]): string[] {
@@ -321,7 +352,7 @@ function dedupePhrases(values: string[]): string[] {
 
 function normalizeSearchText(value: string): string {
   return value
-    .replace(/(?:â|â€“|[_\u2013\u2014])/g, ' ')
+    .replace(/[_\u2013\u2014]/gu, ' ')
     .replace(/\.[a-z0-9]{2,5}\b/giu, ' ')
     .replace(/[^\p{L}\p{N}/+-]+/gu, ' ')
     .replace(/\s+/g, ' ')

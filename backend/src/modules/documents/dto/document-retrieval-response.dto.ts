@@ -1,6 +1,7 @@
 import { SourceReferenceDto } from '../../../common/dto/source-reference.dto';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
 import { DocumentParseProfile } from '../enums/document-parse-profile.enum';
+import { DocumentRole } from '../enums/document-role.enum';
 import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-question-type.enum';
 
 export type DocumentRetrievalEvidenceQuality = 'strong' | 'weak' | 'none';
@@ -35,8 +36,13 @@ export class DocumentRetrievalAppliedFiltersDto {
 
 export class DocumentRetrievalMetadataSummaryDto {
   equipmentOrSystem!: string | null;
+  equipmentName!: string | null;
+  equipmentAliases!: string | null;
   manufacturer!: string | null;
   model!: string | null;
+  systemArea!: string | null;
+  documentPurpose!: string | null;
+  documentRole!: DocumentRole | null;
   revision!: string | null;
   language!: string | null;
   timeScope!: string;

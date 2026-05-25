@@ -203,8 +203,13 @@ export class DocumentsRetrievalMapper {
       rerankScore: candidate.rerankScore,
       metadataSummary: {
         equipmentOrSystem: candidate.document.equipmentOrSystem,
+        equipmentName: candidate.document.equipmentName,
+        equipmentAliases: candidate.document.equipmentAliases,
         manufacturer: candidate.document.manufacturer,
         model: candidate.document.model,
+        systemArea: candidate.document.systemArea,
+        documentPurpose: candidate.document.documentPurpose,
+        documentRole: candidate.document.documentRole,
         revision: candidate.document.revision,
         language: candidate.document.language,
         timeScope: candidate.document.timeScope,
