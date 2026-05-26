@@ -386,7 +386,9 @@ function composeDocumentsWebFallbackSummary(
     ]),
     formatSourceAwareSection('Web information', [
       { summary: buildWebFallbackSection(diagnostics, webResult) },
-    ]),
+    ], {
+      conciseWebInformation: diagnostics.action === 'executed',
+    }),
   ];
 
   return sections.filter(Boolean).join('\n\n');
@@ -400,7 +402,8 @@ function buildWebFallbackSection(
     return [
       buildWebFallbackIntro(diagnostics),
       webResult.summary,
-    ].join('\n\n');
+      buildWebFallbackLimit(diagnostics),
+    ].filter(Boolean).join('\n\n');
   }
 
   if (diagnostics.action === 'failed') {
@@ -413,17 +416,28 @@ function buildWebFallbackSection(
 function buildWebFallbackIntro(
   diagnostics: DocumentsWebFallbackDiagnostics,
 ): string {
+  if (diagnostics.documentsInsufficient) {
+    return 'I could not confirm this from the uploaded ship documents. Public sources suggest:';
+  }
+
   if (diagnostics.freshnessRequired) {
-    return diagnostics.shipSpecificCaution
-      ? 'The uploaded ship documents were checked first. The web section below is general/latest public information and may not match this vessel\'s exact configuration or onboard records.'
-      : 'The uploaded ship documents were checked first. The web section below is latest/public information from external sources.';
+    return 'The uploaded ship documents were checked first. Public sources add this latest/current information:';
   }
 
-  if (diagnostics.shipSpecificCaution) {
-    return 'The web section below is general public background only and must not be treated as this vessel\'s confirmed PMS schedule, certificate status, equipment register, or current onboard state.';
+  return 'Public sources suggest:';
+}
+
+function buildWebFallbackLimit(
+  diagnostics: DocumentsWebFallbackDiagnostics,
+): string {
+  if (!diagnostics.shipSpecificCaution) {
+    return '';
   }
 
-  return 'Web sources suggest the following general information.';
+  return [
+    'Limit:',
+    'This is general public information, not confirmation of this vessel\'s onboard records or exact configuration.',
+  ].join('\n');
 }
 
 function buildDocumentInsufficientSentence(

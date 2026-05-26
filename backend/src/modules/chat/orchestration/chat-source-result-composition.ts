@@ -67,8 +67,13 @@ export function composeDocumentsAndWebResults(
 
   return {
     content: [
-      formatSourceAwareSection('Ship documents', documentSummaries),
-      formatSourceAwareSection('Web information', webSummaries),
+      formatSourceAwareSection('Ship documents', documentSummaries, {
+        groupRelatedEntries: documentSummaries.length > 1,
+        collapseRepeatedLeadingBoilerplate: true,
+      }),
+      formatSourceAwareSection('Web information', webSummaries, {
+        conciseWebInformation: true,
+      }),
     ]
       .filter(Boolean)
       .join('\n\n'),
@@ -114,8 +119,13 @@ export function composeFallbackAwareDocumentResults(
 
   return {
     content: [
-      formatSourceAwareSection('Ship documents', documentSummaries),
-      formatSourceAwareSection('Web information', webSummaries),
+      formatSourceAwareSection('Ship documents', documentSummaries, {
+        groupRelatedEntries: documentSummaries.length > 1,
+        collapseRepeatedLeadingBoilerplate: true,
+      }),
+      formatSourceAwareSection('Web information', webSummaries, {
+        conciseWebInformation: true,
+      }),
     ]
       .filter(Boolean)
       .join('\n\n'),
@@ -146,13 +156,18 @@ function getFallbackSummarySections(result: ChatTurnAskResult): {
       ? (result.data.webFallback as Record<string, unknown>)
       : null;
 
+  const renderedWebSummary = hasDocumentWebFallbackOutput(result)
+    ? getSourceAwareSectionBody(result.summary, 'Web information')
+    : null;
+
   return {
     documentSummary:
       typeof webFallback?.documentSummary === 'string'
         ? webFallback.documentSummary
         : null,
     webSummary:
-      typeof webFallback?.webSummary === 'string' ? webFallback.webSummary : null,
+      renderedWebSummary ??
+      (typeof webFallback?.webSummary === 'string' ? webFallback.webSummary : null),
   };
 }
 
@@ -163,8 +178,19 @@ function getFailedFallbackWebSummary(result: ChatTurnAskResult): string | null {
     return null;
   }
 
-  const match = result.summary.match(
-    /(?:^|\n)## Web information\s*\n+([\s\S]*?)(?=\n\n## |\s*$)/u,
+  return getSourceAwareSectionBody(result.summary, 'Web information');
+}
+
+function getSourceAwareSectionBody(
+  summary: string,
+  title: string,
+): string | null {
+  const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = summary.match(
+    new RegExp(
+      `(?:^|\\n)## ${escapedTitle}\\s*\\n+([\\s\\S]*?)(?=\\n\\n## |\\s*$)`,
+      'u',
+    ),
   );
 
   return match?.[1]?.trim() || null;
