@@ -12,10 +12,10 @@ import { DocumentsParseStatusSyncService } from './parsing/documents-parse-statu
 import { DocumentsRemoteIngestionDispatcherService } from './ingestion/documents-remote-ingestion-dispatcher.service';
 import { DocumentsService } from './documents.service';
 import { DocumentsUploadStorageService } from './ingestion/documents-upload-storage.service';
-import { DocumentsRetrievalFilterBuilder } from './retrieval/documents-retrieval-filter-builder';
-import { DocumentsRetrievalMapper } from './retrieval/documents-retrieval-mapper';
-import { DocumentsRetrievalNeighborExpander } from './retrieval/documents-retrieval-neighbor-expander';
-import { DocumentsRetrievalReranker } from './retrieval/documents-retrieval-reranker';
+import { DocumentsRetrievalFilterBuilder } from './retrieval/filtering/documents-retrieval-filter-builder';
+import { DocumentsRetrievalMapper } from './retrieval/mapping/documents-retrieval-mapper';
+import { DocumentsRetrievalNeighborExpander } from './retrieval/expansion/documents-retrieval-neighbor-expander';
+import { DocumentsRetrievalReranker } from './retrieval/scoring/documents-retrieval-reranker';
 import { DocumentsRetrievalService } from './retrieval/documents-retrieval.service';
 
 @Module({

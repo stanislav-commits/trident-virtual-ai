@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Not, Repository } from 'typeorm';
-import { SearchDocumentsDto } from '../dto/search-documents.dto';
-import { DocumentEntity } from '../entities/document.entity';
-import { DocumentDocClass } from '../enums/document-doc-class.enum';
-import { DocumentParseStatus } from '../enums/document-parse-status.enum';
-import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-question-type.enum';
+import { SearchDocumentsDto } from '../../dto/search-documents.dto';
+import { DocumentEntity } from '../../entities/document.entity';
+import { DocumentDocClass } from '../../enums/document-doc-class.enum';
+import { DocumentParseStatus } from '../../enums/document-parse-status.enum';
+import { DocumentRetrievalQuestionType } from '../../enums/document-retrieval-question-type.enum';
 import {
   ALL_DOCUMENT_CLASSES,
   DOCUMENT_RETRIEVAL_DEFAULT_CANDIDATE_K,
@@ -15,7 +15,7 @@ import {
   DocumentRetrievalHints,
   matchesAnyRetrievalHint,
   scoreDocumentTitleHintMatch,
-} from './documents-retrieval.types';
+} from '../documents-retrieval.types';
 
 @Injectable()
 export class DocumentsRetrievalFilterBuilder {

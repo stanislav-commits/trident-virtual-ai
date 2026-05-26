@@ -1,9 +1,9 @@
-import { DocumentDocClass } from '../enums/document-doc-class.enum';
+import { DocumentDocClass } from '../../enums/document-doc-class.enum';
 import {
   DocumentRetrievalCandidateScoreInput,
   DocumentRetrievalHints,
   EnrichedDocumentRetrievalCandidate,
-} from './documents-retrieval.types';
+} from '../documents-retrieval.types';
 
 type PmsTaskStatus = 'OVERDUE' | 'DUE_SOON' | 'UPCOMING' | 'NO_SCHEDULE';
 type PmsSelectionIntent = 'next_scheduled' | 'upcoming' | 'attention';

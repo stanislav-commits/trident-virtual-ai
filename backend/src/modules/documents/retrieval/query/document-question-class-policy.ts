@@ -1,5 +1,5 @@
-import { DocumentDocClass } from '../enums/document-doc-class.enum';
-import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-question-type.enum';
+import { DocumentDocClass } from '../../enums/document-doc-class.enum';
+import { DocumentRetrievalQuestionType } from '../../enums/document-retrieval-question-type.enum';
 
 export interface DocumentQuestionClassPolicy {
   primary: DocumentDocClass[];

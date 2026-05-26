@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { SourceReferenceDto } from '../../../common/dto/source-reference.dto';
+import { SourceReferenceDto } from '../../../../common/dto/source-reference.dto';
 import {
   DocumentRetrievalEvidenceQuality,
   DocumentRetrievalResponseDto,
   DocumentRetrievalResultDto,
-} from '../dto/document-retrieval-response.dto';
-import { SearchDocumentsDto } from '../dto/search-documents.dto';
-import { DocumentEntity } from '../entities/document.entity';
+} from '../../dto/document-retrieval-response.dto';
+import { SearchDocumentsDto } from '../../dto/search-documents.dto';
+import { DocumentEntity } from '../../entities/document.entity';
 import {
   DocumentRetrievalFilterContext,
   EnrichedDocumentRetrievalCandidate,
-} from './documents-retrieval.types';
-import { extractFirstChunkPage } from './documents-retrieval-chunk-utils';
+} from '../documents-retrieval.types';
+import { extractFirstChunkPage } from '../chunks/documents-retrieval-chunk-utils';
 
 const MAX_SNIPPET_LENGTH = 1600;
 const PMS_SUMMARY_LEAD_LENGTH = 560;

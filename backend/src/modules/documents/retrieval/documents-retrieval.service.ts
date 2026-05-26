@@ -9,11 +9,11 @@ import { RagService } from '../../../integrations/rag/rag.service';
 import { ShipEntity } from '../../ships/entities/ship.entity';
 import { DocumentRetrievalResponseDto } from '../dto/document-retrieval-response.dto';
 import { SearchDocumentsDto } from '../dto/search-documents.dto';
-import { assessDocumentRetrievalEvidenceQuality } from './documents-retrieval-evidence-assessor';
-import { DocumentsRetrievalFilterBuilder } from './documents-retrieval-filter-builder';
-import { DocumentsRetrievalMapper } from './documents-retrieval-mapper';
-import { DocumentsRetrievalNeighborExpander } from './documents-retrieval-neighbor-expander';
-import { DocumentsRetrievalReranker } from './documents-retrieval-reranker';
+import { assessDocumentRetrievalEvidenceQuality } from './scoring/documents-retrieval-evidence-assessor';
+import { DocumentsRetrievalFilterBuilder } from './filtering/documents-retrieval-filter-builder';
+import { DocumentsRetrievalMapper } from './mapping/documents-retrieval-mapper';
+import { DocumentsRetrievalNeighborExpander } from './expansion/documents-retrieval-neighbor-expander';
+import { DocumentsRetrievalReranker } from './scoring/documents-retrieval-reranker';
 import { RAGFLOW_RETRIEVAL_TOP_K } from './documents-retrieval.types';
 
 @Injectable()
@@ -162,8 +162,8 @@ export class DocumentsRetrievalService {
 
 export {
   assessDocumentRetrievalEvidenceQuality,
-} from './documents-retrieval-evidence-assessor';
+} from './scoring/documents-retrieval-evidence-assessor';
 export {
   scoreDocumentRetrievalCandidate,
-} from './documents-retrieval-reranker';
+} from './scoring/documents-retrieval-reranker';
 export type { DocumentRetrievalCandidateScoreInput } from './documents-retrieval.types';

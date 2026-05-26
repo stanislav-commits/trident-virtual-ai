@@ -1,7 +1,7 @@
-import { DocumentRetrievalEvidenceQuality } from '../dto/document-retrieval-response.dto';
-import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-question-type.enum';
-import { getPreferredDocumentClassesForQuestionType } from './document-question-class-policy';
-import { EnrichedDocumentRetrievalCandidate } from './documents-retrieval.types';
+import { DocumentRetrievalEvidenceQuality } from '../../dto/document-retrieval-response.dto';
+import { DocumentRetrievalQuestionType } from '../../enums/document-retrieval-question-type.enum';
+import { getPreferredDocumentClassesForQuestionType } from '../query/document-question-class-policy';
+import { EnrichedDocumentRetrievalCandidate } from '../documents-retrieval.types';
 import {
   getQuestionSupportScore,
   getQuestionSupportSignals,

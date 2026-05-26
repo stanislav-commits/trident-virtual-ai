@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { RagflowRetrievalChunk } from '../../../integrations/rag/ragflow.types';
-import { DocumentEntity } from '../entities/document.entity';
-import { DocumentDocClass } from '../enums/document-doc-class.enum';
-import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-question-type.enum';
-import { getPreferredDocumentClassesForQuestionType } from './document-question-class-policy';
+import { RagflowRetrievalChunk } from '../../../../integrations/rag/ragflow.types';
+import { DocumentEntity } from '../../entities/document.entity';
+import { DocumentDocClass } from '../../enums/document-doc-class.enum';
+import { DocumentRetrievalQuestionType } from '../../enums/document-retrieval-question-type.enum';
+import { getPreferredDocumentClassesForQuestionType } from '../query/document-question-class-policy';
 import { getQuestionContentSignalBonus } from './documents-retrieval-query-signals';
 import { getQuestionTypeSectionBonus } from './documents-retrieval-text-signals';
 import {
@@ -16,7 +16,7 @@ import {
   EnrichedDocumentRetrievalCandidate,
   matchesAnyRetrievalHint,
   scoreDocumentTitleHintMatch,
-} from './documents-retrieval.types';
+} from '../documents-retrieval.types';
 
 @Injectable()
 export class DocumentsRetrievalReranker {

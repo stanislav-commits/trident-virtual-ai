@@ -1,4 +1,4 @@
-import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-question-type.enum';
+import { DocumentRetrievalQuestionType } from '../../enums/document-retrieval-question-type.enum';
 import {
   isFuelFilterReplacementQuestion,
   isMaintenanceScheduleQuestion,

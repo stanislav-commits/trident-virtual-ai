@@ -1,19 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RagService } from '../../../integrations/rag/rag.service';
-import { RagflowRetrievalChunk } from '../../../integrations/rag/ragflow.types';
-import { DocumentRetrievalEvidenceQuality } from '../dto/document-retrieval-response.dto';
-import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-question-type.enum';
-import { getQuestionSupportSignals } from './documents-retrieval-text-signals';
+import { RagService } from '../../../../integrations/rag/rag.service';
+import { RagflowRetrievalChunk } from '../../../../integrations/rag/ragflow.types';
+import { DocumentRetrievalEvidenceQuality } from '../../dto/document-retrieval-response.dto';
+import { DocumentRetrievalQuestionType } from '../../enums/document-retrieval-question-type.enum';
+import { getQuestionSupportSignals } from '../scoring/documents-retrieval-text-signals';
 import {
   getQuestionContentSignalBonus,
   isFuelFilterReplacementQuestion,
   isMaintenanceScheduleQuestion,
-} from './documents-retrieval-query-signals';
-import { extractChunkPages } from './documents-retrieval-chunk-utils';
+} from '../scoring/documents-retrieval-query-signals';
+import { extractChunkPages } from '../chunks/documents-retrieval-chunk-utils';
 import {
   DocumentRetrievalFilterContext,
   EnrichedDocumentRetrievalCandidate,
-} from './documents-retrieval.types';
+} from '../documents-retrieval.types';
 
 const MAX_EXPANSION_ANCHORS = 3;
 const PREVIOUS_CHUNK_COUNT = 1;
