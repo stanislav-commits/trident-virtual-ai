@@ -263,6 +263,22 @@ function conflictsWithSemanticIdentity(
     return true;
   }
 
+  if (
+    source.sourceTitle &&
+    documentsRoute.manufacturerHints.length > 0 &&
+    !hasTextOverlap(source.sourceTitle, documentsRoute.manufacturerHints)
+  ) {
+    return true;
+  }
+
+  if (
+    source.sourceTitle &&
+    documentsRoute.modelHints.length > 0 &&
+    !hasTextOverlap(source.sourceTitle, documentsRoute.modelHints)
+  ) {
+    return true;
+  }
+
   const equipment = [
     metadata.equipmentName,
     metadata.equipmentOrSystem,
