@@ -7,8 +7,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Not, Repository } from 'typeorm';
-import { DocumentEntity } from './entities/document.entity';
-import { DocumentParseStatus } from './enums/document-parse-status.enum';
+import { DocumentEntity } from '../entities/document.entity';
+import { DocumentParseStatus } from '../enums/document-parse-status.enum';
 import { DocumentsParseDispatcherService } from './documents-parse-dispatcher.service';
 import { DocumentsParseStatusSyncService } from './documents-parse-status-sync.service';
 

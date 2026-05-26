@@ -1,5 +1,5 @@
 import { ConflictException } from '@nestjs/common';
-import { DocumentParseStatus } from './enums/document-parse-status.enum';
+import { DocumentParseStatus } from '../enums/document-parse-status.enum';
 
 export const REPARSE_SOURCE_UNAVAILABLE_MESSAGE =
   'Cannot reparse because the source file is unavailable and no remote document exists.';

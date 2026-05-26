@@ -26,15 +26,15 @@ import { UpdateDocumentClassificationDto } from './dto/update-document-classific
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
-import { toDocumentResponse } from './documents.mapper';
-import { DocumentsIngestionService } from './documents-ingestion.service';
-import { DocumentsRemoteIngestionDispatcherService } from './documents-remote-ingestion-dispatcher.service';
-import { UploadedDocumentFile } from './documents-upload.types';
+import { toDocumentResponse } from './mapping/documents.mapper';
+import { DocumentsIngestionService } from './ingestion/documents-ingestion.service';
+import { DocumentsRemoteIngestionDispatcherService } from './ingestion/documents-remote-ingestion-dispatcher.service';
+import { UploadedDocumentFile } from './ingestion/documents-upload.types';
 import {
   applyMetadataOverrides,
   applyParsingProfile,
   buildDocumentMetadataFromEntity,
-} from './documents-profile.helpers';
+} from './ingestion/documents-profile.helpers';
 import {
   buildEffectiveParserConfig,
   getParsingProfileForDocClass,

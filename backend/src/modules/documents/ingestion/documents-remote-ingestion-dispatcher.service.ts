@@ -7,8 +7,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
-import { DocumentEntity } from './entities/document.entity';
-import { DocumentParseStatus } from './enums/document-parse-status.enum';
+import { DocumentEntity } from '../entities/document.entity';
+import { DocumentParseStatus } from '../enums/document-parse-status.enum';
 import { DocumentsIngestionService } from './documents-ingestion.service';
 
 const DEFAULT_REMOTE_INGESTION_CONCURRENCY = 1;

@@ -27,7 +27,7 @@ import { SearchDocumentsDto } from './dto/search-documents.dto';
 import { UpdateDocumentClassificationDto } from './dto/update-document-classification.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentsService } from './documents.service';
-import { UploadedDocumentFile } from './documents-upload.types';
+import { UploadedDocumentFile } from './ingestion/documents-upload.types';
 
 @Controller('documents')
 @UseGuards(JwtAuthGuard)

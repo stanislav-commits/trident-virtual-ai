@@ -1,21 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { RagService } from '../../integrations/rag/rag.service';
-import { DocumentEntity } from './entities/document.entity';
-import { DocumentDocClass } from './enums/document-doc-class.enum';
-import { DocumentParseStatus } from './enums/document-parse-status.enum';
-import { buildDocumentMetadataFromEntity } from './documents-profile.helpers';
+import { RagService } from '../../../integrations/rag/rag.service';
+import { DocumentEntity } from '../entities/document.entity';
+import { DocumentDocClass } from '../enums/document-doc-class.enum';
+import { DocumentParseStatus } from '../enums/document-parse-status.enum';
+import { buildDocumentMetadataFromEntity } from '../ingestion/documents-profile.helpers';
 import {
   classifyManualParserFailure,
   normalizeErrorMessage,
-} from './parsing/document-parser-failure-classifier';
+} from './document-parser-failure-classifier';
 import {
   buildEffectiveParserConfig,
   DocumentFallbackParsingProfileDefinition,
   getManualStableFallbackProfile,
   getParsingProfileForDocClass,
-} from './parsing/document-parsing-profiles';
+} from './document-parsing-profiles';
 
 type FallbackStatus = 'queued' | 'succeeded' | 'failed';
 

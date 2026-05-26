@@ -1,10 +1,10 @@
-import { DocumentEntity } from './entities/document.entity';
-import { DocumentRole } from './enums/document-role.enum';
-import { DocumentTimeScope } from './enums/document-time-scope.enum';
+import { DocumentEntity } from '../entities/document.entity';
+import { DocumentRole } from '../enums/document-role.enum';
+import { DocumentTimeScope } from '../enums/document-time-scope.enum';
 import {
   DocumentParsingProfileDefinition,
   getParsingProfileForDocClass,
-} from './parsing/document-parsing-profiles';
+} from '../parsing/document-parsing-profiles';
 
 export interface DocumentMetadataInput {
   docClass: string;

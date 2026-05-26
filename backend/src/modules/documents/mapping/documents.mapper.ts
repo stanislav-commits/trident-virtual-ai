@@ -1,5 +1,5 @@
-import { DocumentResponseDto } from './dto/document-response.dto';
-import { DocumentEntity } from './entities/document.entity';
+import { DocumentResponseDto } from '../dto/document-response.dto';
+import { DocumentEntity } from '../entities/document.entity';
 
 export function toDocumentResponse(entity: DocumentEntity): DocumentResponseDto {
   return {

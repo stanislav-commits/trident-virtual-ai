@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { RagService } from '../../integrations/rag/rag.service';
-import { DocumentEntity } from './entities/document.entity';
-import { DocumentParseStatus } from './enums/document-parse-status.enum';
+import { RagService } from '../../../integrations/rag/rag.service';
+import { DocumentEntity } from '../entities/document.entity';
+import { DocumentParseStatus } from '../enums/document-parse-status.enum';
 import { DocumentsParseFallbackService } from './documents-parse-fallback.service';
 
 @Injectable()

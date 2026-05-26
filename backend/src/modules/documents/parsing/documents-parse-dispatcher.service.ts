@@ -2,9 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Not, Repository } from 'typeorm';
-import { RagService } from '../../integrations/rag/rag.service';
-import { DocumentEntity } from './entities/document.entity';
-import { DocumentParseStatus } from './enums/document-parse-status.enum';
+import { RagService } from '../../../integrations/rag/rag.service';
+import { DocumentEntity } from '../entities/document.entity';
+import { DocumentParseStatus } from '../enums/document-parse-status.enum';
 import { DocumentsParseFallbackService } from './documents-parse-fallback.service';
 
 const DEFAULT_PARSE_DISPATCH_CONCURRENCY = 2;

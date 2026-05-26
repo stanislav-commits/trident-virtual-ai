@@ -9,25 +9,25 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
-import { AuthenticatedUser } from '../../core/auth/auth.types';
-import { RagService } from '../../integrations/rag/rag.service';
-import type { RagflowDataset } from '../../integrations/rag/ragflow.types';
-import { ShipEntity } from '../ships/entities/ship.entity';
-import { DocumentResponseDto } from './dto/document-response.dto';
+import { AuthenticatedUser } from '../../../core/auth/auth.types';
+import { RagService } from '../../../integrations/rag/rag.service';
+import type { RagflowDataset } from '../../../integrations/rag/ragflow.types';
+import { ShipEntity } from '../../ships/entities/ship.entity';
+import { DocumentResponseDto } from '../dto/document-response.dto';
 import {
   ReparseDocumentDto,
   toReparseMetadataOverrides,
-} from './dto/reparse-document.dto';
-import { UploadDocumentDto } from './dto/upload-document.dto';
-import { DocumentEntity } from './entities/document.entity';
-import { DocumentParseStatus } from './enums/document-parse-status.enum';
-import { DocumentTimeScope } from './enums/document-time-scope.enum';
-import { toDocumentResponse } from './documents.mapper';
+} from '../dto/reparse-document.dto';
+import { UploadDocumentDto } from '../dto/upload-document.dto';
+import { DocumentEntity } from '../entities/document.entity';
+import { DocumentParseStatus } from '../enums/document-parse-status.enum';
+import { DocumentTimeScope } from '../enums/document-time-scope.enum';
+import { toDocumentResponse } from '../mapping/documents.mapper';
 import { UploadedDocumentFile } from './documents-upload.types';
 import { DocumentsUploadStorageService } from './documents-upload-storage.service';
-import { DocumentsParseDrainService } from './documents-parse-drain.service';
-import { DocumentsParseDispatcherService } from './documents-parse-dispatcher.service';
-import { DocumentsParseStatusSyncService } from './documents-parse-status-sync.service';
+import { DocumentsParseDrainService } from '../parsing/documents-parse-drain.service';
+import { DocumentsParseDispatcherService } from '../parsing/documents-parse-dispatcher.service';
+import { DocumentsParseStatusSyncService } from '../parsing/documents-parse-status-sync.service';
 import {
   applyParsingProfile,
   applyMetadataOverrides,
@@ -37,11 +37,11 @@ import {
 import {
   buildEffectiveParserConfig,
   getParsingProfileForDocClass,
-} from './parsing/document-parsing-profiles';
+} from '../parsing/document-parsing-profiles';
 import {
   REPARSE_SOURCE_UNAVAILABLE_MESSAGE,
   assertDocumentCanReparse,
-} from './documents-reparse-policy';
+} from '../parsing/documents-reparse-policy';
 
 @Injectable()
 export class DocumentsIngestionService {
