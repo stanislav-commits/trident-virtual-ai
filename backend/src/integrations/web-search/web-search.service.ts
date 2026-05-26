@@ -89,20 +89,26 @@ export class WebSearchService {
   private async createResponse(
     input: WebSearchQueryInput,
   ): Promise<ResponsesApiPayload> {
+    const model = this.getModel();
+    const body: Record<string, unknown> = {
+      model,
+      tool_choice: 'auto',
+      tools: [{ type: 'web_search' }],
+      include: ['web_search_call.action.sources'],
+      input: this.buildInputPrompt(input),
+    };
+
+    if (this.supportsReasoningEffort(model)) {
+      body.reasoning = { effort: 'low' };
+    }
+
     const response = await fetch(this.buildResponsesUrl(), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.getApiKey()}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: this.getModel(),
-        reasoning: { effort: 'low' },
-        tool_choice: 'auto',
-        tools: [{ type: 'web_search' }],
-        include: ['web_search_call.action.sources'],
-        input: this.buildInputPrompt(input),
-      }),
+      body: JSON.stringify(body),
     });
 
     const payload = (await response.json()) as ResponsesApiPayload;
@@ -286,5 +292,11 @@ export class WebSearchService {
     return this.configService
       .get<string>('integrations.webSearch.model', 'gpt-5.2')
       .trim();
+  }
+
+  private supportsReasoningEffort(model: string): boolean {
+    const normalized = model.trim().toLowerCase();
+
+    return /^(?:gpt-5|o[134])\b/u.test(normalized);
   }
 }
