@@ -758,6 +758,7 @@ export function DocumentsSection() {
           )}
 
           <DocumentsTable
+            token={token}
             documents={documents}
             shipsById={shipsById}
             selectedDocumentIds={selectedDocumentIds}

@@ -40,6 +40,8 @@ export function toDocumentResponse(entity: DocumentEntity): DocumentResponseDto 
     childChunksEnabled: entity.childChunksEnabled,
     imageTableContextWindow: entity.imageTableContextWindow,
     parseStatus: entity.parseStatus,
+    extractionStatus: entity.extractionStatus ?? 'none',
+    hasExtractedMd: Boolean(entity.extractedMdKey),
     parseError: entity.parseError,
     parseProgressPercent: entity.parseProgressPercent,
     chunkCount: entity.chunkCount,

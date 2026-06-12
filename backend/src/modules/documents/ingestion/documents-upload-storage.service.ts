@@ -23,6 +23,20 @@ export class DocumentsUploadStorageService {
     return storageKey;
   }
 
+  /** Extracted markdown sits next to the source in the same spool dir. */
+  async saveExtractedMarkdown(
+    documentId: string,
+    buffer: Buffer,
+  ): Promise<string> {
+    const storageKey = `${LOCAL_SPOOL_PREFIX}${documentId}/extracted.md`;
+    const filePath = this.resolveLocalSpoolKey(storageKey);
+
+    await fs.mkdir(dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, buffer);
+
+    return storageKey;
+  }
+
   async readUpload(storageKey: string): Promise<Buffer> {
     return fs.readFile(this.resolveLocalSpoolKey(storageKey));
   }

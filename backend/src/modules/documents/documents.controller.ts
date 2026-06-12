@@ -77,6 +77,21 @@ export class DocumentsController {
     response.send(file.buffer);
   }
 
+  @Get(':id/extracted')
+  @Roles(UserRole.ADMIN)
+  getExtracted(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.documentsService.getExtractedMarkdown(id, user);
+  }
+
+  @Post(':id/extracted/rerun')
+  @Roles(UserRole.ADMIN)
+  rerunExtraction(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentsService.rerunExtraction(id, user);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.documentsService.getById(id, user);

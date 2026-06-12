@@ -1,4 +1,8 @@
 import { useRef, useState } from "react";
+import {
+  fetchExtractedMarkdown,
+  rerunExtraction,
+} from "../../../api/documentsApi";
 import type {
   DocumentDocClass,
   DocumentListItem,
@@ -14,6 +18,7 @@ import {
 } from "./documentOptions";
 
 interface DocumentsTableProps {
+  token: string | null;
   documents: DocumentListItem[];
   shipsById: Map<
     string,
@@ -153,7 +158,60 @@ function DocumentStatusMeta({ document }: DocumentStatusCellProps) {
   );
 }
 
-function DocumentStatusCell({ document }: DocumentStatusCellProps) {
+/**
+ * Vision-extraction chip. done → click opens the extracted markdown in a
+ * new tab (admin-only endpoint); failed → click re-queues extraction.
+ */
+function ExtractionChip({
+  document,
+  token,
+}: {
+  document: DocumentListItem;
+  token: string | null;
+}) {
+  const status = document.extractionStatus ?? "none";
+  if (status === "none") return null;
+  const cls =
+    status === "done"
+      ? "admin-panel__badge admin-panel__badge--success"
+      : status === "failed"
+        ? "admin-panel__badge admin-panel__badge--danger"
+        : "admin-panel__badge";
+
+  const onClick = async () => {
+    if (!token) return;
+    if (status === "done") {
+      const { markdown } = await fetchExtractedMarkdown(token, document.id);
+      const url = URL.createObjectURL(
+        new Blob([markdown], { type: "text/plain;charset=utf-8" }),
+      );
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } else if (status === "failed") {
+      await rerunExtraction(token, document.id);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className={cls}
+      style={{ cursor: status === "done" || status === "failed" ? "pointer" : "default", border: 0 }}
+      title={
+        status === "done"
+          ? "Vision extract attached — click to view the markdown (admin only)"
+          : status === "failed"
+            ? `Extraction failed — click to re-run`
+            : `Vision extraction: ${status}`
+      }
+      onClick={() => void onClick()}
+    >
+      MD {status}
+    </button>
+  );
+}
+
+function DocumentStatusCell({ document, token }: DocumentStatusCellProps & { token: string | null }) {
   const label = getDocumentParseStatusLabel(document.parseStatus);
   const badgeClass = `admin-panel__badge ${STATUS_BADGE_CLASS[document.parseStatus]}`;
   const parsedAtTitle = document.parsedAt
@@ -167,6 +225,7 @@ function DocumentStatusCell({ document }: DocumentStatusCellProps) {
       <div className="admin-panel__document-status-cell">
         <div className="admin-panel__document-status-row">
           <span className={badgeClass}>{label}</span>
+          <ExtractionChip document={document} token={token} />
           {percent !== null && (
             <span className="admin-panel__document-status-percent">
               {formatParseProgressPercent(percent)}%
@@ -200,6 +259,7 @@ function DocumentStatusCell({ document }: DocumentStatusCellProps) {
     return (
       <div className="admin-panel__document-status-cell">
         <span className={badgeClass}>{label}</span>
+          <ExtractionChip document={document} token={token} />
         {failedChunkSummary && (
           <span className="admin-panel__document-status-note admin-panel__document-status-note--secondary">
             {failedChunkSummary}
@@ -318,6 +378,7 @@ function DocumentPriorityControl({
 }
 
 export function DocumentsTable({
+  token,
   documents,
   shipsById,
   selectedDocumentIds,
@@ -507,7 +568,7 @@ export function DocumentsTable({
                   />
                 </td>
                 <td className="admin-panel__td admin-panel__td--status">
-                  <DocumentStatusCell document={document} />
+                  <DocumentStatusCell document={document} token={token} />
                 </td>
                 <td className="admin-panel__td admin-panel__td--actions">
                   <DocumentRowActions

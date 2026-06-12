@@ -12,6 +12,7 @@ import { DocumentsParseStatusSyncService } from './parsing/documents-parse-statu
 import { DocumentsRemoteIngestionDispatcherService } from './ingestion/documents-remote-ingestion-dispatcher.service';
 import { DocumentsService } from './documents.service';
 import { DocumentsUploadStorageService } from './ingestion/documents-upload-storage.service';
+import { VisionExtractionService } from './extraction/vision-extraction.service';
 import { DocumentsRetrievalFilterBuilder } from './retrieval/filtering/documents-retrieval-filter-builder';
 import { DocumentsRetrievalMapper } from './retrieval/mapping/documents-retrieval-mapper';
 import { DocumentsRetrievalNeighborExpander } from './retrieval/expansion/documents-retrieval-neighbor-expander';
@@ -33,6 +34,7 @@ import { DocumentsRetrievalService } from './retrieval/documents-retrieval.servi
     DocumentsParseStatusSyncService,
     DocumentsRemoteIngestionDispatcherService,
     DocumentsUploadStorageService,
+    VisionExtractionService,
     DocumentsRetrievalFilterBuilder,
     DocumentsRetrievalMapper,
     DocumentsRetrievalNeighborExpander,

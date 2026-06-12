@@ -28,6 +28,9 @@ import { DocumentEntity } from './entities/document.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
 import { toDocumentResponse } from './mapping/documents.mapper';
 import { DocumentsIngestionService } from './ingestion/documents-ingestion.service';
+import { DocumentsUploadStorageService } from './ingestion/documents-upload-storage.service';
+import { VisionExtractionService } from './extraction/vision-extraction.service';
+import { DocumentDocClass } from './enums/document-doc-class.enum';
 import { DocumentsRemoteIngestionDispatcherService } from './ingestion/documents-remote-ingestion-dispatcher.service';
 import { UploadedDocumentFile } from './ingestion/documents-upload.types';
 import {
@@ -55,6 +58,8 @@ export class DocumentsService {
     @InjectRepository(ShipEntity)
     private readonly shipsRepository: Repository<ShipEntity>,
     private readonly documentsIngestionService: DocumentsIngestionService,
+    private readonly uploadStorage: DocumentsUploadStorageService,
+    private readonly visionExtraction: VisionExtractionService,
     private readonly remoteIngestionDispatcher: DocumentsRemoteIngestionDispatcherService,
     private readonly documentsRetrievalService: DocumentsRetrievalService,
     private readonly ragService: RagService,
@@ -72,6 +77,21 @@ export class DocumentsService {
       user,
       ship,
     );
+
+    // Manuals run through the local vision extractor BEFORE RAGFlow sees
+    // them: the dispatcher skips pending/running extractions, and once the
+    // markdown is attached the dispatcher uploads the MD instead of the
+    // PDF. Other doc classes (and disabled extractor) flow as before.
+    if (
+      this.visionExtraction.isEnabled() &&
+      input.docClass === DocumentDocClass.MANUAL
+    ) {
+      await this.documentsRepository.update(document.id, {
+        extractionStatus: 'pending',
+      });
+      this.visionExtraction.queue(document.id);
+      return document;
+    }
 
     void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
     return document;
@@ -207,6 +227,19 @@ export class DocumentsService {
   ): Promise<DocumentFilePayload> {
     const document = await this.findAccessibleDocument(id, user);
 
+    // Extracted documents keep their ORIGINAL in the local spool (RAGFlow
+    // only holds the markdown the AI reads) — serve the original here.
+    if (
+      this.uploadStorage.isLocalSpoolKey(document.storageKey) &&
+      (await this.uploadStorage.hasUpload(document.storageKey))
+    ) {
+      return {
+        buffer: await this.uploadStorage.readUpload(document.storageKey),
+        contentType: document.mimeType || 'application/octet-stream',
+        fileName: document.originalFileName,
+      };
+    }
+
     if (!document.ragflowDatasetId || !document.ragflowDocumentId) {
       throw new BadRequestException('Document is not uploaded to RAGFlow yet.');
     }
@@ -224,6 +257,34 @@ export class DocumentsService {
         'application/octet-stream',
       fileName: document.originalFileName,
     };
+  }
+
+  /** Admin-only: raw vision-extracted markdown for review. */
+  async getExtractedMarkdown(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<{ markdown: string; fileName: string }> {
+    const document = await this.findAccessibleDocument(id, user);
+    if (!document.extractedMdKey) {
+      throw new BadRequestException('No extracted markdown for this document.');
+    }
+    return {
+      markdown: await this.visionExtraction.readExtractedMarkdown(document),
+      fileName: document.originalFileName.replace(/\.[^.]+$/, '.md'),
+    };
+  }
+
+  /** Admin-only: re-run vision extraction (e.g. after extractor fixes). */
+  async rerunExtraction(id: string, user: AuthenticatedUser): Promise<void> {
+    const document = await this.findAccessibleDocument(id, user);
+    if (!this.visionExtraction.isEnabled()) {
+      throw new BadRequestException('Vision extractor is not configured.');
+    }
+    await this.documentsRepository.update(document.id, {
+      extractionStatus: 'pending',
+      extractionError: null,
+    });
+    this.visionExtraction.queue(document.id);
   }
 
   async delete(

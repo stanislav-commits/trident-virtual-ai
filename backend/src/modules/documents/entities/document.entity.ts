@@ -65,6 +65,17 @@ export class DocumentEntity {
   @Column({ name: 'storage_key', type: 'varchar', length: 1024, nullable: true })
   storageKey!: string | null;
 
+  /** none | pending | running | done | failed — vision extractor state. */
+  @Column({ name: 'extraction_status', type: 'varchar', length: 16, default: 'none' })
+  extractionStatus!: string;
+
+  /** Local spool key of the vision-extracted markdown (admin-only). */
+  @Column({ name: 'extracted_md_key', type: 'varchar', length: 1024, nullable: true })
+  extractedMdKey!: string | null;
+
+  @Column({ name: 'extraction_error', type: 'text', nullable: true })
+  extractionError!: string | null;
+
   @Column({ name: 'mime_type', type: 'varchar', length: 255 })
   mimeType!: string;
 

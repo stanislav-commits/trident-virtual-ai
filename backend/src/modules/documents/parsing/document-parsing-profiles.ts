@@ -146,6 +146,28 @@ const DOC_CLASS_PROFILE_MAP: Record<DocumentDocClass, DocumentParseProfile> = {
   [DocumentDocClass.REGULATION]: DocumentParseProfile.REGULATION_BASELINE,
 };
 
+/**
+ * Vision-extracted markdown: RAGFlow's 'manual' chunker only accepts
+ * pdf/docx, so extracts parse with the naive text chunker. Keyword/
+ * question enrichment mirrors MANUAL_LONG since the content IS a manual.
+ */
+const EXTRACTED_MARKDOWN_PROFILE: DocumentParsingProfileDefinition = {
+  parseProfile: DocumentParseProfile.MANUAL_LONG,
+  chunkMethod: DocumentChunkMethod.GENERAL,
+  ragflowChunkMethod: 'naive',
+  ...BASE_PROFILE_FLAGS,
+  autoKeywords: 4,
+  autoQuestions: 1,
+  chunkSize: 1024,
+  delimiter: '\n',
+  overlapPercent: 0,
+  imageTableContextWindow: 0,
+};
+
+export function getParsingProfileForExtractedMarkdown(): DocumentParsingProfileDefinition {
+  return EXTRACTED_MARKDOWN_PROFILE;
+}
+
 export function getParsingProfileForDocClass(
   docClass: DocumentDocClass,
 ): DocumentParsingProfileDefinition {

@@ -155,7 +155,10 @@ export default function configuration() {
           process.env.GRAFANA_LLM_API_KEY ?? process.env.GRAFANA_SA_TOKEN ?? '',
         model: process.env.GRAFANA_LLM_MODEL ?? 'gpt-4o',
       },
-      windy: {
+      visionExtractor: {
+      dir: process.env.VISION_EXTRACTOR_DIR ?? '',
+    },
+    windy: {
         // Windy Point Forecast API — used by the `get_marine_forecast`
         // chat tool to answer voyage / passage / route weather questions.
         // Get a free key (500 req/day) at windy.com/api-keys.

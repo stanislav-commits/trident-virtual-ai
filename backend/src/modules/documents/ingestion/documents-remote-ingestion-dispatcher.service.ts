@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Repository } from 'typeorm';
+import { In, LessThan, Repository } from 'typeorm';
 import { DocumentEntity } from '../entities/document.entity';
 import { DocumentParseStatus } from '../enums/document-parse-status.enum';
 import { DocumentsIngestionService } from './documents-ingestion.service';
@@ -111,10 +111,15 @@ export class DocumentsRemoteIngestionDispatcherService
       where: [
         {
           parseStatus: DocumentParseStatus.UPLOADED,
+          // Vision extraction runs BEFORE remote ingestion: pending/running
+          // documents wait until the extractor attaches the markdown (or
+          // fails — failed docs ingest the original PDF as fallback).
+          extractionStatus: In(['none', 'done', 'failed']),
         },
         {
           parseStatus: DocumentParseStatus.PENDING_CONFIG,
           updatedAt: LessThan(staleBefore),
+          extractionStatus: In(['none', 'done', 'failed']),
         },
       ],
       order: {

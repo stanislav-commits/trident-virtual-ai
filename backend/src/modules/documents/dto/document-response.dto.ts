@@ -42,6 +42,10 @@ export class DocumentResponseDto {
   pageIndexEnabled!: boolean;
   childChunksEnabled!: boolean;
   imageTableContextWindow!: number | null;
+  extractionStatus?: string;
+
+  hasExtractedMd?: boolean;
+
   parseStatus!: DocumentParseStatus;
   parseError!: string | null;
   parseProgressPercent!: number | null;

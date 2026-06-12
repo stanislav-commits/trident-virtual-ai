@@ -71,6 +71,8 @@ export interface DocumentListItem {
   childChunksEnabled: boolean;
   imageTableContextWindow: number | null;
   parseStatus: DocumentParseStatus;
+  extractionStatus?: "none" | "pending" | "running" | "done" | "failed";
+  hasExtractedMd?: boolean;
   parseError: string | null;
   parseProgressPercent: number | null;
   chunkCount: number | null;
@@ -468,4 +470,26 @@ export async function bulkDeleteDocuments(
   }
 
   return response.json();
+}
+
+export async function fetchExtractedMarkdown(
+  token: string,
+  documentId: string,
+): Promise<{ markdown: string; fileName: string }> {
+  const response = await fetchWithAuth(`documents/${documentId}/extracted`, {
+    token,
+  });
+  if (!response.ok) throw new Error("Failed to load extracted markdown");
+  return response.json();
+}
+
+export async function rerunExtraction(
+  token: string,
+  documentId: string,
+): Promise<void> {
+  const response = await fetchWithAuth(
+    `documents/${documentId}/extracted/rerun`,
+    { token, method: "POST" },
+  );
+  if (!response.ok) throw new Error("Failed to queue extraction");
 }

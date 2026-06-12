@@ -40,6 +40,7 @@ import { AddAssetDocumentLinkType20260611000100 } from './migrations/20260611000
 import { AddComplianceDocs20260611000200 } from './migrations/20260611000200-add-compliance-docs';
 import { AddComplianceMaster20260611000300 } from './migrations/20260611000300-add-compliance-master';
 import { ExtendShipProfile20260611000400 } from './migrations/20260611000400-extend-ship-profile';
+import { AddDocumentExtraction20260612000100 } from './migrations/20260612000100-add-document-extraction';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -94,6 +95,7 @@ const dataSource = new DataSource({
     AddComplianceDocs20260611000200,
     AddComplianceMaster20260611000300,
     ExtendShipProfile20260611000400,
+    AddDocumentExtraction20260612000100,
   ],
   synchronize: false,
   ssl: db.ssl

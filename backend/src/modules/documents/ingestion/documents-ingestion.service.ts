@@ -37,6 +37,7 @@ import {
 import {
   buildEffectiveParserConfig,
   getParsingProfileForDocClass,
+  getParsingProfileForExtractedMarkdown,
 } from '../parsing/document-parsing-profiles';
 import {
   REPARSE_SOURCE_UNAVAILABLE_MESSAGE,
@@ -155,29 +156,51 @@ export class DocumentsIngestionService {
           );
         }
 
+        // Vision-extraction integration: when the document has an
+        // extracted markdown, RAGFlow gets the MD (that is ALL the AI
+        // reads); the ORIGINAL stays in the local spool and is what
+        // /documents/:id/file serves to users.
+        const useExtract = Boolean(document.extractedMdKey);
         const remoteDocument = await this.ragService.uploadDocumentToDataset(
           ragflowDatasetId,
-          {
-            buffer: await this.uploadStorage.readUpload(localStorageKey),
-            originalName: document.originalFileName,
-            mimeType: document.mimeType,
-          },
+          useExtract
+            ? {
+                buffer: await this.uploadStorage.readUpload(
+                  document.extractedMdKey!,
+                ),
+                originalName: document.originalFileName.replace(
+                  /\.[^.]+$/,
+                  '.md',
+                ),
+                mimeType: 'text/markdown',
+              }
+            : {
+                buffer: await this.uploadStorage.readUpload(localStorageKey),
+                originalName: document.originalFileName,
+                mimeType: document.mimeType,
+              },
         );
 
         document.ragflowDocumentId = remoteDocument.id;
-        document.storageKey = `ragflow://${ragflowDatasetId}/${remoteDocument.id}`;
         document.parseStatus = DocumentParseStatus.PENDING_CONFIG;
         document.parseProgressPercent = null;
         document.lastSyncedAt = new Date();
+        if (!useExtract) {
+          document.storageKey = `ragflow://${ragflowDatasetId}/${remoteDocument.id}`;
+        }
         await this.documentsRepository.save(document);
-        await this.deleteLocalUpload(localStorageKey, document.id);
+        if (!useExtract) {
+          await this.deleteLocalUpload(localStorageKey, document.id);
+        }
       }
 
       if (!document.ragflowDocumentId) {
         throw new Error('RAGFlow did not return a document ID.');
       }
 
-      const profile = getParsingProfileForDocClass(document.docClass);
+      const profile = document.extractedMdKey
+        ? getParsingProfileForExtractedMarkdown()
+        : getParsingProfileForDocClass(document.docClass);
       await this.ragService.updateRemoteDocumentConfig(
         ragflowDatasetId,
         document.ragflowDocumentId,
