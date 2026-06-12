@@ -130,6 +130,7 @@ export interface ListDocumentsParams {
 export interface UploadDocumentInput {
   shipId: string;
   docClass: DocumentDocClass;
+  assetId?: string;
   language?: string;
   equipmentOrSystem?: string;
   equipmentName?: string;
@@ -266,6 +267,7 @@ export async function uploadDocument(
   form.append("file", file);
   form.append("shipId", input.shipId);
   form.append("docClass", input.docClass);
+  appendOptionalText(form, "assetId", input.assetId);
   appendOptionalText(form, "language", input.language);
   appendOptionalText(form, "equipmentOrSystem", input.equipmentOrSystem);
   appendOptionalText(form, "equipmentName", input.equipmentName);

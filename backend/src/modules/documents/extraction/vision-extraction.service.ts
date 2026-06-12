@@ -147,7 +147,16 @@ export class VisionExtractionService {
         );
       }
 
-      const mdContent = await fs.readFile(path.join(mdDir, newest.file));
+      // Prefer rebuilding the markdown from the per-page result JSON so
+      // every page carries an explicit "[Manual page N]" anchor — the AI
+      // can then cite exact pages of the ORIGINAL PDF even though it only
+      // reads the extract. Falls back to the assembled md when the JSON
+      // is not found.
+      const mdContent = Buffer.from(
+        (await this.buildPaginatedMarkdown(extractorDir, startedAt)) ??
+          (await fs.readFile(path.join(mdDir, newest.file), 'utf8')),
+        'utf8',
+      );
 
       // 4. Attach the markdown to the document in the local spool.
       const mdKey = await this.uploadStorage.saveExtractedMarkdown(
@@ -173,6 +182,60 @@ export class VisionExtractionService {
         document,
         error instanceof Error ? error.message.slice(0, 1000) : String(error),
       );
+    }
+  }
+
+  /**
+   * Find the freshest VisionFileResult JSON from this run and join its
+   * per-page markdown with page anchors. page_number is the printed page
+   * of the ORIGINAL PDF — what the user needs to open it at the right
+   * place.
+   */
+  private async buildPaginatedMarkdown(
+    extractorDir: string,
+    startedAtMs: number,
+  ): Promise<string | null> {
+    try {
+      const stateDir = path.join(extractorDir, '02-work', 'vision-rebuild');
+      const entries = await fs.readdir(stateDir);
+      let newest: { file: string; mtime: number } | null = null;
+      for (const entry of entries) {
+        if (!entry.endsWith('.json')) continue;
+        const stat = await fs.stat(path.join(stateDir, entry));
+        if (stat.mtimeMs >= startedAtMs - 2_000) {
+          if (!newest || stat.mtimeMs > newest.mtime) {
+            newest = { file: entry, mtime: stat.mtimeMs };
+          }
+        }
+      }
+      if (!newest) return null;
+
+      const raw = JSON.parse(
+        await fs.readFile(path.join(stateDir, newest.file), 'utf8'),
+      ) as {
+        pages?: Array<{
+          page_number?: number;
+          status?: string;
+          markdown?: string | null;
+        }>;
+      };
+      const pages = (raw.pages ?? []).filter(
+        (page) => page.status === 'ok' && page.markdown?.trim(),
+      );
+      if (!pages.length) return null;
+
+      return pages
+        .map((page) => {
+          // Vision sometimes wraps output in ```markdown fences — strip.
+          const body = page
+            .markdown!.replace(/^\s*```(?:markdown)?\s*/i, '')
+            .replace(/\s*```\s*$/, '')
+            .trim();
+          return `[Manual page ${page.page_number}]\n\n${body}`;
+        })
+        .join('\n\n');
+    } catch {
+      return null;
     }
   }
 

@@ -7,6 +7,7 @@ import {
   Max,
   MaxLength,
   Min,
+  IsUUID,
 } from 'class-validator';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
 import { DocumentRole } from '../enums/document-role.enum';
@@ -38,6 +39,16 @@ export class UploadDocumentDto {
 
   @IsEnum(DocumentDocClass)
   docClass!: DocumentDocClass;
+
+  /**
+   * Optional asset to derive naming/metadata from: the document gets
+   * "<brand> <model> — <asset display name>" as its display name,
+   * manufacturer/model/equipment from the register, and a pinned
+   * asset-document link. The register is the naming source of truth.
+   */
+  @IsOptional()
+  @IsUUID()
+  assetId?: string;
 
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()

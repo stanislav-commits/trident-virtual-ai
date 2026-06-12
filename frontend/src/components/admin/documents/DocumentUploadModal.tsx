@@ -192,6 +192,29 @@ export function DocumentUploadModal({
     );
   };
 
+  // Asset-register-driven naming: pick an asset and the document title +
+  // manufacturer/model come from the register (source of truth).
+  const [assetOptions, setAssetOptions] = useState<
+    Array<{ id: string; label: string }>
+  >([]);
+  const [assetLabel, setAssetLabel] = useState("");
+  useEffect(() => {
+    if (!token || !shipId) {
+      setAssetOptions([]);
+      return;
+    }
+    void listAssets(token, shipId, { limit: 2000 })
+      .then((r) =>
+        setAssetOptions(
+          r.items.map((a) => ({
+            id: a.id,
+            label: `${a.assetIdInternal} — ${a.displayName}`,
+          })),
+        ),
+      )
+      .catch(() => setAssetOptions([]));
+  }, [token, shipId]);
+
   const updateMetadata = (key: keyof UploadMetadataForm, value: string) => {
     setMetadata((current) => ({ ...current, [key]: value }));
   };
@@ -199,6 +222,7 @@ export function DocumentUploadModal({
   const buildUploadInput = (): UploadDocumentInput => ({
     shipId,
     docClass,
+    assetId: assetOptions.find((a) => a.label === assetLabel)?.id,
     language: normalizeOptionalText(metadata.language),
     equipmentOrSystem: normalizeOptionalText(metadata.equipmentOrSystem),
     manufacturer: normalizeOptionalText(metadata.manufacturer),
@@ -621,6 +645,27 @@ export function DocumentUploadModal({
                         updateMetadata("equipmentOrSystem", event.target.value)
                       }
                     />
+                  </div>
+                  <div className="admin-panel__field">
+                    <label
+                      className="admin-panel__field-label"
+                      htmlFor="upload-asset"
+                    >
+                      Asset (naming from register)
+                    </label>
+                    <input
+                      id="upload-asset"
+                      className="admin-panel__input"
+                      list="upload-asset-options"
+                      placeholder="Type to search the asset register…"
+                      value={assetLabel}
+                      onChange={(e) => setAssetLabel(e.target.value)}
+                    />
+                    <datalist id="upload-asset-options">
+                      {assetOptions.map((a) => (
+                        <option key={a.id} value={a.label} />
+                      ))}
+                    </datalist>
                   </div>
                   <div className="admin-panel__modal-field">
                     <label

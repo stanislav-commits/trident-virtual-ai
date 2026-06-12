@@ -468,7 +468,9 @@ export class DocumentsIngestionService {
 
     return {
       buffer: file.buffer,
-      originalName: file.originalname?.trim() || 'document',
+      originalName: repairFilenameEncoding(
+        file.originalname?.trim() || 'document',
+      ),
       mimeType: file.mimetype?.trim() || 'application/octet-stream',
       size,
     };
@@ -564,4 +566,27 @@ export class DocumentsIngestionService {
       document
     );
   }
+}
+
+/**
+ * Multer decodes multipart filenames as latin-1, so a UTF-8 em-dash in
+ * "Mase VS-350-SV — Genset.pdf" arrives as "â€"" — which then breaks
+ * keyword retrieval (the AI sees the garbage in document titles) and any
+ * string matching. Detect the mojibake signature and reverse it.
+ */
+function repairFilenameEncoding(name: string): string {
+  if (!/[\u00c2-\u00c3\u00e2]/.test(name)) {
+    return name;
+  }
+  try {
+    const repaired = Buffer.from(name, 'latin1').toString('utf8');
+    // Only accept the repair when it removed the mojibake without
+    // introducing replacement characters.
+    if (!repaired.includes('\uFFFD')) {
+      return repaired;
+    }
+  } catch {
+    /* keep the original on any decode surprise */
+  }
+  return name;
 }

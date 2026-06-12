@@ -31,6 +31,8 @@ import { DocumentsIngestionService } from './ingestion/documents-ingestion.servi
 import { DocumentsUploadStorageService } from './ingestion/documents-upload-storage.service';
 import { VisionExtractionService } from './extraction/vision-extraction.service';
 import { DocumentDocClass } from './enums/document-doc-class.enum';
+import { AssetEntity } from '../assets/entities/asset.entity';
+import { AssetDocumentLinkEntity } from '../assets/entities/asset-document-link.entity';
 import { DocumentsRemoteIngestionDispatcherService } from './ingestion/documents-remote-ingestion-dispatcher.service';
 import { UploadedDocumentFile } from './ingestion/documents-upload.types';
 import {
@@ -59,6 +61,10 @@ export class DocumentsService {
     private readonly shipsRepository: Repository<ShipEntity>,
     private readonly documentsIngestionService: DocumentsIngestionService,
     private readonly uploadStorage: DocumentsUploadStorageService,
+    @InjectRepository(AssetEntity)
+    private readonly assetsRepository: Repository<AssetEntity>,
+    @InjectRepository(AssetDocumentLinkEntity)
+    private readonly assetDocLinkRepository: Repository<AssetDocumentLinkEntity>,
     private readonly visionExtraction: VisionExtractionService,
     private readonly remoteIngestionDispatcher: DocumentsRemoteIngestionDispatcherService,
     private readonly documentsRetrievalService: DocumentsRetrievalService,
@@ -71,12 +77,48 @@ export class DocumentsService {
     user: AuthenticatedUser,
   ): Promise<DocumentResponseDto> {
     const ship = await this.resolveAccessibleShip(input.shipId, user);
+
+    // Asset-register-driven naming: when an asset is provided, the
+    // register (brand/model/onboard name) is the source of truth for the
+    // document title and metadata — not the uploaded file's name.
+    let linkedAsset: AssetEntity | null = null;
+    if (input.assetId) {
+      linkedAsset = await this.assetsRepository.findOne({
+        where: { id: input.assetId, shipId: ship.id },
+      });
+      if (!linkedAsset) {
+        throw new BadRequestException('Asset not found on this ship.');
+      }
+      const ext = file.originalname?.match(/\.[^.]+$/)?.[0] ?? '.pdf';
+      const parts = [
+        linkedAsset.brand,
+        linkedAsset.model,
+      ].filter(Boolean);
+      const title = `${parts.join(' ')}${parts.length ? ' — ' : ''}${linkedAsset.displayName}`;
+      file = { ...file, originalname: `${title}${ext}` };
+      input = {
+        ...input,
+        manufacturer: input.manufacturer ?? linkedAsset.brand ?? undefined,
+        model: input.model ?? linkedAsset.model ?? undefined,
+        equipmentName: input.equipmentName ?? linkedAsset.displayName,
+      };
+    }
+
     const document = await this.documentsIngestionService.upload(
       input,
       file,
       user,
       ship,
     );
+
+    if (linkedAsset) {
+      await this.assetDocLinkRepository.save({
+        assetId: linkedAsset.id,
+        documentId: document.id,
+        linkType: 'pinned',
+        createdByUserId: user.id,
+      });
+    }
 
     // Manuals run through the local vision extractor BEFORE RAGFlow sees
     // them: the dispatcher skips pending/running extractions, and once the

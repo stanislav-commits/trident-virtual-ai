@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { AssetEntity } from '../assets/entities/asset.entity';
+import { AssetDocumentLinkEntity } from '../assets/entities/asset-document-link.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '../../integrations/integrations.module';
 import { ShipEntity } from '../ships/entities/ship.entity';
@@ -21,7 +23,7 @@ import { DocumentsRetrievalService } from './retrieval/documents-retrieval.servi
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DocumentEntity, ShipEntity]),
+    TypeOrmModule.forFeature([DocumentEntity, ShipEntity, AssetEntity, AssetDocumentLinkEntity]),
     IntegrationsModule,
   ],
   controllers: [DocumentsController],

@@ -280,9 +280,12 @@ function DocumentStatusCell({ document, token }: DocumentStatusCellProps & { tok
 
   return (
     <div className="admin-panel__document-status-cell">
-      <span className={badgeClass} title={parsedAtTitle}>
-        {label}
-      </span>
+      <div className="admin-panel__document-status-row">
+        <span className={badgeClass} title={parsedAtTitle}>
+          {label}
+        </span>
+        <ExtractionChip document={document} token={token} />
+      </div>
     </div>
   );
 }
