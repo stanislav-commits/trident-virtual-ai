@@ -166,8 +166,31 @@ export class DocumentsService {
       take: pageSize,
     });
 
+    // Linked assets (pinned) per document — the table shows which units a
+    // manual is attached to.
+    const docIds = documents.map((document) => document.id);
+    const linkRows: Array<{ document_id: string; display_name: string }> =
+      docIds.length
+        ? await this.assetDocLinkRepository.query(
+            `SELECT l.document_id, a.display_name
+             FROM asset_documents l JOIN assets a ON a.id = l.asset_id
+             WHERE l.link_type = 'pinned' AND l.document_id = ANY($1)
+             ORDER BY a.display_name`,
+            [docIds],
+          )
+        : [];
+    const linksByDoc = new Map<string, string[]>();
+    for (const row of linkRows) {
+      const list = linksByDoc.get(row.document_id) ?? [];
+      list.push(row.display_name);
+      linksByDoc.set(row.document_id, list);
+    }
+
     return {
-      items: documents.map(toDocumentResponse),
+      items: documents.map((document) => ({
+        ...toDocumentResponse(document),
+        linkedAssets: linksByDoc.get(document.id) ?? [],
+      })),
       pagination: {
         page,
         pageSize,

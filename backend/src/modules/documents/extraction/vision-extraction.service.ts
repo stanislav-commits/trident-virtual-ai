@@ -359,9 +359,15 @@ export class VisionExtractionService {
       // No confident match — flag for the operator, keep what the LLM
       // learned so the file is at least recognizable.
       const ext = document.originalFileName.match(/\.[^.]+$/)?.[0] ?? '.pdf';
-      const base = document.originalFileName.replace(/\.[^.]+$/, '');
+      const base = document.originalFileName
+        .replace(/\.[^.]+$/, '')
+        .replace(/^\[UNLINKED\]\s*/i, ''); // re-runs must not stack prefixes
       const ident = [manufacturer, model].filter(Boolean).join(' ');
-      document.originalFileName = `[UNLINKED] ${ident ? `${ident} — ` : ''}${base}${ext}`;
+      const needIdent =
+        ident && !base.toLowerCase().includes(ident.toLowerCase());
+      document.originalFileName = `[UNLINKED] ${
+        needIdent ? `${ident} — ` : ''
+      }${base}${ext}`;
       if (manufacturer && !document.manufacturer) {
         document.manufacturer = manufacturer;
       }

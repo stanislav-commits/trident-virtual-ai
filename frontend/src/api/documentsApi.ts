@@ -73,6 +73,7 @@ export interface DocumentListItem {
   parseStatus: DocumentParseStatus;
   extractionStatus?: "none" | "pending" | "running" | "done" | "failed";
   hasExtractedMd?: boolean;
+  linkedAssets?: string[];
   parseError: string | null;
   parseProgressPercent: number | null;
   chunkCount: number | null;

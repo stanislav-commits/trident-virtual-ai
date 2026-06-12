@@ -493,6 +493,18 @@ export function DocumentsTable({
                     title: "System/Area",
                   }
                 : null,
+              document.linkedAssets?.length
+                ? {
+                    label: `🔗 ${document.linkedAssets
+                      .slice(0, 2)
+                      .join(", ")}${
+                      document.linkedAssets.length > 2
+                        ? ` +${document.linkedAssets.length - 2}`
+                        : ""
+                    }`,
+                    title: `Linked assets:\n${document.linkedAssets.join("\n")}`,
+                  }
+                : null,
             ];
             const metadataMetaItems = rawMetadataMetaItems.filter(
               (item): item is { label: string; title: string } => item !== null,

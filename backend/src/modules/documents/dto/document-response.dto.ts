@@ -44,6 +44,9 @@ export class DocumentResponseDto {
   imageTableContextWindow!: number | null;
   extractionStatus?: string;
 
+  /** Display names of pinned linked assets (list view only). */
+  linkedAssets?: string[];
+
   hasExtractedMd?: boolean;
 
   parseStatus!: DocumentParseStatus;
