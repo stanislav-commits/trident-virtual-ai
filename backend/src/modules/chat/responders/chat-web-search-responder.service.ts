@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ShipContextService } from '../../ships/ship-context.service';
 import { WebService } from '../../web/web.service';
 import { ChatContextQueryResolverService } from '../context/chat-context-query-resolver.service';
 import {
@@ -11,6 +12,7 @@ export class ChatWebSearchResponderService {
   constructor(
     private readonly webService: WebService,
     private readonly chatContextQueryResolverService: ChatContextQueryResolverService,
+    private readonly shipContextService: ShipContextService,
   ) {}
 
   async respond(
@@ -24,9 +26,16 @@ export class ChatWebSearchResponderService {
           )
         : input.ask.question;
 
+    const vesselContext = input.session.shipId
+      ? (await this.shipContextService.buildContextString(
+          input.session.shipId,
+        )) ?? undefined
+      : undefined;
+
     const result = await this.webService.search({
       question: resolvedQuestion,
       locale: input.plan.responseLanguage ?? undefined,
+      vesselContext,
     });
 
     return {

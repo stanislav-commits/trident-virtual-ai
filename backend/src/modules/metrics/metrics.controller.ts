@@ -29,8 +29,16 @@ import { ToggleShipMetricsDto } from './dto/toggle-ship-metrics.dto';
 import { MetricsCatalogService } from './metrics-catalog.service';
 import { MetricsConceptExecutionService } from './metrics-concept-execution.service';
 import { MetricsSemanticBootstrapService } from './metrics-semantic-bootstrap.service';
+import { MetricsSemanticClusterService } from './metrics-semantic-cluster.service';
 import { MetricsSemanticCatalogService } from './metrics-semantic-catalog.service';
 import { MetricsService } from './metrics.service';
+import { MetricAnalyzerResponderService } from './metric-understanding/metric-analyzer-responder.service';
+import {
+  IssueSeverity,
+  MetricQualityDetectorService,
+} from './metric-understanding/metric-quality-detector.service';
+import { MetricUnderstandingService } from './metric-understanding/metric-understanding.service';
+import { AnalyzeShipOptions } from './metric-understanding/metric-understanding.types';
 
 @Controller('metrics')
 @UseGuards(JwtAuthGuard)
@@ -40,7 +48,11 @@ export class MetricsController {
     private readonly metricsCatalogService: MetricsCatalogService,
     private readonly metricsConceptExecutionService: MetricsConceptExecutionService,
     private readonly metricsSemanticBootstrapService: MetricsSemanticBootstrapService,
+    private readonly metricsSemanticClusterService: MetricsSemanticClusterService,
     private readonly metricsSemanticCatalogService: MetricsSemanticCatalogService,
+    private readonly metricUnderstandingService: MetricUnderstandingService,
+    private readonly metricAnalyzerResponderService: MetricAnalyzerResponderService,
+    private readonly metricQualityDetectorService: MetricQualityDetectorService,
   ) {}
 
   @Get('catalog')
@@ -72,6 +84,25 @@ export class MetricsController {
     return this.metricsCatalogService.syncShipCatalog(shipId);
   }
 
+  @Post('ships/:shipId/cluster-semantic-groups')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  clusterSemanticGroups(
+    @Param('shipId') shipId: string,
+    @Query('dryRun') dryRun?: string,
+    @Query('strategy') strategy?: string,
+  ) {
+    const allowedStrategies = new Set(['measurement', 'higher_order', 'both']);
+    const normalized = (strategy ?? '').toLowerCase();
+    const safeStrategy = allowedStrategies.has(normalized)
+      ? (normalized as 'measurement' | 'higher_order' | 'both')
+      : 'measurement';
+    return this.metricsSemanticClusterService.clusterShipConcepts(shipId, {
+      strategy: safeStrategy,
+      dryRun: dryRun === '1' || dryRun === 'true',
+    });
+  }
+
   @Post('ships/:shipId/bootstrap-semantic-concepts')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
@@ -99,6 +130,8 @@ export class MetricsController {
     return this.metricsCatalogService.updateMetricDescription(
       metricId,
       body.description,
+      body.boundAssetId,
+      body.aiUnit,
     );
   }
 
@@ -163,6 +196,71 @@ export class MetricsController {
       ...body,
       shipId: user.role === UserRole.ADMIN ? body.shipId : user.shipId ?? undefined,
     });
+  }
+
+  // ── AI metric understanding (Phase 2) ──────────────────────────────────
+
+  @Post('ships/:shipId/analyze')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  analyzeShipMetrics(
+    @Param('shipId') shipId: string,
+    @Body() body: AnalyzeShipOptions,
+  ) {
+    if (body?.background) {
+      return this.metricUnderstandingService.analyzeForShipBackground(
+        shipId,
+        body,
+      );
+    }
+    return this.metricUnderstandingService.analyzeForShip(shipId, body ?? {});
+  }
+
+  @Get('ships/:shipId/analyze/progress')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  analyzeShipMetricsProgress(@Param('shipId') shipId: string) {
+    const p = this.metricUnderstandingService.getProgress(shipId);
+    return { shipId, progress: p };
+  }
+
+  @Post('catalog/:metricId/analyze')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  analyzeSingleMetric(@Param('metricId') metricId: string) {
+    return this.metricUnderstandingService.analyzeOne(metricId);
+  }
+
+  @Get('ships/:shipId/analyze/issues')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  analyzeShipMetricsIssues(
+    @Param('shipId') shipId: string,
+    @Query('severity') severity?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const validSeverities: IssueSeverity[] = ['high', 'medium', 'low'];
+    const sev = severity
+      ? validSeverities.find((s) => s === severity)
+      : undefined;
+    const parsedLimit = limit ? Math.min(500, Math.max(1, parseInt(limit, 10) || 50)) : 50;
+    const parsedOffset = offset ? Math.max(0, parseInt(offset, 10) || 0) : 0;
+    return this.metricQualityDetectorService.detectForShip(shipId, {
+      severity: sev,
+      limit: parsedLimit,
+      offset: parsedOffset,
+    });
+  }
+
+  // Phase 3 — tool-calling resolver. Direct REST entry point; routing from
+  // the chat pipeline happens in a separate task.
+  @Post('ships/:shipId/ask')
+  askMetric(
+    @Param('shipId') shipId: string,
+    @Body() body: { question: string },
+  ) {
+    return this.metricAnalyzerResponderService.answer(shipId, body?.question);
   }
 
   @Post('query')

@@ -10,6 +10,7 @@ import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum
 import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
 import { ChatDocumentsResponderService } from '../responders/documents/chat-documents-responder.service';
 import { ChatInDevelopmentResponderService } from '../responders/chat-in-development-responder.service';
+import { ChatMetricAnalyzerResponderService } from '../responders/chat-metric-analyzer-responder.service';
 import { ChatMetricsResponderService } from '../responders/chat-metrics-responder.service';
 import { ChatSmallTalkResponderService } from '../responders/chat-small-talk-responder.service';
 import { ChatWebSearchResponderService } from '../responders/chat-web-search-responder.service';
@@ -27,6 +28,7 @@ import {
   composeFallbackAwareDocumentResults,
 } from './chat-source-result-composition';
 import { buildDocumentFallbackWebQuery } from './chat-document-web-query';
+import { ChatProgressBus } from '../progress/chat-progress.bus';
 import {
   buildDocumentsWebFallbackSearchQuestion,
   DocumentsWebFallbackDiagnostics,
@@ -40,6 +42,13 @@ import {
 
 @Injectable()
 export class ChatTurnOrchestratorService {
+  /**
+   * How many decomposed sub-asks run at once. Both providers handle 2 at
+   * current account tiers (Anthropic verified at 2M input-tokens/min).
+   * If an Anthropic key ever drops back to Tier 1 (30K ITPM), set this to
+   * 1 for claude-* — two parallel cold asks with the ~45K-token catalog
+   * prompt exhaust the minute window and every retry 429s.
+   */
   private readonly askExecutionConcurrency = 2;
 
   constructor(
@@ -49,8 +58,10 @@ export class ChatTurnOrchestratorService {
     private readonly chatSmallTalkResponderService: ChatSmallTalkResponderService,
     private readonly chatWebSearchResponderService: ChatWebSearchResponderService,
     private readonly chatMetricsResponderService: ChatMetricsResponderService,
+    private readonly chatMetricAnalyzerResponderService: ChatMetricAnalyzerResponderService,
     private readonly chatDocumentsResponderService: ChatDocumentsResponderService,
     private readonly chatInDevelopmentResponderService: ChatInDevelopmentResponderService,
+    private readonly chatProgressBus: ChatProgressBus,
   ) {}
 
   async respond(input: {
@@ -109,8 +120,14 @@ export class ChatTurnOrchestratorService {
 
     if (
       askResults.length === 1 &&
-      askResults[0].responder === ChatTurnResponderKind.DOCUMENTS
+      (askResults[0].responder === ChatTurnResponderKind.DOCUMENTS ||
+        askResults[0].responder === ChatTurnResponderKind.METRICS)
     ) {
+      // Single-ask pass-through: the metric-analyzer responder already
+      // produces a polished, user-facing answer in the user's language.
+      // Re-composing it through the sub-LLM adds 3-8 s of latency, risks
+      // restyling correct numbers, and adds nothing — same rationale as
+      // the documents pass-through above.
       return {
         content: askResults[0].summary,
         ragflowContext: {
@@ -193,6 +210,11 @@ export class ChatTurnOrchestratorService {
     messages: ChatMessageEntity[];
     context: ChatConversationContext;
   }): Promise<ChatTurnAskResult> {
+    this.chatProgressBus.emit(input.session.id, {
+      type: 'ask_started',
+      text: this.describeAskForProgress(input.ask),
+    });
+
     if (this.shouldUseDocumentsResponder(input.ask)) {
       const documentResult = await this.chatDocumentsResponderService.respond(input);
 
@@ -203,7 +225,9 @@ export class ChatTurnOrchestratorService {
       case ChatTurnResponderKind.WEB_SEARCH:
         return this.chatWebSearchResponderService.respond(input);
       case ChatTurnResponderKind.METRICS:
-        return this.chatMetricsResponderService.respond(input);
+        return this.shouldUseMetricAnalyzerResponder()
+          ? this.chatMetricAnalyzerResponderService.respond(input)
+          : this.chatMetricsResponderService.respond(input);
       case ChatTurnResponderKind.IN_DEVELOPMENT:
         return this.chatInDevelopmentResponderService.respond(input);
       case ChatTurnResponderKind.SMALL_TALK:
@@ -425,6 +449,12 @@ export class ChatTurnOrchestratorService {
     return ask.responder;
   }
 
+  private shouldUseMetricAnalyzerResponder(): boolean {
+    return (
+      this.configService.get<boolean>('chat.metricAnalyzerEnabled', true) === true
+    );
+  }
+
   private shouldUseDocumentsResponder(ask: ChatTurnPlanAsk): boolean {
     return (
       this.configService.get<boolean>('chat.documentsResponderEnabled', false) ===
@@ -448,5 +478,20 @@ export class ChatTurnOrchestratorService {
     );
 
     return hasDocumentAsk && hasWebAsk && !hasMetricsAsk;
+  }
+
+  /** Short human-readable progress line for an ask. */
+  private describeAskForProgress(ask: ChatTurnPlanAsk): string {
+    const q = ask.question.length > 80 ? ask.question.slice(0, 77) + '…' : ask.question;
+    switch (ask.responder) {
+      case ChatTurnResponderKind.METRICS:
+        return `Analyzing telemetry: ${q}`;
+      case ChatTurnResponderKind.DOCUMENTS:
+        return `Searching ship manuals: ${q}`;
+      case ChatTurnResponderKind.WEB_SEARCH:
+        return `Searching the web: ${q}`;
+      default:
+        return q;
+    }
   }
 }

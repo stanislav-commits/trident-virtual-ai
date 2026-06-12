@@ -8,4 +8,8 @@ export class SearchWebDto {
   @IsOptional()
   @IsString()
   locale?: string;
+
+  @IsOptional()
+  @IsString()
+  vesselContext?: string;
 }

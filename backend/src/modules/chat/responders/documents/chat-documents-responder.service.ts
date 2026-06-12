@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import {
   DocumentRetrievalEvidenceQuality,
   DocumentRetrievalResponseDto,
+  DocumentRetrievalResultDto,
 } from '../../../documents/dto/document-retrieval-response.dto';
 import { DocumentDocClass } from '../../../documents/enums/document-doc-class.enum';
 import { DocumentsService } from '../../../documents/documents.service';
@@ -51,12 +54,27 @@ import {
   buildDocumentQueryPlan,
   buildDocumentRetrievalRequest,
 } from './document-query-planning';
+import {
+  isReplacementProcedureAsk,
+  mergeSupplementalResults,
+  retrieveSparePartsEvidence,
+  extractEquipmentTerms,
+} from './document-spare-parts';
+
+interface AssetEquipmentContext {
+  promptBlock: string;
+  numericContext: string[];
+  /** Unique brands of the matched assets — anchors the parts retrieval. */
+  brands: string[];
+}
 
 @Injectable()
 export class ChatDocumentsResponderService {
+  private readonly logger = new Logger(ChatDocumentsResponderService.name);
   constructor(
     private readonly documentsService: DocumentsService,
     private readonly chatLlmService: ChatLlmService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async respond(
@@ -138,6 +156,24 @@ export class ChatDocumentsResponderService {
         'retrieval_failed',
         'I could not search the ship documents for this request.',
       );
+    }
+
+    if (retrieval.evidenceQuality !== 'none') {
+      // Brands from the asset register anchor the parts query to the right
+      // manual (component+equipment terms alone lose to other catalogs).
+      const assetCtx = await this.resolveAssetContextForInput(
+        input,
+        queryPlan.searchQuestion,
+      );
+      retrieval = (
+        await this.supplementWithSparePartsEvidence(
+          input.ask.question,
+          documentsRoute,
+          shipId,
+          retrieval,
+          assetCtx?.brands ?? [],
+        )
+      ).retrieval;
     }
 
     const groundedAnswer = await this.buildGroundedSummary(
@@ -222,6 +258,31 @@ export class ChatDocumentsResponderService {
       shipId,
       componentResults,
     });
+
+    const compositeAssetCtx = await this.resolveAssetContextForInput(
+      input,
+      input.ask.semanticRoute.documents.retrievalQuery ?? '',
+      );
+    const supplemented = await this.supplementWithSparePartsEvidence(
+      input.ask.question,
+      documentsRoute,
+      shipId,
+      compositeEvidence.mergedRetrieval,
+      compositeAssetCtx?.brands ?? [],
+      );
+    compositeEvidence.mergedRetrieval = supplemented.retrieval;
+    if (supplemented.addedResults.length) {
+      compositeEvidence.promptComponents.push({
+        id: 'spare-parts',
+        label: 'spare part numbers',
+        question: 'Exact spare part numbers / consumable codes for this job',
+        documentTitleHint: null,
+        evidenceQuality: 'weak',
+        answerabilityReason: 'Supplemental spare-parts retrieval.',
+        evidenceItems: supplemented.addedResults,
+      });
+    }
+
     const groundedAnswer = await this.buildGroundedCompositeSummary(
       input,
       documentsRoute.compositionMode,
@@ -386,9 +447,14 @@ export class ChatDocumentsResponderService {
       compositionMode,
       components: promptComponents,
     });
+    const assetContext = await this.resolveAssetContextForInput(
+      input,
+      input.ask.semanticRoute.documents.retrievalQuery ?? '',
+    );
     const request = {
       systemPrompt,
-      userPrompt,
+      userPrompt:
+        userPrompt + (assetContext ? `\n${assetContext.promptBlock}` : ''),
       temperature: 0.1,
       maxTokens: 900,
     };
@@ -400,6 +466,7 @@ export class ChatDocumentsResponderService {
         retrieval: mergedRetrieval,
         request,
         chatLlmService: this.chatLlmService,
+        supportedNumericContext: assetContext?.numericContext ?? [],
       });
     }
 
@@ -443,17 +510,22 @@ export class ChatDocumentsResponderService {
         input.ask.question,
         retrieval,
       );
+    const assetContext = await this.resolveAssetContextForInput(
+      input,
+      queryPlan.searchQuestion,
+    );
     const request = {
       systemPrompt: buildGroundedAnswerSystemPrompt(retrieval.evidenceQuality),
-      userPrompt: buildGroundedAnswerUserPrompt({
-        userQuestion: input.ask.question,
-        answerLanguage: queryPlan.answerLanguage,
-        retrieval,
-        contextFacts: queryPlan.contextFacts,
-        answerStyle: {
-          structuredMaintenanceRecord: structuredMaintenanceRecordAnswer,
-        },
-      }),
+      userPrompt:
+        buildGroundedAnswerUserPrompt({
+          userQuestion: input.ask.question,
+          answerLanguage: queryPlan.answerLanguage,
+          retrieval,
+          contextFacts: queryPlan.contextFacts,
+          answerStyle: {
+            structuredMaintenanceRecord: structuredMaintenanceRecordAnswer,
+          },
+        }) + (assetContext ? `\n${assetContext.promptBlock}` : ''),
       temperature: 0.1,
       maxTokens: retrieval.evidenceQuality === 'strong' ? 650 : 420,
     };
@@ -465,9 +537,12 @@ export class ChatDocumentsResponderService {
         retrieval,
         request,
         chatLlmService: this.chatLlmService,
-        supportedNumericContext: structuredMaintenanceRecordAnswer
-          ? []
-          : this.buildSupportedNumericContext(queryPlan),
+        supportedNumericContext: [
+          ...(structuredMaintenanceRecordAnswer
+            ? []
+            : this.buildSupportedNumericContext(queryPlan)),
+          ...(assetContext?.numericContext ?? []),
+        ],
         preserveMarkdownStructure: structuredMaintenanceRecordAnswer,
       });
     }
@@ -527,6 +602,163 @@ export class ChatDocumentsResponderService {
     ]
       .filter((value): value is string => typeof value === 'string')
       .join(' ');
+  }
+
+  /** Equipment/manufacturer/model hint terms from the semantic route. */
+  private collectEquipmentHintTerms(
+    documentsRoute: ChatSemanticDocumentsRoute,
+  ): string[] {
+    return [
+      ...documentsRoute.equipmentOrSystemHints,
+      ...documentsRoute.manufacturerHints,
+      ...documentsRoute.modelHints,
+    ];
+  }
+
+  /**
+   * For replacement/service procedure asks, run the supplemental
+   * spare-parts retrieval and merge its chunks into the evidence (see
+   * document-spare-parts.ts). Returns the (possibly unchanged) retrieval
+   * plus the appended results so the composite path can surface them as a
+   * dedicated prompt component.
+   */
+  private async supplementWithSparePartsEvidence(
+    question: string,
+    documentsRoute: ChatSemanticDocumentsRoute,
+    shipId: string,
+    retrieval: DocumentRetrievalResponseDto,
+    brandTerms: string[] = [],
+  ): Promise<{
+    retrieval: DocumentRetrievalResponseDto;
+    addedResults: DocumentRetrievalResultDto[];
+  }> {
+    if (!isReplacementProcedureAsk(question)) {
+      return { retrieval, addedResults: [] };
+    }
+
+    const supplemental = await retrieveSparePartsEvidence({
+      documentsService: this.documentsService,
+      shipId,
+      equipmentTerms: this.collectEquipmentHintTerms(documentsRoute),
+      brandTerms,
+      // The parts catalog lives in the same manual the procedure chunks
+      // came from — scope the supplemental search to that document.
+      sourceDocumentTitle: retrieval.results[0]?.filename ?? null,
+      subject: question,
+    });
+    const before = retrieval.results.length;
+    const merged = mergeSupplementalResults(retrieval, supplemental);
+
+    return { retrieval: merged, addedResults: merged.results.slice(before) };
+  }
+
+  private async resolveAssetContextForInput(
+    input: ChatTurnResponderInput,
+    extraSearchTerm: string,
+  ): Promise<AssetEquipmentContext | null> {
+    if (!input.session.shipId) {
+      return null;
+    }
+
+    // EQUIPMENT noun first: matching by component words ("fuel", "filter")
+    // ranks high-criticality fuel TANKS (brand Rossinavi) above the genset
+    // and the brand anchor points at the wrong manual. The equipment term
+    // from the user's own ask ("генсет" -> genset) resolves the right
+    // assets deterministically; hints are the fallback only.
+    const equipmentNouns = extractEquipmentTerms(input.ask.question);
+    if (equipmentNouns.length) {
+      const byEquipment = await this.resolveAssetEquipmentContext(
+        input.session.shipId,
+        equipmentNouns,
+      );
+      if (byEquipment) {
+        return byEquipment;
+      }
+    }
+
+    return this.resolveAssetEquipmentContext(input.session.shipId, [
+      ...this.collectEquipmentHintTerms(input.ask.semanticRoute.documents),
+      extraSearchTerm,
+    ]);
+  }
+
+  /**
+   * Bridge to the asset register: manuals rarely repeat the vessel-specific
+   * make/model in every chunk, so document answers used to say "the genset
+   * model is not specified" while the register knows it exactly (e.g.
+   * GenSet Engine — Volvo Penta D13-MH 441). Resolve the equipment terms
+   * from the semantic route against assets and feed the matches into the
+   * answer prompt (and into the numeric-grounding whitelist, or model
+   * numbers like "D13-MH 441" would fail citation validation).
+   */
+  private async resolveAssetEquipmentContext(
+    shipId: string,
+    searchTerms: string[],
+  ): Promise<AssetEquipmentContext | null> {
+    const terms = [
+      ...new Set(
+        searchTerms
+          .flatMap((t) => t.split(/[^A-Za-z0-9-]+/))
+          .map((t) => t.trim())
+          .filter((t) => t.length >= 4),
+      ),
+    ].slice(0, 8);
+
+    if (!terms.length) return null;
+
+    try {
+      const rows: Array<{
+        display_name: string;
+        brand: string | null;
+        model: string | null;
+      }> = await this.dataSource.query(
+        `SELECT display_name, brand, model FROM assets
+         WHERE ship_id = $1 AND (
+           display_name ILIKE ANY($2) OR brand ILIKE ANY($2) OR model ILIKE ANY($2)
+         )
+         ORDER BY criticality DESC NULLS LAST
+         LIMIT 6`,
+        [shipId, terms.map((t) => `%${t}%`)],
+      );
+
+      if (!rows.length) return null;
+
+      const lines = rows.map((r) => {
+        const parts = [r.display_name];
+        if (r.brand) parts.push(`brand: ${r.brand}`);
+        if (r.model) parts.push(`model: ${r.model}`);
+        return `- ${parts.join(' | ')}`;
+      });
+
+      const JUNK_BRANDS = new Set(['tbd', 'n/a', 'na', 'unknown', '-', '?']);
+      const brands = [
+        ...new Set(
+          rows
+            .map((r) => (r.brand ?? '').trim())
+            .filter((b) => b && !JUNK_BRANDS.has(b.toLowerCase())),
+        ),
+      ];
+
+      return {
+        brands,
+        promptBlock: [
+          '',
+          'Vessel equipment identification (authoritative, from the ship asset register):',
+          ...lines,
+          'Use these exact make/model names when referring to the equipment. Never state that the make or model is unknown or unspecified. If the user explicitly asks for the make, model or serial number, state it from this list in the answer.',
+        ].join('\n'),
+        numericContext: rows.flatMap((r) =>
+          [r.display_name, r.brand, r.model].filter(
+            (v): v is string => Boolean(v),
+          ),
+        ),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Asset equipment context lookup failed: ${this.formatError(error)}`,
+      );
+      return null;
+    }
   }
 
   private buildSupportedNumericContext(queryPlan: DocumentQueryPlan): string[] {
@@ -662,5 +894,4 @@ export class ChatDocumentsResponderService {
       structuredFieldCount >= 2
     );
   }
-
 }

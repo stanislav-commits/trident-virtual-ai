@@ -3,16 +3,20 @@ import {
   Controller,
   Delete,
   Get,
+  MessageEvent,
   Param,
   Patch,
   Post,
   Query,
+  Sse,
   UseGuards,
 } from '@nestjs/common';
+import { Observable, map } from 'rxjs';
 import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { ChatMessagesService } from './chat-messages.service';
+import { ChatProgressBus } from './progress/chat-progress.bus';
 import { ChatSessionsService } from './chat-sessions.service';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
 import { CreateChatSessionDto } from './dto/create-chat-session.dto';
@@ -26,7 +30,28 @@ export class ChatController {
   constructor(
     private readonly chatSessionsService: ChatSessionsService,
     private readonly chatMessagesService: ChatMessagesService,
+    private readonly chatProgressBus: ChatProgressBus,
   ) {}
+
+  /**
+   * Live progress stream for the assistant reply being generated in this
+   * session. EventSource clients authenticate via `?access_token=` (the
+   * browser API cannot set headers). Events: planning / ask_started /
+   * tool / composing / done / error — see ChatProgressEvent.
+   */
+  @Sse('sessions/:sessionId/stream')
+  async streamProgress(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('sessionId') sessionId: string,
+  ): Promise<Observable<MessageEvent>> {
+    await this.chatSessionsService.findAccessibleSessionOrThrow(
+      user,
+      sessionId,
+    );
+    return this.chatProgressBus
+      .subscribe(sessionId)
+      .pipe(map((event) => ({ data: event }) as MessageEvent));
+  }
 
   @Get('sessions')
   listSessions(

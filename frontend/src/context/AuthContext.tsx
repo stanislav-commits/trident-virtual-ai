@@ -2,10 +2,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
+import { SESSION_EXPIRED_EVENT } from '../api/core';
 import type { AuthUser } from '../types/auth';
 import { login as apiLogin } from '../api/authApi';
 
@@ -47,6 +49,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
     setState(null);
   }, []);
+
+  // Expired JWT anywhere in the app → drop straight to the login screen
+  // instead of letting every page fail with 401 noise.
+  useEffect(() => {
+    const onExpired = () => logout();
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, [logout]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

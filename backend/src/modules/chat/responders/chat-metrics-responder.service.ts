@@ -74,7 +74,13 @@ export class ChatMetricsResponderService {
       };
     }
 
-    if (input.ask.timeMode === ChatMetricsAskTimeMode.RANGE) {
+    // RANGE asks need both bounds — the time-normalizer already enforces
+    // this upstream, but guard defensively in case an ask is constructed
+    // through a different path (tests, replay, etc).
+    if (
+      input.ask.timeMode === ChatMetricsAskTimeMode.RANGE &&
+      (!input.ask.rangeStart || !input.ask.rangeEnd)
+    ) {
       return {
         askId: input.ask.id,
         intent: input.ask.intent,
@@ -83,9 +89,9 @@ export class ChatMetricsResponderService {
         capabilityEnabled: input.ask.capabilityEnabled,
         capabilityLabel: input.ask.capabilityLabel,
         summary:
-          'Range and trend metric queries are still in development right now. Snapshot and point-in-time metric lookups are already connected.',
+          'I could not normalize the time window for this metrics range request. Try giving an explicit start and end and I will retry.',
         data: {
-          status: 'range_not_supported_yet',
+          status: 'time_normalization_failed',
         },
         contextReferences: [],
       };
@@ -95,15 +101,21 @@ export class ChatMetricsResponderService {
       ReturnType<MetricsConceptExecutionService['execute']>
     >;
 
+    const responderTimeMode =
+      input.ask.timeMode === ChatMetricsAskTimeMode.POINT_IN_TIME
+        ? MetricQueryTimeMode.POINT_IN_TIME
+        : input.ask.timeMode === ChatMetricsAskTimeMode.RANGE
+          ? MetricQueryTimeMode.RANGE
+          : MetricQueryTimeMode.SNAPSHOT;
+
     try {
       execution = await this.metricsConceptExecutionService.execute({
         query: input.ask.question,
         shipId: input.session.shipId,
-        timeMode:
-          input.ask.timeMode === ChatMetricsAskTimeMode.POINT_IN_TIME
-            ? MetricQueryTimeMode.POINT_IN_TIME
-            : MetricQueryTimeMode.SNAPSHOT,
+        timeMode: responderTimeMode,
         timestamp: input.ask.timestamp ?? undefined,
+        rangeStart: input.ask.rangeStart ?? undefined,
+        rangeEnd: input.ask.rangeEnd ?? undefined,
       });
     } catch (error) {
       return {
@@ -141,9 +153,11 @@ export class ChatMetricsResponderService {
   private buildSummary(
     execution: Awaited<ReturnType<MetricsConceptExecutionService['execute']>>,
   ): string {
-    const timestampSuffix = execution.result.timestamp
-      ? ` at ${execution.result.timestamp}`
-      : '';
+    // For SNAPSHOT / POINT_IN_TIME the value is a single observation — the
+    // existing "at <timestamp>" suffix matches user expectation. For RANGE
+    // the value is aggregated; surface the window explicitly so the LLM
+    // composing the chat reply doesn't pass it off as a current reading.
+    const timestampSuffix = this.buildTimestampSuffix(execution);
     const unitSuffix = execution.result.unit ? ` ${execution.result.unit}` : '';
 
     if (
@@ -181,6 +195,24 @@ export class ChatMetricsResponderService {
     ]
       .filter(Boolean)
       .join(' ');
+  }
+
+  private buildTimestampSuffix(
+    execution: Awaited<ReturnType<MetricsConceptExecutionService['execute']>>,
+  ): string {
+    if (execution.timeMode === MetricQueryTimeMode.RANGE) {
+      // The executor today always defaults to `mean`. When per-concept
+      // range strategies land, this label should mirror whatever the
+      // executor reports back via metadata.
+      const windowEnd = execution.timestamp
+        ? ` ending ${execution.timestamp}`
+        : '';
+      return ` (mean over window${windowEnd})`;
+    }
+
+    return execution.result.timestamp
+      ? ` at ${execution.result.timestamp}`
+      : '';
   }
 
   private buildExecutionErrorSummary(error: unknown): string {

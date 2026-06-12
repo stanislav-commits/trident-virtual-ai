@@ -3,6 +3,10 @@ import type { ChatContextReferenceDto, ChatMessageDto } from "../../types/chat";
 import { MessageBubble } from "./MessageBubble";
 
 interface MessageListProps {
+  /** Live pipeline activity line shown under the typing dots. */
+  progressText?: string | null;
+  /** Token-streamed draft of the answer being written right now. */
+  draftText?: string | null;
   messages: ChatMessageDto[];
   isLoadingResponse?: boolean;
   onCopy?: (content: string) => void;
@@ -19,6 +23,8 @@ interface MessageListProps {
 export function MessageList({
   messages,
   isLoadingResponse = false,
+  progressText = null,
+  draftText = null,
   onCopy,
   onRegenerate,
   onSendMessage,
@@ -34,7 +40,7 @@ export function MessageList({
     requestAnimationFrame(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
-  }, [messages, isLoadingResponse]);
+  }, [messages, isLoadingResponse, draftText]);
 
   return (
     <div className="chat-main__messages" ref={containerRef}>
@@ -63,9 +69,12 @@ export function MessageList({
           aria-live="polite"
           aria-busy="true"
         >
+          {draftText && (
+            <div className="chat-message__draft">{draftText}</div>
+          )}
           <div className="chat-message__loading">
             <span className="chat-message__loading-label">
-              Generating response
+              {progressText ?? "Generating response"}
             </span>
             <span className="typing-dots" aria-hidden="true">
               <span className="typing-dot" />

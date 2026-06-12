@@ -6,6 +6,7 @@ import { PostgresModule } from './postgres/postgres.module';
 import { RagModule } from './rag/rag.module';
 import { TranscriptionModule } from './transcription/transcription.module';
 import { WebSearchModule } from './web-search/web-search.module';
+import { WindyModule } from './windy/windy.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { WebSearchModule } from './web-search/web-search.module';
     WebSearchModule,
     LlmModule,
     GrafanaLlmModule,
+    WindyModule,
   ],
   exports: [
     PostgresModule,
@@ -25,6 +27,7 @@ import { WebSearchModule } from './web-search/web-search.module';
     WebSearchModule,
     LlmModule,
     GrafanaLlmModule,
+    WindyModule,
   ],
 })
 export class IntegrationsModule {}

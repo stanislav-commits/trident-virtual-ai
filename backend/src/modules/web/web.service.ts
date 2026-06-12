@@ -17,6 +17,7 @@ export class WebService {
     const result = await this.webSearchService.search({
       question: input.question,
       locale: input.locale ?? undefined,
+      vesselContext: input.vesselContext ?? undefined,
     });
 
     return {

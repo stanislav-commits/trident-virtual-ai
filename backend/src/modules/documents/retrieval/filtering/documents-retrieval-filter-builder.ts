@@ -199,21 +199,49 @@ export class DocumentsRetrievalFilterBuilder {
     context: DocumentRetrievalFilterContext,
     languageHint: string | undefined,
   ): boolean {
+    // NOTE: contentFocus is intentionally NOT a hard prefilter discriminator.
+    // It is a fuzzy, topical hint ("oil change interval", "maintenance
+    // guidelines") that rarely matches a document's stored content_focus
+    // verbatim. Because matchesAnyRetrievalHint needs the document field to
+    // *contain* the hint string, an unset/short content_focus made
+    // matchesAnyRetrievalHint return false, and the `.every(Boolean)` below then
+    // dropped EVERY document whenever the query carried a contentFocus hint —
+    // silently disabling equipment-based narrowing for the common case
+    // (maintenance/"how often" questions always produce contentFocus hints).
+    // contentFocus still contributes as a soft reranker bonus. Identity hints
+    // (equipment / manufacturer / model / language) remain hard discriminators.
     const hintMatches = [
       context.hints.equipmentOrSystem.length
-        ? matchesAnyRetrievalHint(
+        ? // Match the equipment hint against the structured field OR the
+          // descriptive file name. Our processed manuals are named with their
+          // equipment roles spelled out ("... — Fuel Transfer Pump Bilge Pump"),
+          // so the file name itself is a reliable equipment signal even when
+          // equipment_or_system was never populated. This lets equipment-based
+          // narrowing work across the whole corpus without hand-filling metadata.
+          // Token-based (all hint words present, any order) so multi-word hints
+          // like "zf gearbox" still match a field reading "... gearbox ... zf".
+          matchesEquipmentHint(
             document.equipmentOrSystem,
+            context.hints.equipmentOrSystem,
+          ) ||
+          matchesEquipmentHint(
+            document.originalFileName,
             context.hints.equipmentOrSystem,
           )
         : true,
+      // Manufacturer / model: same field-OR-filename, token-based match as
+      // equipment. Most documents never had manufacturer/model columns filled,
+      // so a strict field-only match would (via .every below) drop every
+      // document whenever the query produced a manufacturer/model hint — the
+      // same silent-disable that hid the equipment narrowing. The descriptive
+      // file name ("ZF 305-3 — Port Gearbox ...") carries brand + model reliably.
       context.hints.manufacturer.length
-        ? matchesAnyRetrievalHint(document.manufacturer, context.hints.manufacturer)
+        ? matchesEquipmentHint(document.manufacturer, context.hints.manufacturer) ||
+          matchesEquipmentHint(document.originalFileName, context.hints.manufacturer)
         : true,
       context.hints.model.length
-        ? matchesAnyRetrievalHint(document.model, context.hints.model)
-        : true,
-      context.hints.contentFocus.length
-        ? matchesAnyRetrievalHint(document.contentFocus, context.hints.contentFocus)
+        ? matchesEquipmentHint(document.model, context.hints.model) ||
+          matchesEquipmentHint(document.originalFileName, context.hints.model)
         : true,
       languageHint?.trim()
         ? matchesAnyRetrievalHint(document.language, [languageHint.trim()])
@@ -235,6 +263,44 @@ export class DocumentsRetrievalFilterBuilder {
       Boolean(languageHint?.trim())
     );
   }
+}
+
+// Token-based equipment-hint match: the document field matches a hint when it
+// contains the full hint phrase OR contains every significant (>=2 char) token
+// of that hint, in any order. Robust to word order / extra words so "zf gearbox"
+// matches "marine gearbox transmission ... zf" and "fuel transfer pump" matches a
+// file name listing "... Fuel Transfer Pump Emergency Bilge Pump". Used only for
+// the equipment prefilter — identity-strong but order-insensitive.
+function matchesEquipmentHint(
+  value: string | null | undefined,
+  hints: string[],
+): boolean {
+  const normalizedValue = value?.trim().toLowerCase();
+
+  if (!normalizedValue || !hints.length) {
+    return false;
+  }
+
+  return hints.some((hint) => {
+    const normalizedHint = hint.trim().toLowerCase();
+
+    if (!normalizedHint) {
+      return false;
+    }
+
+    if (normalizedValue.includes(normalizedHint)) {
+      return true;
+    }
+
+    const tokens = normalizedHint
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((token) => token.length >= 2);
+
+    return (
+      tokens.length > 0 &&
+      tokens.every((token) => normalizedValue.includes(token))
+    );
+  });
 }
 
 function normalizeHintValues(values: string[] | undefined): string[] {

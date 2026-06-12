@@ -113,6 +113,14 @@ export function buildDocumentRetrievalRequest(
 
   return {
     question: queryPlan.searchQuestion,
+    // Assess evidence against the user's RAW message: the decomposer and
+    // router both expand asks with extra clauses/keywords, and the lexical
+    // evidence assessor punishes verbose questions (each unsupported
+    // "specific token" pushes toward no_evidence). The user's own short
+    // question is what the evidence actually needs to answer.
+    assessmentQuestion:
+      input.context.latestUserMessage?.content?.trim() ||
+      queryPlan.originalQuestion,
     shipId,
     candidateDocClasses: attempt.candidateDocClasses,
     questionType:

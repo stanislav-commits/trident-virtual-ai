@@ -11,6 +11,7 @@ import {
 import { Type } from 'class-transformer';
 import { MetricAggregationRule } from '../enums/metric-aggregation-rule.enum';
 import { MetricConceptType } from '../enums/metric-concept-type.enum';
+import { MetricRangeAggregation } from '../enums/metric-query-time-mode.enum';
 import { MetricConceptMemberDto } from './metric-concept-member.dto';
 
 export class UpdateMetricConceptDto {
@@ -35,6 +36,12 @@ export class UpdateMetricConceptDto {
   @IsOptional()
   @IsEnum(MetricAggregationRule)
   aggregationRule?: MetricAggregationRule;
+
+  // Hint for how to aggregate this concept over the time axis when
+  // timeMode = RANGE. Pass null in the request body to clear it.
+  @IsOptional()
+  @IsEnum(MetricRangeAggregation)
+  rangeAggregationHint?: MetricRangeAggregation | null;
 
   @IsOptional()
   @IsString()

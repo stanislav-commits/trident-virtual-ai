@@ -6,6 +6,14 @@ import { DocumentRetrievalQuestionType } from '../enums/document-retrieval-quest
 export const DOCUMENT_RETRIEVAL_DEFAULT_TOP_K = 6;
 export const DOCUMENT_RETRIEVAL_DEFAULT_CANDIDATE_K = 24;
 export const RAGFLOW_RETRIEVAL_TOP_K = 1024;
+// Lean retrieval toward semantic (vector) similarity rather than keyword overlap.
+// RAGFlow's default (~0.3) lets weak term overlap drown a strong vector match, so
+// a semantically-correct chunk phrased with different words ("lube oil" vs the
+// manual's "engine oil pressure") scored low and got rejected by the evidence
+// gate. Embeddings already bridge synonyms; this lets that signal dominate so we
+// don't need hand-maintained synonym lists. Kept at 0.55 (not higher) so exact
+// tokens — model/part numbers like "VS-350" / "ACB 331" — still carry weight.
+export const RAGFLOW_VECTOR_SIMILARITY_WEIGHT = 0.55;
 export const ALL_DOCUMENT_CLASSES = Object.values(DocumentDocClass);
 
 export interface DocumentRetrievalHints {

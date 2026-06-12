@@ -37,6 +37,7 @@ export function buildCompositeDocumentAnswerSystemPrompt(): string {
     'For numeric, table, specification, threshold, interval, capacity, voltage, pressure, power, model, alarm-code, or fault-code answers, report a value only when the exact value and unit appear in the cited evidence snippet.',
     'When evidence is tabular, preserve the row and column relationship exactly as shown in one cited evidence item.',
     'Do not infer from adjacent rows, combine unrelated rows or tables, add values together, convert units, or guess missing cells.',
+      'BE CONCISE: answer exactly what was asked and stop. Do not add unrequested sections, background, or recommendations beyond the question.',
   ].join(' ');
 }
 

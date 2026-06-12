@@ -1,7 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IntegrationStatusDto } from '../../common/dto/integration-status.dto';
-import { createOpenAiCompatibleChatCompletion } from '../shared/openai-compatible-http';
+import { createAnthropicToolCallCompletion } from '../shared/anthropic-http';
+import {
+  ChatMessage,
+  ChatToolDefinition,
+  OpenAiCompatibleToolCallResult,
+  createOpenAiCompatibleChatCompletion,
+  createOpenAiCompatibleToolCallCompletion,
+} from '../shared/openai-compatible-http';
+
+/**
+ * A model name is routed to Anthropic if it starts with "claude-".
+ * Everything else goes through the OpenAI-compatible client (which also
+ * handles Azure OpenAI, OpenRouter, etc. as drop-in replacements).
+ */
+function isAnthropicModel(model: string): boolean {
+  return /^claude-/i.test(model.trim());
+}
 
 interface LlmChatCompletionInput {
   systemPrompt: string;
@@ -9,6 +25,12 @@ interface LlmChatCompletionInput {
   temperature?: number;
   maxTokens?: number;
   model?: string;
+}
+
+interface LlmJsonChatCompletionInput extends LlmChatCompletionInput {
+  // Optional shape hint for the caller's TypeScript expectations. The actual
+  // JSON.parse'd value is returned without runtime validation.
+  schemaHint?: string;
 }
 
 @Injectable()
@@ -47,7 +69,10 @@ export class LlmService {
       return await createOpenAiCompatibleChatCompletion({
         apiKey: this.getApiKey(),
         baseUrl: this.getBaseUrl(),
-        model: input.model?.trim() || this.getModel(),
+        // Sub-LLM text completion → always OpenAI cheap. If LLM_MODEL is a
+        // Claude alias (main responder), fall back to a sensible default
+        // since these short text tasks don't benefit from Claude reasoning.
+        model: this.subLlmModel(input.model),
         systemPrompt: input.systemPrompt,
         userPrompt: input.userPrompt,
         temperature: input.temperature,
@@ -58,6 +83,149 @@ export class LlmService {
         `LLM request failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       return null;
+    }
+  }
+
+  /**
+   * Wraps createChatCompletion with response_format=json_object and
+   * JSON.parse on the result. Returns `null` if the LLM is not configured,
+   * the call fails, or the response is not valid JSON.
+   */
+  async createJsonChatCompletion<T = unknown>(
+    input: LlmJsonChatCompletionInput,
+  ): Promise<T | null> {
+    if (!this.isConfigured()) {
+      return null;
+    }
+
+    try {
+      const raw = await createOpenAiCompatibleChatCompletion({
+        apiKey: this.getApiKey(),
+        baseUrl: this.getBaseUrl(),
+        // Same sub-LLM downgrade as createChatCompletion above — JSON
+        // extraction tasks don't need Claude.
+        model: this.subLlmModel(input.model),
+        systemPrompt: input.systemPrompt,
+        userPrompt: input.userPrompt,
+        temperature: input.temperature,
+        maxTokens: input.maxTokens,
+        responseFormat: 'json_object',
+      });
+
+      if (!raw) return null;
+      return JSON.parse(raw) as T;
+    } catch (error) {
+      this.logger.warn(
+        `LLM JSON completion failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * One round-trip with tool definitions. Returns either text content or a
+   * list of tool_calls the caller must execute. The caller appends the tool
+   * results and calls again until content is returned.
+   */
+  async createToolCallChatCompletion(input: {
+    messages: ChatMessage[];
+    tools: ChatToolDefinition[];
+    temperature?: number;
+    maxTokens?: number;
+    model?: string;
+  }): Promise<OpenAiCompatibleToolCallResult | null> {
+    const detailed = await this.createToolCallChatCompletionDetailed(input);
+    return detailed.ok ? detailed.result : null;
+  }
+
+  /**
+   * Variant that returns classification info so callers can distinguish
+   * transient failures (rate-limit, 5xx, network) from permanent ones
+   * (misconfig, 400 bad request) — useful for retry logic.
+   */
+  async createToolCallChatCompletionDetailed(input: {
+    messages: ChatMessage[];
+    tools: ChatToolDefinition[];
+    temperature?: number;
+    maxTokens?: number;
+    model?: string;
+    /** Anthropic-only: live text deltas (stream:true under the hood). */
+    onTextDelta?: (delta: string) => void;
+  }): Promise<
+    | { ok: true; result: OpenAiCompatibleToolCallResult }
+    | {
+        ok: false;
+        transient: boolean;
+        kind: 'misconfigured' | 'rate_limited' | 'server_error' | 'bad_request' | 'network' | 'other';
+        error: string;
+        status?: number;
+        retryAfterSeconds?: number;
+      }
+  > {
+    const effectiveModel = input.model?.trim() || this.getModel();
+    const usingAnthropic = isAnthropicModel(effectiveModel);
+
+    // Validate the correct API key for the chosen provider.
+    if (usingAnthropic) {
+      if (!this.getAnthropicApiKey()) {
+        return {
+          ok: false, transient: false, kind: 'misconfigured',
+          error: `Model "${effectiveModel}" requires ANTHROPIC_API_KEY but it is not configured.`,
+        };
+      }
+    } else if (!this.isConfigured()) {
+      return {
+        ok: false, transient: false, kind: 'misconfigured',
+        error: 'LLM service is not configured (missing API key / base URL).',
+      };
+    }
+
+    try {
+      const result = usingAnthropic
+        ? await createAnthropicToolCallCompletion({
+            apiKey: this.getAnthropicApiKey(),
+            baseUrl: this.getAnthropicBaseUrl(),
+            model: effectiveModel,
+            messages: input.messages,
+            tools: input.tools,
+            temperature: input.temperature,
+            maxTokens: input.maxTokens,
+            onTextDelta: input.onTextDelta,
+          })
+        : await createOpenAiCompatibleToolCallCompletion({
+            apiKey: this.getApiKey(),
+            baseUrl: this.getBaseUrl(),
+            model: effectiveModel,
+            messages: input.messages,
+            tools: input.tools,
+            temperature: input.temperature,
+            maxTokens: input.maxTokens,
+          });
+      return { ok: true, result };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const status = (error as { status?: number })?.status;
+      const retryAfterSeconds = (error as { retryAfterSeconds?: number })
+        ?.retryAfterSeconds;
+      let kind: 'rate_limited' | 'server_error' | 'bad_request' | 'network' | 'other' = 'other';
+      let transient = false;
+      if (status === 429) {
+        kind = 'rate_limited';
+        transient = true;
+      } else if (status !== undefined && status >= 500 && status < 600) {
+        kind = 'server_error';
+        transient = true;
+      } else if (status === 408 || /timeout|ECONN|ENETUNREACH|fetch failed/i.test(msg)) {
+        kind = 'network';
+        transient = true;
+      } else if (status !== undefined && status >= 400 && status < 500) {
+        kind = 'bad_request';
+        transient = false;
+      }
+      this.logger.error(
+        `LLM tool-call failed [${kind}${status ? ` ${status}` : ''}]: ${msg}`,
+      );
+      return { ok: false, transient, kind, error: msg, status, retryAfterSeconds };
     }
   }
 
@@ -76,6 +244,51 @@ export class LlmService {
     return this.configService.get<string>('integrations.llm.apiKey', '').trim();
   }
 
+  /**
+   * Sub-LLM text / JSON completion tasks (classifier, question decomposer,
+   * query resolver, memory summary, asset-fact extraction) go through the
+   * OpenAI-compatible client — the non-tool path to Anthropic isn't wired.
+   *
+   * IMPORTANT: these tasks are routing-critical. The decomposer rewrites
+   * the user's question before responder selection — a weak model here
+   * silently drops qualifiers like "from onboard telemetry" and misroutes
+   * the turn (observed 2026-06-10: telemetry investigation → documents →
+   * web fallback). Keep LLM_SUB_MODEL at gpt-5-mini or better; only the
+   * truly mechanical bulk tasks (metric binding analysis) pin 4.1-mini
+   * explicitly via callerOverride.
+   */
+  private subLlmModel(callerOverride?: string): string {
+    const explicit = callerOverride?.trim();
+    if (explicit) {
+      // If caller asked for Claude here, downgrade to the configured sub
+      // model (these methods do not route to Anthropic).
+      return /^claude-/i.test(explicit) ? this.getSubModel() : explicit;
+    }
+    const envModel = this.getModel();
+    return /^claude-/i.test(envModel) ? this.getSubModel() : envModel;
+  }
+
+  private getSubModel(): string {
+    return (
+      this.configService.get<string>('integrations.llm.subModel', '').trim() ||
+      'gpt-5-mini'
+    );
+  }
+
+  private getAnthropicApiKey(): string {
+    return this.configService
+      .get<string>('integrations.llm.anthropicApiKey', '')
+      .trim();
+  }
+
+  private getAnthropicBaseUrl(): string {
+    return (
+      this.configService
+        .get<string>('integrations.llm.anthropicBaseUrl', '')
+        .trim() || 'https://api.anthropic.com/v1'
+    );
+  }
+
   private getBaseUrl(): string {
     return (
       this.configService.get<string>('integrations.llm.baseUrl', '').trim() ||
@@ -87,5 +300,10 @@ export class LlmService {
     return this.configService
       .get<string>('integrations.llm.model', 'gpt-4.1-mini')
       .trim();
+  }
+
+  /** Public accessor so callers can compute model-aware cost estimates. */
+  getConfiguredModel(): string {
+    return this.getModel();
   }
 }

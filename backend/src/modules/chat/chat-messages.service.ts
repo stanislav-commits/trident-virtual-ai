@@ -15,6 +15,7 @@ import { CreateChatMessageDto } from './dto/create-chat-message.dto';
 import { ChatMessageRole } from './enums/chat-message-role.enum';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ChatTurnOrchestratorService } from './orchestration/chat-turn-orchestrator.service';
+import { ChatProgressBus } from './progress/chat-progress.bus';
 
 @Injectable()
 export class ChatMessagesService {
@@ -27,6 +28,7 @@ export class ChatMessagesService {
     private readonly chatConversationContextService: ChatConversationContextService,
     private readonly chatContextMemoryService: ChatContextMemoryService,
     private readonly chatTurnOrchestratorService: ChatTurnOrchestratorService,
+    private readonly chatProgressBus: ChatProgressBus,
   ) {}
 
   async list(user: AuthenticatedUser, sessionId: string) {
@@ -134,6 +136,10 @@ export class ChatMessagesService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      this.chatProgressBus.emit(sessionId, {
+        type: 'error',
+        text: 'Reply generation failed — try again or rephrase.',
+      });
     }
   }
 
@@ -164,6 +170,11 @@ export class ChatMessagesService {
       );
     }
 
+    this.chatProgressBus.emit(sessionId, {
+      type: 'planning',
+      text: 'Analyzing the question…',
+    });
+
     const context = await this.chatConversationContextService.build(
       session,
       messages,
@@ -182,6 +193,12 @@ export class ChatMessagesService {
     });
     const savedAssistantMessage =
       await this.chatMessagesRepository.save(assistantMessage);
+
+    this.chatProgressBus.emit(sessionId, {
+      type: 'done',
+      text: 'Reply ready',
+      messageId: savedAssistantMessage.id,
+    });
 
     await this.chatSessionsService.touchSession(sessionId);
     void this.chatSessionsService.refreshAutoTitleAfterTurn({

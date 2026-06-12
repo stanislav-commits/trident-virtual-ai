@@ -1,10 +1,12 @@
 import { useCallback, useDeferredValue, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
+import { updateMetricBinding } from "../../api/assetsApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useShipMetricsAdminData } from "../../hooks/admin/useShipMetricsAdminData";
 import { useShipMetricsCatalogPageData } from "../../hooks/admin/useShipMetricsCatalogPageData";
 import { MetricsIcon, SearchIcon, ShipIcon } from "./AdminPanelIcons";
 import { MetricsSemanticConceptsPanel } from "./MetricsSemanticConceptsPanel";
+import { BindAssetPicker } from "./metrics/BindAssetPicker";
 
 interface MetricsSectionProps {
   token: string | null;
@@ -16,6 +18,10 @@ interface MetricsTableRow {
   key: string;
   description: string | null;
   isEnabled: boolean;
+  boundAssetId: string | null;
+  boundAssetIdInternal: string | null;
+  boundAssetName: string | null;
+  aiBoundConfidence: number | null;
 }
 
 interface MetricDescriptionCellProps {
@@ -169,7 +175,6 @@ export function MetricsSection({ token }: MetricsSectionProps) {
   const {
     availableShips,
     selectedShipId,
-    setSelectedShipId,
     isLoading: shipsLoading,
     error: shipsError,
   } = useAdminShip();
@@ -183,9 +188,15 @@ export function MetricsSection({ token }: MetricsSectionProps) {
   } | null>(null);
   const [selectedBucketFilter, setSelectedBucketFilter] =
     useState(ALL_BUCKETS_FILTER);
+  const [boundFilter, setBoundFilter] = useState<"all" | "bound" | "unbound">(
+    "all",
+  );
   const [catalogSearch, setCatalogSearch] = useState("");
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [currentPage, setCurrentPage] = useState(1);
+  // Which metric is currently showing the asset-bind picker (one at a time).
+  const [bindingMetricId, setBindingMetricId] = useState<string | null>(null);
+  const [unbindingMetricId, setUnbindingMetricId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<"catalog" | "semantics">(
     "catalog",
   );
@@ -208,11 +219,13 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     syncCatalog: syncCatalogPage,
     updateDescription,
     toggleMetrics,
+    refreshCatalog,
     lastSyncResult: catalogLastSyncResult,
   } = useShipMetricsCatalogPageData(token, effectiveSelectedShipId, {
     search: deferredCatalogSearch,
     bucket:
       selectedBucketFilter === ALL_BUCKETS_FILTER ? null : selectedBucketFilter,
+    bound: boundFilter,
     page: currentPage,
     pageSize,
     enabled: Boolean(token && effectiveSelectedShipId && isCatalogView),
@@ -237,25 +250,6 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     )
       ? selectedBucketFilter
       : ALL_BUCKETS_FILTER;
-
-  const resetCatalogViewState = useCallback(() => {
-    setSelectedBucketFilter(ALL_BUCKETS_FILTER);
-    setCatalogSearch("");
-    setCurrentPage(1);
-    setActiveEditingMetric(null);
-    setDraftDescription("");
-    setSavingMetricId(null);
-    setDescriptionEditError(null);
-    setActiveView("catalog");
-  }, [setActiveEditingMetric]);
-
-  const handleShipSelectionChange = useCallback(
-    (nextShipId: string | null) => {
-      resetCatalogViewState();
-      setSelectedShipId(nextShipId);
-    },
-    [resetCatalogViewState, setSelectedShipId],
-  );
 
   const handleStartEditing = (metric: MetricsTableRow) => {
     setCatalogError("");
@@ -313,6 +307,22 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     setSavingMetricId(null);
   };
 
+  const handleUnbindMetric = useCallback(
+    async (metricId: string) => {
+      if (!token) return;
+      setUnbindingMetricId(metricId);
+      try {
+        await updateMetricBinding(token, metricId, null);
+        await refreshCatalog();
+      } catch (e) {
+        setCatalogError(e instanceof Error ? e.message : "Unbind failed");
+      } finally {
+        setUnbindingMetricId(null);
+      }
+    },
+    [token, refreshCatalog, setCatalogError],
+  );
+
   const activeError = (isCatalogView ? catalogError : semanticError) || shipsError || "";
   const paginatedMetrics: MetricsTableRow[] =
     catalogPage?.items.map((metric) => ({
@@ -321,6 +331,10 @@ export function MetricsSection({ token }: MetricsSectionProps) {
       key: metric.key,
       description: metric.description,
       isEnabled: metric.isEnabled,
+      boundAssetId: metric.boundAssetId,
+      boundAssetIdInternal: metric.boundAsset?.assetIdInternal ?? null,
+      boundAssetName: metric.boundAsset?.displayName ?? null,
+      aiBoundConfidence: metric.aiBoundConfidence,
     })) ?? [];
   const totalFilteredMetrics = catalogPage?.filteredMetrics ?? 0;
   const totalPages = catalogPage?.totalPages ?? 1;
@@ -453,26 +467,6 @@ export function MetricsSection({ token }: MetricsSectionProps) {
         <>
           <div className="admin-panel__form-card admin-panel__metrics-filter-card">
             <div className="admin-panel__form-row">
-              <div className="admin-panel__field">
-                <label className="admin-panel__field-label">Ship</label>
-                <select
-                  className="admin-panel__select"
-                  value={effectiveSelectedShipId ?? ""}
-                  onChange={(event) =>
-                    handleShipSelectionChange(event.target.value || null)
-                  }
-                >
-                  <option value="">Select a ship</option>
-                  {availableShips.map((ship) => (
-                    <option key={ship.id} value={ship.id}>
-                      {ship.name}
-                      {ship.organizationName
-                        ? ` — ${ship.organizationName}`
-                        : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
               {isCatalogView && (
                 <>
                   <div className="admin-panel__field">
@@ -495,6 +489,32 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className="admin-panel__field">
+                    <label className="admin-panel__field-label">Binding</label>
+                    <div className="metrics-bound-filter">
+                      {(["all", "bound", "unbound"] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          className={`metrics-bound-filter__pill ${
+                            boundFilter === opt
+                              ? "metrics-bound-filter__pill--active"
+                              : ""
+                          }`}
+                          onClick={() => {
+                            setBoundFilter(opt);
+                            setCurrentPage(1);
+                          }}
+                        >
+                          {opt === "all"
+                            ? "All"
+                            : opt === "bound"
+                              ? "Bound to asset"
+                              : "Unbound"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div className="admin-panel__field">
                     <label className="admin-panel__field-label">Search</label>
@@ -638,6 +658,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                     <col className="admin-panel__metrics-catalog-col admin-panel__metrics-catalog-col--bucket" />
                     <col className="admin-panel__metrics-catalog-col admin-panel__metrics-catalog-col--key" />
                     <col className="admin-panel__metrics-catalog-col admin-panel__metrics-catalog-col--description" />
+                    <col className="admin-panel__metrics-catalog-col admin-panel__metrics-catalog-col--asset" />
                   </colgroup>
                   <thead>
                     <tr>
@@ -645,12 +666,13 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                       <th className="admin-panel__th">Bucket</th>
                       <th className="admin-panel__th">Key</th>
                       <th className="admin-panel__th">Description</th>
+                      <th className="admin-panel__th">Bound asset</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedMetrics.length === 0 ? (
                       <tr className="admin-panel__row admin-panel__row--metrics-empty">
-                        <td className="admin-panel__td" colSpan={4}>
+                        <td className="admin-panel__td" colSpan={5}>
                           <span className="admin-panel__muted">
                             No metrics match the current filters.
                           </span>
@@ -701,6 +723,101 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                               onSave={() => void handleSaveDescription(metric)}
                               onCancel={handleCancelEditing}
                             />
+                          </td>
+                          <td className="admin-panel__td admin-panel__td--asset">
+                            {metric.boundAssetId ? (
+                              <div
+                                className="metrics-bound-asset"
+                                title={metric.boundAssetName ?? undefined}
+                              >
+                                <span className="metrics-bound-asset__code">
+                                  {metric.boundAssetIdInternal}
+                                </span>
+                                <span className="metrics-bound-asset__name">
+                                  {metric.boundAssetName}
+                                </span>
+                                {typeof metric.aiBoundConfidence ===
+                                  "number" && (
+                                  <span
+                                    className={`metrics-bound-asset__conf metrics-bound-asset__conf--${
+                                      metric.aiBoundConfidence >= 1
+                                        ? "verified"
+                                        : metric.aiBoundConfidence >= 0.8
+                                          ? "high"
+                                          : metric.aiBoundConfidence >= 0.6
+                                            ? "medium"
+                                            : "low"
+                                    }`}
+                                    title={
+                                      metric.aiBoundConfidence >= 1
+                                        ? "Human-verified binding"
+                                        : `AI confidence ${Math.round(metric.aiBoundConfidence * 100)}%`
+                                    }
+                                  >
+                                    {metric.aiBoundConfidence >= 1
+                                      ? "✓"
+                                      : `${Math.round(metric.aiBoundConfidence * 100)}%`}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="metrics-bound-asset__action"
+                                  onClick={() =>
+                                    setBindingMetricId((cur) =>
+                                      cur === metric.id ? null : metric.id,
+                                    )
+                                  }
+                                  title="Change asset binding"
+                                  aria-label="Change asset"
+                                >
+                                  ✎
+                                </button>
+                                <button
+                                  type="button"
+                                  className="metrics-bound-asset__action"
+                                  onClick={() => void handleUnbindMetric(metric.id)}
+                                  disabled={unbindingMetricId === metric.id}
+                                  title="Unbind from this asset"
+                                  aria-label="Unbind"
+                                >
+                                  {unbindingMetricId === metric.id ? "…" : "×"}
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="metrics-bound-asset">
+                                <span className="metrics-bound-asset__unbound">
+                                  unbound
+                                </span>
+                                <button
+                                  type="button"
+                                  className="metrics-bound-asset__action metrics-bound-asset__action--cta"
+                                  onClick={() =>
+                                    setBindingMetricId((cur) =>
+                                      cur === metric.id ? null : metric.id,
+                                    )
+                                  }
+                                  title="Bind this metric to an asset"
+                                >
+                                  + bind
+                                </button>
+                              </div>
+                            )}
+                            {bindingMetricId === metric.id &&
+                              effectiveSelectedShipId && (
+                                <BindAssetPicker
+                                  token={token}
+                                  shipId={effectiveSelectedShipId}
+                                  metricId={metric.id}
+                                  currentAssetIdInternal={
+                                    metric.boundAssetIdInternal
+                                  }
+                                  onClose={() => setBindingMetricId(null)}
+                                  onBound={() => {
+                                    void refreshCatalog();
+                                    setBindingMetricId(null);
+                                  }}
+                                />
+                              )}
                           </td>
                         </tr>
                       ))

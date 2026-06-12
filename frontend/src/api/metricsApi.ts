@@ -7,10 +7,18 @@ export interface ShipMetricCatalogItem {
   field: string;
   description: string | null;
   isEnabled: boolean;
+  boundAssetId: string | null;
+  boundAsset: { assetIdInternal: string; displayName: string } | null;
+  aiBoundConfidence: number | null;
+  aiKind: string | null;
+  aiUnit: string | null;
+  aiDescription: string | null;
   syncedAt: string;
   createdAt: string;
   updatedAt: string;
 }
+
+export type MetricBoundFilter = "all" | "bound" | "unbound";
 
 export interface ShipMetricBucketGroup {
   bucket: string;
@@ -252,6 +260,7 @@ export async function getShipMetricsCatalogPage(
   params: {
     search?: string;
     bucket?: string | null;
+    bound?: MetricBoundFilter;
     page?: number;
     pageSize?: number;
   } = {},
@@ -264,6 +273,10 @@ export async function getShipMetricsCatalogPage(
 
   if (params.bucket?.trim()) {
     searchParams.set("bucket", params.bucket.trim());
+  }
+
+  if (params.bound && params.bound !== "all") {
+    searchParams.set("bound", params.bound);
   }
 
   if (typeof params.page === "number") {

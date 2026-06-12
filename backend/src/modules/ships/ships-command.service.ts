@@ -29,6 +29,16 @@ export class ShipsCommandService {
       organizationName: input.organizationName,
       imoNumber: input.imoNumber ?? null,
       buildYear: input.buildYear ?? null,
+      mmsi: input.mmsi ?? null,
+      callSign: input.callSign ?? null,
+      flag: input.flag ?? null,
+      lengthM: input.lengthM != null ? String(input.lengthM) : null,
+      grossTonnage: input.grossTonnage ?? null,
+      shipyard: input.shipyard ?? null,
+      classSociety: input.classSociety ?? null,
+      homePort: input.homePort ?? null,
+      fleetManagerEmail: input.fleetManagerEmail ?? null,
+      operationType: input.operationType ?? null,
     });
 
     const savedShip = await this.shipsRepository.save(ship);

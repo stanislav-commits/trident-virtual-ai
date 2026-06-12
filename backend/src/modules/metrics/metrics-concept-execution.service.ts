@@ -17,7 +17,10 @@ import { MetricConceptMemberEntity } from './entities/metric-concept-member.enti
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricAggregationRule } from './enums/metric-aggregation-rule.enum';
 import { MetricConceptType } from './enums/metric-concept-type.enum';
-import { MetricQueryTimeMode } from './enums/metric-query-time-mode.enum';
+import {
+  MetricQueryTimeMode,
+  MetricRangeAggregation,
+} from './enums/metric-query-time-mode.enum';
 import { buildMetricSemanticBlueprint } from './metrics-semantic-bootstrap.utils';
 import { MetricsSemanticCatalogService } from './metrics-semantic-catalog.service';
 
@@ -25,6 +28,14 @@ interface MetricConceptRuntimeNode {
   concept: MetricConceptEntity;
   members: MetricConceptMemberEntity[];
 }
+
+// Resolved time selector produced by `resolveTimeWindow`. The discriminated
+// union keeps SNAPSHOT, POINT_IN_TIME and RANGE strictly typed downstream
+// (no more nullable Date that secretly means "snapshot" vs "missing arg").
+type TimeWindow =
+  | { kind: 'snapshot' }
+  | { kind: 'point_in_time'; timestamp: Date }
+  | { kind: 'range'; start: Date; end: Date };
 
 interface MetricConceptExecutionMemberDto {
   memberId: string;
@@ -68,6 +79,7 @@ export interface MetricConceptExecutionResponseDto {
     category: string | null;
     type: MetricConceptType;
     aggregationRule: MetricAggregationRule;
+    rangeAggregationHint: MetricRangeAggregation | null;
     unit: string | null;
   };
   timeMode: MetricQueryTimeMode;
@@ -94,7 +106,7 @@ export class MetricsConceptExecutionService {
   ): Promise<MetricConceptExecutionResponseDto> {
     const ship = await this.resolveShip(input.shipId);
     const timeMode = input.timeMode ?? MetricQueryTimeMode.SNAPSHOT;
-    const timestamp = this.resolveTimestamp(timeMode, input.timestamp);
+    const window = this.resolveTimeWindow(timeMode, input);
     const concept = await this.resolveRuntimeConcept(
       {
         conceptId: input.conceptId,
@@ -117,13 +129,32 @@ export class MetricsConceptExecutionService {
       );
     }
 
+    // Precedence: explicit DTO override → concept's declared hint → MEAN.
+    // The hint lets a concept (e.g. a cumulative kWh counter) declare that
+    // it should be summed via DELTA over the window without each caller
+    // having to know.
+    const rangeAggregation =
+      input.rangeAggregation ??
+      concept.concept.rangeAggregationHint ??
+      MetricRangeAggregation.MEAN;
     const samples = await this.fetchMetricSamples(
       ship.organizationName,
       leafMetrics,
-      timeMode,
-      timestamp,
+      window,
+      rangeAggregation,
     );
     const result = this.buildExecutionResult(concept, samples);
+
+    // The `timestamp` echoed on the response is the representative moment
+    // of the query: an explicit timestamp for POINT_IN_TIME, the window end
+    // for RANGE, and null for SNAPSHOT (the value itself carries the real
+    // sample time inside `result`).
+    const echoedTimestamp =
+      window.kind === 'point_in_time'
+        ? window.timestamp.toISOString()
+        : window.kind === 'range'
+          ? window.end.toISOString()
+          : null;
 
     return {
       query: input.query?.trim() ?? null,
@@ -134,7 +165,7 @@ export class MetricsConceptExecutionService {
       },
       concept: this.serializeConceptSummary(concept.concept),
       timeMode,
-      timestamp: timestamp?.toISOString() ?? null,
+      timestamp: echoedTimestamp,
       queriedMetricCount: samples.size,
       result,
     };
@@ -156,28 +187,53 @@ export class MetricsConceptExecutionService {
     return ship;
   }
 
-  private resolveTimestamp(
+  private resolveTimeWindow(
     timeMode: MetricQueryTimeMode,
-    timestamp?: string,
-  ): Date | null {
+    input: ExecuteMetricConceptDto,
+  ): TimeWindow {
     if (timeMode === MetricQueryTimeMode.SNAPSHOT) {
-      return null;
+      return { kind: 'snapshot' };
     }
 
     if (timeMode === MetricQueryTimeMode.POINT_IN_TIME) {
-      if (!timestamp) {
+      if (!input.timestamp) {
         throw new BadRequestException(
           'timestamp is required for point_in_time execution',
         );
       }
 
-      const parsed = new Date(timestamp);
+      const parsed = new Date(input.timestamp);
 
       if (Number.isNaN(parsed.getTime())) {
         throw new BadRequestException('timestamp must be a valid ISO date');
       }
 
-      return parsed;
+      return { kind: 'point_in_time', timestamp: parsed };
+    }
+
+    if (timeMode === MetricQueryTimeMode.RANGE) {
+      if (!input.rangeStart || !input.rangeEnd) {
+        throw new BadRequestException(
+          'rangeStart and rangeEnd are required for range execution',
+        );
+      }
+
+      const start = new Date(input.rangeStart);
+      const end = new Date(input.rangeEnd);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        throw new BadRequestException(
+          'rangeStart and rangeEnd must be valid ISO dates',
+        );
+      }
+
+      if (end.getTime() <= start.getTime()) {
+        throw new BadRequestException(
+          'rangeEnd must be strictly after rangeStart',
+        );
+      }
+
+      return { kind: 'range', start, end };
     }
 
     throw new BadRequestException(`Unsupported timeMode "${timeMode}"`);
@@ -274,8 +330,8 @@ export class MetricsConceptExecutionService {
   private async fetchMetricSamples(
     organizationName: string,
     metrics: ShipMetricCatalogEntity[],
-    timeMode: MetricQueryTimeMode,
-    timestamp: Date | null,
+    window: TimeWindow,
+    rangeAggregation: MetricRangeAggregation,
   ): Promise<Map<string, InfluxMetricSample | null>> {
     const samples = await this.mapWithConcurrencyLimit(
       metrics,
@@ -284,8 +340,8 @@ export class MetricsConceptExecutionService {
         const sample = await this.fetchSingleMetricSample(
           organizationName,
           metric,
-          timeMode,
-          timestamp,
+          window,
+          rangeAggregation,
         );
 
         return [metric.id, sample] as const;
@@ -298,28 +354,28 @@ export class MetricsConceptExecutionService {
   private async fetchSingleMetricSample(
     organizationName: string,
     metric: ShipMetricCatalogEntity,
-    timeMode: MetricQueryTimeMode,
-    timestamp: Date | null,
+    window: TimeWindow,
+    rangeAggregation: MetricRangeAggregation,
   ): Promise<InfluxMetricSample | null> {
     const selector = this.parseMetricSelector(metric);
 
-    switch (timeMode) {
-      case MetricQueryTimeMode.SNAPSHOT:
+    switch (window.kind) {
+      case 'snapshot':
         return this.influxService.queryLatestMetric(organizationName, selector);
-      case MetricQueryTimeMode.POINT_IN_TIME:
-        if (!timestamp) {
-          throw new BadRequestException(
-            'timestamp is required for point_in_time execution',
-          );
-        }
-
+      case 'point_in_time':
         return this.influxService.queryMetricAtTime(
           organizationName,
           selector,
-          timestamp,
+          window.timestamp,
         );
-      default:
-        throw new BadRequestException(`Unsupported timeMode "${timeMode}"`);
+      case 'range':
+        return this.influxService.queryMetricRange(
+          organizationName,
+          selector,
+          window.start,
+          window.end,
+          rangeAggregation,
+        );
     }
   }
 
@@ -603,6 +659,7 @@ export class MetricsConceptExecutionService {
       category: concept.category,
       type: concept.type,
       aggregationRule: concept.aggregationRule,
+      rangeAggregationHint: concept.rangeAggregationHint,
       unit: concept.unit,
     };
   }

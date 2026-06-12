@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RagService } from '../../../integrations/rag/rag.service';
+import { LlmService } from '../../../integrations/llm/llm.service';
 import { ShipEntity } from '../../ships/entities/ship.entity';
 import { DocumentRetrievalResponseDto } from '../dto/document-retrieval-response.dto';
 import { SearchDocumentsDto } from '../dto/search-documents.dto';
@@ -14,7 +15,10 @@ import { DocumentsRetrievalFilterBuilder } from './filtering/documents-retrieval
 import { DocumentsRetrievalMapper } from './mapping/documents-retrieval-mapper';
 import { DocumentsRetrievalNeighborExpander } from './expansion/documents-retrieval-neighbor-expander';
 import { DocumentsRetrievalReranker } from './scoring/documents-retrieval-reranker';
-import { RAGFLOW_RETRIEVAL_TOP_K } from './documents-retrieval.types';
+import {
+  RAGFLOW_RETRIEVAL_TOP_K,
+  RAGFLOW_VECTOR_SIMILARITY_WEIGHT,
+} from './documents-retrieval.types';
 
 @Injectable()
 export class DocumentsRetrievalService {
@@ -26,10 +30,17 @@ export class DocumentsRetrievalService {
     private readonly reranker: DocumentsRetrievalReranker,
     private readonly neighborExpander: DocumentsRetrievalNeighborExpander,
     private readonly mapper: DocumentsRetrievalMapper,
+    private readonly llmService: LlmService,
   ) {}
 
   async search(input: SearchDocumentsDto): Promise<DocumentRetrievalResponseDto> {
-    const normalizedQuestion = input.question.trim();
+    const normalizedQuestion = await this.toRetrievalLanguage(
+      input.question.trim(),
+    );
+    // Short core question for scoring; falls back to the retrieval text.
+    const assessmentQuestion = input.assessmentQuestion?.trim()
+      ? await this.toRetrievalLanguage(input.assessmentQuestion.trim())
+      : normalizedQuestion;
     const ship = await this.resolveShip(input.shipId);
     const context = this.filterBuilder.buildContext(input);
 
@@ -85,13 +96,14 @@ export class DocumentsRetrievalService {
       page: 1,
       pageSize: context.candidateK,
       topK: RAGFLOW_RETRIEVAL_TOP_K,
+      vectorSimilarityWeight: RAGFLOW_VECTOR_SIMILARITY_WEIGHT,
       highlight: true,
     });
     const enrichedCandidates = this.reranker.enrichCandidates(
       ragflowResponse.chunks ?? [],
       this.filterBuilder.indexByRagflowDocumentId(usableDocuments),
       context,
-      normalizedQuestion,
+      assessmentQuestion,
       input.questionType ?? null,
     );
     const selectedCandidates = this.reranker.selectResults(
@@ -101,7 +113,7 @@ export class DocumentsRetrievalService {
     );
     const initialEvidenceQuality = assessDocumentRetrievalEvidenceQuality({
       candidates: selectedCandidates,
-      question: normalizedQuestion,
+      question: assessmentQuestion,
       questionType: input.questionType ?? null,
     });
     const expandedCandidates = await this.neighborExpander.expand({
@@ -109,19 +121,19 @@ export class DocumentsRetrievalService {
       allCandidates: enrichedCandidates,
       datasetId: ship.ragflowDatasetId,
       context,
-      question: normalizedQuestion,
+      question: assessmentQuestion,
       questionType: input.questionType ?? null,
       evidenceQuality: initialEvidenceQuality,
     });
     const orderedExpandedCandidates = this.reranker.orderExpandedResultsForPrompt(
       expandedCandidates,
       context,
-      normalizedQuestion,
+      assessmentQuestion,
     );
     const results = this.mapper.toResults(orderedExpandedCandidates);
     const evidenceQuality = assessDocumentRetrievalEvidenceQuality({
       candidates: orderedExpandedCandidates,
-      question: normalizedQuestion,
+      question: assessmentQuestion,
       questionType: input.questionType ?? null,
     });
 
@@ -141,6 +153,32 @@ export class DocumentsRetrievalService {
       evidenceQuality,
       results,
     });
+  }
+
+  /**
+   * The ship's manuals are English, and the evidence assessor scores
+   * candidates by LEXICAL question↔chunk token overlap — a Russian or
+   * Ukrainian question scores ~0 against English chunks and the whole
+   * retrieval gets dismissed as no_evidence (observed 2026-06-11: «как
+   * поменять топливный фильтр» → none, same question in English → weak).
+   * Translate non-Latin questions to English for retrieval + assessment;
+   * the final user-facing answer is composed in the user's language by
+   * the responder regardless.
+   */
+  private async toRetrievalLanguage(question: string): Promise<string> {
+    if (!/[\u0400-\u04FF]/.test(question)) {
+      return question; // already Latin-script — assume English-compatible
+    }
+    const translated = await this.llmService.createChatCompletion({
+      systemPrompt:
+        'Translate the user text to English for a technical document search. ' +
+        'Preserve equipment names, abbreviations and codes verbatim. ' +
+        'Return ONLY the translation.',
+      userPrompt: question,
+      temperature: 0,
+      maxTokens: 300,
+    });
+    return translated?.trim() || question;
   }
 
   private async resolveShip(shipId: string | undefined): Promise<ShipEntity> {

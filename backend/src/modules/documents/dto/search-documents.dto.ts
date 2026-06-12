@@ -65,6 +65,17 @@ export class SearchDocumentsDto {
   @MinLength(1)
   question!: string;
 
+  /**
+   * Optional short core question used for evidence assessment and
+   * reranking. Chat sends an expanded keyword query as `question` for
+   * recall — but the lexical evidence assessor must score against the
+   * user's actual ask, or the surplus keywords read as "unsupported
+   * specific tokens" and good retrievals get dismissed as no_evidence.
+   */
+  @IsOptional()
+  @IsString()
+  assessmentQuestion?: string;
+
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()

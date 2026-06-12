@@ -5,6 +5,7 @@ import logoImg from "../assets/logo-home.png";
 import {
   UsersIcon,
   ShipIcon,
+  AssetsIcon,
   DocumentsIcon,
   MetricsIcon,
   ChevronLeftIcon,
@@ -15,6 +16,9 @@ import { DocumentsSection } from "../components/admin/DocumentsSection";
 import { MetricsSection } from "../components/admin/MetricsSection";
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
+import { AssetsSection } from "../components/admin/AssetsSection";
+import { ComplianceSection } from "../components/admin/ComplianceSection";
+import { ActiveVesselSwitcher } from "../components/admin/ActiveVesselSwitcher";
 import { UserAvatar } from "../components/layout/UserAvatar";
 import { getUserAvatarLabel } from "../components/layout/userAvatarUtils";
 import { useShipsAdminData } from "../hooks/admin/useShipsAdminData";
@@ -29,6 +33,8 @@ import {
 const SECTION_TITLES: Record<AdminSectionRoute, string> = {
   users: "Users",
   ships: "Ships",
+  assets: "Asset Register",
+  compliance: "Compliance Docs",
   documents: "Documents",
   metrics: "Metrics",
 };
@@ -106,6 +112,8 @@ export function AdminPanelPage() {
           </div>
         </div>
 
+        <ActiveVesselSwitcher />
+
         <nav className="admin-panel__nav" aria-label="Admin sections">
           <button
             type="button"
@@ -126,6 +134,26 @@ export function AdminPanelPage() {
               <ShipIcon />
             </span>
             <span className="admin-panel__nav-label">Ships</span>
+          </button>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "assets" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("assets")}
+          >
+            <span className="admin-panel__nav-icon">
+              <AssetsIcon />
+            </span>
+            <span className="admin-panel__nav-label">Asset Register</span>
+          </button>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "compliance" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("compliance")}
+          >
+            <span className="admin-panel__nav-icon">
+              <DocumentsIcon />
+            </span>
+            <span className="admin-panel__nav-label">Compliance Docs</span>
           </button>
           <button
             type="button"
@@ -186,7 +214,13 @@ export function AdminPanelPage() {
             <img src={logoImg} alt="" />
           </div>
 
-          <div className="admin-panel__content">
+          <div
+            className={`admin-panel__content${
+              activeSection === "compliance"
+                ? " admin-panel__content--wide"
+                : ""
+            }`}
+          >
             {activeSection === "users" && (
               <UsersSection
                 token={token}
@@ -210,6 +244,9 @@ export function AdminPanelPage() {
                 onError={shipsAdmin.setError}
               />
             )}
+
+            {activeSection === "assets" && <AssetsSection token={token} />}
+            {activeSection === "compliance" && <ComplianceSection token={token} />}
 
             {activeSection === "metrics" && <MetricsSection token={token} />}
 

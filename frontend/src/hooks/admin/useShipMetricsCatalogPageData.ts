@@ -4,6 +4,7 @@ import {
   syncShipMetricsCatalog,
   toggleShipMetrics,
   updateShipMetricDescription,
+  type MetricBoundFilter,
   type ShipMetricCatalogItem,
   type ShipMetricCatalogPage,
   type ShipMetricsSyncResult,
@@ -16,6 +17,7 @@ interface SyncShipMetricsOptions {
 interface UseShipMetricsCatalogPageOptions {
   search: string;
   bucket: string | null;
+  bound: MetricBoundFilter;
   page: number;
   pageSize: number;
   enabled: boolean;
@@ -69,6 +71,7 @@ export function useShipMetricsCatalogPageData(
       const nextCatalogPage = await getShipMetricsCatalogPage(shipId, token, {
         search: options.search,
         bucket: options.bucket,
+        bound: options.bound,
         page: options.page,
         pageSize: options.pageSize,
       });
@@ -84,6 +87,7 @@ export function useShipMetricsCatalogPageData(
       setLoading(false);
     }
   }, [
+    options.bound,
     options.bucket,
     options.enabled,
     options.page,

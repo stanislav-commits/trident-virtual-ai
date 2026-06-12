@@ -91,7 +91,12 @@ export class ChatLlmService {
         'Do not mention missing, unavailable, or failed topics unless they explicitly appear in the structured ask results.',
         'Do not infer extra sub-questions from the conversation history.',
         'If one ask is unavailable or still in development, say that clearly and continue with the rest.',
-        'Keep the reply natural and concise.',
+        // Units must come straight from the metric ask result. Stopped a
+        // regression where "48512 W" was rephrased as "48,512 kW" and
+        // "25058" (a sum of fuel-pump active power in watts) came back as
+        // "25,058 liters of fuel".
+        'Treat the `unit` field on each metric result as authoritative. Do not convert, scale, or substitute units (do not turn W into kW, W into liters, or attach a guessed unit when none is provided). If no unit is given, report the number without a unit rather than guess.',
+        'Keep the reply natural and CONCISE: merge overlapping ask results instead of concatenating them, drop repetition, and answer only what the user actually asked. A focused reply the user can read in under a minute beats an exhaustive report.',
         'Use the requested response language if it is provided.',
       ].join(' '),
       userPrompt: [
@@ -103,7 +108,9 @@ export class ChatLlmService {
         JSON.stringify(input.askResults, null, 2),
       ].join('\n'),
       temperature: 0.2,
-      maxTokens: 900,
+      // Bumped from 900 — long structured answers (voyages, alarms lists,
+      // multi-engine breakdowns) routinely exceed that and get truncated.
+      maxTokens: 4000,
     });
 
     if (reply) {

@@ -2900,6 +2900,17 @@
   align-items: center;
   gap: 8px;
 }
+/* Token-streamed draft of the answer being written — plain text with
+   preserved newlines; swapped for the real (markdown-rendered) message
+   the moment it lands. */
+.chat-message__draft {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--chat-text);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  margin-bottom: 8px;
+}
 
 .chat-message__loading-label {
   line-height: 1.2;

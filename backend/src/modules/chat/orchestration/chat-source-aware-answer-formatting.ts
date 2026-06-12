@@ -5,6 +5,79 @@ interface SourceAwareSectionEntry {
   repeatedLeadingText?: string | null;
 }
 
+/**
+ * Flowing-prose alternative to two sequential `formatSourceAwareSection`
+ * calls. Produces ONE clean answer with no `## Ship documents` /
+ * `## Web information` headers and no "I could not find sufficient
+ * evidence..." preamble. Used for chat replies where the user wants a soft
+ * conversational answer rather than a structured report.
+ *
+ * Document entries that are nothing more than "no documents matched"
+ * boilerplate are dropped silently — the web answer alone speaks for itself.
+ */
+export function composeFlowingSourceProse(
+  documentSummaries: SourceAwareSectionEntry[],
+  webSummaries: SourceAwareSectionEntry[],
+): string {
+  const docs = documentSummaries
+    .map((entry) =>
+      normalizeSourceAwareSectionBody(
+        'Ship documents', entry.summary, entry.repeatedLeadingText,
+      ),
+    )
+    .filter((s) => s && !isPureNoEvidenceBoilerplate(s));
+
+  const webs = webSummaries
+    .map((entry) =>
+      normalizeSourceAwareSectionBody(
+        'Web information', entry.summary, entry.repeatedLeadingText,
+      ),
+    )
+    .map(softenWebProse)
+    .filter(Boolean);
+
+  return dedupeSummaries([...docs, ...webs]).join('\n\n').trim();
+}
+
+/**
+ * True when the docs answer is essentially "we have no matching documents
+ * for this question" — i.e. there is nothing of substance to forward. The
+ * detector is tight (specific phrases + length cap) so we don't accidentally
+ * drop real document answers that happen to mention a limitation.
+ */
+function isPureNoEvidenceBoilerplate(summary: string): boolean {
+  const trimmed = summary.trim();
+  if (trimmed.length === 0) return true;
+  if (trimmed.length > 500) return false;
+  return /could not find sufficient evidence|no parsed documents matched|i could not confirm this from the uploaded ship documents/iu.test(
+    trimmed,
+  );
+}
+
+/**
+ * Strip the rigid "Public sources suggest:" lead and a few other structural
+ * tics so the web text reads as flowing prose. The model itself is now
+ * prompted for 1-2 short paragraphs, so usually there's nothing to do here.
+ */
+function softenWebProse(value: string): string {
+  let out = value.trim();
+  // Drop a leading "I could not confirm/find ... uploaded ship documents ..."
+  // sentence if the model echoed the fallback framing. Repeat once in case
+  // there are multiple stacked preambles.
+  for (let i = 0; i < 2; i += 1) {
+    out = out.replace(
+      /^I (?:could not|cannot|did not)\s+(?:confirm|find)[^.]*(?:uploaded|ship)\s+documents?[^.]*\.\s*/iu,
+      '',
+    );
+    out = out.replace(
+      /^(?:Public sources suggest|What I found|Findings|Notes? and limits?)\s*:?\s*\n*/iu,
+      '',
+    );
+    out = out.replace(/^(?:#{1,6}\s+)?Limit\s*:?\s*\n+/iu, '');
+  }
+  return out.trim();
+}
+
 interface SourceAwareSectionOptions {
   conciseWebInformation?: boolean;
   groupRelatedEntries?: boolean;

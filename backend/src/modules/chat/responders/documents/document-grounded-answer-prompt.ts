@@ -39,6 +39,7 @@ export function buildGroundedAnswerSystemPrompt(
     'When evidence is tabular, preserve the row and column relationship exactly as shown in one cited evidence item.',
     'Do not infer from adjacent rows, combine unrelated rows or tables, add values together, convert units, or guess missing cells.',
     'If the row, model, column, value, or unit relationship is unclear, say the evidence is insufficient or ambiguous instead of giving a concrete value.',
+    'BE CONCISE: answer exactly what was asked and stop. Do not add unrequested sections — no extra background, no invented troubleshooting or recommendations, no restating the question, no summary of what evidence was retrieved.',
     weakInstruction,
   ].join(' ');
 }

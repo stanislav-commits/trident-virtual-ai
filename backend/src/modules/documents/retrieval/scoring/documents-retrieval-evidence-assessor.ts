@@ -56,23 +56,34 @@ export function assessDocumentRetrievalEvidenceQuality(
     hasQuestionTypeClassFit(input.questionType, candidate),
   ).length;
 
+  // Semantic-confidence override: the lexical specific-token checks exist
+  // to catch keyword-collision false positives, but they systematically
+  // veto verbose questions (a 10-specific-token ask can never reach 60%
+  // lexical support in one chunk). When the multilingual reranker is
+  // confident the top chunk answers the question, trust it over token
+  // counting. Observed 2026-06-11: fuel-filter procedure retrievals with
+  // rerank 0.50 were dismissed as no_evidence purely by token math.
+  const semanticallyConfident = topRerankScore >= 0.45;
+
   if (
     topRetrievalScore < 0.18 ||
     (topRerankScore < 0.3 && supportedCandidateCount === 0) ||
     (topRetrievalScore < 0.24 &&
       topQuestionSupport < 0.5 &&
       supportedCandidateCount === 0) ||
-    hasInsufficientSpecificSupport(
-      topSupportSignals,
-      supportedCandidateCount,
-      specificSupportedCandidateCount,
-    ) ||
-    hasInsufficientClassFit(
-      topClassFitsQuestion,
-      classFitCandidateCount,
-      topSupportSignals,
-      topQuestionSupport,
-    )
+    (!semanticallyConfident &&
+      hasInsufficientSpecificSupport(
+        topSupportSignals,
+        supportedCandidateCount,
+        specificSupportedCandidateCount,
+      )) ||
+    (!semanticallyConfident &&
+      hasInsufficientClassFit(
+        topClassFitsQuestion,
+        classFitCandidateCount,
+        topSupportSignals,
+        topQuestionSupport,
+      ))
   ) {
     return 'none';
   }

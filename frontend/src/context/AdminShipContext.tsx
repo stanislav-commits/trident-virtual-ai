@@ -12,7 +12,10 @@ import { useAuth } from "./AuthContext";
 
 const STORAGE_KEY = "trident_admin_active_ship";
 
-type AdminShipOption = Pick<ShipSummaryItem, "id" | "name" | "organizationName">;
+type AdminShipOption = Pick<
+  ShipSummaryItem,
+  "id" | "name" | "organizationName" | "imoNumber" | "buildYear"
+>;
 
 type AdminShipContextValue = {
   availableShips: AdminShipOption[];
@@ -87,6 +90,8 @@ export function AdminShipProvider({ children }: { children: ReactNode }) {
         id: ship.id,
         name: ship.name,
         organizationName: ship.organizationName,
+        imoNumber: ship.imoNumber,
+        buildYear: ship.buildYear,
       }));
 
       setAvailableShips(options);

@@ -4,7 +4,7 @@ import {
   getDocumentsWebFallbackDiagnostics,
   sanitizeDocumentSummaryForWebFallback,
 } from './chat-documents-web-fallback';
-import { formatSourceAwareSection } from './chat-source-aware-answer-formatting';
+import { composeFlowingSourceProse } from './chat-source-aware-answer-formatting';
 
 interface ComposedSourceResult {
   content: string;
@@ -66,17 +66,7 @@ export function composeDocumentsAndWebResults(
   }
 
   return {
-    content: [
-      formatSourceAwareSection('Ship documents', documentSummaries, {
-        groupRelatedEntries: documentSummaries.length > 1,
-        collapseRepeatedLeadingBoilerplate: true,
-      }),
-      formatSourceAwareSection('Web information', webSummaries, {
-        conciseWebInformation: true,
-      }),
-    ]
-      .filter(Boolean)
-      .join('\n\n'),
+    content: composeFlowingSourceProse(documentSummaries, webSummaries),
     contextReferences: askResults.flatMap(
       (result) => result.contextReferences ?? [],
     ),
@@ -118,17 +108,7 @@ export function composeFallbackAwareDocumentResults(
   });
 
   return {
-    content: [
-      formatSourceAwareSection('Ship documents', documentSummaries, {
-        groupRelatedEntries: documentSummaries.length > 1,
-        collapseRepeatedLeadingBoilerplate: true,
-      }),
-      formatSourceAwareSection('Web information', webSummaries, {
-        conciseWebInformation: true,
-      }),
-    ]
-      .filter(Boolean)
-      .join('\n\n'),
+    content: composeFlowingSourceProse(documentSummaries, webSummaries),
     contextReferences: askResults.flatMap(
       (result) => result.contextReferences ?? [],
     ),

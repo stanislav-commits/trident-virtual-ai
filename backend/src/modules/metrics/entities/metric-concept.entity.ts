@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { MetricAggregationRule } from '../enums/metric-aggregation-rule.enum';
 import { MetricConceptType } from '../enums/metric-concept-type.enum';
+import { MetricRangeAggregation } from '../enums/metric-query-time-mode.enum';
 import { MetricConceptAliasEntity } from './metric-concept-alias.entity';
 import { MetricConceptMemberEntity } from './metric-concept-member.entity';
 
@@ -44,6 +45,17 @@ export class MetricConceptEntity {
     default: MetricAggregationRule.NONE,
   })
   aggregationRule!: MetricAggregationRule;
+
+  // Time-axis aggregation strategy used when timeMode = RANGE. NULL means
+  // "use MEAN" (the historical default); set explicitly for cumulative
+  // counters (DELTA) or rate metrics that should be totaled (INTEGRAL).
+  @Column({
+    name: 'range_aggregation_hint',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  rangeAggregationHint!: MetricRangeAggregation | null;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   unit!: string | null;

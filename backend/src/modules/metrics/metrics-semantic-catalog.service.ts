@@ -15,6 +15,7 @@ import { MetricConceptEntity } from './entities/metric-concept.entity';
 import { MetricConceptMemberEntity } from './entities/metric-concept-member.entity';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricAggregationRule } from './enums/metric-aggregation-rule.enum';
+import { MetricRangeAggregation } from './enums/metric-query-time-mode.enum';
 import { MetricConceptType } from './enums/metric-concept-type.enum';
 import { buildMetricSemanticBlueprint } from './metrics-semantic-bootstrap.utils';
 
@@ -41,6 +42,7 @@ export interface MetricConceptResponseDto {
   category: string | null;
   type: string;
   aggregationRule: MetricAggregationRule;
+  rangeAggregationHint: MetricRangeAggregation | null;
   unit: string | null;
   isActive: boolean;
   members: MetricConceptMemberResponseDto[];
@@ -290,6 +292,7 @@ export class MetricsSemanticCatalogService {
       category: this.normalizeOptionalText(input.category),
       type: input.type,
       aggregationRule: input.aggregationRule ?? MetricAggregationRule.NONE,
+      rangeAggregationHint: input.rangeAggregationHint ?? null,
       unit: this.normalizeOptionalText(input.unit),
       isActive: input.isActive ?? true,
     });
@@ -329,6 +332,10 @@ export class MetricsSemanticCatalogService {
 
     if (input.aggregationRule !== undefined) {
       concept.aggregationRule = input.aggregationRule;
+    }
+
+    if (input.rangeAggregationHint !== undefined) {
+      concept.rangeAggregationHint = input.rangeAggregationHint;
     }
 
     if (input.unit !== undefined) {
@@ -682,6 +689,7 @@ export class MetricsSemanticCatalogService {
       category: concept.category,
       type: concept.type,
       aggregationRule: concept.aggregationRule,
+      rangeAggregationHint: concept.rangeAggregationHint,
       unit: concept.unit,
       isActive: concept.isActive,
       members: scopedMembers

@@ -8,6 +8,8 @@ import { HealthModule } from './core/health/health.module';
 import { LoggingModule } from './core/logging/logging.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AssetsModule } from './modules/assets/assets.module';
+import { ComplianceModule } from './modules/compliance/compliance.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
@@ -33,6 +35,8 @@ import { AppController } from './app.controller';
     UsersModule,
     ShipsModule,
     MetricsModule,
+    AssetsModule,
+    ComplianceModule,
     DocumentsModule,
     WebModule,
     ChatModule,

@@ -1,9 +1,16 @@
-import { useCallback, useDeferredValue, useEffect, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAdminShip } from "../context/AdminShipContext";
 import { useAuth } from "../context/AuthContext";
 import { useChatSessions } from "../hooks/useChatSessions";
 import { useChatMessages } from "../hooks/useChatMessages";
+import { useChatProgress } from "../hooks/useChatProgress";
 import {
   getChatSession,
   regenerateChatResponse,
@@ -61,14 +68,74 @@ export function ChatPage() {
     setSourcesPanelCitations(null);
   }, [activeSessionId]);
 
+  // Live SSE progress while the reply is generating: shows real pipeline
+  // activity under the typing dots and delivers the finished message
+  // instantly (polling remains the fallback transport if SSE drops).
+  const { progressText, draftText } = useChatProgress({
+    sessionId: activeSessionId,
+    token,
+    active: isWaitingForResponse,
+    onDone: () => {
+      pollAbortRef.current?.abort();
+      void (async () => {
+        await refetchMessages();
+        setIsWaitingForResponse(false);
+        refreshSessions();
+      })();
+    },
+    onError: (text) => {
+      pollAbortRef.current?.abort();
+      setIsWaitingForResponse(false);
+      setSendError(text);
+    },
+  });
+
+  // Track unmount/session-change so a long-running pollForResponse loop
+  // doesn't keep firing setState after the component is gone or the user
+  // navigated away from the session.
+  const isMountedRef = useRef(true);
+  const pollAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = null;
+    };
+  }, []);
+
+  // When the user switches sessions, abort the in-flight poll for the
+  // previous one — its result is no longer relevant to this view.
+  useEffect(() => {
+    return () => {
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = null;
+    };
+  }, [activeSessionId]);
+
   const pollForResponse = useCallback(
     async (currentSessionId: string, userMessageId: string) => {
-      const maxAttempts = 30;
-      let attempts = 0;
+      // Chat-v2 multi-ask + documents/web fallback can take 2-3 minutes on
+      // complex questions. Poll fast at first, then back off, up to ~6 min.
+      // Never silently drop isWaitingForResponse — keep the typing animation
+      // running so the user knows the system hasn't given up.
+      pollAbortRef.current?.abort();
+      const controller = new AbortController();
+      pollAbortRef.current = controller;
 
-      while (attempts < maxAttempts) {
+      const totalBudgetMs = 6 * 60 * 1000;
+      const startedAt = Date.now();
+      let intervalMs = 2000;
+
+      while (
+        Date.now() - startedAt < totalBudgetMs &&
+        !controller.signal.aborted &&
+        isMountedRef.current
+      ) {
         try {
           const updatedSession = await getChatSession(currentSessionId, token!);
+          if (controller.signal.aborted || !isMountedRef.current) return;
           const currentMessages = updatedSession.messages || [];
           const lastMessage = currentMessages[currentMessages.length - 1];
 
@@ -80,19 +147,31 @@ export function ChatPage() {
             addMessage(lastMessage);
             refreshSessions();
             window.setTimeout(() => {
+              if (!isMountedRef.current) return;
               void refreshSessions();
             }, 2500);
-            break;
+            if (isMountedRef.current) setIsWaitingForResponse(false);
+            return;
           }
         } catch {
           // Keep polling until the assistant response is available.
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        attempts++;
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        if (controller.signal.aborted || !isMountedRef.current) return;
+        // Linear backoff after 30s so we stop hammering for slow answers
+        // but still find them: 2s × 15 attempts, then 5s × ~62 attempts.
+        const elapsed = Date.now() - startedAt;
+        if (elapsed > 30_000 && intervalMs < 5000) intervalMs = 5000;
       }
 
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      // Budget exceeded — surface a polite timeout, but keep the assistant
+      // message slot so the user can refresh if it does come in later.
       setIsWaitingForResponse(false);
+      setSendError(
+        "The answer is taking longer than usual. Try refreshing the page in a moment to see it.",
+      );
     },
     [addMessage, refreshSessions, token],
   );
@@ -286,6 +365,8 @@ export function ChatPage() {
               <MessageList
                 messages={messages}
                 isLoadingResponse={isWaitingForResponse || isLoadingMessages}
+                progressText={progressText}
+                draftText={draftText}
                 onRegenerate={handleRegenerate}
                 onSendMessage={(text) => handleSend(text)}
                 onOpenSourcesPanel={handleOpenSourcesPanel}

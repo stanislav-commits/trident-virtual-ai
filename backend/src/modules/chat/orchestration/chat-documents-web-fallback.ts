@@ -6,7 +6,7 @@ import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum
 import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
 import { ChatTurnAskResult } from '../responders/interfaces/chat-turn-responder.types';
 import { buildDocumentFallbackWebQuery } from './chat-document-web-query';
-import { formatSourceAwareSection } from './chat-source-aware-answer-formatting';
+import { composeFlowingSourceProse } from './chat-source-aware-answer-formatting';
 
 export type DocumentsWebFallbackCondition =
   | 'if_documents_insufficient'
@@ -60,9 +60,14 @@ export function evaluateDocumentsWebFallback(input: {
   );
   const explicitWebFallback = hasExplicitWebFallbackIntent(input.ask);
   const freshnessRequired = hasFreshnessIntent(input.ask);
+  // Weak-but-grounded document answers stay document-only: falling back to
+  // the public web on every "weak" verdict made the assistant web-search
+  // far too often (user feedback 2026-06-11) and pad answers with generic
+  // internet content when the manual already answered. The web fallback is
+  // for genuinely empty/ungrounded document results, or explicit requests.
   const documentsInsufficient =
     !documentAnswerUsability.usable &&
-    (documentEvidenceQuality !== 'strong' ||
+    (documentEvidenceQuality === 'none' ||
       documentGroundingStatus === 'insufficient');
   const automaticFallback = documentsInsufficient && !freshnessRequired;
   const requested = explicitWebFallback || freshnessRequired;
@@ -377,21 +382,10 @@ function composeDocumentsWebFallbackSummary(
   const documentSummary = sanitizeDocumentSummaryForWebFallback(
     documentResult.summary,
   );
-  const sections = [
-    formatSourceAwareSection('Ship documents', [
-      {
-        summary: documentSummary,
-        repeatedLeadingText: documentResult.question,
-      },
-    ]),
-    formatSourceAwareSection('Web information', [
-      { summary: buildWebFallbackSection(diagnostics, webResult) },
-    ], {
-      conciseWebInformation: diagnostics.action === 'executed',
-    }),
-  ];
-
-  return sections.filter(Boolean).join('\n\n');
+  return composeFlowingSourceProse(
+    [{ summary: documentSummary, repeatedLeadingText: documentResult.question }],
+    [{ summary: buildWebFallbackSection(diagnostics, webResult) }],
+  );
 }
 
 function buildWebFallbackSection(
@@ -399,45 +393,18 @@ function buildWebFallbackSection(
   webResult?: ChatTurnAskResult,
 ): string {
   if (diagnostics.action === 'executed' && webResult) {
-    return [
-      buildWebFallbackIntro(diagnostics),
-      webResult.summary,
-      buildWebFallbackLimit(diagnostics),
-    ].filter(Boolean).join('\n\n');
+    // The model's own prose already carries the "this is from public sources,
+    // not the vessel's manual" caveat (web-search prompt enforces it). Adding
+    // an "I could not confirm... Public sources suggest:" preamble on top
+    // gave a clunky double-disclaimer that the user complained about.
+    return webResult.summary;
   }
 
   if (diagnostics.action === 'failed') {
-    return `${diagnostics.reason}. I could not use web information for this answer.`;
+    return `Couldn't reach public sources for this question (${diagnostics.reason}).`;
   }
 
   return diagnostics.reason;
-}
-
-function buildWebFallbackIntro(
-  diagnostics: DocumentsWebFallbackDiagnostics,
-): string {
-  if (diagnostics.documentsInsufficient) {
-    return 'I could not confirm this from the uploaded ship documents. Public sources suggest:';
-  }
-
-  if (diagnostics.freshnessRequired) {
-    return 'The uploaded ship documents were checked first. Public sources add this latest/current information:';
-  }
-
-  return 'Public sources suggest:';
-}
-
-function buildWebFallbackLimit(
-  diagnostics: DocumentsWebFallbackDiagnostics,
-): string {
-  if (!diagnostics.shipSpecificCaution) {
-    return '';
-  }
-
-  return [
-    'Limit:',
-    'This is general public information, not confirmation of this vessel\'s onboard records or exact configuration.',
-  ].join('\n');
 }
 
 function buildDocumentInsufficientSentence(

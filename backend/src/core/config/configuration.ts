@@ -46,6 +46,10 @@ export default function configuration() {
         process.env.CHAT_DOCUMENTS_RESPONDER_ENABLED,
         false,
       ),
+      metricAnalyzerEnabled: parseBoolean(
+        process.env.CHAT_METRIC_ANALYZER_ENABLED,
+        true,
+      ),
       voice: {
         maxUploadBytes: parsePositiveInteger(
           process.env.CHAT_VOICE_MAX_UPLOAD_BYTES,
@@ -121,13 +125,23 @@ export default function configuration() {
       webSearch: {
         baseUrl: process.env.WEB_SEARCH_BASE_URL ?? '',
         apiKey: process.env.WEB_SEARCH_API_KEY ?? '',
-        model: process.env.WEB_SEARCH_MODEL ?? 'gpt-5.2',
+        model: process.env.WEB_SEARCH_MODEL ?? 'gpt-5-mini',
       },
       llm: {
         provider: process.env.LLM_PROVIDER ?? 'openai',
         baseUrl: process.env.LLM_BASE_URL ?? '',
         model: process.env.LLM_MODEL ?? 'gpt-4.1-mini',
+        // Routing-critical sub-tasks (classifier / decomposer / resolver)
+        // when LLM_MODEL is a Claude alias. Keep at gpt-5-mini or better —
+        // see LlmService.subLlmModel for the misrouting failure mode.
+        subModel: process.env.LLM_SUB_MODEL ?? 'gpt-5-mini',
         apiKey: process.env.LLM_API_KEY ?? '',
+        // Anthropic Claude — auto-routed when model starts with "claude-".
+        // Set ANTHROPIC_API_KEY in .env + LLM_MODEL=claude-sonnet-4-6 (etc.)
+        // to switch the heavy metric-responder reasoning over to Claude.
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
+        anthropicBaseUrl:
+          process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com/v1',
       },
       transcription: {
         provider: process.env.TRANSCRIPTION_PROVIDER ?? 'openai',
@@ -140,6 +154,13 @@ export default function configuration() {
         apiKey:
           process.env.GRAFANA_LLM_API_KEY ?? process.env.GRAFANA_SA_TOKEN ?? '',
         model: process.env.GRAFANA_LLM_MODEL ?? 'gpt-4o',
+      },
+      windy: {
+        // Windy Point Forecast API — used by the `get_marine_forecast`
+        // chat tool to answer voyage / passage / route weather questions.
+        // Get a free key (500 req/day) at windy.com/api-keys.
+        baseUrl: process.env.WINDY_BASE_URL ?? 'https://api.windy.com',
+        apiKey: process.env.WINDY_API_KEY ?? '',
       },
     },
   };

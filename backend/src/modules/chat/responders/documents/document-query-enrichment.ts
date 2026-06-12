@@ -36,7 +36,18 @@ export function enrichDocumentSearchQuestion(
     !isMaintenanceRecordIntent(sourceText)
   ) {
     const runningHours = extractRelevantRunningHours(input);
-    enrichmentParts.push(MAINTENANCE_SCHEDULE_QUERY);
+
+    // Only inject the generic maintenance-schedule vocabulary for VAGUE
+    // questions ("what maintenance is due?"). When the question already names a
+    // concrete piece of equipment (e.g. "air compressor"), appending the generic
+    // term-bag ("running hours / service interval / section maintenance ...")
+    // dilutes the equipment signal and biases retrieval toward whichever manual
+    // has the densest generic maintenance vocabulary (the OTC separator), pushing
+    // the correct equipment manual out of the top results. The clean
+    // equipment-focused query already ranks the right manual first.
+    if (!mentionsSpecificEquipment(sourceText)) {
+      enrichmentParts.push(MAINTENANCE_SCHEDULE_QUERY);
+    }
 
     if (runningHours) {
       enrichmentParts.push(`${runningHours} running hours`);
@@ -63,6 +74,18 @@ export function isFuelFilterReplacementQuestion(value: string): boolean {
       normalized,
     )
   );
+}
+
+// Recognisable marine-equipment nouns. When one of these appears in the
+// question, the equipment term itself is the strongest retrieval signal, so we
+// skip the generic maintenance-schedule term-bag (which would otherwise drown it
+// out). Kept deliberately to concrete equipment — not generic words like
+// "system" — to avoid false positives on vague maintenance questions.
+const SPECIFIC_EQUIPMENT_PATTERN =
+  /\b(?:compressor|pump|engine|generator|genset|separator|purifier|centrifuge|boiler|thruster|winch|windlass|crane|davit|watermaker|desalinator|alternator|motor|gearbox|gear ?box|propeller|stabili[sz]er|anchor|chiller|macerator|bilge|sounder|monitor|sensor|inverter|ups|battery charger|switchboard|valve|actuator|hydraulic|steering gear|sewage|incinerator|heat exchanger|cooler|filter)\b/u;
+
+export function mentionsSpecificEquipment(value: string): boolean {
+  return SPECIFIC_EQUIPMENT_PATTERN.test(normalizeComparableText(value));
 }
 
 export function isMaintenanceScheduleQuestion(value: string): boolean {

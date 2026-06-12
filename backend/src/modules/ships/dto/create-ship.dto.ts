@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Matches, Max, Min, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min, MinLength } from 'class-validator';
 import { normalizeImoNumber, normalizeOptionalInteger, normalizeTrimmedText } from '../ships.normalization';
 
 export class CreateShipDto {
@@ -27,4 +27,55 @@ export class CreateShipDto {
   @Min(1800)
   @Max(3000)
   buildYear?: number;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  mmsi?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  callSign?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  flag?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(600)
+  lengthM?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(500000)
+  grossTonnage?: number | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  shipyard?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  classSociety?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  homePort?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsEmail()
+  fleetManagerEmail?: string | null;
+
+  @IsOptional()
+  @IsIn(['private', 'commercial'])
+  operationType?: string | null;
 }

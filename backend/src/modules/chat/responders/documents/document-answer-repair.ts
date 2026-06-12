@@ -84,8 +84,15 @@ export async function acceptOrRepairGroundedReply(input: {
       }
     }
 
+    // The model produced a content-grounded answer (grounding validation passed)
+    // but omitted the [N] citation marker even after one repair pass — common
+    // with smaller models on short factual answers. Discarding a correct answer
+    // and dumping raw evidence is worse for the user than the missing marker, so
+    // keep the best grounded draft and append the top evidence citation instead.
+    const groundedDraft = retry?.trim() ? retry : input.reply;
+
     return {
-      summary: buildCitedEvidenceFallbackSummary(input.retrieval),
+      summary: appendTopEvidenceCitation(groundedDraft, input.retrieval),
       groundingStatus: 'grounded',
     };
   }
@@ -173,6 +180,25 @@ function buildCitationRepairPrompt(
     'Previous draft:',
     previousReply,
   ].join('\n');
+}
+
+function appendTopEvidenceCitation(
+  reply: string,
+  retrieval: DocumentRetrievalResponseDto,
+): string {
+  const draft = reply.trim();
+
+  if (!draft) {
+    return buildCitedEvidenceFallbackSummary(retrieval);
+  }
+
+  if (extractCitedEvidenceRanks(draft).size > 0) {
+    return draft;
+  }
+
+  const topRank = retrieval.results[0]?.rank;
+
+  return topRank ? `${draft} [${topRank}]` : draft;
 }
 
 function buildCitedEvidenceFallbackSummary(

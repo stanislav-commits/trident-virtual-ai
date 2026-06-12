@@ -28,6 +28,14 @@ export interface ShipMetricCatalogItemDto {
   field: string;
   description: string | null;
   isEnabled: boolean;
+  boundAssetId: string | null;
+  // Slim view of the bound asset — only fields the UI needs to render a
+  // pill ("→ Port Genset · SWX.3.1.001"). Null when boundAssetId is null.
+  boundAsset: { assetIdInternal: string; displayName: string } | null;
+  aiBoundConfidence: number | null;
+  aiKind: string | null;
+  aiUnit: string | null;
+  aiDescription: string | null;
   syncedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -311,6 +319,7 @@ export class MetricsCatalogService {
       {
         bucket: bucketFilter,
         search: searchQuery,
+        bound: query.bound,
       },
     ).getCount();
     const bucketOptionsPromise = this.shipMetricCatalogRepository
@@ -343,8 +352,12 @@ export class MetricsCatalogService {
       {
         bucket: bucketFilter,
         search: searchQuery,
+        bound: query.bound,
       },
     )
+      // Pull the bound asset alongside so the UI can show "→ Port Genset
+      // (SWX.3.1.001)" without a second round-trip.
+      .leftJoinAndSelect('entry.boundAsset', 'boundAsset')
       .orderBy('entry.bucket', 'ASC')
       .addOrderBy('entry.key', 'ASC')
       .addOrderBy('entry.field', 'ASC')
@@ -377,6 +390,8 @@ export class MetricsCatalogService {
   async updateMetricDescription(
     metricId: string,
     description?: string | null,
+    boundAssetId?: string | null,
+    aiUnit?: string | null,
   ): Promise<ShipMetricCatalogItemDto> {
     const metric = await this.shipMetricCatalogRepository.findOne({
       where: { id: metricId },
@@ -386,7 +401,26 @@ export class MetricsCatalogService {
       throw new NotFoundException('Ship metric catalog entry not found');
     }
 
-    metric.description = normalizeMetricDescription(description);
+    if (description !== undefined) {
+      metric.description = normalizeMetricDescription(description);
+    }
+
+    // Manual override of binding. Setting boundAssetId stamps the confidence
+    // to 1.0 so the UI/chat can distinguish human-verified bindings from
+    // AI-suggested ones. Clearing it (boundAssetId=null) also clears the
+    // confidence — the metric becomes unbound and will be candidate for the
+    // next analyze run.
+    if (boundAssetId !== undefined) {
+      metric.boundAssetId = boundAssetId;
+      metric.aiBoundConfidence = boundAssetId === null ? null : 1.0;
+    }
+
+    // Human override of the AI-inferred unit. Stamps unit-confidence to 1.0
+    // so future re-analyze respects the human value rather than overwriting.
+    if (aiUnit !== undefined) {
+      metric.aiUnit = aiUnit;
+      metric.aiUnitConfidence = aiUnit === null ? null : 1.0;
+    }
 
     const savedEntry = await this.shipMetricCatalogRepository.save(metric);
     return this.serializeEntry(savedEntry);
@@ -418,6 +452,7 @@ export class MetricsCatalogService {
     filters: {
       bucket: string | null;
       search: string;
+      bound?: 'all' | 'bound' | 'unbound';
     },
   ): SelectQueryBuilder<ShipMetricCatalogEntity> {
     queryBuilder.where('entry.shipId = :shipId', { shipId });
@@ -426,6 +461,12 @@ export class MetricsCatalogService {
       queryBuilder.andWhere('entry.bucket = :bucket', {
         bucket: filters.bucket,
       });
+    }
+
+    if (filters.bound === 'bound') {
+      queryBuilder.andWhere('entry.bound_asset_id IS NOT NULL');
+    } else if (filters.bound === 'unbound') {
+      queryBuilder.andWhere('entry.bound_asset_id IS NULL');
     }
 
     if (filters.search) {
@@ -477,6 +518,17 @@ export class MetricsCatalogService {
       field: entry.field,
       description: entry.description,
       isEnabled: entry.isEnabled,
+      boundAssetId: entry.boundAssetId,
+      boundAsset: entry.boundAsset
+        ? {
+            assetIdInternal: entry.boundAsset.assetIdInternal,
+            displayName: entry.boundAsset.displayName,
+          }
+        : null,
+      aiBoundConfidence: entry.aiBoundConfidence,
+      aiKind: entry.aiKind,
+      aiUnit: entry.aiUnit,
+      aiDescription: entry.aiDescription,
       syncedAt: entry.syncedAt.toISOString(),
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString(),

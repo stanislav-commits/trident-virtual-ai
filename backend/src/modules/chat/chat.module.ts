@@ -16,6 +16,7 @@ import { ChatSessionMemoryEntity } from './context/entities/chat-session-memory.
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ChatSessionEntity } from './entities/chat-session.entity';
 import { ChatTurnOrchestratorService } from './orchestration/chat-turn-orchestrator.service';
+import { ChatProgressBus } from './progress/chat-progress.bus';
 import { ChatCapabilityRegistryService } from './planning/chat-capability-registry.service';
 import { ChatTurnClassifierService } from './planning/chat-turn-classifier.service';
 import { ChatTurnDecomposerService } from './planning/chat-turn-decomposer.service';
@@ -24,6 +25,7 @@ import { ChatTurnPlannerService } from './planning/chat-turn-planner.service';
 import { ChatSemanticRouterService } from './routing/chat-semantic-router.service';
 import { ChatDocumentsResponderService } from './responders/documents/chat-documents-responder.service';
 import { ChatInDevelopmentResponderService } from './responders/chat-in-development-responder.service';
+import { ChatMetricAnalyzerResponderService } from './responders/chat-metric-analyzer-responder.service';
 import { ChatMetricsResponderService } from './responders/chat-metrics-responder.service';
 import { ChatSmallTalkResponderService } from './responders/chat-small-talk-responder.service';
 import { ChatWebSearchResponderService } from './responders/chat-web-search-responder.service';
@@ -61,9 +63,11 @@ import { ChatVoiceTranscriptionService } from './voice/chat-voice-transcription.
     ChatSmallTalkResponderService,
     ChatWebSearchResponderService,
     ChatMetricsResponderService,
+    ChatMetricAnalyzerResponderService,
     ChatDocumentsResponderService,
     ChatInDevelopmentResponderService,
     ChatVoiceTranscriptionService,
+    ChatProgressBus,
   ],
   exports: [ChatSessionsService, ChatMessagesService],
 })

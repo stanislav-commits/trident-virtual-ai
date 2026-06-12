@@ -34,8 +34,8 @@ export class ChatCapabilityRegistryService {
       ChatTurnIntent.DOCUMENTATION,
       {
         intent: ChatTurnIntent.DOCUMENTATION,
-        enabled: false,
-        responder: ChatTurnResponderKind.IN_DEVELOPMENT,
+        enabled: true,
+        responder: ChatTurnResponderKind.METRICS,
         label: 'documentation search',
       },
     ],
@@ -43,8 +43,8 @@ export class ChatCapabilityRegistryService {
       ChatTurnIntent.MANUALS,
       {
         intent: ChatTurnIntent.MANUALS,
-        enabled: false,
-        responder: ChatTurnResponderKind.IN_DEVELOPMENT,
+        enabled: true,
+        responder: ChatTurnResponderKind.METRICS,
         label: 'manual lookup',
       },
     ],
