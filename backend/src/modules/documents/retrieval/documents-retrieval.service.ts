@@ -55,11 +55,18 @@ export class DocumentsRetrievalService {
       });
     }
 
-    const usableDocuments = await this.filterBuilder.loadUsableDocuments(
+    let usableDocuments = await this.filterBuilder.loadUsableDocuments(
       ship.id,
       ship.ragflowDatasetId,
       context.requestedDocClasses,
     );
+    if (input.scopeRagflowDocumentIds?.length) {
+      const scope = new Set(input.scopeRagflowDocumentIds);
+      usableDocuments = usableDocuments.filter(
+        (document) =>
+          document.ragflowDocumentId && scope.has(document.ragflowDocumentId),
+      );
+    }
     const metadataMatchedDocuments =
       this.filterBuilder.applyLocalMetadataPrefilter(
         usableDocuments,

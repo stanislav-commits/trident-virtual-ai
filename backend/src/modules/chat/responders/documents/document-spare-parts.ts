@@ -84,19 +84,26 @@ export async function retrieveSparePartsEvidence(input: {
   /** Brands resolved from the asset register (e.g. ["MASE", "Volvo Penta"]). */
   brandTerms?: string[];
   /**
-   * Filename of the manual the PROCEDURE evidence came from. The spare
-   * parts catalog lives in the same document — scoping the supplemental
-   * search to it is fully deterministic, unlike brand/hint anchors which
-   * vary run-to-run with router output and asset criticality ordering.
+   * RAGFlow document id of the manual the PROCEDURE evidence came from.
+   * The spare parts catalog lives in the same document — id scoping is
+   * fully deterministic (title matching broke on mojibake filenames).
    */
-  sourceDocumentTitle?: string | null;
+  sourceRagflowDocumentId?: string | null;
   subject: string;
 }): Promise<DocumentRetrievalResponseDto | null> {
-  const componentTerms = [
-    ...extractComponentTerms(input.subject),
-    ...extractEquipmentTerms(input.subject),
-    ...(input.brandTerms ?? []),
-  ];
+  // Inside a known source document the equipment/brand anchors are
+  // redundant — the doc IS the right manual — and extra words only pull
+  // procedure chunks above the catalog. Scoped: component nouns only
+  // (verified: scoped "spare parts list part number code fuel filter"
+  // ranks the catalog chunk #1 deterministically). Unscoped fallback keeps
+  // the full anchor set.
+  const componentTerms = input.sourceRagflowDocumentId
+    ? extractComponentTerms(input.subject)
+    : [
+        ...extractComponentTerms(input.subject),
+        ...extractEquipmentTerms(input.subject),
+        ...(input.brandTerms ?? []),
+      ];
   // Keep the query TIGHT. The router can emit 5-6 overlapping equipment
   // hints ("fuel filter", "fuel system", "filter housing", ...); joining
   // them all dilutes the keyword search and the actual Spare Parts List
@@ -106,7 +113,10 @@ export async function retrieveSparePartsEvidence(input: {
   // words, skipping hints that add no new words.
   const seen = new Set<string>();
   const picked: string[] = [];
-  for (const term of [...componentTerms, ...input.equipmentTerms]) {
+  const candidates = input.sourceRagflowDocumentId
+    ? componentTerms
+    : [...componentTerms, ...input.equipmentTerms];
+  for (const term of candidates) {
     const words = term.toLowerCase().split(/\s+/).filter(Boolean);
     if (words.every((w) => seen.has(w))) continue;
     picked.push(term);
@@ -123,11 +133,8 @@ export async function retrieveSparePartsEvidence(input: {
       question: `spare parts list part number code ${terms}`,
       assessmentQuestion: `${terms} part number`,
       candidateDocClasses: [DocumentDocClass.MANUAL],
-      ...(input.sourceDocumentTitle
-        ? {
-            documentTitleHint: input.sourceDocumentTitle,
-            requireDocumentTitleMatch: true,
-          }
+      ...(input.sourceRagflowDocumentId
+        ? { scopeRagflowDocumentIds: [input.sourceRagflowDocumentId] }
         : {}),
     });
     if (retrieval.results.length) {
@@ -165,7 +172,14 @@ export function mergeSupplementalResults(
   const extra = supplemental.results
     .filter((r) => !seen.has(r.chunkId))
     .slice(0, limit)
-    .map((r) => ({ ...r, rank: nextRank++ }));
+    .map((r) => ({
+      ...r,
+      rank: nextRank++,
+      // Distinct evidence block: formatEvidenceItem prints `section`, so
+      // the answer model sees these as the parts catalog, not more
+      // procedure text — measurably raises part-number citation rate.
+      section: 'SPARE PARTS CATALOG',
+    }));
   if (!extra.length) return retrieval;
   return { ...retrieval, results: [...retrieval.results, ...extra] };
 }

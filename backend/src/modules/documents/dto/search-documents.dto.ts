@@ -76,6 +76,15 @@ export class SearchDocumentsDto {
   @IsString()
   assessmentQuestion?: string;
 
+  /**
+   * Hard scope: restrict retrieval to these RAGFlow document ids. Used by
+   * the spare-parts supplemental search to stay inside the SAME manual the
+   * procedure evidence came from — id matching is deterministic where
+   * title-hint matching breaks on mojibake filenames.
+   */
+  @IsOptional()
+  scopeRagflowDocumentIds?: string[];
+
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()

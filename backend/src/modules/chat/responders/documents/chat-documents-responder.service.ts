@@ -642,8 +642,8 @@ export class ChatDocumentsResponderService {
       equipmentTerms: this.collectEquipmentHintTerms(documentsRoute),
       brandTerms,
       // The parts catalog lives in the same manual the procedure chunks
-      // came from — scope the supplemental search to that document.
-      sourceDocumentTitle: retrieval.results[0]?.filename ?? null,
+      // came from — scope the supplemental search to that document by id.
+      sourceRagflowDocumentId: retrieval.results[0]?.ragflowDocumentId ?? null,
       subject: question,
     });
     const before = retrieval.results.length;
