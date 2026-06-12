@@ -6,6 +6,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { LlmService } from '../../../integrations/llm/llm.service';
+import { AssetEntity } from '../../assets/entities/asset.entity';
+import { AssetDocumentLinkEntity } from '../../assets/entities/asset-document-link.entity';
 import { DocumentEntity } from '../entities/document.entity';
 import { DocumentsUploadStorageService } from '../ingestion/documents-upload-storage.service';
 import { DocumentsRemoteIngestionDispatcherService } from '../ingestion/documents-remote-ingestion-dispatcher.service';
@@ -50,6 +53,11 @@ export class VisionExtractionService {
     private readonly documentsRepository: Repository<DocumentEntity>,
     private readonly uploadStorage: DocumentsUploadStorageService,
     private readonly remoteIngestionDispatcher: DocumentsRemoteIngestionDispatcherService,
+    @InjectRepository(AssetEntity)
+    private readonly assetsRepository: Repository<AssetEntity>,
+    @InjectRepository(AssetDocumentLinkEntity)
+    private readonly assetDocLinkRepository: Repository<AssetDocumentLinkEntity>,
+    private readonly llmService: LlmService,
   ) {}
 
   isEnabled(): boolean {
@@ -152,9 +160,19 @@ export class VisionExtractionService {
       // can then cite exact pages of the ORIGINAL PDF even though it only
       // reads the extract. Falls back to the assembled md when the JSON
       // is not found.
+      // The extractor's enriched title (md filename stem) carries the
+      // brand/model — keep it as the H1 of the paginated rebuild: the
+      // identification LLM and retrieval both need it up top (page 1 of
+      // many manuals is packaging/safety with no brand mention).
+      const enrichedTitle = newest.file.replace(/\.md$/i, '');
+      const paginated = await this.buildPaginatedMarkdown(
+        extractorDir,
+        startedAt,
+      );
       const mdContent = Buffer.from(
-        (await this.buildPaginatedMarkdown(extractorDir, startedAt)) ??
-          (await fs.readFile(path.join(mdDir, newest.file), 'utf8')),
+        paginated
+          ? `# ${enrichedTitle}\n\n${paginated}`
+          : await fs.readFile(path.join(mdDir, newest.file), 'utf8'),
         'utf8',
       );
 
@@ -168,6 +186,22 @@ export class VisionExtractionService {
       document.extractionStatus = 'done';
       document.extractionError = null;
       await this.documentsRepository.save(document);
+
+      // Batch flow: when the uploader did NOT pick an asset, identify the
+      // equipment from the extract and match it against the asset
+      // register — rename + link on a confident match, mark [UNLINKED]
+      // otherwise. Runs BEFORE the RAGFlow handoff so the remote document
+      // gets the final name.
+      try {
+        await this.matchDocumentToAssets(document, mdContent.toString('utf8'));
+      } catch (error) {
+        this.logger.warn(
+          `Asset auto-match failed for ${document.originalFileName}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
       // Hand the document to RAGFlow right away (the dispatcher was
       // gating on the extraction; without this kick it waits for its
       // recovery interval).
@@ -236,6 +270,106 @@ export class VisionExtractionService {
         .join('\n\n');
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Identify the equipment from the extract's opening pages and match it
+   * against the asset register. Confident match = model AND brand both
+   * agree with a register row. PS/SB twin units share one manual, so ALL
+   * confident matches get a pinned link; the document name then uses the
+   * register's brand+model plus the LLM's equipment description (side
+   * suffixes like "— Port" would be wrong for a shared manual).
+   */
+  private async matchDocumentToAssets(
+    document: DocumentEntity,
+    markdown: string,
+  ): Promise<void> {
+    const alreadyLinked = await this.assetDocLinkRepository.findOne({
+      where: { documentId: document.id, linkType: 'pinned' },
+    });
+    if (alreadyLinked) return; // uploader picked the asset explicitly
+
+    const head = markdown.slice(0, 4000);
+    const identified = await this.llmService.createJsonChatCompletion<{
+      manufacturer?: string | null;
+      model?: string | null;
+      equipment?: string | null;
+    }>({
+      systemPrompt:
+        'You read the opening pages of a ship equipment manual and identify the equipment. ' +
+        'Return raw JSON: {"manufacturer": string|null, "model": string|null, "equipment": short noun phrase|null}. ' +
+        'manufacturer/model must be EXACT strings from the text, no guessing.',
+      userPrompt: head,
+      temperature: 0,
+      maxTokens: 200,
+    });
+
+    const manufacturer = identified?.manufacturer?.trim() || null;
+    const model = identified?.model?.trim() || null;
+    const equipment = identified?.equipment?.trim() || null;
+
+    let matches: AssetEntity[] = [];
+    if (manufacturer && model) {
+      matches = await this.assetsRepository
+        .createQueryBuilder('a')
+        .where('a.ship_id = :shipId', { shipId: document.shipId })
+        .andWhere('(a.brand ILIKE :mfr OR :mfrLike ILIKE a.brand)', {
+          mfr: `%${manufacturer}%`,
+          mfrLike: `%${manufacturer}%`,
+        })
+        .andWhere(
+          "(a.model ILIKE :model OR :model ILIKE '%' || a.model || '%')",
+          { model: `%${model}%` },
+        )
+        .andWhere("a.model IS NOT NULL AND a.model <> ''")
+        // Retired equipment must not collect new manuals.
+        .andWhere("a.lifecycle_status NOT ILIKE '%deprecat%'")
+        .andWhere("a.display_name NOT ILIKE '[DEPRECATED]%'")
+        .limit(6)
+        .getMany();
+    }
+
+    if (matches.length) {
+      for (const asset of matches) {
+        await this.assetDocLinkRepository.save({
+          assetId: asset.id,
+          documentId: document.id,
+          linkType: 'pinned',
+          createdByUserId: null,
+        });
+      }
+      const first = matches[0];
+      const ext = document.originalFileName.match(/\.[^.]+$/)?.[0] ?? '.pdf';
+      const descriptor =
+        matches.length > 1
+          ? (equipment ?? first.displayName.replace(/\s*[—-]\s*(Port|Stbd|Starboard|PS|SB)\b.*$/i, ''))
+          : first.displayName;
+      document.originalFileName = `${[first.brand, first.model]
+        .filter(Boolean)
+        .join(' ')} — ${descriptor}${ext}`;
+      document.manufacturer = document.manufacturer ?? first.brand;
+      document.model = document.model ?? first.model;
+      document.equipmentName = document.equipmentName ?? descriptor;
+      await this.documentsRepository.save(document);
+      this.logger.log(
+        `Auto-matched "${document.originalFileName}" to ${matches.length} asset(s)`,
+      );
+    } else {
+      // No confident match — flag for the operator, keep what the LLM
+      // learned so the file is at least recognizable.
+      const ext = document.originalFileName.match(/\.[^.]+$/)?.[0] ?? '.pdf';
+      const base = document.originalFileName.replace(/\.[^.]+$/, '');
+      const ident = [manufacturer, model].filter(Boolean).join(' ');
+      document.originalFileName = `[UNLINKED] ${ident ? `${ident} — ` : ''}${base}${ext}`;
+      if (manufacturer && !document.manufacturer) {
+        document.manufacturer = manufacturer;
+      }
+      if (model && !document.model) document.model = model;
+      await this.documentsRepository.save(document);
+      this.logger.log(
+        `No asset match for "${document.originalFileName}" — flagged for operator`,
+      );
     }
   }
 

@@ -10,7 +10,7 @@
     "db:seed": "ts-node -r tsconfig-paths/register src/core/database/seeds/dev.seed.ts",
     "db:up": "docker compose up -d postgres",
     "start": "nest start",
-    "start:dev": "lsof -ti :3000 | xargs kill -9 2>/dev/null; nest start --watch",
+    "start:dev": "lsof -ti :3000 | xargs kill -9 2>/dev/null; nest build && (nest build --watch --preserveWatchOutput > /tmp/trident-tsc.log 2>&1 &) && node --watch --enable-source-maps dist/main",
     "start:prod": "node dist/main",
     "lint": "tsc --noEmit -p tsconfig.json"
   },
