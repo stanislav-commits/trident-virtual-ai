@@ -256,6 +256,8 @@ export class MetricsController {
   // Phase 3 — tool-calling resolver. Direct REST entry point; routing from
   // the chat pipeline happens in a separate task.
   @Post('ships/:shipId/ask')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   askMetric(
     @Param('shipId') shipId: string,
     @Body() body: { question: string },
