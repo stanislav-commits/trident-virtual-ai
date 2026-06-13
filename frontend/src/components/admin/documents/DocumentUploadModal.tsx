@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import type {
   DocumentDocClass,
@@ -7,6 +7,7 @@ import type {
 } from "../../../api/documentsApi";
 import { uploadDocument } from "../../../api/documentsApi";
 import type { ShipSummaryItem } from "../../../api/shipsApi";
+import { listAssets } from "../../../api/assetsApi";
 import { UploadIcon, XIcon } from "../AdminPanelIcons";
 import { DOCUMENT_CLASS_OPTIONS } from "./documentOptions";
 import {
