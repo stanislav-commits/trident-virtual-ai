@@ -237,6 +237,18 @@ export class InfluxService {
   }
 
   /**
+   * Validates a Flux duration literal (e.g. "5m", "1h", "1h30m") before it is
+   * interpolated into an `aggregateWindow(every: …)` step. The `every` value can
+   * originate from LLM tool-call args; without this guard a value such as
+   * `1h) |> …` would inject arbitrary pipeline stages into the read query.
+   * Non-conforming input falls back to a safe default.
+   */
+  private toFluxDuration(value: string | undefined, fallback: string): string {
+    const v = (value ?? '').trim();
+    return /^(\d+(ns|us|µs|ms|s|m|h|d|w))+$/.test(v) ? v : fallback;
+  }
+
+  /**
    * Returns down-sampled time/value pairs over [start, end] using
    * `aggregateWindow`. Used by MetricUnderstandingService for the 7-day
    * fingerprint that backs each metric's AI analysis bundle.
@@ -252,7 +264,7 @@ export class InfluxService {
       `from(bucket: ${this.toFluxString(metric.bucket)})`,
       `|> range(start: ${this.toFluxAbsoluteTime(start)}, stop: ${this.toFluxAbsoluteTime(end)})`,
       `|> filter(fn: (r) => r._measurement == ${this.toFluxString(metric.measurement)} and r._field == ${this.toFluxString(metric.field)})`,
-      `|> aggregateWindow(every: ${everyDuration}, fn: mean, createEmpty: false)`,
+      `|> aggregateWindow(every: ${this.toFluxDuration(everyDuration, '5m')}, fn: mean, createEmpty: false)`,
       '|> keep(columns: ["_time", "_value"])',
     ].join('\n');
 
@@ -292,7 +304,7 @@ export class InfluxService {
       limit?: number;
     },
   ): Promise<Array<{ timestamp: string; delta: number }>> {
-    const every = opts.every ?? '30m';
+    const every = this.toFluxDuration(opts.every ?? '30m', '30m');
     const kind = opts.kind ?? 'step_up';
     const limit = Math.max(1, Math.min(50, opts.limit ?? 10));
 
@@ -390,7 +402,7 @@ export class InfluxService {
       limit?: number;
     },
   ): Promise<Array<{ timestamp: string; value: number }>> {
-    const every = opts.every ?? '1m';
+    const every = this.toFluxDuration(opts.every ?? '1m', '1m');
     const limit = Math.max(1, Math.min(200, opts.limit ?? 50));
     // We sample at `every`, then keep points where (was below/above) AND
     // (current sample is above/below) — i.e. transitions through threshold.
