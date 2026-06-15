@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  analyzeShipMetrics,
+  getShipMetricsAnalyzeProgress,
   getShipMetricsCatalogPage,
   syncShipMetricsCatalog,
   toggleShipMetrics,
@@ -40,6 +42,9 @@ export interface ShipMetricsCatalogPageData {
     isEnabled: boolean,
     metricIds?: string[],
   ) => Promise<void>;
+  analyzing: boolean;
+  analyzeProgress: { done: number; total: number } | null;
+  analyzeCatalog: () => Promise<void>;
   lastSyncResult: ShipMetricsSyncResult | null;
 }
 
@@ -57,6 +62,11 @@ export function useShipMetricsCatalogPageData(
   const [error, setError] = useState("");
   const [lastSyncResult, setLastSyncResult] =
     useState<ShipMetricsSyncResult | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
 
   const refreshCatalog = useCallback(async () => {
     if (!options.enabled || !token || !shipId) {
@@ -141,6 +151,55 @@ export function useShipMetricsCatalogPageData(
       token,
     ],
   );
+
+  const analyzeCatalog = useCallback(async () => {
+    if (!token || !shipId) {
+      return;
+    }
+    setAnalyzing(true);
+    setAnalyzeProgress(null);
+    setError("");
+    try {
+      const start = await analyzeShipMetrics(shipId, token);
+      setAnalyzeProgress({ done: 0, total: start.totalQueued });
+      // Poll progress until the background run drains the queue.
+      await new Promise<void>((resolve) => {
+        const poll = async () => {
+          try {
+            const p = await getShipMetricsAnalyzeProgress(shipId, token);
+            if (p.progress) {
+              setAnalyzeProgress({
+                done: p.progress.done,
+                total: p.progress.total,
+              });
+              if (p.progress.done >= p.progress.total) {
+                resolve();
+                return;
+              }
+            } else {
+              resolve();
+              return;
+            }
+          } catch {
+            resolve();
+            return;
+          }
+          setTimeout(() => void poll(), 3000);
+        };
+        setTimeout(() => void poll(), 3000);
+      });
+      await refreshCatalog();
+    } catch (analyzeError) {
+      setError(
+        analyzeError instanceof Error
+          ? analyzeError.message
+          : "Failed to analyze ship metrics",
+      );
+    } finally {
+      setAnalyzing(false);
+      setAnalyzeProgress(null);
+    }
+  }, [refreshCatalog, shipId, token]);
 
   const updateDescription = useCallback(
     async (metricId: string, description: string | null) => {
@@ -255,6 +314,9 @@ export function useShipMetricsCatalogPageData(
     syncCatalog,
     updateDescription,
     toggleMetrics,
+    analyzing,
+    analyzeProgress,
+    analyzeCatalog,
     lastSyncResult,
   };
 }

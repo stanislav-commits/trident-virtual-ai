@@ -340,6 +340,55 @@ export async function bootstrapShipMetricConcepts(
   return response.json();
 }
 
+export interface ShipMetricsAnalyzeStart {
+  shipId: string;
+  started: boolean;
+  totalQueued: number;
+  message: string;
+}
+
+export interface ShipMetricsAnalyzeProgress {
+  shipId: string;
+  progress: { startedAt: string; done: number; total: number } | null;
+}
+
+/** Phase-3 AI analysis of the raw catalog (kind/unit/bound-asset + 7d fingerprint). */
+export async function analyzeShipMetrics(
+  shipId: string,
+  token: string,
+): Promise<ShipMetricsAnalyzeStart> {
+  const response = await fetchWithAuth(`metrics/ships/${shipId}/analyze`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ background: true }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to start metric analysis");
+  }
+
+  return response.json();
+}
+
+export async function getShipMetricsAnalyzeProgress(
+  shipId: string,
+  token: string,
+): Promise<ShipMetricsAnalyzeProgress> {
+  const response = await fetchWithAuth(
+    `metrics/ships/${shipId}/analyze/progress`,
+    { token, method: "GET" },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to load analysis progress");
+  }
+
+  return response.json();
+}
+
 export async function listMetricConcepts(
   token: string,
   shipId?: string | null,

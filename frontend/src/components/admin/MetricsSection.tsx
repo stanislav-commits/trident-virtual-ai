@@ -220,6 +220,9 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     updateDescription,
     toggleMetrics,
     refreshCatalog,
+    analyzing: catalogAnalyzing,
+    analyzeProgress: catalogAnalyzeProgress,
+    analyzeCatalog,
     lastSyncResult: catalogLastSyncResult,
   } = useShipMetricsCatalogPageData(token, effectiveSelectedShipId, {
     search: deferredCatalogSearch,
@@ -442,6 +445,43 @@ export function MetricsSection({ token }: MetricsSectionProps) {
             </svg>
             {isCatalogView ? (catalogSyncing ? "Syncing…" : "Sync from Influx") : semanticSyncing ? "Syncing…" : "Sync from Influx"}
           </button>
+
+          {isCatalogView && (
+            <button
+              type="button"
+              className="admin-panel__sync-btn"
+              onClick={() => void analyzeCatalog()}
+              disabled={
+                !effectiveSelectedShipId ||
+                catalogAnalyzing ||
+                catalogSyncing ||
+                shipsLoading
+              }
+              title="Run AI analysis (kind / unit / bound asset + 7-day fingerprint) for this ship's metrics. Required before the metric chat can answer."
+            >
+              <svg
+                className={`admin-panel__sync-icon ${
+                  catalogAnalyzing ? "admin-panel__sync-icon--spin" : ""
+                }`}
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" />
+              </svg>
+              {catalogAnalyzing
+                ? catalogAnalyzeProgress
+                  ? `Analyzing ${catalogAnalyzeProgress.done}/${catalogAnalyzeProgress.total}…`
+                  : "Analyzing…"
+                : "Analyze (AI)"}
+            </button>
+          )}
         </div>
       </div>
 
