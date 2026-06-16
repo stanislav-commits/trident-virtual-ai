@@ -143,11 +143,13 @@ export class DocumentsIngestionService {
       document.ragflowDatasetId = ragflowDatasetId;
       await this.documentsRepository.save(document);
 
-      const localStorageKey = this.uploadStorage.isLocalSpoolKey(
-        document.storageKey,
-      )
-        ? document.storageKey
-        : null;
+      // "Readable source" key — local spool OR Spaces object storage. (A
+      // `ragflow://` ref or a missing key is not directly readable here.)
+      const localStorageKey =
+        this.uploadStorage.isLocalSpoolKey(document.storageKey) ||
+        this.uploadStorage.isObjectStorageKey(document.storageKey)
+          ? document.storageKey
+          : null;
 
       if (!document.ragflowDocumentId) {
         if (!localStorageKey) {
@@ -245,7 +247,10 @@ export class DocumentsIngestionService {
       return this.documentsRepository.save(freshDocument);
     }
 
-    if (this.uploadStorage.isLocalSpoolKey(freshDocument.storageKey)) {
+    if (
+      this.uploadStorage.isLocalSpoolKey(freshDocument.storageKey) ||
+      this.uploadStorage.isObjectStorageKey(freshDocument.storageKey)
+    ) {
       freshDocument.parseStatus = DocumentParseStatus.UPLOADED;
       freshDocument.parseError = null;
       freshDocument.parseProgressPercent = null;
@@ -255,7 +260,7 @@ export class DocumentsIngestionService {
 
     freshDocument.parseStatus = DocumentParseStatus.FAILED;
     freshDocument.parseError =
-      'Local upload payload is unavailable; upload the document again.';
+      'Original upload payload is unavailable; upload the document again.';
     freshDocument.parseProgressPercent = null;
     freshDocument.lastSyncedAt = new Date();
     return this.documentsRepository.save(freshDocument);

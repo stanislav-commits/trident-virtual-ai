@@ -292,10 +292,12 @@ export class DocumentsService {
   ): Promise<DocumentFilePayload> {
     const document = await this.findAccessibleDocument(id, user);
 
-    // Extracted documents keep their ORIGINAL in the local spool (RAGFlow
-    // only holds the markdown the AI reads) — serve the original here.
+    // Extracted documents keep their ORIGINAL in storage (local spool or
+    // Spaces) — RAGFlow only holds the markdown the AI reads — serve the
+    // original here regardless of provider.
     if (
-      this.uploadStorage.isLocalSpoolKey(document.storageKey) &&
+      (this.uploadStorage.isLocalSpoolKey(document.storageKey) ||
+        this.uploadStorage.isObjectStorageKey(document.storageKey)) &&
       (await this.uploadStorage.hasUpload(document.storageKey))
     ) {
       return {

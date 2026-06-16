@@ -63,6 +63,18 @@ export default function configuration() {
     },
     documents: {
       uploadSpoolDir: process.env.DOCUMENT_UPLOAD_SPOOL_DIR ?? '',
+      // 'local' = keep originals on the backend disk spool (legacy);
+      // 'spaces' = persist originals + extracted markdown in DO Spaces (S3).
+      storageProvider: (
+        process.env.DOCUMENTS_STORAGE_PROVIDER ?? 'local'
+      ).trim(),
+      spaces: {
+        endpoint: process.env.DOCUMENTS_SPACES_ENDPOINT ?? '',
+        region: process.env.DOCUMENTS_SPACES_REGION ?? 'us-east-1',
+        bucket: process.env.DOCUMENTS_SPACES_BUCKET ?? '',
+        accessKeyId: process.env.DOCUMENTS_SPACES_ACCESS_KEY_ID ?? '',
+        secretAccessKey: process.env.DOCUMENTS_SPACES_SECRET_ACCESS_KEY ?? '',
+      },
       parseDrainEnabled: parseBoolean(
         process.env.DOCUMENTS_PARSE_DRAIN_ENABLED,
         true,

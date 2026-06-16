@@ -99,10 +99,13 @@ export class VisionExtractionService {
       await this.markFailed(document, 'Vision extractor is not configured');
       return;
     }
-    if (!this.uploadStorage.isLocalSpoolKey(document.storageKey)) {
+    if (
+      !this.uploadStorage.isLocalSpoolKey(document.storageKey) &&
+      !this.uploadStorage.isObjectStorageKey(document.storageKey)
+    ) {
       await this.markFailed(
         document,
-        'Original upload is no longer in the local spool',
+        'Original upload is no longer available in storage',
       );
       return;
     }
@@ -112,6 +115,11 @@ export class VisionExtractionService {
     await this.documentsRepository.save(document);
     this.logger.log(`Vision extraction started: ${document.originalFileName}`);
 
+    // Staged temp PDF in the extractor's 01-input — removed in `finally` so the
+    // spool never grows. With the Spaces provider the original lives in object
+    // storage (readUpload streams it here only for the extractor run), so this
+    // temp is the only on-disk copy and must not persist.
+    let stagedInputPath: string | null = null;
     try {
       const buffer = await this.uploadStorage.readUpload(document.storageKey!);
 
@@ -119,8 +127,8 @@ export class VisionExtractionService {
       //    original filename (the extractor's register uses it), just made
       //    filesystem-safe.
       const safeName = document.originalFileName.replace(/[/\\:]/g, '_');
-      const inputPath = path.join(extractorDir, '01-input', safeName);
-      await fs.writeFile(inputPath, buffer);
+      stagedInputPath = path.join(extractorDir, '01-input', safeName);
+      await fs.writeFile(stagedInputPath, buffer);
 
       // 2. Run the pipeline for this one file.
       const startedAt = Date.now();
@@ -216,6 +224,13 @@ export class VisionExtractionService {
         document,
         error instanceof Error ? error.message.slice(0, 1000) : String(error),
       );
+    } finally {
+      // Always remove the staged temp PDF — the original is in storage
+      // (spool or Spaces) and RAGFlow gets the markdown. Never let 01-input
+      // accumulate, even on a failed/aborted run.
+      if (stagedInputPath) {
+        await fs.rm(stagedInputPath, { force: true }).catch(() => undefined);
+      }
     }
   }
 
