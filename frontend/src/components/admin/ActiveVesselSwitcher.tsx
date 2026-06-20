@@ -16,6 +16,7 @@ export function ActiveVesselSwitcher() {
 
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,21 +44,37 @@ export function ActiveVesselSwitcher() {
   return (
     <div className="vessel-switcher" ref={rootRef}>
       <div className="vessel-switcher__label">Active vessel</div>
-      <button
-        type="button"
-        className="vessel-switcher__current"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="vessel-switcher__name">
-          {active?.name ?? "No vessels"}
-        </span>
-        <span className="vessel-switcher__chevron">{open ? "▴" : "▾"}</span>
-      </button>
+      <div className="vessel-switcher__currentRow">
+        <button
+          type="button"
+          className="vessel-switcher__current"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="vessel-switcher__name">
+            {active?.name ?? "No vessels"}
+          </span>
+          <span className="vessel-switcher__chevron">{open ? "▴" : "▾"}</span>
+        </button>
+        {active && (
+          <button
+            type="button"
+            className="vessel-switcher__gear"
+            title="Vessel details & settings"
+            aria-label="Vessel details & settings"
+            onClick={() => {
+              setOpen(false);
+              setEditOpen(true);
+            }}
+          >
+            ⚙
+          </button>
+        )}
+      </div>
       {active && <div className="vessel-switcher__meta">{meta(active)}</div>}
 
       {open && (
         <div className="vessel-switcher__panel">
-          <div className="vessel-switcher__panel-label">Yachts</div>
+          <div className="vessel-switcher__panel-label">Switch vessel</div>
           {availableShips.map((ship) => (
             <button
               key={ship.id}
@@ -88,6 +105,12 @@ export function ActiveVesselSwitcher() {
       )}
 
       {modalOpen && <AddVesselModal onClose={() => setModalOpen(false)} />}
+      {editOpen && active && (
+        <AddVesselModal
+          editShip={active}
+          onClose={() => setEditOpen(false)}
+        />
+      )}
     </div>
   );
 }

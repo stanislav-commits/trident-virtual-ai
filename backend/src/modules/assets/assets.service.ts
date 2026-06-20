@@ -18,6 +18,7 @@ import { UpdateAssetDto } from './dto/update-asset.dto';
 import { AssetDocumentLinkEntity } from './entities/asset-document-link.entity';
 import { AssetSnapshotEntity } from './entities/asset-snapshot.entity';
 import { AssetEntity } from './entities/asset.entity';
+import { SfiService } from '../sfi/sfi.service';
 import { ServiceRuleEntity } from './entities/service-rule.entity';
 import type {
   CompleteServiceRuleDto,
@@ -27,6 +28,7 @@ import type {
 import type {
   ImportPreviewResult,
   ImportPreviewRename,
+  ImportPreviewSfiWarning,
 } from './dto/import-preview.dto';
 import type { CommitImportDto } from './dto/commit-import.dto';
 import { AssetLifecycleStatus } from './enums/asset-lifecycle-status.enum';
@@ -114,6 +116,7 @@ export class AssetsService {
     private readonly assetSnapshotRepository: Repository<AssetSnapshotEntity>,
     @InjectRepository(ServiceRuleEntity)
     private readonly serviceRuleRepository: Repository<ServiceRuleEntity>,
+    private readonly sfiService: SfiService,
   ) {}
 
   async list(shipId: string, query: QueryAssetsDto) {
@@ -473,6 +476,112 @@ export class AssetsService {
   }
 
   /**
+   * Wipe every asset on a ship. Snapshots first (rollback insurance) — this
+   * also SET NULLs metric bindings and CASCADE-deletes service rules +
+   * document links, so the snapshot is the only undo. Returns how many were
+   * removed and the snapshot id (null when there was nothing to clear).
+   */
+  async clearAll(
+    shipId: string,
+    userId: string | null,
+  ): Promise<{ deleted: number; snapshotId: string | null }> {
+    await this.assertShipExists(shipId);
+    const deleted = await this.assetRepository.count({ where: { shipId } });
+    if (deleted === 0) {
+      return { deleted: 0, snapshotId: null };
+    }
+    const snapshotId = await this.createSnapshot(
+      shipId,
+      `pre-clear-all (${new Date().toISOString().slice(0, 10)})`,
+      userId,
+    );
+    await this.assetRepository.delete({ shipId });
+    return { deleted, snapshotId };
+  }
+
+  /**
+   * Export the whole register as an xlsx. Writes the canonical "Asset
+   * Register" sheet (banner row 0, header row 1, data row 2+) using the
+   * primary COLUMN_ALIASES names so the file round-trips back through
+   * import-xlsx. Non-canonical `extras` keys are flattened into their own
+   * columns (union across all assets).
+   */
+  async exportXlsx(
+    shipId: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const ship = await this.shipRepository.findOne({ where: { id: shipId } });
+    if (!ship) {
+      throw new NotFoundException(`Ship ${shipId} not found`);
+    }
+    const assets = await this.assetRepository.find({
+      where: { shipId },
+      order: { assetIdInternal: 'ASC' },
+    });
+
+    const COLUMNS: Array<[string, (a: AssetEntity) => unknown]> = [
+      ['asset_id_internal', (a) => a.assetIdInternal],
+      ['display_name', (a) => a.displayName],
+      ['sfi_group', (a) => a.sfiGroup],
+      ['sfi_sub', (a) => a.sfiSub],
+      ['sfi_sub_name', (a) => a.sfiSubName],
+      ['parent_asset_id', (a) => a.parentAssetId],
+      ['served_by_asset_id', (a) => a.servedByAssetId],
+      ['location_asset_id', (a) => a.locationAssetId],
+      ['brand', (a) => a.brand],
+      ['model', (a) => a.model],
+      ['serial_no', (a) => a.serialNo],
+      ['criticality', (a) => a.criticality],
+      ['lifecycle_status', (a) => a.lifecycleStatus],
+      ['commissioned_date', (a) => a.commissionedDate],
+      ['location', (a) => a.location],
+      ['rina_ref', (a) => a.rinaRef],
+      ['zone', (a) => a.zone],
+      ['deck_role', (a) => a.deckRole],
+      ['deck_level', (a) => a.deckLevel],
+      ['space_instance', (a) => a.spaceInstance],
+      ['space_label', (a) => a.spaceLabel],
+      ['drawing_ref', (a) => a.drawingRef],
+      ['inspection_obligation', (a) => a.inspectionObligation],
+      ['notes', (a) => a.notes],
+    ];
+
+    const extrasKeys = new Set<string>();
+    for (const a of assets) {
+      if (a.extras) {
+        for (const k of Object.keys(a.extras)) extrasKeys.add(k);
+      }
+    }
+    const extrasCols = Array.from(extrasKeys).sort();
+
+    const header = [...COLUMNS.map(([h]) => h), ...extrasCols];
+    const banner = `Asset Register export · ${ship.name} · ${assets.length} assets · ${new Date()
+      .toISOString()
+      .slice(0, 10)}`;
+
+    const aoa: unknown[][] = [[banner], header];
+    for (const a of assets) {
+      const row: unknown[] = COLUMNS.map(([, get]) => get(a) ?? '');
+      const extras = (a.extras ?? {}) as Record<string, unknown>;
+      for (const k of extrasCols) row.push(extras[k] ?? '');
+      aoa.push(row);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, REGISTER_SHEET_NAME);
+    const buffer = XLSX.write(wb, {
+      type: 'buffer',
+      bookType: 'xlsx',
+    }) as Buffer;
+
+    const safeName = ship.name.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+    const filename = `${safeName || 'asset_register'}_${new Date()
+      .toISOString()
+      .slice(0, 10)}.xlsx`;
+    return { buffer, filename };
+  }
+
+  /**
    * Parse an xlsx buffer into validated drafts + structural errors —
    * NO DB writes. Used by both /preview (to show diff) and /commit
    * (which then applies the drafts).
@@ -657,6 +766,29 @@ export class AssetsService {
     );
 
     void orphanCodes; // keep variable for clarity above
+
+    // SFI validation against the loaded taxonomy — flag drafts whose
+    // sfi_sub isn't a known catalog code (off-standard / typo) or is
+    // missing entirely. Non-blocking; surfaced in the preview modal.
+    const validSfi = new Set((await this.sfiService.all()).map((n) => n.code));
+    const sfiWarnings: ImportPreviewSfiWarning[] = [];
+    for (const { draft } of drafts) {
+      const sub = draft.sfiSub ?? null;
+      if (!sub) {
+        sfiWarnings.push({
+          assetIdInternal: draft.assetIdInternal!,
+          sfiSub: null,
+          reason: 'missing',
+        });
+      } else if (!validSfi.has(sub)) {
+        sfiWarnings.push({
+          assetIdInternal: draft.assetIdInternal!,
+          sfiSub: sub,
+          reason: 'unknown-code',
+        });
+      }
+    }
+
     return {
       totalRows,
       parseErrors,
@@ -664,12 +796,14 @@ export class AssetsService {
       update,
       orphans: orphansFinal,
       potentialRenames: renames,
+      sfiWarnings,
       counts: {
         create: create.length,
         update: update.length,
         orphans: orphansFinal.length,
         renames: renames.length,
         parseErrors: parseErrors.length,
+        sfiWarnings: sfiWarnings.length,
       },
     };
   }

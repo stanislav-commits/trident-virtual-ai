@@ -76,6 +76,24 @@ export class ComplianceDocEntity {
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes!: string | null;
 
+  // ── Doc-control schema v9: archetype field values + verification ──
+
+  /** Captured archetype field values (BASE + archetype block). */
+  @Column({ name: 'fields', type: 'jsonb', nullable: true })
+  fields!: Record<string, unknown> | null;
+
+  /** 'confirmed' (system / human-confirmed) | 'auto' (AI-extracted, pending). */
+  @Column({ name: 'verify_state', type: 'varchar', length: 12, default: 'confirmed' })
+  verifyState!: string;
+
+  /** Extractor confidence 0..1, null for manual records. */
+  @Column({ name: 'extracted_confidence', type: 'numeric', precision: 4, scale: 3, nullable: true })
+  extractedConfidence!: string | null;
+
+  /** Identity discrepancies vs the register (register wins; doc flags). */
+  @Column({ name: 'identity_flags', type: 'jsonb', nullable: true })
+  identityFlags!: Array<Record<string, unknown>> | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

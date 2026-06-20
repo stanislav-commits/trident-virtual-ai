@@ -188,12 +188,18 @@ export type ImportPreviewResult = {
     displayName: string;
     matchScore: "exact-name-brand-model" | "exact-name-brand" | "exact-name";
   }>;
+  sfiWarnings: Array<{
+    assetIdInternal: string;
+    sfiSub: string | null;
+    reason: "unknown-code" | "missing";
+  }>;
   counts: {
     create: number;
     update: number;
     orphans: number;
     renames: number;
     parseErrors: number;
+    sfiWarnings: number;
   };
 };
 
@@ -347,6 +353,85 @@ export async function deleteAsset(
   if (!response.ok) {
     throw new Error(`Delete failed (${response.status})`);
   }
+}
+
+export type CreateAssetInput = {
+  assetIdInternal: string;
+  displayName: string;
+  sfiGroup?: string;
+  sfiSub?: string;
+  sfiSubName?: string;
+  brand?: string;
+  model?: string;
+  serialNo?: string;
+  location?: string;
+  criticality?: number;
+  lifecycleStatus?: string;
+  notes?: string;
+};
+
+/** Create a single asset on a ship. 409 if assetIdInternal already exists. */
+export async function createAsset(
+  token: string,
+  shipId: string,
+  input: CreateAssetInput,
+): Promise<AssetItem> {
+  const response = await fetchWithAuth(`ships/${shipId}/assets`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const txt = await response.text();
+    throw new Error(`Create failed (${response.status}): ${txt.slice(0, 200)}`);
+  }
+  return (await response.json()) as AssetItem;
+}
+
+/**
+ * Delete EVERY asset on a ship. The backend snapshots first (rollback
+ * insurance) and returns the count removed + the snapshot id.
+ */
+export async function clearAllAssets(
+  token: string,
+  shipId: string,
+): Promise<{ deleted: number; snapshotId: string | null }> {
+  const response = await fetchWithAuth(`ships/${shipId}/assets`, {
+    token,
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const txt = await response.text();
+    throw new Error(`Clear all failed (${response.status}): ${txt.slice(0, 200)}`);
+  }
+  return (await response.json()) as {
+    deleted: number;
+    snapshotId: string | null;
+  };
+}
+
+/**
+ * Download the whole register as an xlsx (canonical "Asset Register" sheet,
+ * round-trips back through import). Returns the blob + server-suggested
+ * filename so the caller can trigger a browser download.
+ */
+export async function exportAssetsXlsx(
+  token: string,
+  shipId: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetchWithAuth(`ships/${shipId}/assets/export-xlsx`, {
+    token,
+  });
+  if (!response.ok) {
+    const txt = await response.text();
+    throw new Error(`Export failed (${response.status}): ${txt.slice(0, 200)}`);
+  }
+  const cd = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^";]+)"?/.exec(cd);
+  const filename = match ? match[1] : "asset_register.xlsx";
+  const blob = await response.blob();
+  return { blob, filename };
 }
 
 /**

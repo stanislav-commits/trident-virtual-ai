@@ -68,6 +68,23 @@ export class ComplianceDocTypeEntity {
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes!: string | null;
 
+  // ── Doc-control schema v9: archetype tagging (copied from master) ──
+
+  @Column({ name: 'archetype', type: 'varchar', length: 16, nullable: true })
+  archetype!: string | null;
+
+  @Column({ name: 'link_cardinality', type: 'varchar', length: 16, nullable: true })
+  linkCardinality!: string | null;
+
+  @Column({ name: 'reg_basis', type: 'varchar', length: 200, nullable: true })
+  regBasis!: string | null;
+
+  @Column({ name: 'basis_note', type: 'text', nullable: true })
+  basisNote!: string | null;
+
+  @Column({ name: 'drives_pms', type: 'varchar', length: 40, nullable: true })
+  drivesPms!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }

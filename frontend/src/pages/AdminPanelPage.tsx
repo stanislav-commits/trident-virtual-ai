@@ -8,6 +8,9 @@ import {
   AssetsIcon,
   DocumentsIcon,
   MetricsIcon,
+  MaintenanceIcon,
+  CrewIcon,
+  InventoryIcon,
   ChevronLeftIcon,
   MenuIcon,
   XIcon,
@@ -18,6 +21,9 @@ import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
 import { AssetsSection } from "../components/admin/AssetsSection";
 import { ComplianceSection } from "../components/admin/ComplianceSection";
+import { PmsSection } from "../components/admin/PmsSection";
+import { CrewSection } from "../components/admin/CrewSection";
+import { InventorySection } from "../components/admin/InventorySection";
 import { ActiveVesselSwitcher } from "../components/admin/ActiveVesselSwitcher";
 import { UserAvatar } from "../components/layout/UserAvatar";
 import { getUserAvatarLabel } from "../components/layout/userAvatarUtils";
@@ -35,6 +41,9 @@ const SECTION_TITLES: Record<AdminSectionRoute, string> = {
   ships: "Ships",
   assets: "Asset Register",
   compliance: "Compliance Docs",
+  maintenance: "Tasks",
+  crew: "Crew",
+  inventory: "Inventory",
   documents: "Documents",
   metrics: "Metrics",
 };
@@ -115,26 +124,8 @@ export function AdminPanelPage() {
         <ActiveVesselSwitcher />
 
         <nav className="admin-panel__nav" aria-label="Admin sections">
-          <button
-            type="button"
-            className={`admin-panel__nav-item ${activeSection === "users" ? "admin-panel__nav-item--active" : ""}`}
-            onClick={() => handleNavClick("users")}
-          >
-            <span className="admin-panel__nav-icon">
-              <UsersIcon />
-            </span>
-            <span className="admin-panel__nav-label">Users</span>
-          </button>
-          <button
-            type="button"
-            className={`admin-panel__nav-item ${activeSection === "ships" ? "admin-panel__nav-item--active" : ""}`}
-            onClick={() => handleNavClick("ships")}
-          >
-            <span className="admin-panel__nav-icon">
-              <ShipIcon />
-            </span>
-            <span className="admin-panel__nav-label">Ships</span>
-          </button>
+          {/* Vessel data — everything scoped to the active vessel. */}
+          <div className="admin-panel__nav-group-label">Vessel data</div>
           <button
             type="button"
             className={`admin-panel__nav-item ${activeSection === "assets" ? "admin-panel__nav-item--active" : ""}`}
@@ -157,6 +148,36 @@ export function AdminPanelPage() {
           </button>
           <button
             type="button"
+            className={`admin-panel__nav-item ${activeSection === "maintenance" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("maintenance")}
+          >
+            <span className="admin-panel__nav-icon">
+              <MaintenanceIcon />
+            </span>
+            <span className="admin-panel__nav-label">Tasks</span>
+          </button>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "crew" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("crew")}
+          >
+            <span className="admin-panel__nav-icon">
+              <CrewIcon />
+            </span>
+            <span className="admin-panel__nav-label">Crew</span>
+          </button>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "inventory" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("inventory")}
+          >
+            <span className="admin-panel__nav-icon">
+              <InventoryIcon />
+            </span>
+            <span className="admin-panel__nav-label">Inventory</span>
+          </button>
+          <button
+            type="button"
             className={`admin-panel__nav-item ${activeSection === "documents" ? "admin-panel__nav-item--active" : ""}`}
             onClick={() => handleNavClick("documents")}
           >
@@ -174,6 +195,31 @@ export function AdminPanelPage() {
               <MetricsIcon />
             </span>
             <span className="admin-panel__nav-label">Metrics</span>
+          </button>
+
+          {/* Platform settings — NOT vessel-scoped. */}
+          <div className="admin-panel__nav-group-label admin-panel__nav-group-label--platform">
+            Platform
+          </div>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "users" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("users")}
+          >
+            <span className="admin-panel__nav-icon">
+              <UsersIcon />
+            </span>
+            <span className="admin-panel__nav-label">Users</span>
+          </button>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "ships" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("ships")}
+          >
+            <span className="admin-panel__nav-icon">
+              <ShipIcon />
+            </span>
+            <span className="admin-panel__nav-label">Ships</span>
           </button>
         </nav>
 
@@ -216,7 +262,9 @@ export function AdminPanelPage() {
 
           <div
             className={`admin-panel__content${
-              activeSection === "compliance"
+              ["compliance", "maintenance", "crew", "inventory", "documents", "metrics"].includes(
+                activeSection,
+              )
                 ? " admin-panel__content--wide"
                 : ""
             }`}
@@ -247,6 +295,9 @@ export function AdminPanelPage() {
 
             {activeSection === "assets" && <AssetsSection token={token} />}
             {activeSection === "compliance" && <ComplianceSection token={token} />}
+            {activeSection === "maintenance" && <PmsSection token={token} />}
+            {activeSection === "crew" && <CrewSection token={token} />}
+            {activeSection === "inventory" && <InventorySection token={token} />}
 
             {activeSection === "metrics" && <MetricsSection token={token} />}
 

@@ -41,6 +41,23 @@ import { AddComplianceDocs20260611000200 } from './migrations/20260611000200-add
 import { AddComplianceMaster20260611000300 } from './migrations/20260611000300-add-compliance-master';
 import { ExtendShipProfile20260611000400 } from './migrations/20260611000400-extend-ship-profile';
 import { AddDocumentExtraction20260612000100 } from './migrations/20260612000100-add-document-extraction';
+import { AddPmsTasks20260618000100 } from './migrations/20260618000100-add-pms-tasks';
+import { AddPmsDueHours20260618000200 } from './migrations/20260618000200-add-pms-due-hours';
+import { AddAssetHours20260618000300 } from './migrations/20260618000300-add-asset-hours';
+import { AddPmsResponsibleRole20260618000400 } from './migrations/20260618000400-add-pms-responsible-role';
+import { AddCrew20260618000500 } from './migrations/20260618000500-add-crew';
+import { AddPmsDepartment20260618000600 } from './migrations/20260618000600-add-pms-department';
+import { TagComplianceArchetypes20260618000700 } from './migrations/20260618000700-tag-compliance-archetypes';
+import { AddComplianceDocFields20260618000800 } from './migrations/20260618000800-add-compliance-doc-fields';
+import { AddDocAssetLinks20260618000900 } from './migrations/20260618000900-add-doc-asset-links';
+import { AddPmsSourceDoc20260618001000 } from './migrations/20260618001000-add-pms-source-doc';
+import { AddComplianceIdentityFlags20260618001100 } from './migrations/20260618001100-add-compliance-identity-flags';
+import { AddInventory20260619000100 } from './migrations/20260619000100-add-inventory';
+import { AddInventoryItemAssets20260619000200 } from './migrations/20260619000200-add-inventory-item-assets';
+import { AddPmsTaskAnchors20260619000300 } from './migrations/20260619000300-add-pms-task-anchors';
+import { AddInventoryItemTasks20260619000400 } from './migrations/20260619000400-add-inventory-item-tasks';
+import { AddSfiTaxonomy20260615000100 } from './migrations/20260615000100-add-sfi-taxonomy';
+import { AddSfiTaxonomySource20260615000200 } from './migrations/20260615000200-add-sfi-taxonomy-source';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -96,6 +113,23 @@ const dataSource = new DataSource({
     AddComplianceMaster20260611000300,
     ExtendShipProfile20260611000400,
     AddDocumentExtraction20260612000100,
+    AddPmsTasks20260618000100,
+    AddPmsDueHours20260618000200,
+    AddAssetHours20260618000300,
+    AddPmsResponsibleRole20260618000400,
+    AddCrew20260618000500,
+    AddPmsDepartment20260618000600,
+    TagComplianceArchetypes20260618000700,
+    AddComplianceDocFields20260618000800,
+    AddDocAssetLinks20260618000900,
+    AddPmsSourceDoc20260618001000,
+    AddComplianceIdentityFlags20260618001100,
+    AddInventory20260619000100,
+    AddInventoryItemAssets20260619000200,
+    AddPmsTaskAnchors20260619000300,
+    AddInventoryItemTasks20260619000400,
+    AddSfiTaxonomy20260615000100,
+    AddSfiTaxonomySource20260615000200,
   ],
   synchronize: false,
   ssl: db.ssl

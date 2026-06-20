@@ -84,6 +84,28 @@ export class ComplianceDocMasterEntity {
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes!: string | null;
 
+  // ── Doc-control schema v9: archetype tagging ──
+
+  /** One of 11 archetypes (STAT_CERT, EQUIP_SVC, …) — selects the field set. */
+  @Column({ name: 'archetype', type: 'varchar', length: 16, nullable: true })
+  archetype!: string | null;
+
+  /** vessel | single_asset | per_unit | sub_group | person. */
+  @Column({ name: 'link_cardinality', type: 'varchar', length: 16, nullable: true })
+  linkCardinality!: string | null;
+
+  /** Recognised mandating instrument (SOLAS/MARPOL/ISM…); blank for commercial. */
+  @Column({ name: 'reg_basis', type: 'varchar', length: 200, nullable: true })
+  regBasis!: string | null;
+
+  /** Plain-English reason the document exists. */
+  @Column({ name: 'basis_note', type: 'text', nullable: true })
+  basisNote!: string | null;
+
+  /** What PMS behaviour it drives (survey/renewal/corrections/NC close-out…). */
+  @Column({ name: 'drives_pms', type: 'varchar', length: 40, nullable: true })
+  drivesPms!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }

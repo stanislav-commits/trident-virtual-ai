@@ -4,14 +4,24 @@ import {
   instantiateCompliance,
   deleteComplianceDoc,
   fetchComplianceOverview,
+  fetchComplianceArchetypes,
+  addComplianceDocLink,
+  removeComplianceDocLink,
+  previewComplianceDocs,
+  commitComplianceDocs,
   updateComplianceDoc,
 } from "../../api/complianceApi";
 import type {
   ComplianceDocType,
   ComplianceOverview,
+  ArchetypeSchema,
+  IngestProposal,
+  CommitProposal,
 } from "../../api/complianceApi";
+import { ComplianceIngestModal } from "./ComplianceIngestModal";
 import { uploadDocument } from "../../api/documentsApi";
 import { listAssets } from "../../api/assetsApi";
+import { listCrew } from "../../api/crewApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 import {
   ComplianceTypeRow,
@@ -35,12 +45,14 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [hideNotRequired, setHideNotRequired] = useState(true);
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [schema, setSchema] = useState<ArchetypeSchema | null>(null);
   const [form, setForm] = useState<ComplianceRecordFormState>({
     certNo: "",
     issuer: "",
     issueDate: "",
     expiryDate: "",
     assetLabel: "",
+    fields: {},
   });
   const [savingDoc, setSavingDoc] = useState(false);
   const [profile, setProfile] = useState({
@@ -53,8 +65,61 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const [assetOptions, setAssetOptions] = useState<
     Array<{ id: string; label: string }>
   >([]);
+  const [crewOptions, setCrewOptions] = useState<
+    Array<{ id: string; label: string; rank: string }>
+  >([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<ComplianceDocType | null>(null);
+  const batchInputRef = useRef<HTMLInputElement>(null);
+  const [ingesting, setIngesting] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [review, setReview] = useState<{
+    proposals: IngestProposal[];
+    files: File[];
+  } | null>(null);
+
+  // Flat list of all doc types (for the review window's category→type picker).
+  const allTypes = useMemo(
+    () =>
+      (overview?.sections ?? []).flatMap((s) =>
+        s.types.map((t) => ({
+          id: t.id,
+          sfiCode: t.sfiCode,
+          name: t.name,
+          sectionCode: s.sectionCode,
+          sectionName: s.sectionName,
+        })),
+      ),
+    [overview],
+  );
+
+  const onBatchUpload = async (fileList: FileList | null) => {
+    if (!token || !shipId || !fileList?.length) return;
+    const files = Array.from(fileList);
+    setIngesting(true);
+    try {
+      const { proposals } = await previewComplianceDocs(token, shipId, files);
+      setReview({ proposals, files });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read the documents");
+    } finally {
+      setIngesting(false);
+    }
+  };
+
+  const commitReview = async (proposals: CommitProposal[]) => {
+    if (!token || !shipId) return;
+    setCommitting(true);
+    try {
+      await commitComplianceDocs(token, shipId, proposals);
+      setReview(null);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the documents");
+    } finally {
+      setCommitting(false);
+    }
+  };
 
   const reload = useCallback(async () => {
     if (!token || !shipId) return;
@@ -71,6 +136,18 @@ export function ComplianceSection({ token }: { token: string | null }) {
     setActiveSection(null);
     void reload();
   }, [reload]);
+
+  // Archetype field schema (static; drives the dynamic record form).
+  useEffect(() => {
+    if (!token || !shipId) return;
+    let alive = true;
+    void fetchComplianceArchetypes(token, shipId)
+      .then((s) => alive && setSchema(s))
+      .catch(() => alive && setSchema(null));
+    return () => {
+      alive = false;
+    };
+  }, [token, shipId]);
 
   // Asset options for record→asset linking (Shaun: per-unit certificates,
   // e.g. each liferaft has its own inspection cert).
@@ -90,6 +167,48 @@ export function ComplianceSection({ token }: { token: string | null }) {
       )
       .catch(() => setAssetOptions([]));
   }, [token, shipId]);
+
+  // Crew options for person-links (PERSONNEL archetype: CoC, STCW, etc.).
+  useEffect(() => {
+    if (!token || !shipId) {
+      setCrewOptions([]);
+      return;
+    }
+    void listCrew(token, shipId)
+      .then((rows) =>
+        setCrewOptions(
+          rows.map((c) => ({
+            id: c.id,
+            label: `${c.name} (${c.rank})`,
+            rank: c.rank,
+          })),
+        ),
+      )
+      .catch(() => setCrewOptions([]));
+  }, [token, shipId]);
+
+  const addLink = async (
+    docId: string,
+    body: { assetId?: string; crewMemberId?: string },
+  ) => {
+    if (!token || !shipId) return;
+    try {
+      await addComplianceDocLink(token, shipId, docId, body);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add link");
+    }
+  };
+
+  const removeLink = async (docId: string, linkId: string) => {
+    if (!token || !shipId) return;
+    try {
+      await removeComplianceDocLink(token, shipId, docId, linkId);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove link");
+    }
+  };
 
   const totals = useMemo(() => {
     const t = { valid: 0, expiring: 0, expired: 0, missing: 0, not_required: 0 };
@@ -118,15 +237,26 @@ export function ComplianceSection({ token }: { token: string | null }) {
 
   const startAddRecord = (type: ComplianceDocType) => {
     setEditingTypeId(type.id);
-    setForm({ certNo: "", issuer: "", issueDate: "", expiryDate: "", assetLabel: "" });
+    setForm({
+      certNo: "",
+      issuer: "",
+      issueDate: "",
+      expiryDate: "",
+      assetLabel: "",
+      fields: {},
+    });
   };
 
   const submitRecord = async (type: ComplianceDocType) => {
     if (!token || !shipId) return;
     setSavingDoc(true);
     try {
-      const matchedAsset = form.assetLabel
-        ? assetOptions.find((a) => a.label === form.assetLabel)
+      // The primary link target follows the type's cardinality (schema v9).
+      const linksCrew = type.linkCardinality === "person";
+      const matched = form.assetLabel
+        ? (linksCrew ? crewOptions : assetOptions).find(
+            (o) => o.label === form.assetLabel,
+          )
         : null;
       await createComplianceDoc(token, shipId, {
         docTypeId: type.id,
@@ -134,7 +264,9 @@ export function ComplianceSection({ token }: { token: string | null }) {
         issuer: form.issuer || null,
         issueDate: form.issueDate || null,
         expiryDate: form.expiryDate || null,
-        assetId: matchedAsset?.id ?? null,
+        assetId: linksCrew ? null : (matched?.id ?? null),
+        crewMemberId: linksCrew ? (matched?.id ?? null) : null,
+        fields: Object.keys(form.fields).length ? form.fields : null,
       });
       setEditingTypeId(null);
       await reload();
@@ -237,6 +369,11 @@ export function ComplianceSection({ token }: { token: string | null }) {
           <option key={a.id} value={a.label} />
         ))}
       </datalist>
+      <datalist id="compliance-crew">
+        {crewOptions.map((c) => (
+          <option key={c.id} value={c.label} />
+        ))}
+      </datalist>
       <input
         ref={fileInputRef}
         type="file"
@@ -262,8 +399,40 @@ export function ComplianceSection({ token }: { token: string | null }) {
             />
             Hide not required
           </label>
+          <button
+            type="button"
+            className="compliance__action-btn compliance__action-btn--primary"
+            onClick={() => batchInputRef.current?.click()}
+            disabled={ingesting}
+            title="Upload several certificates — AI reads, classifies and fills them for you to review before saving."
+          >
+            {ingesting ? "Reading…" : "Batch upload"}
+          </button>
+          <input
+            ref={batchInputRef}
+            type="file"
+            accept=".pdf,application/pdf,image/*"
+            multiple
+            style={{ display: "none" }}
+            onChange={(e) => {
+              void onBatchUpload(e.target.files);
+              e.target.value = "";
+            }}
+          />
         </div>
       </div>
+
+      {review && (
+        <ComplianceIngestModal
+          proposals={review.proposals}
+          files={review.files}
+          types={allTypes}
+          assetOptions={assetOptions}
+          busy={committing}
+          onCancel={() => setReview(null)}
+          onConfirm={commitReview}
+        />
+      )}
 
       {error && <div className="compliance__error">{error}</div>}
       {!overview && !error && (
@@ -354,7 +523,11 @@ export function ComplianceSection({ token }: { token: string | null }) {
                     }`}
                   >
                     {section.counts.valid}/
-                    {section.counts.valid + issues}
+                    {/* denominator tracks the visible list: required-only when
+                        "Hide not required" is on, otherwise all types */}
+                    {section.counts.valid +
+                      issues +
+                      (hideNotRequired ? 0 : section.counts.not_required)}
                   </span>
                 </button>
               );
@@ -379,6 +552,13 @@ export function ComplianceSection({ token }: { token: string | null }) {
                     onFormChange={(patch) =>
                       setForm((f) => ({ ...f, ...patch }))
                     }
+                    archetypeFields={
+                      (type.archetype && schema?.archetypes[type.archetype]) || []
+                    }
+                    assetOptions={assetOptions}
+                    crewOptions={crewOptions}
+                    onAddLink={addLink}
+                    onRemoveLink={removeLink}
                     saving={savingDoc}
                     uploading={uploadingTypeId === type.id}
                     onStartUpload={() => startUpload(type)}

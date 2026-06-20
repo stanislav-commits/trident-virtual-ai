@@ -6,6 +6,11 @@ import { ShipEntity } from '../ships/entities/ship.entity';
 import { ComplianceDocMasterEntity } from './entities/compliance-doc-master.entity';
 import { ComplianceDocTypeEntity } from './entities/compliance-doc-type.entity';
 import { ComplianceDocEntity } from './entities/compliance-doc.entity';
+import { DocAssetLinkEntity } from './entities/doc-asset-link.entity';
+import { AssetEntity } from '../assets/entities/asset.entity';
+import { PmsModule } from '../pms/pms.module';
+import { IntegrationsModule } from '../../integrations/integrations.module';
+import { ComplianceExtractionService } from './compliance-extraction.service';
 
 @Module({
   imports: [
@@ -13,11 +18,15 @@ import { ComplianceDocEntity } from './entities/compliance-doc.entity';
       ComplianceDocTypeEntity,
       ComplianceDocEntity,
       ComplianceDocMasterEntity,
+      DocAssetLinkEntity,
+      AssetEntity,
       ShipEntity,
     ]),
+    PmsModule,
+    IntegrationsModule,
   ],
   controllers: [ComplianceController],
-  providers: [ComplianceService],
+  providers: [ComplianceService, ComplianceExtractionService],
   exports: [ComplianceService],
 })
 export class ComplianceModule {}

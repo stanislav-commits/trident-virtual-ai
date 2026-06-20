@@ -10,7 +10,7 @@
     "db:seed": "ts-node -r tsconfig-paths/register src/core/database/seeds/dev.seed.ts",
     "db:up": "docker compose up -d postgres",
     "start": "nest start",
-    "start:dev": "lsof -ti :3000 | xargs kill -9 2>/dev/null; nest build && (nest build --watch --preserveWatchOutput > /tmp/trident-tsc.log 2>&1 &) && node --watch --enable-source-maps dist/main",
+    "start:dev": "lsof -ti :3000 | xargs kill -9 2>/dev/null; NODE_OPTIONS=--enable-source-maps nest start --watch --preserveWatchOutput",
     "start:prod": "node dist/main",
     "lint": "tsc --noEmit -p tsconfig.json"
   },
@@ -30,6 +30,7 @@
     "dotenv": "^16.4.7",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdf-parse": "^1.1.1",
     "pg": "^8.14.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",

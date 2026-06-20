@@ -2,6 +2,16 @@ import { fetchWithAuth } from "./core";
 
 export type ComplianceStatus = "valid" | "expiring" | "expired" | "missing";
 
+export interface ComplianceLink {
+  id: string;
+  assetId: string | null;
+  assetName: string | null;
+  crewMemberId: string | null;
+  crewName: string | null;
+  linkRole: string;
+  verifyState: string;
+}
+
 export interface ComplianceRecord {
   id: string;
   certNo: string | null;
@@ -14,6 +24,30 @@ export interface ComplianceRecord {
   documentId: string | null;
   documentFileName: string | null;
   notes: string | null;
+  fields?: Record<string, unknown> | null;
+  verifyState?: string;
+  links?: ComplianceLink[];
+  identityFlags?: Array<{
+    field: string;
+    documentValue: string;
+    registerValue: string;
+    assetName: string;
+  }> | null;
+}
+
+export interface ArchetypeField {
+  field: string;
+  datatype: string;
+  required: boolean;
+  hint: string;
+  sotRole: string;
+  sotTarget: string;
+  auth: boolean;
+}
+
+export interface ArchetypeSchema {
+  base: ArchetypeField[];
+  archetypes: Record<string, ArchetypeField[]>;
 }
 
 export interface ComplianceDocType {
@@ -27,6 +61,12 @@ export interface ComplianceDocType {
   surveyWindow: string | null;
   updateTrigger: string | null;
   notes: string | null;
+  // doc-control schema v9 tags
+  archetype: string | null;
+  linkCardinality: string | null;
+  regBasis: string | null;
+  basisNote: string | null;
+  drivesPms: string | null;
   status: ComplianceStatus | null;
   records: ComplianceRecord[];
 }
@@ -71,6 +111,112 @@ export interface UpsertComplianceDocInput {
   assetId?: string | null;
   documentId?: string | null;
   notes?: string | null;
+  fields?: Record<string, unknown> | null;
+  verifyState?: string;
+  crewMemberId?: string | null;
+}
+
+export async function addComplianceDocLink(
+  token: string,
+  shipId: string,
+  docId: string,
+  body: { assetId?: string | null; crewMemberId?: string | null },
+): Promise<void> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/docs/${docId}/links`,
+    {
+      token,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  await ensureOk(response, "Add link");
+}
+
+export async function removeComplianceDocLink(
+  token: string,
+  shipId: string,
+  docId: string,
+  linkId: string,
+): Promise<void> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/docs/${docId}/links/${linkId}`,
+    { token, method: "DELETE" },
+  );
+  await ensureOk(response, "Remove link");
+}
+
+export interface IngestProposal {
+  filename: string;
+  status: "matched" | "unmatched" | "error";
+  typeId?: string | null;
+  sfiCode?: string | null;
+  typeName?: string | null;
+  archetype?: string | null;
+  certNo?: string | null;
+  issuer?: string | null;
+  issueDate?: string | null;
+  fields?: Record<string, unknown>;
+  assetId?: string | null;
+  assetName?: string | null;
+  confidence?: number;
+  message?: string;
+}
+
+export interface CommitProposal {
+  typeId: string;
+  certNo?: string | null;
+  issuer?: string | null;
+  issueDate?: string | null;
+  fields?: Record<string, unknown> | null;
+  assetId?: string | null;
+  crewMemberId?: string | null;
+}
+
+export async function previewComplianceDocs(
+  token: string,
+  shipId: string,
+  files: File[],
+): Promise<{ proposals: IngestProposal[] }> {
+  const form = new FormData();
+  files.forEach((f) => form.append("files", f));
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/ingest/preview`,
+    { token, method: "POST", body: form },
+  );
+  await ensureOk(response, "Read documents");
+  return (await response.json()) as { proposals: IngestProposal[] };
+}
+
+export async function commitComplianceDocs(
+  token: string,
+  shipId: string,
+  proposals: CommitProposal[],
+): Promise<{ created: number }> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/ingest/commit`,
+    {
+      token,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proposals }),
+    },
+  );
+  await ensureOk(response, "Save documents");
+  return (await response.json()) as { created: number };
+}
+
+export async function fetchComplianceArchetypes(
+  token: string,
+  shipId: string,
+): Promise<ArchetypeSchema> {
+  const response = await fetchWithAuth(`ships/${shipId}/compliance/archetypes`, {
+    token,
+    method: "GET",
+  });
+  await ensureOk(response, "Compliance archetypes");
+  return (await response.json()) as ArchetypeSchema;
 }
 
 export async function createComplianceDoc(

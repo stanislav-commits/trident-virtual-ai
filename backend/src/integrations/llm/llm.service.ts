@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IntegrationStatusDto } from '../../common/dto/integration-status.dto';
-import { createAnthropicToolCallCompletion } from '../shared/anthropic-http';
+import {
+  createAnthropicToolCallCompletion,
+  createAnthropicVisionCompletion,
+} from '../shared/anthropic-http';
 import {
   ChatMessage,
   ChatToolDefinition,
@@ -117,6 +120,44 @@ export class LlmService {
     } catch (error) {
       this.logger.warn(
         `LLM JSON completion failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /** Whether image/vision extraction can run (needs an Anthropic key). */
+  isVisionConfigured(): boolean {
+    return Boolean(this.getAnthropicApiKey());
+  }
+
+  /**
+   * Transcribe ALL readable text from a photo or scanned page using Claude
+   * vision. For certificates/forms that have no embedded text. Returns plain
+   * text, or null if vision isn't configured / the call fails.
+   */
+  async extractTextFromImage(
+    imageBuffer: Buffer,
+    mediaType: string,
+  ): Promise<string | null> {
+    if (!this.isVisionConfigured()) return null;
+    try {
+      return await createAnthropicVisionCompletion({
+        apiKey: this.getAnthropicApiKey(),
+        baseUrl: this.getAnthropicBaseUrl(),
+        model: this.getModel(),
+        systemPrompt:
+          'You transcribe documents. Output ALL readable text from the ' +
+          'image as plain text, preserving labels, numbers, dates, names and ' +
+          'table structure line by line. Be exhaustive and literal. No commentary.',
+        prompt:
+          'Transcribe every field and value visible in this document image.',
+        imageBase64: imageBuffer.toString('base64'),
+        mediaType,
+        maxTokens: 3000,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Vision extraction failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       return null;
     }

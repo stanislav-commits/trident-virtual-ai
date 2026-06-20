@@ -83,6 +83,28 @@ export class ShipsCommandService {
       ship.buildYear = input.buildYear ?? null;
     }
 
+    // Vessel profile fields — assign when present (partial PATCH).
+    if (input.mmsi !== undefined) ship.mmsi = input.mmsi ?? null;
+    if (input.callSign !== undefined) ship.callSign = input.callSign ?? null;
+    if (input.flag !== undefined) ship.flag = input.flag ?? null;
+    if (input.lengthM !== undefined) {
+      ship.lengthM = input.lengthM != null ? String(input.lengthM) : null;
+    }
+    if (input.grossTonnage !== undefined) {
+      ship.grossTonnage = input.grossTonnage ?? null;
+    }
+    if (input.shipyard !== undefined) ship.shipyard = input.shipyard ?? null;
+    if (input.classSociety !== undefined) {
+      ship.classSociety = input.classSociety ?? null;
+    }
+    if (input.homePort !== undefined) ship.homePort = input.homePort ?? null;
+    if (input.fleetManagerEmail !== undefined) {
+      ship.fleetManagerEmail = input.fleetManagerEmail ?? null;
+    }
+    if (input.operationType !== undefined) {
+      ship.operationType = input.operationType ?? null;
+    }
+
     const savedShip = await this.shipsRepository.save(ship);
     if (nextOrganizationName && (organizationChanged || !hadOrganizationName)) {
       await this.metricsCatalogService.syncShipCatalog(

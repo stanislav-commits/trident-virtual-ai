@@ -76,10 +76,14 @@ export function DocumentsSection() {
   const { token } = useAuth();
   const {
     availableShips,
+    selectedShipId,
     isLoading: shipsLoading,
     error: shipsError,
   } = useAdminShip();
-  const [shipFilter, setShipFilter] = useState<string>(ALL_FILTER);
+  // Ship is chosen once globally (Active Vessel, top-left) — Documents
+  // follows it, no local ship selector. Falls back to the first available
+  // ship, same as Asset Register / Metrics.
+  const shipFilter = selectedShipId ?? availableShips[0]?.id ?? ALL_FILTER;
   const [docClassFilter, setDocClassFilter] = useState<
     DocumentDocClass | typeof ALL_FILTER
   >(ALL_FILTER);
@@ -574,31 +578,6 @@ export function DocumentsSection() {
 
       <div className="admin-panel__form-card admin-panel__documents-filters">
         <div className="admin-panel__form-row">
-          <div className="admin-panel__field">
-            <label className="admin-panel__field-label" htmlFor="documents-ship">
-              Ship
-            </label>
-            <select
-              id="documents-ship"
-              className="admin-panel__select"
-              value={shipFilter}
-              disabled={shipsLoading && availableShips.length === 0}
-              onChange={(event) => {
-                setShipFilter(event.target.value);
-                resetToFirstPage();
-              }}
-            >
-              <option value={ALL_FILTER}>All ships</option>
-              {availableShips.map((ship) => (
-                <option key={ship.id} value={ship.id}>
-                  {ship.organizationName
-                    ? `${ship.name} (${ship.organizationName})`
-                    : ship.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="admin-panel__field">
             <label className="admin-panel__field-label" htmlFor="documents-class">
               Document class

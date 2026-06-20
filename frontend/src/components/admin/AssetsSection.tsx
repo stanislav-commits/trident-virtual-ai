@@ -4,21 +4,26 @@ import {
   getRelatedAsset,
   previewImportAssetsXlsx,
   updateAsset,
+  deleteAsset,
+  clearAllAssets,
+  exportAssetsXlsx,
   type AssetItem,
   type ImportPreviewResult,
   type RelatedAssetResult,
   type UpdateAssetInput,
-  fetchAssetServiceRules,
 } from "../../api/assetsApi";
-import type { AssetServiceRule } from "../../api/assetsApi";
+import { listAssetPmsTasks, type PmsTaskDto } from "../../api/pmsApi";
 import {
   fetchAssetComplianceDocs,
   type AssetComplianceRecord,
 } from "../../api/complianceApi";
+import { fetchSfiTaxonomy } from "../../api/sfiApi";
 import { useAssetsAdminData } from "../../hooks/admin/useAssetsAdminData";
 import { AssetDrawer } from "./assets/AssetDrawer";
 import { ImportPreviewModal } from "./assets/ImportPreviewModal";
 import { EditableCell } from "./assets/EditableCell";
+import { AssetFormModal } from "./assets/AssetFormModal";
+import { ConfirmDialog } from "./assets/ConfirmDialog";
 import {
   sfiColorForGroup,
   sfiGroupName,
@@ -62,6 +67,23 @@ export function AssetsSection({ token }: AssetsSectionProps) {
     true,
   );
 
+  // Catalog names for group tabs + sub-group labels (Phase 3b). Falls back to
+  // the asset's own sfi_sub_name / the hardcoded group map for codes not in
+  // the catalog.
+  const [sfiNames, setSfiNames] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    fetchSfiTaxonomy(token)
+      .then((nodes) => {
+        if (alive) setSfiNames(new Map(nodes.map((n) => [n.code, n.name])));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [token]);
+
   const [selectedGroup, setSelectedGroup] = useState<string>(GROUP_ALL);
   const [selectedSub, setSelectedSub] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -87,6 +109,15 @@ export function AssetsSection({ token }: AssetsSectionProps) {
     errors: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── CRUD actions (add / delete one / clear all) ──
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Search query: when non-empty, scope switches to the whole vessel
   // (group + subgroup filters become inert) so users finding "watermaker"
@@ -139,7 +170,7 @@ export function AssetsSection({ token }: AssetsSectionProps) {
       const key = groupCode(a);
       const existing = map.get(key) ?? {
         code: key,
-        name: sfiGroupName(key),
+        name: sfiNames.get(key) ?? sfiGroupName(key),
         count: 0,
         inService: 0,
         deprecated: 0,
@@ -154,7 +185,7 @@ export function AssetsSection({ token }: AssetsSectionProps) {
       const bn = Number(b.code) || 99;
       return an - bn;
     });
-  }, [assets, searchActive, searchMatches]);
+  }, [assets, searchActive, searchMatches, sfiNames]);
 
   // ── Filter assets by group (search-aware) ──
   const assetsInGroup = useMemo(() => {
@@ -177,7 +208,7 @@ export function AssetsSection({ token }: AssetsSectionProps) {
       } else {
         map.set(code, {
           code,
-          name: a.sfiSubName ?? code,
+          name: sfiNames.get(code) ?? a.sfiSubName ?? code,
           count: 1,
         });
       }
@@ -197,7 +228,7 @@ export function AssetsSection({ token }: AssetsSectionProps) {
       }
       return a.code.localeCompare(b.code);
     });
-  }, [assetsInGroup]);
+  }, [assetsInGroup, sfiNames]);
 
   // ── Visible assets (sub filter only — search already applied above) ──
   const visibleAssets = useMemo(() => {
@@ -227,7 +258,7 @@ export function AssetsSection({ token }: AssetsSectionProps) {
   // ── Asset detail (right drawer) — data lives here, UI in <AssetDrawer> ──
   const [related, setRelated] = useState<RelatedAssetResult | null>(null);
   const [relatedLoading, setRelatedLoading] = useState(false);
-  const [serviceRules, setServiceRules] = useState<AssetServiceRule[] | null>(
+  const [serviceRules, setServiceRules] = useState<PmsTaskDto[] | null>(
     null,
   );
   const [assetCerts, setAssetCerts] = useState<AssetComplianceRecord[] | null>(
@@ -255,7 +286,7 @@ export function AssetsSection({ token }: AssetsSectionProps) {
       return;
     }
     void refreshRelated();
-    void fetchAssetServiceRules(token, effectiveShipId, selectedAssetId)
+    void listAssetPmsTasks(token, effectiveShipId, selectedAssetId)
       .then(setServiceRules)
       .catch(() => setServiceRules([]));
     void fetchAssetComplianceDocs(token, effectiveShipId, selectedAssetId)
@@ -314,21 +345,69 @@ export function AssetsSection({ token }: AssetsSectionProps) {
     [token, effectiveShipId, setError],
   );
 
-  // ── Stats for current group ──
-  const stats = useMemo(() => {
-    const total = assetsInGroup.length;
-    let inService = 0;
-    let specified = 0;
-    let deprecated = 0;
-    let crossRef = 0;
-    for (const a of assetsInGroup) {
-      if (a.lifecycleStatus === "in-service") inService += 1;
-      else if (a.lifecycleStatus === "specified") specified += 1;
-      else if (a.lifecycleStatus === "deprecated") deprecated += 1;
-      else if (a.lifecycleStatus === "cross-ref") crossRef += 1;
+  const handleDeleteAsset = useCallback(async () => {
+    if (!token || !effectiveShipId || !selectedAssetId) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await deleteAsset(token, effectiveShipId, selectedAssetId);
+      setConfirmDelete(false);
+      setSelectedAssetId(null);
+      setActionNotice("Asset deleted.");
+      await reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setActionBusy(false);
     }
-    return { total, inService, specified, deprecated, crossRef };
-  }, [assetsInGroup]);
+  }, [token, effectiveShipId, selectedAssetId, reload]);
+
+  const handleClearAll = useCallback(async () => {
+    if (!token || !effectiveShipId) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const res = await clearAllAssets(token, effectiveShipId);
+      setConfirmClear(false);
+      setSelectedAssetId(null);
+      setActionNotice(
+        `Cleared ${res.deleted} asset${res.deleted === 1 ? "" : "s"}.` +
+          (res.snapshotId ? " A rollback snapshot was saved." : ""),
+      );
+      await reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Clear all failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }, [token, effectiveShipId, reload]);
+
+  const handleExport = useCallback(async () => {
+    if (!token || !effectiveShipId) return;
+    setExporting(true);
+    setError("");
+    try {
+      const { blob, filename } = await exportAssetsXlsx(token, effectiveShipId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }, [token, effectiveShipId, setError]);
+
+  // ── Stats for current group ──
+  const stats = useMemo(
+    () => ({ total: assetsInGroup.length }),
+    [assetsInGroup],
+  );
 
   if (!effectiveShipId) {
     return (
@@ -346,7 +425,7 @@ export function AssetsSection({ token }: AssetsSectionProps) {
   const currentGroupLabel =
     selectedGroup === GROUP_ALL
       ? "All systems"
-      : `${selectedGroup} · ${sfiGroupName(selectedGroup)}`;
+      : `${selectedGroup} · ${sfiNames.get(selectedGroup) ?? sfiGroupName(selectedGroup)}`;
 
   return (
     <div className="assets-section">
@@ -381,10 +460,49 @@ export function AssetsSection({ token }: AssetsSectionProps) {
           <button
             type="button"
             className="assets-section__btn"
-            onClick={() => void reload()}
+            onClick={() => void handleExport()}
+            disabled={exporting || loading || assets.length === 0}
+            title="Download the full register as an xlsx file"
+          >
+            {exporting ? "Exporting…" : "Export xlsx"}
+          </button>
+          <button
+            type="button"
+            className="assets-section__btn"
+            onClick={() => {
+              setActionError(null);
+              setShowAddModal(true);
+            }}
             disabled={loading}
           >
-            {loading ? "Loading…" : "Reload"}
+            Add asset
+          </button>
+          <button
+            type="button"
+            className="assets-section__btn assets-section__btn--danger"
+            onClick={() => {
+              setActionError(null);
+              setConfirmDelete(true);
+            }}
+            disabled={loading || !selectedAssetId}
+            title={
+              selectedAssetId
+                ? "Delete the selected asset"
+                : "Select a row first"
+            }
+          >
+            Delete asset
+          </button>
+          <button
+            type="button"
+            className="assets-section__btn assets-section__btn--danger"
+            onClick={() => {
+              setActionError(null);
+              setConfirmClear(true);
+            }}
+            disabled={loading || assets.length === 0}
+          >
+            Clear all
           </button>
         </div>
       </div>
@@ -413,6 +531,64 @@ export function AssetsSection({ token }: AssetsSectionProps) {
         />
       )}
 
+      {showAddModal && token && effectiveShipId && (
+        <AssetFormModal
+          token={token}
+          shipId={effectiveShipId}
+          onClose={() => setShowAddModal(false)}
+          onCreated={(code) => {
+            setShowAddModal(false);
+            setActionNotice(`Asset ${code} created.`);
+            void reload();
+          }}
+        />
+      )}
+
+      {confirmDelete && selectedAsset && (
+        <ConfirmDialog
+          title="Delete asset"
+          message={
+            <>
+              Delete <strong>{selectedAsset.assetIdInternal}</strong> —{" "}
+              {selectedAsset.displayName}? Bound metrics will be unbound and
+              linked documents detached.
+            </>
+          }
+          confirmLabel="Delete asset"
+          danger
+          busy={actionBusy}
+          error={actionError}
+          onCancel={() => {
+            setConfirmDelete(false);
+            setActionError(null);
+          }}
+          onConfirm={() => void handleDeleteAsset()}
+        />
+      )}
+
+      {confirmClear && (
+        <ConfirmDialog
+          title="Clear all assets"
+          message={
+            <>
+              This permanently deletes <strong>all {assets.length} assets</strong>{" "}
+              on this vessel and unbinds every metric. A rollback snapshot is
+              saved first, but it cannot be undone from the UI.
+            </>
+          }
+          confirmLabel="Clear all"
+          danger
+          requireText="CLEAR"
+          busy={actionBusy}
+          error={actionError}
+          onCancel={() => {
+            setConfirmClear(false);
+            setActionError(null);
+          }}
+          onConfirm={() => void handleClearAll()}
+        />
+      )}
+
       {importResult && (
         <div className="assets-section__banner assets-section__banner--ok">
           Import complete · <strong>{importResult.inserted}</strong> inserted,{" "}
@@ -427,6 +603,20 @@ export function AssetsSection({ token }: AssetsSectionProps) {
             type="button"
             className="assets-section__banner-close"
             onClick={() => setImportResult(null)}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {actionNotice && (
+        <div className="assets-section__banner assets-section__banner--ok">
+          {actionNotice}
+          <button
+            type="button"
+            className="assets-section__banner-close"
+            onClick={() => setActionNotice(null)}
             aria-label="Close"
           >
             ×
@@ -575,36 +765,6 @@ export function AssetsSection({ token }: AssetsSectionProps) {
                 <span className="assets-section__stat-label">Assets</span>
                 <span className="assets-section__stat-value">{stats.total}</span>
               </span>
-              <span className="assets-section__stat">
-                <span className="assets-section__stat-label">In-service</span>
-                <span className="assets-section__stat-value assets-section__stat-value--ok">
-                  {stats.inService}
-                </span>
-              </span>
-              {stats.deprecated > 0 && (
-                <span className="assets-section__stat">
-                  <span className="assets-section__stat-label">Deprecated</span>
-                  <span className="assets-section__stat-value assets-section__stat-value--warn">
-                    {stats.deprecated}
-                  </span>
-                </span>
-              )}
-              {stats.specified > 0 && (
-                <span className="assets-section__stat">
-                  <span className="assets-section__stat-label">Specified</span>
-                  <span className="assets-section__stat-value">
-                    {stats.specified}
-                  </span>
-                </span>
-              )}
-              {stats.crossRef > 0 && (
-                <span className="assets-section__stat">
-                  <span className="assets-section__stat-label">Cross-ref</span>
-                  <span className="assets-section__stat-value">
-                    {stats.crossRef}
-                  </span>
-                </span>
-              )}
             </div>
           </div>
 
@@ -617,7 +777,6 @@ export function AssetsSection({ token }: AssetsSectionProps) {
                   <th>Mfr</th>
                   <th>Model</th>
                   <th>Location</th>
-                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -675,20 +834,13 @@ export function AssetsSection({ token }: AssetsSectionProps) {
                           onSave={makeFieldSaver(a.id, "location")}
                         />
                       </td>
-                      <td>
-                        <span
-                          className={`assets-section__pill assets-section__pill--${a.lifecycleStatus}`}
-                        >
-                          {a.lifecycleStatus.replace("-", " ")}
-                        </span>
-                      </td>
                     </tr>
                   );
                 })}
                 {visibleAssets.length === 0 && !loading && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={5}
                       className="assets-section__placeholder"
                       style={{ padding: "32px 16px" }}
                     >

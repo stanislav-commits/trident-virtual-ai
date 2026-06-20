@@ -38,7 +38,7 @@ export function ImportPreviewModal({
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<
-    "create" | "update" | "orphans" | "renames" | "errors" | null
+    "create" | "update" | "orphans" | "renames" | "errors" | "sfi" | null
   >(null);
 
   const handleApply = async () => {
@@ -121,6 +121,15 @@ export function ImportPreviewModal({
               active={expanded === "errors"}
             />
           )}
+          {preview.counts.sfiWarnings > 0 && (
+            <StatPill
+              label="SFI issues (off-standard codes)"
+              count={preview.counts.sfiWarnings}
+              tone="amber"
+              onClick={() => setExpanded(expanded === "sfi" ? null : "sfi")}
+              active={expanded === "sfi"}
+            />
+          )}
         </div>
 
         <div className="import-preview__list">
@@ -178,6 +187,23 @@ export function ImportPreviewModal({
               <div key={i} className="import-preview__row">
                 <span className="import-preview__code">row {e.row}</span>
                 <span className="import-preview__name">{e.reason}</span>
+              </div>
+            ))}
+          {expanded === "sfi" &&
+            preview.sfiWarnings.slice(0, 100).map((w, i) => (
+              <div
+                key={`${w.assetIdInternal}-${i}`}
+                className="import-preview__row"
+              >
+                <span className="import-preview__code">{w.assetIdInternal}</span>
+                <span className="import-preview__name">
+                  {w.reason === "missing"
+                    ? "no SFI sub-group"
+                    : `unknown SFI code "${w.sfiSub}"`}
+                </span>
+                <span className="import-preview__meta">
+                  {w.reason === "missing" ? "unclassified" : "not in catalog"}
+                </span>
               </div>
             ))}
           {expanded &&

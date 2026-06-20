@@ -2505,6 +2505,114 @@
   }
 }
 
+/* ── Upcoming PMS panel (mirrors .chat-sources-panel) ── */
+.chat-topbar__pms-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--chat-text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.chat-topbar__pms-btn:hover {
+  color: var(--chat-text);
+}
+
+.chat-topbar__pms-label {
+  letter-spacing: 0.02em;
+}
+
+/* Width reveal — same feel as the chat-history sidebar (it animates width,
+   so the conversation reflows smoothly instead of snapping). */
+@keyframes pmsPanelIn {
+  from {
+    flex-basis: 0;
+    width: 0;
+    opacity: 0;
+  }
+  to {
+    flex-basis: clamp(320px, 30vw, 420px);
+    width: clamp(320px, 30vw, 420px);
+    opacity: 1;
+  }
+}
+
+@keyframes pmsPanelOut {
+  from {
+    flex-basis: clamp(320px, 30vw, 420px);
+    width: clamp(320px, 30vw, 420px);
+    opacity: 1;
+  }
+  to {
+    flex-basis: 0;
+    width: 0;
+    opacity: 0;
+  }
+}
+
+.chat-pms-panel {
+  position: relative;
+  flex: 0 0 clamp(320px, 30vw, 420px);
+  width: clamp(320px, 30vw, 420px);
+  min-width: 0;
+  max-width: 420px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    var(--chat-surface-dim) 0%,
+    var(--chat-surface) 100%
+  );
+  border-left: 1px solid var(--chat-border-sidebar);
+  box-shadow:
+    inset 1px 0 0 var(--overlay-micro),
+    -24px 0 48px var(--overlay-faint);
+  backdrop-filter: blur(18px);
+  animation: pmsPanelIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* fixed-width inner so the content doesn't squish while the panel grows */
+.chat-pms-panel__inner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: clamp(320px, 30vw, 420px);
+  min-width: clamp(320px, 30vw, 420px);
+}
+
+.chat-pms-panel--closing {
+  animation: pmsPanelOut 0.26s cubic-bezier(0.4, 0, 0.2, 1) both;
+  pointer-events: none;
+}
+
+@media (max-width: 960px) {
+  .chat-pms-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(100%, 100vw);
+    min-width: 0;
+    max-width: none;
+    box-shadow:
+      -12px 0 32px var(--overlay-subtle),
+      inset 1px 0 0 var(--overlay-micro);
+  }
+
+  .chat-topbar__pms-label {
+    display: none;
+  }
+}
+
 .chat-source-item {
   padding: 8px 10px;
   border-radius: 8px;

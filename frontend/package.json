@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "lsof -nP -iTCP:5173 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null; vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

@@ -6,6 +6,16 @@ export type ShipSummaryItem = {
   organizationName: string | null;
   imoNumber: string | null;
   buildYear: number | null;
+  mmsi: string | null;
+  callSign: string | null;
+  flag: string | null;
+  lengthM: number | null;
+  grossTonnage: number | null;
+  shipyard: string | null;
+  classSociety: string | null;
+  homePort: string | null;
+  fleetManagerEmail: string | null;
+  operationType: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,6 +42,16 @@ export type UpdateShipInput = {
   organizationName?: string;
   imoNumber?: string | null;
   buildYear?: number | null;
+  mmsi?: string | null;
+  callSign?: string | null;
+  flag?: string | null;
+  lengthM?: number | null;
+  grossTonnage?: number | null;
+  shipyard?: string | null;
+  classSociety?: string | null;
+  homePort?: string | null;
+  fleetManagerEmail?: string | null;
+  operationType?: string | null;
 };
 
 export async function getShips(token: string): Promise<ShipSummaryItem[]> {

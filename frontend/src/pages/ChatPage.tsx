@@ -19,6 +19,7 @@ import {
 import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
 import { ChatSourcesPanel } from "../components/chat/ChatSourcesPanel";
+import { PmsSidePanel } from "../components/chat/PmsSidePanel";
 import { MessageInput } from "../components/chat/MessageInput";
 import { MessageList } from "../components/chat/MessageList";
 import logoImg from "../assets/logo-home.png";
@@ -63,10 +64,41 @@ export function ChatPage() {
   const [sourcesPanelCitations, setSourcesPanelCitations] = useState<
     ChatContextReferenceDto[] | null
   >(null);
+  const [showPms, setShowPms] = useState(false);
+  const [pmsClosing, setPmsClosing] = useState(false);
+  const pmsOpenRef = useRef(false);
+  const pmsTimer = useRef<number | null>(null);
 
   useEffect(() => {
     setSourcesPanelCitations(null);
   }, [activeSessionId]);
+
+  // TopBar lives inside AppLayout, so it signals the PMS toggle via a
+  // window event rather than a prop drilled through the layout.
+  useEffect(() => {
+    const toggle = () => {
+      if (pmsTimer.current) {
+        window.clearTimeout(pmsTimer.current);
+        pmsTimer.current = null;
+      }
+      if (pmsOpenRef.current) {
+        // Closing — keep it mounted briefly so the exit animation can play.
+        pmsOpenRef.current = false;
+        setPmsClosing(true);
+        pmsTimer.current = window.setTimeout(() => {
+          setShowPms(false);
+          setPmsClosing(false);
+          pmsTimer.current = null;
+        }, 400);
+      } else {
+        pmsOpenRef.current = true;
+        setPmsClosing(false);
+        setShowPms(true);
+      }
+    };
+    window.addEventListener("trident:toggle-pms", toggle);
+    return () => window.removeEventListener("trident:toggle-pms", toggle);
+  }, []);
 
   // Live SSE progress while the reply is generating: shows real pipeline
   // activity under the typing dots and delivers the finished message
@@ -358,7 +390,7 @@ export function ChatPage() {
 
         {activeSessionId ? (
           <div
-            className={`chat-main__workspace${sourcesPanelCitations ? " chat-main__workspace--with-panel" : ""}`}
+            className={`chat-main__workspace${sourcesPanelCitations || showPms || pmsClosing ? " chat-main__workspace--with-panel" : ""}`}
           >
             <div className="chat-main__stars" aria-hidden />
             <section className="chat-main__conversation">
@@ -388,32 +420,52 @@ export function ChatPage() {
                 onClose={handleCloseSourcesPanel}
               />
             )}
+            {(showPms || pmsClosing) && (
+              <PmsSidePanel
+                token={token}
+                shipId={sessionShipId}
+                closing={pmsClosing}
+              />
+            )}
           </div>
         ) : (
-          <div className="chat-main__welcome-wrap">
-            <div className="chat-welcome">
-              <div className="chat-welcome__logo-zone">
-                <img
-                  src={logoImg}
-                  alt=""
-                  className="chat-welcome__logo"
-                  aria-hidden
-                />
+          <div
+            className={`chat-main__workspace${showPms || pmsClosing ? " chat-main__workspace--with-panel" : ""}`}
+          >
+            <div className="chat-main__welcome-wrap">
+              <div className="chat-welcome">
+                <div className="chat-welcome__logo-zone">
+                  <img
+                    src={logoImg}
+                    alt=""
+                    className="chat-welcome__logo"
+                    aria-hidden
+                  />
+                </div>
+                <h1 className="chat-welcome__title">
+                  Trident Intelligence Platform
+                </h1>
+                <p className="chat-welcome__sub">
+                  What would you like to know?
+                </p>
               </div>
-              <h1 className="chat-welcome__title">
-                Trident Intelligence Platform
-              </h1>
-              <p className="chat-welcome__sub">What would you like to know?</p>
+              <MessageInput
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={() => handleSend()}
+                token={token}
+                sessionId={activeSessionId}
+                disabled={isDisabled}
+                placeholder="Start a new conversation..."
+              />
             </div>
-            <MessageInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSend={() => handleSend()}
-              token={token}
-              sessionId={activeSessionId}
-              disabled={isDisabled}
-              placeholder="Start a new conversation..."
-            />
+            {(showPms || pmsClosing) && (
+              <PmsSidePanel
+                token={token}
+                shipId={sessionShipId}
+                closing={pmsClosing}
+              />
+            )}
           </div>
         )}
       </>

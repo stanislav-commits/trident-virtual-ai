@@ -41,6 +41,13 @@ export interface ImportPreviewRename {
   matchScore: 'exact-name-brand-model' | 'exact-name-brand' | 'exact-name';
 }
 
+export interface ImportPreviewSfiWarning {
+  assetIdInternal: string;
+  sfiSub: string | null;
+  /** unknown-code = sfi_sub not in the SFI catalog; missing = no sfi_sub. */
+  reason: 'unknown-code' | 'missing';
+}
+
 export interface ImportPreviewResult {
   totalRows: number;
   parseErrors: Array<{ row: number; reason: string }>;
@@ -48,6 +55,7 @@ export interface ImportPreviewResult {
   update: ImportPreviewUpdate[];
   orphans: ImportPreviewOrphan[];
   potentialRenames: ImportPreviewRename[];
+  sfiWarnings: ImportPreviewSfiWarning[];
   // Numbers separately because the UI shows them in the modal header
   // before the user expands any list.
   counts: {
@@ -56,5 +64,6 @@ export interface ImportPreviewResult {
     orphans: number;
     renames: number;
     parseErrors: number;
+    sfiWarnings: number;
   };
 }

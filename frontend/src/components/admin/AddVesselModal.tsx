@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { createShip, getOrganizations } from "../../api/shipsApi";
+import {
+  createShip,
+  getOrganizations,
+  updateShip,
+  type ShipSummaryItem,
+} from "../../api/shipsApi";
 import { instantiateCompliance } from "../../api/complianceApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
@@ -60,19 +65,46 @@ function Field({
   );
 }
 
+function shipToForm(ship: ShipSummaryItem): FormState {
+  return {
+    name: ship.name ?? "",
+    organizationName: ship.organizationName ?? "",
+    imoNumber: ship.imoNumber ?? "",
+    mmsi: ship.mmsi ?? "",
+    callSign: ship.callSign ?? "",
+    flag: ship.flag ?? "",
+    lengthM: ship.lengthM != null ? String(ship.lengthM) : "",
+    buildYear: ship.buildYear != null ? String(ship.buildYear) : "",
+    shipyard: ship.shipyard ?? "",
+    classSociety: ship.classSociety ?? "",
+    homePort: ship.homePort ?? "",
+    grossTonnage: ship.grossTonnage != null ? String(ship.grossTonnage) : "",
+    operationType: ship.operationType ?? "commercial",
+  };
+}
+
 /**
- * Centered "Add vessel workspace" modal (portal to document.body).
- * Mounted fresh each time the switcher opens it, so the form always
- * starts empty — no stale drafts. On success it refreshes the ship list,
- * selects the new vessel and closes itself via `onClose`.
+ * Centered vessel-workspace modal (portal to document.body). Two modes:
+ * - ADD (`editShip` undefined): empty form, creates a vessel + compliance.
+ * - EDIT (`editShip` set): pre-filled from the vessel, PATCHes it.
+ * Mounted fresh each time the switcher opens it — no stale drafts.
  */
-export function AddVesselModal({ onClose }: { onClose: () => void }) {
+export function AddVesselModal({
+  onClose,
+  editShip,
+}: {
+  onClose: () => void;
+  editShip?: ShipSummaryItem;
+}) {
   const { token } = useAuth();
   const { setSelectedShipId, refreshShips } = useAdminShip();
+  const isEdit = Boolean(editShip);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [form, setForm] = useState<FormState>(
+    editShip ? shipToForm(editShip) : EMPTY_FORM,
+  );
   const [organizations, setOrganizations] = useState<string[]>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
 
@@ -105,23 +137,40 @@ export function AddVesselModal({ onClose }: { onClose: () => void }) {
     }
     setSaving(true);
     setError(null);
+    const profile = {
+      name: form.name.trim(),
+      imoNumber: form.imoNumber.trim() || null,
+      buildYear: form.buildYear ? Number(form.buildYear) : null,
+      mmsi: form.mmsi.trim() || null,
+      callSign: form.callSign.trim() || null,
+      flag: form.flag.trim() || null,
+      lengthM: form.lengthM ? Number(form.lengthM) : null,
+      grossTonnage: form.grossTonnage ? Number(form.grossTonnage) : null,
+      shipyard: form.shipyard.trim() || null,
+      classSociety: form.classSociety.trim() || null,
+      homePort: form.homePort.trim() || null,
+      operationType: form.operationType,
+    };
     try {
+      if (isEdit && editShip) {
+        // Org changes re-discover metrics on the backend; only send it
+        // when it actually changed.
+        await updateShip(
+          editShip.id,
+          {
+            ...profile,
+            ...(form.organizationName !== editShip.organizationName
+              ? { organizationName: form.organizationName }
+              : {}),
+          },
+          token,
+        );
+        await refreshShips();
+        onClose();
+        return;
+      }
       const ship = await createShip(
-        {
-          name: form.name.trim(),
-          organizationName: form.organizationName,
-          imoNumber: form.imoNumber.trim() || null,
-          buildYear: form.buildYear ? Number(form.buildYear) : null,
-          mmsi: form.mmsi.trim() || null,
-          callSign: form.callSign.trim() || null,
-          flag: form.flag.trim() || null,
-          lengthM: form.lengthM ? Number(form.lengthM) : null,
-          grossTonnage: form.grossTonnage ? Number(form.grossTonnage) : null,
-          shipyard: form.shipyard.trim() || null,
-          classSociety: form.classSociety.trim() || null,
-          homePort: form.homePort.trim() || null,
-          operationType: form.operationType,
-        },
+        { ...profile, organizationName: form.organizationName },
         token,
       );
       try {
@@ -135,7 +184,11 @@ export function AddVesselModal({ onClose }: { onClose: () => void }) {
       setSelectedShipId(ship.id);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create vessel");
+      setError(
+        e instanceof Error
+          ? e.message
+          : `Failed to ${isEdit ? "save" : "create"} vessel`,
+      );
     } finally {
       setSaving(false);
     }
@@ -152,10 +205,13 @@ export function AddVesselModal({ onClose }: { onClose: () => void }) {
         <div className="vessel-modal__head">
           <div className="vessel-modal__icon">⚓</div>
           <div>
-            <div className="vessel-modal__title">Add vessel workspace</div>
+            <div className="vessel-modal__title">
+              {isEdit ? "Vessel details" : "Add vessel workspace"}
+            </div>
             <div className="vessel-modal__sub">
-              Create an empty yacht profile and connect it to the
-              organization that stores live metrics.
+              {isEdit
+                ? "View and edit this vessel's profile."
+                : "Create an empty yacht profile and connect it to the organization that stores live metrics."}
             </div>
           </div>
           <button
@@ -299,7 +355,13 @@ export function AddVesselModal({ onClose }: { onClose: () => void }) {
             disabled={saving}
             onClick={() => void submitAdd()}
           >
-            {saving ? "Creating…" : "+ Create vessel"}
+            {saving
+              ? isEdit
+                ? "Saving…"
+                : "Creating…"
+              : isEdit
+                ? "Save changes"
+                : "+ Create vessel"}
           </button>
         </div>
       </div>

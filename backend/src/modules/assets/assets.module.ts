@@ -9,6 +9,7 @@ import { AssetDocumentLinkEntity } from './entities/asset-document-link.entity';
 import { AssetSnapshotEntity } from './entities/asset-snapshot.entity';
 import { AssetEntity } from './entities/asset.entity';
 import { ServiceRuleEntity } from './entities/service-rule.entity';
+import { SfiModule } from '../sfi/sfi.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ServiceRuleEntity } from './entities/service-rule.entity';
       ShipMetricCatalogEntity,
       DocumentEntity,
     ]),
+    SfiModule,
   ],
   controllers: [AssetsController],
   providers: [AssetsService],

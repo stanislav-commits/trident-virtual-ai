@@ -9,8 +9,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
@@ -19,11 +22,55 @@ import {
   ComplianceService,
   UpsertComplianceDocInput,
 } from './compliance.service';
+import {
+  ComplianceExtractionService,
+  CommitProposal,
+} from './compliance-extraction.service';
+
+interface UploadedComplianceFile {
+  buffer?: Buffer;
+  originalname?: string;
+  mimetype?: string;
+}
 
 @Controller('ships/:shipId/compliance')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ComplianceController {
-  constructor(private readonly complianceService: ComplianceService) {}
+  constructor(
+    private readonly complianceService: ComplianceService,
+    private readonly extractionService: ComplianceExtractionService,
+  ) {}
+
+  /** Batch AI: read PDFs (or {items:[{filename,text}]}) → proposals, NO save. */
+  @Post('ingest/preview')
+  @Roles(UserRole.ADMIN)
+  @UseInterceptors(
+    FilesInterceptor('files', 30, { limits: { fileSize: 16 * 1024 * 1024 } }),
+  )
+  ingestPreview(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @UploadedFiles() files: UploadedComplianceFile[] | undefined,
+    @Body() body: { items?: Array<{ filename: string; text: string }> },
+  ) {
+    const items =
+      files && files.length
+        ? files.map((f) => ({
+            filename: f.originalname ?? 'document.pdf',
+            buffer: f.buffer,
+          }))
+        : (body?.items ?? []);
+    return this.extractionService.preview(shipId, items);
+  }
+
+  /** Persist the operator-reviewed proposals as confirmed records. */
+  @Post('ingest/commit')
+  @Roles(UserRole.ADMIN)
+  ingestCommit(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Body() body: { proposals: CommitProposal[] },
+  ) {
+    return this.extractionService.commit(shipId, body?.proposals ?? []);
+  }
 
   @Post('instantiate')
   @Roles(UserRole.ADMIN)
@@ -44,6 +91,11 @@ export class ComplianceController {
   @Get('overview')
   overview(@Param('shipId', ParseUUIDPipe) shipId: string) {
     return this.complianceService.overview(shipId);
+  }
+
+  @Get('archetypes')
+  archetypes() {
+    return this.complianceService.archetypeSchema();
   }
 
   @Get('assets/:assetId/docs')
@@ -81,6 +133,37 @@ export class ComplianceController {
     @Param('docId', ParseUUIDPipe) docId: string,
   ): Promise<void> {
     await this.complianceService.deleteDoc(shipId, docId);
+  }
+
+  // ── Link_Model: a document ↔ many assets / crew ──
+
+  @Get('docs/:docId/links')
+  listLinks(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+  ) {
+    return this.complianceService.listLinks(shipId, docId);
+  }
+
+  @Post('docs/:docId/links')
+  @Roles(UserRole.ADMIN)
+  addLink(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @Body() body: { assetId?: string | null; crewMemberId?: string | null },
+  ) {
+    return this.complianceService.addLink(shipId, docId, body);
+  }
+
+  @Delete('docs/:docId/links/:linkId')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeLink(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @Param('linkId', ParseUUIDPipe) linkId: string,
+  ): Promise<void> {
+    await this.complianceService.removeLink(shipId, docId, linkId);
   }
 
   @Patch('types/:typeId')

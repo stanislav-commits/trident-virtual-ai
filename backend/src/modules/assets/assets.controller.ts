@@ -10,11 +10,14 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
@@ -43,6 +46,23 @@ export class AssetsController {
     @Query() query: QueryAssetsDto,
   ) {
     return this.assetsService.list(shipId, query);
+  }
+
+  // NOTE: must be declared BEFORE @Get(':assetId') — otherwise "export-xlsx"
+  // is captured by the :assetId param and fails the UUID pipe.
+  @Get('export-xlsx')
+  @Roles(UserRole.ADMIN)
+  async exportXlsx(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.assetsService.exportXlsx(shipId);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
   }
 
   @Get(':assetId')
@@ -78,6 +98,15 @@ export class AssetsController {
     @Body() body: UpdateAssetDto,
   ) {
     return this.assetsService.update(shipId, assetId, body);
+  }
+
+  @Delete()
+  @Roles(UserRole.ADMIN)
+  clearAll(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.assetsService.clearAll(shipId, user.id);
   }
 
   @Delete(':assetId')

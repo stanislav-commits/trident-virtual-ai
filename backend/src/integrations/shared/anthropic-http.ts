@@ -481,3 +481,63 @@ function buildMessagesUrl(baseUrl: string): URL {
   }
   return parsed;
 }
+
+/**
+ * Single-image vision completion (one user turn = image + text), returning
+ * the assistant's text. Used to read photos / scanned certificates that have
+ * no embedded text. Claude vision handles images and scanned pages directly.
+ */
+export async function createAnthropicVisionCompletion(input: {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  systemPrompt?: string;
+  prompt: string;
+  imageBase64: string;
+  mediaType: string;
+  maxTokens?: number;
+}): Promise<string | null> {
+  const response = await fetch(buildMessagesUrl(input.baseUrl), {
+    method: 'POST',
+    headers: {
+      'x-api-key': input.apiKey,
+      'anthropic-version': ANTHROPIC_API_VERSION,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: input.model,
+      max_tokens: input.maxTokens ?? 2000,
+      ...(input.systemPrompt ? { system: input.systemPrompt } : {}),
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: input.mediaType,
+                data: input.imageBase64,
+              },
+            },
+            { type: 'text', text: input.prompt },
+          ],
+        },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      body || `Anthropic vision request failed: ${response.status}`,
+    );
+  }
+  const payload = (await response.json()) as AnthropicResponse;
+  let content = '';
+  for (const block of payload.content) {
+    if (block.type === 'text' && typeof block.text === 'string') {
+      content += block.text;
+    }
+  }
+  return content.trim() || null;
+}

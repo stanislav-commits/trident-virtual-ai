@@ -1,21 +1,41 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   unlinkAssetDocument,
   updateMetricBinding,
   updateMetricUnit,
   type AssetItem,
-  type AssetServiceRule,
   type RelatedAssetResult,
   type UpdateAssetInput,
 } from "../../../api/assetsApi";
 import type { AssetComplianceRecord } from "../../../api/complianceApi";
-import { fetchDocumentFile } from "../../../api/documentsApi";
+import {
+  fetchDocumentFile,
+  fetchExtractedMarkdown,
+} from "../../../api/documentsApi";
+import {
+  suggestPmsFromManual,
+  commitPmsImport,
+  type PmsImportPreview,
+  type PmsImportDraft,
+} from "../../../api/pmsApi";
+import { ImportPreviewModal } from "../PmsSection";
+import {
+  listAssetInventory,
+  suggestInventoryFromManual,
+  commitInventory,
+  type InventoryItem,
+  type InventoryDraft,
+} from "../../../api/inventoryApi";
+import { InventorySuggestModal } from "./InventorySuggestModal";
+import type { PmsTaskDto } from "../../../api/pmsApi";
+import { AssetHoursPanel } from "./AssetHoursPanel";
 import { StatusBadge } from "../StatusBadge";
 import { BindMetricPicker } from "./BindMetricPicker";
 import { EditableCell } from "./EditableCell";
 import { LinkManualPicker } from "./LinkManualPicker";
 
-type DrawerTab = "overview" | "metrics" | "manuals" | "pms" | "certs";
+type DrawerTab = "overview" | "metrics" | "manuals" | "pms" | "certs" | "parts";
 
 /**
  * Client-side PMS verdict on the calendar axis only (the hours axis
@@ -24,22 +44,6 @@ type DrawerTab = "overview" | "metrics" | "manuals" | "pms" | "certs";
  * 30 days. OK: due later. UNKNOWN: no last-done baseline or no
  * calendar interval.
  */
-function ruleVerdict(rule: AssetServiceRule): {
-  label: string;
-  level: "overdue" | "upcoming" | "ok" | "unknown";
-  due: string | null;
-} {
-  if (!rule.lastDoneAt || rule.intervalMonths == null) {
-    return { label: "UNKNOWN", level: "unknown", due: null };
-  }
-  const due = new Date(rule.lastDoneAt);
-  due.setMonth(due.getMonth() + rule.intervalMonths);
-  const dueStr = due.toISOString().slice(0, 10);
-  const days = (due.getTime() - Date.now()) / 86_400_000;
-  if (days < 0) return { label: "OVERDUE", level: "overdue", due: dueStr };
-  if (days <= 30) return { label: "UPCOMING", level: "upcoming", due: dueStr };
-  return { label: "OK", level: "ok", due: dueStr };
-}
 
 /**
  * One labelled row in the overview "full details" grid. Declared at MODULE
@@ -88,7 +92,7 @@ export interface AssetDrawerProps {
   asset: AssetItem;
   related: RelatedAssetResult | null;
   relatedLoading: boolean;
-  serviceRules: AssetServiceRule[] | null;
+  serviceRules: PmsTaskDto[] | null;
   assetCerts: AssetComplianceRecord[] | null;
   onClose: () => void;
   /** Re-fetch bound metrics + linked documents after a mutation. */
@@ -122,6 +126,108 @@ export function AssetDrawer({
   makeFieldSaver,
 }: AssetDrawerProps) {
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
+  const [suggestPreview, setSuggestPreview] = useState<PmsImportPreview | null>(
+    null,
+  );
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  // The asset's linked manual (drives both "Suggest PMS" and "Suggest parts").
+  const manualDoc = related?.documents.find((d) => d.docClass === "manual");
+  const [parts, setParts] = useState<InventoryItem[]>([]);
+  const [partsPreview, setPartsPreview] = useState<{
+    drafts: InventoryDraft[];
+    notes: string[];
+  } | null>(null);
+  const [partsBusy, setPartsBusy] = useState(false);
+
+  const loadParts = useCallback(async () => {
+    if (!token) return;
+    try {
+      setParts(await listAssetInventory(token, shipId, asset.id));
+    } catch {
+      setParts([]);
+    }
+  }, [token, shipId, asset.id]);
+  useEffect(() => {
+    void loadParts();
+  }, [loadParts]);
+
+  const handleSuggestParts = useCallback(async () => {
+    if (!token || !manualDoc) return;
+    setPartsBusy(true);
+    try {
+      const { markdown } = await fetchExtractedMarkdown(token, manualDoc.id);
+      const res = await suggestInventoryFromManual(
+        token,
+        shipId,
+        asset.id,
+        markdown,
+      );
+      setPartsPreview(res);
+    } catch (e) {
+      onError(
+        e instanceof Error ? e.message : "Could not read the manual.",
+      );
+    } finally {
+      setPartsBusy(false);
+    }
+  }, [token, manualDoc, shipId, asset.id, onError]);
+
+  const handleConfirmParts = useCallback(
+    async (drafts: InventoryDraft[]) => {
+      if (!token) return;
+      setPartsBusy(true);
+      try {
+        await commitInventory(token, shipId, drafts);
+        setPartsPreview(null);
+        await loadParts();
+      } catch (e) {
+        onError(e instanceof Error ? e.message : "Failed to add parts");
+      } finally {
+        setPartsBusy(false);
+      }
+    },
+    [token, shipId, loadParts, onError],
+  );
+
+  const handleSuggestPms = useCallback(async () => {
+    if (!token || !manualDoc) return;
+    setSuggestBusy(true);
+    try {
+      const { markdown } = await fetchExtractedMarkdown(token, manualDoc.id);
+      const preview = await suggestPmsFromManual(
+        token,
+        shipId,
+        asset.id,
+        markdown,
+      );
+      setSuggestPreview(preview);
+    } catch (e) {
+      onError(
+        e instanceof Error
+          ? e.message
+          : "Could not read the manual — make sure it's extracted.",
+      );
+    } finally {
+      setSuggestBusy(false);
+    }
+  }, [token, manualDoc, shipId, asset.id, onError]);
+
+  const handleConfirmSuggest = useCallback(
+    async (drafts: PmsImportDraft[]) => {
+      if (!token) return;
+      setSuggestBusy(true);
+      try {
+        await commitPmsImport(token, shipId, drafts);
+        setSuggestPreview(null);
+        await onRefreshRelated();
+      } catch (e) {
+        onError(e instanceof Error ? e.message : "Failed to create tasks");
+      } finally {
+        setSuggestBusy(false);
+      }
+    },
+    [token, shipId, onRefreshRelated, onError],
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [manualPickerOpen, setManualPickerOpen] = useState(false);
   const [unbindingId, setUnbindingId] = useState<string | null>(null);
@@ -270,6 +376,7 @@ export function AssetDrawer({
             ["manuals", "Manuals", related?.documents.length ?? null],
             ["pms", "PMS", serviceRules?.length ?? null],
             ["certs", "Certs", assetCerts?.length ?? null],
+            ["parts", "Parts", parts.length || null],
           ] as const
         ).map(([key, label, count]) => (
           <button
@@ -551,45 +658,156 @@ export function AssetDrawer({
 
       {drawerTab === "pms" && (
       <div className="assets-section__drawer-section">
+        <AssetHoursPanel
+          token={token}
+          shipId={shipId}
+          assetId={asset.id}
+          metricOptions={(related?.metrics ?? []).map((m) => ({
+            id: m.id,
+            label: `${m.measurement}.${m.field}`,
+          }))}
+        />
+
+        <div className="assets-section__pms-suggest">
+          <button
+            type="button"
+            className="pms__btn"
+            disabled={!manualDoc || suggestBusy}
+            onClick={() => void handleSuggestPms()}
+            title={
+              manualDoc
+                ? `Propose maintenance tasks from ${manualDoc.originalFileName}`
+                : "Link a manual to this asset first (Manuals tab)"
+            }
+          >
+            {suggestBusy
+              ? "Reading manual…"
+              : manualDoc
+                ? "Suggest PMS from manual"
+                : "Suggest PMS (no manual linked)"}
+          </button>
+        </div>
+
+        {suggestPreview &&
+          createPortal(
+            <ImportPreviewModal
+              preview={suggestPreview}
+              busy={suggestBusy}
+              onCancel={() => setSuggestPreview(null)}
+              onConfirm={handleConfirmSuggest}
+            />,
+            document.body,
+          )}
+
         {serviceRules === null && (
           <div className="assets-section__placeholder">Loading…</div>
         )}
         {serviceRules !== null && serviceRules.length === 0 && (
           <div className="assets-section__placeholder">
-            No service rules for this asset yet. Rules are extracted
-            from manuals by the AI or added via the PMS API.
+            No maintenance tasks linked to this asset yet. Add tasks in the
+            Tasks section and link this asset.
           </div>
         )}
-        {serviceRules?.map((rule) => {
-          const v = ruleVerdict(rule);
+        {serviceRules?.map((t) => {
+          const variant =
+            t.status === "due-soon" ? "upcoming" : t.status;
+          const label =
+            t.status === "overdue"
+              ? "OVERDUE"
+              : t.status === "due-soon"
+                ? "DUE SOON"
+                : "OK";
+          const isReminder = t.source === "hours_reminder";
           return (
-            <div key={rule.id} className="assets-section__pms-row">
+            <div key={t.id} className="assets-section__pms-row">
               <div className="assets-section__pms-main">
                 <span className="assets-section__pms-name">
-                  🔧 {rule.taskName}
+                  {isReminder ? "🕐" : "🔧"} {t.task}
                 </span>
                 <span className="assets-section__pms-due">
-                  {v.due
-                    ? `Due ${v.due}`
-                    : [
-                        rule.intervalHours != null
-                          ? `every ${rule.intervalHours} h`
-                          : null,
-                        rule.intervalMonths != null
-                          ? `every ${rule.intervalMonths} mo`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" / ") || "no interval"}
-                  {!rule.lastDoneAt && " · no last-done baseline"}
+                  {t.due}
+                  {isReminder
+                    ? " · monthly reading"
+                    : t.intervalHours != null
+                      ? ` · every ${t.intervalHours} h`
+                      : ""}
+                  {t.assigneeName ? ` · ${t.assigneeName}` : ""}
                 </span>
               </div>
-              <StatusBadge base="assets-section__pms-badge" variant={v.level}>
-                {v.label}
+              <StatusBadge base="assets-section__pms-badge" variant={variant}>
+                {label}
               </StatusBadge>
             </div>
           );
         })}
+      </div>
+      )}
+
+      {drawerTab === "parts" && (
+      <div className="assets-section__drawer-section">
+        <div className="assets-section__pms-suggest">
+          <button
+            type="button"
+            className="pms__btn"
+            disabled={!manualDoc || partsBusy}
+            onClick={() => void handleSuggestParts()}
+            title={
+              manualDoc
+                ? `Suggest parts from ${manualDoc.originalFileName}`
+                : "Link a manual to this asset first (Manuals tab)"
+            }
+          >
+            {partsBusy
+              ? "Reading manual…"
+              : manualDoc
+                ? "Suggest parts from manual"
+                : "Suggest parts (no manual linked)"}
+          </button>
+        </div>
+
+        {parts.length === 0 ? (
+          <div className="assets-section__placeholder">
+            No parts linked to this asset yet. Use “Suggest parts from manual”,
+            or add them in the Inventory section.
+          </div>
+        ) : (
+          <>
+          <div className="inv__table-wrap inv__table-wrap--asset">
+            <table className="inv__table inv__table--asset">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Number</th>
+                  <th>Cat.</th>
+                  <th>Qty</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parts.map((p) => (
+                  <tr key={p.id} className="inv__row">
+                    <td className="inv__name">{p.name}</td>
+                    <td className="inv__mono">{p.partNumber ?? "—"}</td>
+                    <td><span className="inv__cat">{p.category}</span></td>
+                    <td>{p.quantity != null ? `${p.quantity}${p.unit ? " " + p.unit : ""}` : "—"}</td>
+                    <td className="inv__notes-cell" title={p.notes ?? ""}>{p.notes ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="inv__asset-count">{parts.length} part{parts.length === 1 ? "" : "s"} linked</p>
+          </>
+        )}
+
+        {partsPreview &&
+          <InventorySuggestModal
+            drafts={partsPreview.drafts}
+            notes={partsPreview.notes}
+            busy={partsBusy}
+            onCancel={() => setPartsPreview(null)}
+            onConfirm={handleConfirmParts}
+          />}
       </div>
       )}
     </aside>
