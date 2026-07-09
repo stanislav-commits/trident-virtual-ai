@@ -92,6 +92,10 @@ const EXTRAS_COLUMNS = [
   'drug_schedule',
   'asset_full_locator', // we recompute this but keep the import-time value
   'zone_name',          // some templates carry the long label alongside the code
+  // Final SeaWolf X register format (14-col) columns not in the v14.6 schema:
+  // keep them so import doesn't silently drop them and export round-trips.
+  'sfi_group_name',     // redundant with sfi_group, but present in the final file
+  'drawing_code',       // source drawing element id (stable per-item key)
 ];
 
 // xlsx sheet we read for the bulk register. The Trident template puts a
