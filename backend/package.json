@@ -6,7 +6,7 @@
   "scripts": {
     "build": "nest build",
     "db:down": "docker compose down",
-    "db:migrate": "typeorm-ts-node-commonjs -d src/core/database/typeorm.datasource.ts migration:run",
+    "db:migrate": "typeorm-ts-node-commonjs -d src/core/database/typeorm.datasource.ts migration:run -t each",
     "db:seed": "ts-node -r tsconfig-paths/register src/core/database/seeds/dev.seed.ts",
     "db:up": "docker compose up -d postgres",
     "start": "nest start",
