@@ -33,6 +33,67 @@ function formatTime(iso: string): string {
   });
 }
 
+interface AlertCard {
+  title: string;
+  asset?: string | null;
+  severity?: string;
+  value?: number | null;
+  startedAt?: string;
+}
+
+/** A user message that was sent from the alerts panel ("Ask AI"). */
+function parseAlertMessage(content: string): AlertCard | null {
+  const PREFIX = "[[ALERT]]";
+  if (!content.startsWith(PREFIX)) return null;
+  const nl = content.indexOf("\n");
+  const json = content.slice(PREFIX.length, nl > 0 ? nl : undefined);
+  try {
+    const c = JSON.parse(json) as AlertCard;
+    return c && typeof c.title === "string" ? c : null;
+  } catch {
+    return null;
+  }
+}
+
+function alertSeverityColor(s?: string): string {
+  if (s === "critical") return "var(--status-danger, #d9534f)";
+  if (s === "high" || s === "warning") return "var(--status-warn, #e0a800)";
+  return "var(--chat-text-muted)";
+}
+
+function AlertMessageCard({ card }: { card: AlertCard }) {
+  const sc = alertSeverityColor(card.severity);
+  const when = card.startedAt
+    ? new Date(card.startedAt).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+  return (
+    <div className="chat-alert-card" style={{ borderLeftColor: sc }}>
+      <span className="chat-alert-card__icon" style={{ color: sc }} aria-hidden>
+        ▲
+      </span>
+      <div className="chat-alert-card__body">
+        <div className="chat-alert-card__title">{card.title}</div>
+        <div className="chat-alert-card__meta">
+          {card.asset && <span>{card.asset}</span>}
+          {card.severity && (
+            <span style={{ color: sc, textTransform: "capitalize" }}>
+              {card.asset ? "· " : ""}
+              {card.severity}
+            </span>
+          )}
+          {card.value != null && <span>· {card.value.toFixed(1)}</span>}
+          {when && <span className="chat-alert-card__when">· {when}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Replace [1], [2] etc. with <cite-ref> custom elements so ReactMarkdown preserves them */
 function injectCiteRefs(text: string): string {
   return text.replace(/\[(\d+)\]/g, '<cite-ref data-idx="$1"></cite-ref>');
@@ -56,6 +117,15 @@ function stripLegacyInteractiveMarkup(text: string): string {
   return text
     .replace(/<\/?action-button>/gi, "")
     .replace(/<\/?high-light>/gi, "");
+}
+
+/** Safety net: hide raw metric keys (bucket::measurement::field) if they slip
+ *  through the model despite the output-hygiene prompt. */
+function stripTechnicalIdentifiers(text: string): string {
+  return text
+    .replace(/\(?\b[A-Za-z0-9_.-]+::[A-Za-z0-9_.-]+::[A-Za-z0-9_.-]+\b\)?/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([,.;:])/g, "$1");
 }
 
 function normalizeEscapedMarkdown(text: string): string {
@@ -213,8 +283,10 @@ export function MessageBubble({
     role === "assistant"
       ? normalizeMojibakePunctuation(
           normalizeEscapedMarkdown(
-            stripLegacyInteractiveMarkup(
-              normalizeMathLikeFormatting(content.trim()),
+            stripTechnicalIdentifiers(
+              stripLegacyInteractiveMarkup(
+                normalizeMathLikeFormatting(content.trim()),
+              ),
             ),
           ),
         )
@@ -248,6 +320,7 @@ export function MessageBubble({
     [token],
   );
   const mdComponents = useMdComponents(refs, handleOpenDocument);
+  const alertCard = role === "user" ? parseAlertMessage(content) : null;
 
   return (
     <div className={`chat-message chat-message--${role}`}>
@@ -274,6 +347,8 @@ export function MessageBubble({
               ? injectCiteRefs(renderedAssistantContent)
               : renderedAssistantContent}
           </ReactMarkdown>
+        ) : alertCard ? (
+          <AlertMessageCard card={alertCard} />
         ) : (
           content.trim()
         )}

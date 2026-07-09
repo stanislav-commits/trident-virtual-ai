@@ -1,41 +1,27 @@
 import type { DocumentListItem } from "../../../api/documentsApi";
-import { RefreshIcon, TagIcon, TrashIcon } from "../AdminPanelIcons";
+import { RefreshIcon, TrashIcon } from "../AdminPanelIcons";
 import { getDocumentReparseAction } from "./documentReparseActions";
 
 interface DocumentRowActionsProps {
   document: DocumentListItem;
   isDeleting: boolean;
   isReparsing: boolean;
-  isUpdatingMetadata: boolean;
   onRequestDelete: (document: DocumentListItem) => void;
   onRequestReparse: (document: DocumentListItem) => void;
-  onRequestMetadataEdit: (document: DocumentListItem) => void;
 }
 
 export function DocumentRowActions({
   document: targetDocument,
   isDeleting,
   isReparsing,
-  isUpdatingMetadata,
   onRequestDelete,
   onRequestReparse,
-  onRequestMetadataEdit,
 }: DocumentRowActionsProps) {
   const reparseAction = getDocumentReparseAction(targetDocument);
-  const actionsDisabled = isDeleting || isReparsing || isUpdatingMetadata;
+  const actionsDisabled = isDeleting || isReparsing;
 
   return (
     <div className="admin-panel__document-actions">
-      <button
-        type="button"
-        className="admin-panel__document-metadata-action"
-        disabled={actionsDisabled}
-        aria-label={`Edit metadata for ${targetDocument.originalFileName}`}
-        title={isUpdatingMetadata ? "Saving metadata..." : "Edit metadata"}
-        onClick={() => onRequestMetadataEdit(targetDocument)}
-      >
-        <TagIcon />
-      </button>
       {reparseAction && (
         <button
           type="button"

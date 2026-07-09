@@ -19,11 +19,15 @@
   --accent-glow: rgba(59, 130, 246, 0.35);
   --accent-bright: #60a5fa;
   --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  /* Alias: admin-panel.css references --chat-accent (was undefined → it silently
+     hard-coded #4a90d9). Map it to the themed accent so the admin panel matches. */
+  --chat-accent: var(--accent);
 
   /* ── Text ── */
   --chat-text: #e8eaed;
   --chat-text-muted: rgba(232, 234, 237, 0.45);
   --chat-text-subtle: rgba(232, 234, 237, 0.28);
+  --chat-text-soft: var(--chat-text-muted);
 
   /* ── Interactive ── */
   --chat-button: #e8eaed;
@@ -45,6 +49,7 @@
   --chat-radius-card: 16px;
   --chat-radius-lg: 20px;
   --chat-radius-sm: 10px;
+  --chat-radius-input: 8px;
 
   /* ── Layout ── */
   --chat-sidebar-width: 288px;
@@ -117,14 +122,14 @@
 
 /* ── Light Theme ── */
 [data-theme="light"] {
-  /* Core backgrounds */
-  --chat-bg: #f5f6f8;
-  --chat-bg-subtle: #edeef1;
-  --chat-surface: #ffffff;
-  --chat-surface-2: #f0f1f4;
-  --chat-surface-3: #e5e7ec;
-  --chat-surface-dim: rgba(255, 255, 255, 0.8);
-  --chat-surface-glass: rgba(0, 0, 0, 0.02);
+  /* Core backgrounds — toned down from bright white to reduce glare. */
+  --chat-bg: #e7e9ee;
+  --chat-bg-subtle: #dfe1e8;
+  --chat-surface: #f6f7f9;
+  --chat-surface-2: #eceef2;
+  --chat-surface-3: #e0e3e9;
+  --chat-surface-dim: rgba(246, 247, 249, 0.85);
+  --chat-surface-glass: rgba(0, 0, 0, 0.025);
 
   /* Borders */
   --chat-border: rgba(0, 0, 0, 0.08);
@@ -137,11 +142,13 @@
   --accent-glow: rgba(37, 99, 235, 0.2);
   --accent-bright: #3b82f6;
   --accent-gradient: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  --chat-accent: var(--accent);
 
   /* Text */
   --chat-text: #1a1d26;
   --chat-text-muted: rgba(26, 29, 38, 0.55);
   --chat-text-subtle: rgba(26, 29, 38, 0.35);
+  --chat-text-soft: var(--chat-text-muted);
 
   /* Interactive */
   --chat-button: #1a1d26;
@@ -225,6 +232,7 @@
   --chat-text: #e8eaed;
   --chat-text-muted: rgba(232, 234, 237, 0.45);
   --chat-text-subtle: rgba(232, 234, 237, 0.28);
+  --chat-text-soft: var(--chat-text-muted);
   --color-error: #f87171;
   --color-error-bg: rgba(248, 113, 113, 0.1);
   --color-error-border: rgba(248, 113, 113, 0.25);
@@ -240,13 +248,13 @@
 @media (prefers-color-scheme: light) {
   :root {
     /* ── Core backgrounds ── */
-    --chat-bg: #f0f2f7;
-    --chat-bg-subtle: #e8ebf2;
-    --chat-surface: #ffffff;
-    --chat-surface-2: #f3f5fa;
-    --chat-surface-3: #eaecf3;
-    --chat-surface-dim: rgba(255, 255, 255, 0.75);
-    --chat-surface-glass: rgba(0, 0, 0, 0.015);
+    --chat-bg: #e7e9ee;
+    --chat-bg-subtle: #dfe1e8;
+    --chat-surface: #f6f7f9;
+    --chat-surface-2: #eceef2;
+    --chat-surface-3: #e0e3e9;
+    --chat-surface-dim: rgba(246, 247, 249, 0.85);
+    --chat-surface-glass: rgba(0, 0, 0, 0.025);
 
     /* ── Borders ── */
     --chat-border: rgba(0, 0, 0, 0.09);
@@ -257,6 +265,7 @@
     --chat-text: #0d1117;
     --chat-text-muted: rgba(13, 17, 23, 0.52);
     --chat-text-subtle: rgba(13, 17, 23, 0.36);
+  --chat-text-soft: var(--chat-text-muted);
 
     /* ── Interactive ── */
     --chat-button: #0d1117;
@@ -297,6 +306,7 @@
     --chat-text: #e8eaed;
     --chat-text-muted: rgba(232, 234, 237, 0.45);
     --chat-text-subtle: rgba(232, 234, 237, 0.28);
+  --chat-text-soft: var(--chat-text-muted);
     --color-error: #f87171;
     --color-error-bg: rgba(248, 113, 113, 0.1);
     --color-error-border: rgba(248, 113, 113, 0.25);

@@ -32,6 +32,8 @@ export function AssetHoursPanel({
   const [saving, setSaving] = useState(false);
   const [reading, setReading] = useState("");
   const [readingNote, setReadingNote] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -91,6 +93,7 @@ export function AssetHoursPanel({
 
   if (!cfg) return null;
   const source = cfg.source;
+  const hasReadings = cfg.readings.length > 0;
 
   return (
     <div className="asset-hours">
@@ -99,8 +102,44 @@ export function AssetHoursPanel({
         <span className="asset-hours__current">
           {cfg.currentHours != null ? `${cfg.currentHours} h` : "—"}
         </span>
+        <button
+          type="button"
+          className={`asset-hours__iconbtn${showSettings ? " asset-hours__iconbtn--on" : ""}`}
+          onClick={() => {
+            setShowSettings((v) => !v);
+            setShowHistory(false);
+          }}
+          title="Log reading & settings"
+          aria-label="Log reading and settings"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" />
+            <line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" />
+            <line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" />
+          </svg>
+        </button>
+        {hasReadings && (
+          <button
+            type="button"
+            className={`asset-hours__iconbtn${showHistory ? " asset-hours__iconbtn--on" : ""}`}
+            onClick={() => {
+              setShowHistory((v) => !v);
+              setShowSettings(false);
+            }}
+            title="Reading history"
+            aria-label="Reading history"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 3v5h5" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" /><path d="M12 7v5l4 2" />
+            </svg>
+          </button>
+        )}
       </div>
 
+      {/* Settings + log reading — revealed by the sliders button */}
+      <div className={`asset-hours__collapse${showSettings ? " asset-hours__collapse--open" : ""}`}>
+        <div className="asset-hours__collapse-inner">
       <label className="asset-hours__field">
         <span>Source</span>
         <select
@@ -206,19 +245,25 @@ export function AssetHoursPanel({
               Log
             </button>
           </div>
-          {cfg.readings.length > 0 && (
-            <div className="asset-hours__readings">
-              {cfg.readings.slice(0, 5).map((r) => (
-                <div key={r.id} className="asset-hours__reading-row">
-                  <span>{r.readOn}</span>
-                  <span>{r.hours} h</span>
-                  {r.note && <span className="asset-hours__note">{r.note}</span>}
-                </div>
-              ))}
-            </div>
-          )}
         </>
       )}
+        </div>
+      </div>
+
+      {/* Reading history — revealed by the history button */}
+      <div className={`asset-hours__collapse${showHistory ? " asset-hours__collapse--open" : ""}`}>
+        <div className="asset-hours__collapse-inner">
+          <div className="asset-hours__readings">
+            {cfg.readings.map((r) => (
+              <div key={r.id} className="asset-hours__reading-row">
+                <span>{r.readOn}</span>
+                <span>{r.hours} h</span>
+                {r.note && <span className="asset-hours__note">{r.note}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

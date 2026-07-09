@@ -1,7 +1,11 @@
 import { fetchWithAuth, getApiUrl } from "./core";
 
 export type DocumentDocClass =
+  | "procedure"
   | "manual"
+  | "form"
+  | "plan"
+  | "publication"
   | "historical_procedure"
   | "certificate"
   | "regulation";
@@ -168,17 +172,6 @@ export interface ReparseDocumentInput {
   metadata?: ReparseDocumentMetadataInput;
 }
 
-export interface DocumentMetadataInput {
-  equipmentName?: string | null;
-  equipmentAliases?: string | null;
-  manufacturer?: string | null;
-  model?: string | null;
-  systemArea?: string | null;
-  documentPurpose?: string | null;
-  documentRole?: DocumentRole | null;
-  sourcePriority?: number;
-}
-
 export interface UploadDocumentProgress {
   loadedBytes: number;
   totalBytes: number | null;
@@ -219,6 +212,200 @@ export async function listDocuments(
   }
 
   return response.json();
+}
+
+export interface ListPublicationsParams {
+  parseStatus?: DocumentParseStatus;
+  name?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export async function listPublications(
+  token: string,
+  params: ListPublicationsParams = {},
+): Promise<DocumentListPage> {
+  const query = new URLSearchParams();
+
+  if (params.parseStatus) query.set("parseStatus", params.parseStatus);
+  const trimmedName = params.name?.trim();
+  if (trimmedName) query.set("name", trimmedName);
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
+
+  const queryString = query.toString();
+  const path = queryString
+    ? `documents/publications?${queryString}`
+    : "documents/publications";
+
+  const response = await fetchWithAuth(path, { token });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to load publications");
+  }
+
+  return response.json();
+}
+
+export interface PublicationCatalogItem {
+  id: string;
+  title: string;
+  conditionalNote: string | null;
+  sortOrder: number;
+  documentId: string | null;
+  fileName: string | null;
+  parseStatus: string | null;
+}
+
+export async function listPublicationCatalog(
+  token: string,
+): Promise<PublicationCatalogItem[]> {
+  const response = await fetchWithAuth("documents/publications/catalog", {
+    token,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to load publications catalog");
+  }
+
+  return response.json();
+}
+
+export interface CreatePublicationCatalogInput {
+  title: string;
+  conditionalNote?: string | null;
+}
+
+export async function createPublicationCatalogItem(
+  token: string,
+  input: CreatePublicationCatalogInput,
+): Promise<PublicationCatalogItem> {
+  const response = await fetchWithAuth("documents/publications/catalog", {
+    token,
+    method: "POST",
+    body: JSON.stringify({
+      title: input.title,
+      conditionalNote: input.conditionalNote ?? null,
+    }),
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to add publication");
+  }
+
+  return response.json();
+}
+
+export async function attachPublicationCatalogFile(
+  token: string,
+  catalogId: string,
+  file: File,
+): Promise<PublicationCatalogItem> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetchWithAuth(
+    `documents/publications/catalog/${catalogId}/file`,
+    {
+      token,
+      method: "POST",
+      body: form,
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? `Failed to upload ${file.name}`);
+  }
+
+  return response.json();
+}
+
+export async function detachPublicationCatalogFile(
+  token: string,
+  catalogId: string,
+): Promise<PublicationCatalogItem> {
+  const response = await fetchWithAuth(
+    `documents/publications/catalog/${catalogId}/file`,
+    {
+      token,
+      method: "DELETE",
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to remove publication file");
+  }
+
+  return response.json();
+}
+
+export interface UploadPublicationInput {
+  language?: string;
+  revision?: string;
+  contentFocus?: string;
+}
+
+export async function uploadPublication(
+  token: string,
+  file: File,
+  input: UploadPublicationInput = {},
+  options: UploadDocumentOptions = {},
+): Promise<DocumentListItem> {
+  const form = new FormData();
+  form.append("file", file);
+  appendOptionalText(form, "language", input.language);
+  appendOptionalText(form, "revision", input.revision);
+  appendOptionalText(form, "contentFocus", input.contentFocus);
+
+  return new Promise<DocumentListItem>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", getApiUrl("documents/publications"));
+    request.setRequestHeader("Authorization", `Bearer ${token}`);
+    request.responseType = "json";
+
+    request.upload.onprogress = (event) => {
+      const totalBytes =
+        event.lengthComputable && event.total > 0 ? event.total : null;
+      const percent =
+        totalBytes === null
+          ? null
+          : Math.min(100, Math.round((event.loaded / totalBytes) * 100));
+
+      options.onUploadProgress?.({
+        loadedBytes: event.loaded,
+        totalBytes,
+        percent,
+      });
+    };
+
+    request.onload = () => {
+      const responseBody = parseUploadResponse(request);
+
+      if (request.status < 200 || request.status >= 300) {
+        reject(new Error(getErrorMessage(responseBody, `Failed to upload ${file.name}`)));
+        return;
+      }
+
+      options.onUploadProgress?.({
+        loadedBytes: file.size,
+        totalBytes: file.size,
+        percent: 100,
+      });
+      resolve(responseBody as DocumentListItem);
+    };
+
+    request.onerror = () => {
+      reject(new Error(`Failed to upload ${file.name}`));
+    };
+
+    request.send(form);
+  });
 }
 
 function appendOptionalText(
@@ -393,28 +580,6 @@ export async function updateDocumentPriority(
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(errorBody.message ?? "Failed to update document priority");
-  }
-
-  return response.json();
-}
-
-export async function updateDocumentMetadata(
-  token: string,
-  documentId: string,
-  input: DocumentMetadataInput,
-): Promise<DocumentListItem> {
-  const response = await fetchWithAuth(`documents/${documentId}/classification`, {
-    token,
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(input),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.message ?? "Failed to update document metadata");
   }
 
   return response.json();

@@ -7,8 +7,10 @@ import {
   type ShipSummaryItem,
 } from "../../api/shipsApi";
 import { instantiateCompliance } from "../../api/complianceApi";
+import { getUsers, updateUserShip, type UserListItem } from "../../api/usersApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
+import { CrewAssignmentField } from "./ships/CrewAssignmentField";
 
 const EMPTY_FORM = {
   name: "",
@@ -24,6 +26,7 @@ const EMPTY_FORM = {
   homePort: "",
   grossTonnage: "",
   operationType: "commercial",
+  metricAnalysisHint: "",
 };
 
 type FormState = typeof EMPTY_FORM;
@@ -80,6 +83,7 @@ function shipToForm(ship: ShipSummaryItem): FormState {
     homePort: ship.homePort ?? "",
     grossTonnage: ship.grossTonnage != null ? String(ship.grossTonnage) : "",
     operationType: ship.operationType ?? "commercial",
+    metricAnalysisHint: ship.metricAnalysisHint ?? "",
   };
 }
 
@@ -97,7 +101,7 @@ export function AddVesselModal({
   editShip?: ShipSummaryItem;
 }) {
   const { token } = useAuth();
-  const { setSelectedShipId, refreshShips } = useAdminShip();
+  const { setSelectedShipId, refreshShips, availableShips } = useAdminShip();
   const isEdit = Boolean(editShip);
 
   const [saving, setSaving] = useState(false);
@@ -107,6 +111,58 @@ export function AddVesselModal({
   );
   const [organizations, setOrganizations] = useState<string[]>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
+
+  // ── Crew assignment (edit mode only) ──────────────────────────────────
+  const [crewUsers, setCrewUsers] = useState<UserListItem[]>([]);
+  const [crewUsersLoading, setCrewUsersLoading] = useState(false);
+  const [selectedCrewUserIds, setSelectedCrewUserIds] = useState<string[]>([]);
+  const [movedCrewTargets, setMovedCrewTargets] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!token || !editShip) return;
+    let cancelled = false;
+    setCrewUsersLoading(true);
+    void getUsers(token)
+      .then((users) => {
+        if (cancelled) return;
+        const regular = users.filter((u) => u.role === "user");
+        setCrewUsers(regular);
+        setSelectedCrewUserIds(
+          regular.filter((u) => u.shipId === editShip.id).map((u) => u.id),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setCrewUsers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCrewUsersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, editShip]);
+
+  const toggleCrewUser = (userId: string) => {
+    setSelectedCrewUserIds((cur) =>
+      cur.includes(userId) ? cur.filter((id) => id !== userId) : [...cur, userId],
+    );
+    setMovedCrewTargets((cur) => {
+      if (!(userId in cur)) return cur;
+      const next = { ...cur };
+      delete next[userId];
+      return next;
+    });
+  };
+  const setMovedCrewTarget = (userId: string, shipId: string) =>
+    setMovedCrewTargets((cur) => ({ ...cur, [userId]: shipId }));
+
+  const removedAssigned =
+    isEdit && editShip
+      ? crewUsers.filter(
+          (u) => u.shipId === editShip.id && !selectedCrewUserIds.includes(u.id),
+        )
+      : [];
+  const hasUnresolvedCrewMoves = removedAssigned.some((u) => !movedCrewTargets[u.id]);
 
   // Load the metrics organizations once per open (the modal mounts fresh).
   useEffect(() => {
@@ -150,6 +206,7 @@ export function AddVesselModal({
       classSociety: form.classSociety.trim() || null,
       homePort: form.homePort.trim() || null,
       operationType: form.operationType,
+      metricAnalysisHint: form.metricAnalysisHint.trim() || null,
     };
     try {
       if (isEdit && editShip) {
@@ -165,6 +222,21 @@ export function AddVesselModal({
           },
           token,
         );
+
+        // Crew reassignment: attach newly-selected users to this ship, and
+        // move removed-assigned users to the destination ship chosen for them.
+        const crewTasks: Promise<unknown>[] = [];
+        for (const userId of selectedCrewUserIds) {
+          const user = crewUsers.find((u) => u.id === userId);
+          if (!user || user.shipId === editShip.id) continue;
+          crewTasks.push(updateUserShip(userId, editShip.id, token));
+        }
+        for (const user of removedAssigned) {
+          const target = movedCrewTargets[user.id];
+          if (target) crewTasks.push(updateUserShip(user.id, target, token));
+        }
+        if (crewTasks.length > 0) await Promise.all(crewTasks);
+
         await refreshShips();
         onClose();
         return;
@@ -229,7 +301,6 @@ export function AddVesselModal({
             label="Vessel / Group name *"
             value={form.name}
             onChange={set("name")}
-            placeholder="Project Atlas"
           />
           {organizations.length > 0 || !orgsLoaded ? (
             <label className="vessel-modal__field">
@@ -259,54 +330,46 @@ export function AddVesselModal({
               label="Organization *"
               value={form.organizationName}
               onChange={set("organizationName")}
-              placeholder="metrics organization name"
             />
           )}
           <Field
             label="IMO"
             value={form.imoNumber}
             onChange={set("imoNumber")}
-            placeholder="1234567"
             numeric
           />
           <Field
             label="MMSI"
             value={form.mmsi}
             onChange={set("mmsi")}
-            placeholder="319000000"
             numeric
           />
           <Field
             label="Call sign"
             value={form.callSign}
             onChange={set("callSign")}
-            placeholder="ZCXA7"
           />
           <Field
             label="Flag"
             value={form.flag}
             onChange={set("flag")}
-            placeholder="Cayman Islands"
           />
           <Field
             label="Length, m"
             value={form.lengthM}
             onChange={set("lengthM")}
-            placeholder="52.4"
             numeric
           />
           <Field
             label="Build year"
             value={form.buildYear}
             onChange={set("buildYear")}
-            placeholder="2026"
             numeric
           />
           <Field
             label="Gross tonnage"
             value={form.grossTonnage}
             onChange={set("grossTonnage")}
-            placeholder="499"
             numeric
           />
           <label className="vessel-modal__field">
@@ -323,21 +386,53 @@ export function AddVesselModal({
             label="Shipyard"
             value={form.shipyard}
             onChange={set("shipyard")}
-            placeholder="Lurssen"
           />
           <Field
             label="Class society"
             value={form.classSociety}
             onChange={set("classSociety")}
-            placeholder="Lloyd's Register"
           />
           <Field
             label="Home port"
             value={form.homePort}
             onChange={set("homePort")}
-            placeholder="George Town"
           />
+          <label
+            className="vessel-modal__field"
+            style={{ gridColumn: "1 / -1" }}
+          >
+            <span className="vessel-modal__field-label">
+              AI metric-analysis profile (optional)
+            </span>
+            <textarea
+              value={form.metricAnalysisHint}
+              onChange={(e) => set("metricAnalysisHint")(e.target.value)}
+              rows={5}
+              style={{
+                width: "100%",
+                fontFamily: "inherit",
+                fontSize: "inherit",
+                resize: "vertical",
+                padding: "10px 12px",
+              }}
+            />
+          </label>
         </div>
+
+        {isEdit && editShip && (
+          <CrewAssignmentField
+            crewUsers={crewUsers}
+            crewUsersLoading={crewUsersLoading}
+            currentAssignedUsers={crewUsers.filter((u) => u.shipId === editShip.id)}
+            editingShipId={editShip.id}
+            selectedCrewUserIds={selectedCrewUserIds}
+            movedCrewTargets={movedCrewTargets}
+            shipOptions={availableShips.map((s) => ({ id: s.id, name: s.name }))}
+            submitting={saving}
+            onToggleCrewUser={toggleCrewUser}
+            onMovedCrewTargetChange={setMovedCrewTarget}
+          />
+        )}
 
         {error && <div className="vessel-switcher__error">{error}</div>}
 
@@ -352,7 +447,7 @@ export function AddVesselModal({
           <button
             type="button"
             className="vessel-modal__create"
-            disabled={saving}
+            disabled={saving || hasUnresolvedCrewMoves}
             onClick={() => void submitAdd()}
           >
             {saving

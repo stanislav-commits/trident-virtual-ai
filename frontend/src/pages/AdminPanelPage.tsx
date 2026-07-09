@@ -11,11 +11,13 @@ import {
   MaintenanceIcon,
   CrewIcon,
   InventoryIcon,
+  AlertsIcon,
   ChevronLeftIcon,
   MenuIcon,
   XIcon,
 } from "../components/admin/AdminPanelIcons";
 import { DocumentsSection } from "../components/admin/DocumentsSection";
+import { PublicationsSection } from "../components/admin/PublicationsSection";
 import { MetricsSection } from "../components/admin/MetricsSection";
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
@@ -24,6 +26,7 @@ import { ComplianceSection } from "../components/admin/ComplianceSection";
 import { PmsSection } from "../components/admin/PmsSection";
 import { CrewSection } from "../components/admin/CrewSection";
 import { InventorySection } from "../components/admin/InventorySection";
+import { AlertsSection } from "../components/admin/AlertsSection";
 import { ActiveVesselSwitcher } from "../components/admin/ActiveVesselSwitcher";
 import { UserAvatar } from "../components/layout/UserAvatar";
 import { getUserAvatarLabel } from "../components/layout/userAvatarUtils";
@@ -44,8 +47,10 @@ const SECTION_TITLES: Record<AdminSectionRoute, string> = {
   maintenance: "Tasks",
   crew: "Crew",
   inventory: "Inventory",
-  documents: "Documents",
+  alerts: "Alerts",
+  documents: "Knowledge Base",
   metrics: "Metrics",
+  publications: "Publications",
 };
 
 export function AdminPanelPage() {
@@ -178,13 +183,23 @@ export function AdminPanelPage() {
           </button>
           <button
             type="button"
+            className={`admin-panel__nav-item ${activeSection === "alerts" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("alerts")}
+          >
+            <span className="admin-panel__nav-icon">
+              <AlertsIcon />
+            </span>
+            <span className="admin-panel__nav-label">Alerts</span>
+          </button>
+          <button
+            type="button"
             className={`admin-panel__nav-item ${activeSection === "documents" ? "admin-panel__nav-item--active" : ""}`}
             onClick={() => handleNavClick("documents")}
           >
             <span className="admin-panel__nav-icon">
               <DocumentsIcon />
             </span>
-            <span className="admin-panel__nav-label">Documents</span>
+            <span className="admin-panel__nav-label">Knowledge Base</span>
           </button>
           <button
             type="button"
@@ -220,6 +235,16 @@ export function AdminPanelPage() {
               <ShipIcon />
             </span>
             <span className="admin-panel__nav-label">Ships</span>
+          </button>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "publications" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("publications")}
+          >
+            <span className="admin-panel__nav-icon">
+              <DocumentsIcon />
+            </span>
+            <span className="admin-panel__nav-label">Publications</span>
           </button>
         </nav>
 
@@ -262,7 +287,7 @@ export function AdminPanelPage() {
 
           <div
             className={`admin-panel__content${
-              ["compliance", "maintenance", "crew", "inventory", "documents", "metrics"].includes(
+              ["compliance", "maintenance", "crew", "inventory", "alerts", "documents", "metrics", "publications"].includes(
                 activeSection,
               )
                 ? " admin-panel__content--wide"
@@ -298,10 +323,15 @@ export function AdminPanelPage() {
             {activeSection === "maintenance" && <PmsSection token={token} />}
             {activeSection === "crew" && <CrewSection token={token} />}
             {activeSection === "inventory" && <InventorySection token={token} />}
+            {activeSection === "alerts" && <AlertsSection token={token} />}
 
             {activeSection === "metrics" && <MetricsSection token={token} />}
 
             {activeSection === "documents" && <DocumentsSection />}
+
+            {activeSection === "publications" && (
+              <PublicationsSection token={token} />
+            )}
           </div>
         </main>
       </div>

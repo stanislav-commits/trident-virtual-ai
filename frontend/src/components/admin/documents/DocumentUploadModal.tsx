@@ -39,7 +39,6 @@ interface UploadMetadataForm {
   model: string;
   revision: string;
   timeScope: "" | DocumentTimeScope;
-  sourcePriority: string;
   contentFocus: string;
 }
 
@@ -50,7 +49,6 @@ const EMPTY_METADATA: UploadMetadataForm = {
   model: "",
   revision: "",
   timeScope: "",
-  sourcePriority: "",
   contentFocus: "",
 };
 
@@ -91,21 +89,6 @@ function normalizeOptionalText(value: string): string | undefined {
   return normalized || undefined;
 }
 
-function parseSourcePriority(value: string): number | undefined {
-  const normalized = value.trim();
-
-  if (!normalized) {
-    return undefined;
-  }
-
-  const parsed = Number(normalized);
-
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1000) {
-    throw new Error("Source priority must be a whole number from 0 to 1000.");
-  }
-
-  return parsed;
-}
 
 function formatParseStatus(value: string): string {
   return value.replace(/_/g, " ");
@@ -126,7 +109,9 @@ export function DocumentUploadModal({
         : "";
   const [shipId, setShipId] = useState(initialShip);
   const [docClass, setDocClass] = useState<DocumentDocClass>(
-    DOCUMENT_CLASS_OPTIONS[0].value,
+    // Keep "Manuals" as the default class for new uploads.
+    DOCUMENT_CLASS_OPTIONS.find((option) => option.value === "manual")?.value ??
+      DOCUMENT_CLASS_OPTIONS[0].value,
   );
   const [metadata, setMetadata] = useState<UploadMetadataForm>(EMPTY_METADATA);
   const [queue, setQueue] = useState<UploadQueueItem[]>([]);
@@ -230,7 +215,6 @@ export function DocumentUploadModal({
     model: normalizeOptionalText(metadata.model),
     revision: normalizeOptionalText(metadata.revision),
     timeScope: metadata.timeScope || undefined,
-    sourcePriority: parseSourcePriority(metadata.sourcePriority),
     contentFocus: normalizeOptionalText(metadata.contentFocus),
   });
 
@@ -734,27 +718,6 @@ export function DocumentUploadModal({
                       <option value="past">Past</option>
                       <option value="future">Future</option>
                     </select>
-                  </div>
-                  <div className="admin-panel__modal-field">
-                    <label
-                      className="admin-panel__field-label"
-                      htmlFor="upload-priority"
-                    >
-                      Source priority
-                    </label>
-                    <input
-                      id="upload-priority"
-                      className="admin-panel__input admin-panel__input--full"
-                      type="number"
-                      min="0"
-                      max="1000"
-                      value={metadata.sourcePriority}
-                      disabled={submitting}
-                      onChange={(event) =>
-                        updateMetadata("sourcePriority", event.target.value)
-                      }
-                      placeholder="100"
-                    />
                   </div>
                   <div className="admin-panel__modal-field">
                     <label className="admin-panel__field-label" htmlFor="upload-focus">

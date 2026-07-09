@@ -5,15 +5,35 @@ import type {
   DocumentRole,
 } from "../../../api/documentsApi";
 
+/**
+ * User-facing Knowledge Base classes. Only the active KB sections are offered
+ * in pickers — legacy (historical_procedure, certificate, regulation) and the
+ * fleet-wide `publication` class are deliberately excluded.
+ */
 export const DOCUMENT_CLASS_OPTIONS: Array<{
   value: DocumentDocClass;
   label: string;
 }> = [
+  { value: "procedure", label: "Procedures" },
   { value: "manual", label: "Manuals" },
-  { value: "historical_procedure", label: "Maintenance" },
-  { value: "certificate", label: "Certificates" },
-  { value: "regulation", label: "Regulations" },
+  { value: "form", label: "Forms & Checklists" },
+  { value: "plan", label: "Vessel Plans & Drawings" },
 ];
+
+/**
+ * Labels for ALL enum values, including legacy/publication ones — old data may
+ * still carry these classes even though we no longer offer them in pickers.
+ */
+const DOCUMENT_CLASS_LABELS: Record<DocumentDocClass, string> = {
+  procedure: "Procedures",
+  manual: "Manuals",
+  form: "Forms & Checklists",
+  plan: "Vessel Plans & Drawings",
+  publication: "Publications",
+  historical_procedure: "Maintenance",
+  certificate: "Certificates",
+  regulation: "Regulations",
+};
 
 export const DOCUMENT_PARSE_STATUS_OPTIONS: Array<{
   value: DocumentParseStatus;
@@ -53,10 +73,7 @@ export const DOCUMENT_ROLE_OPTIONS: Array<{
 ];
 
 export function getDocumentClassLabel(docClass: DocumentDocClass): string {
-  return (
-    DOCUMENT_CLASS_OPTIONS.find((option) => option.value === docClass)?.label ??
-    docClass
-  );
+  return DOCUMENT_CLASS_LABELS[docClass] ?? docClass;
 }
 
 export function getDocumentParseStatusLabel(

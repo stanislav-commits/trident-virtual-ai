@@ -2524,6 +2524,174 @@
   color: var(--chat-text);
 }
 
+.chat-alert-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--chat-border);
+  border-left: 3px solid var(--status-warn);
+  background: var(--chat-surface-2);
+  min-width: 220px;
+}
+.chat-alert-card__icon { font-size: 13px; line-height: 1.4; }
+.chat-alert-card__title { font-size: 14px; font-weight: 600; color: var(--chat-text); line-height: 1.3; }
+.chat-alert-card__meta {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px;
+  font-size: 12px; color: var(--chat-text-muted);
+}
+.chat-alert-card__when { color: var(--chat-text-subtle); }
+
+/* ── Alarm notifications panel (revamp) ── */
+.alarm-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  color: var(--chat-text);
+  font-family: Inter, system-ui, sans-serif;
+}
+.alarm-panel__header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 14px 14px 12px;
+}
+.alarm-panel__heading { display: flex; align-items: center; gap: 11px; }
+.alarm-panel__bell {
+  position: relative; display: inline-flex; padding: 8px;
+  background: var(--chat-surface-2); border: 1px solid var(--chat-border); border-radius: 11px;
+  color: var(--chat-text);
+}
+.alarm-panel__bell-badge {
+  position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center; padding: 0 4px;
+  border-radius: 9px; background: var(--status-danger); color: #fff; font-size: 10px; font-weight: 700;
+}
+.alarm-panel__title { font-size: 15px; font-weight: 600; color: var(--chat-text); line-height: 1.2; }
+.alarm-panel__sub { font-size: 12px; color: var(--chat-text-muted); margin-top: 3px; }
+.alarm-panel__sub--crit { color: var(--status-danger); font-weight: 600; }
+.alarm-panel__ackall {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px;
+  border-radius: 9px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  background: var(--chat-surface-3);
+  color: var(--chat-text-muted);
+  border: 1px solid var(--chat-border);
+}
+.alarm-panel__ackall:hover { color: var(--chat-text); }
+
+.alarm-panel__chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
+/* Calm chip: neutral surface + thin accent dot, not a saturated fill. */
+.alarm-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px;
+  border-radius: 9px; font-size: 12px; font-weight: 600;
+  color: var(--chat-text); background: var(--chat-surface-3);
+  border: 1px solid var(--chat-border);
+}
+.alarm-chip svg { color: var(--sev); }
+
+.alarm-panel__tabs {
+  display: flex; gap: 4px; margin: 0 14px 12px; padding: 4px;
+  background: var(--chat-surface-2); border-radius: 11px;
+}
+.alarm-tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 7px 8px; border: 0; border-radius: 8px; cursor: pointer;
+  background: transparent; color: var(--chat-text-muted); font-size: 12.5px; font-weight: 600;
+}
+.alarm-tab--on { background: var(--chat-surface-3); color: var(--chat-text); }
+.alarm-tab__count {
+  font-size: 10.5px; font-family: var(--font-mono, monospace); padding: 1px 6px;
+  border-radius: 8px; background: color-mix(in srgb, var(--chat-text) 8%, transparent); color: var(--chat-text-muted);
+}
+
+.alarm-panel__list { flex: 1 1 auto; overflow-y: auto; padding: 0 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.alarm-panel__empty { padding: 28px 14px; text-align: center; color: var(--chat-text-muted); font-size: 13px; }
+.alarm-panel__emptybox { display: flex; flex-direction: column; align-items: center; padding: 48px 14px; text-align: center; }
+.alarm-panel__emptyicon { padding: 14px; border-radius: 16px; background: var(--chat-surface-2); color: var(--chat-text-muted); margin-bottom: 12px; }
+.alarm-panel__emptytitle { font-size: 14px; font-weight: 600; color: var(--chat-text); }
+.alarm-panel__emptysub { font-size: 12px; color: var(--chat-text-muted); margin-top: 3px; }
+
+/* Card — calm neutral surface, severity shown only as a thin left bar,
+   small icon tint, dot + badge. Timestamp sits in the top-right corner. */
+.alarm-card {
+  position: relative; border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--chat-border); background: var(--chat-surface-2);
+}
+.alarm-card--active { border-color: color-mix(in srgb, var(--sev) 32%, var(--chat-border)); }
+.alarm-card__bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sev-bar); }
+.alarm-card:not(.alarm-card--active) .alarm-card__bar { opacity: 0.45; }
+.alarm-card__time {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--chat-text-subtle); white-space: nowrap;
+}
+.alarm-card__main { display: flex; gap: 12px; padding: 14px 14px 14px 16px; }
+.alarm-card__icon {
+  flex-shrink: 0; padding: 6px; border-radius: 9px;
+  background: var(--chat-surface-3); color: var(--sev);
+  height: max-content;
+}
+.alarm-card__content { flex: 1; min-width: 0; }
+/* Right column: trigger time on top, big value below — pinned to the edge. */
+.alarm-card__aside {
+  flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end;
+  gap: 6px; text-align: right;
+}
+.alarm-card__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.alarm-badge {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600;
+  padding: 2px 9px; border-radius: 999px;
+}
+.alarm-badge--sev { color: var(--sev); background: var(--sev-bg); }
+.alarm-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sev); }
+.alarm-badge--status { background: var(--chat-surface-3); color: var(--chat-text-muted); }
+.alarm-badge--acknowledged { background: color-mix(in srgb, var(--status-ok) 12%, transparent); color: var(--status-ok); }
+.alarm-card__title { margin: 10px 0 0; font-size: 14px; font-weight: 600; color: var(--chat-text); line-height: 1.3; }
+.alarm-card__source { margin: 3px 0 0; font-size: 12px; color: var(--chat-text-muted); }
+/* The current value is the most important number on the card — make it big. */
+.alarm-card__value {
+  flex-shrink: 0; font-size: 26px; font-weight: 700; line-height: 1;
+  font-family: var(--font-mono, monospace); color: var(--chat-text);
+  letter-spacing: -0.02em;
+}
+.alarm-card__expand { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px; background: none; border: 0; padding: 0; cursor: pointer; font-size: 11.5px; color: var(--chat-text-muted); }
+.alarm-card__expand:hover { color: var(--chat-text); }
+.alarm-card__desc { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--chat-border); font-size: 12.5px; color: var(--chat-text-muted); line-height: 1.55; }
+
+.alarm-card__actions { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-top: 1px solid var(--chat-border); }
+.alarm-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px;
+  border-radius: 9px; font-size: 12.5px; font-weight: 600; cursor: pointer; border: 0;
+}
+.alarm-btn--ack { background: color-mix(in srgb, var(--status-ok) 12%, transparent); color: var(--status-ok); }
+.alarm-btn--ack:hover { background: color-mix(in srgb, var(--status-ok) 20%, transparent); }
+/* AI Analysis: icon-only, neutral/subtle — no purple, no label. */
+.alarm-btn--ai {
+  padding: 7px; background: var(--chat-surface-3); color: var(--chat-text-muted);
+  border: 1px solid var(--chat-border);
+}
+.alarm-btn--ai:hover { color: var(--chat-text); background: var(--chat-surface-3); border-color: color-mix(in srgb, var(--chat-text) 18%, var(--chat-border)); }
+.alarm-btn--dismiss { margin-left: auto; background: var(--chat-surface-3); color: var(--chat-text-muted); }
+.alarm-btn--dismiss:hover { color: var(--chat-text); }
+
+.chat-topbar__bell-btn {
+  position: relative;
+}
+.chat-topbar__bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--status-danger, #d9534f);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .chat-topbar__pms-label {
   letter-spacing: 0.02em;
 }
@@ -2592,6 +2760,12 @@
 .chat-pms-panel--closing {
   animation: pmsPanelOut 0.26s cubic-bezier(0.4, 0, 0.2, 1) both;
   pointer-events: none;
+}
+
+/* Swapping one panel for the other: both are the same width, so skip the
+   width open/close animation and just swap content (no workspace jump). */
+.chat-pms-panel--noanim {
+  animation: none;
 }
 
 @media (max-width: 960px) {

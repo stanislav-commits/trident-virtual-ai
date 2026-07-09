@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   DocumentDocClass,
   DocumentListItem,
-  DocumentMetadataInput,
   DocumentParseStatus,
   ReparseDocumentInput,
 } from "../../api/documentsApi";
@@ -12,8 +11,6 @@ import {
   fetchDocumentFile,
   reparseDocument,
   syncDocumentStatus,
-  updateDocumentMetadata,
-  updateDocumentPriority,
 } from "../../api/documentsApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
@@ -21,17 +18,24 @@ import { useDocumentsAdminData } from "../../hooks/admin/useDocumentsAdminData";
 import { Toast } from "../layout/Toast";
 import { DocumentsIcon, UploadIcon } from "./AdminPanelIcons";
 import { DocumentDeleteDialog } from "./documents/DocumentDeleteDialog";
-import { DocumentMetadataDialog } from "./documents/DocumentMetadataDialog";
 import { DocumentReparseDialog } from "./documents/DocumentReparseDialog";
 import { DocumentUploadModal } from "./documents/DocumentUploadModal";
 import { DocumentsTable } from "./documents/DocumentsTable";
 import { getDocumentReparseAction } from "./documents/documentReparseActions";
-import {
-  DOCUMENT_CLASS_OPTIONS,
-  DOCUMENT_PARSE_STATUS_OPTIONS,
-} from "./documents/documentOptions";
+import { DOCUMENT_CLASS_OPTIONS } from "./documents/documentOptions";
 
 const ALL_FILTER = "all";
+// Left-rail Knowledge Base sections (one per active docClass). The selected
+// section drives the docClass filter applied to the list on the right.
+const KB_SECTIONS = DOCUMENT_CLASS_OPTIONS;
+const DEFAULT_KB_SECTION = KB_SECTIONS[0].value;
+// Grouped rail: the SMS Manual holds the vessel's controlled procedures and
+// forms/checklists (Shaun's structure); equipment manuals + drawings sit under
+// Technical. Membership is by docClass value; order follows DOCUMENT_CLASS_OPTIONS.
+const KB_SECTION_GROUPS: Array<{ label: string; values: string[] }> = [
+  { label: "SMS Manual", values: ["procedure", "form"] },
+  { label: "Technical", values: ["manual", "plan"] },
+];
 const DOCUMENT_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = DOCUMENT_PAGE_SIZE_OPTIONS[0];
 const ACTIVE_PARSE_STATUSES: DocumentParseStatus[] = [
@@ -43,8 +47,6 @@ const ACTIVE_PARSE_STATUSES: DocumentParseStatus[] = [
 const STATUS_SYNC_INTERVAL_MS = 15000;
 const MAX_STATUS_SYNC_PER_TICK = 5;
 const EMPTY_DOCUMENTS: DocumentListItem[] = [];
-const SOURCE_PRIORITY_ERROR =
-  "Source priority must be a whole number from 0 to 1000.";
 
 interface DocumentFeedback {
   message: string;
@@ -84,9 +86,10 @@ export function DocumentsSection() {
   // follows it, no local ship selector. Falls back to the first available
   // ship, same as Asset Register / Metrics.
   const shipFilter = selectedShipId ?? availableShips[0]?.id ?? ALL_FILTER;
-  const [docClassFilter, setDocClassFilter] = useState<
-    DocumentDocClass | typeof ALL_FILTER
-  >(ALL_FILTER);
+  // Active KB section = the docClass the list is filtered to. Defaults to the
+  // first section (Procedures). The left rail replaces the old class dropdown.
+  const [activeSection, setActiveSection] =
+    useState<DocumentDocClass>(DEFAULT_KB_SECTION);
   const [parseStatusFilter, setParseStatusFilter] = useState<
     DocumentParseStatus | typeof ALL_FILTER
   >(ALL_FILTER);
@@ -105,15 +108,6 @@ export function DocumentsSection() {
   const [reparsingDocumentIds, setReparsingDocumentIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [updatingMetadataDocumentIds, setUpdatingMetadataDocumentIds] = useState<
-    Set<string>
-  >(() => new Set());
-  const [updatingPriorityDocumentIds, setUpdatingPriorityDocumentIds] = useState<
-    Set<string>
-  >(() => new Set());
-  const [metadataTarget, setMetadataTarget] = useState<DocumentListItem | null>(
-    null,
-  );
   const [reparseTarget, setReparseTarget] = useState<DocumentListItem | null>(
     null,
   );
@@ -121,14 +115,10 @@ export function DocumentsSection() {
   const [feedback, setFeedback] = useState<DocumentFeedback | null>(null);
   const statusSyncCursorRef = useRef(0);
 
-  const shipsById = useMemo(
-    () => new Map(availableShips.map((ship) => [ship.id, ship])),
-    [availableShips],
-  );
 
   const documentsData = useDocumentsAdminData(token, {
     shipId: shipFilter === ALL_FILTER ? undefined : shipFilter,
-    docClass: docClassFilter === ALL_FILTER ? undefined : docClassFilter,
+    docClass: activeSection,
     parseStatus:
       parseStatusFilter === ALL_FILTER ? undefined : parseStatusFilter,
     name: nameSearch || undefined,
@@ -183,6 +173,12 @@ export function DocumentsSection() {
 
   const resetToFirstPage = () => setPage(1);
   const clearSelectedDocuments = () => setSelectedDocumentIds(new Set());
+
+  const handleSelectSection = (section: DocumentDocClass) => {
+    if (section === activeSection) return;
+    setActiveSection(section);
+    setPage(1);
+  };
 
   const handleUploaded = async () => {
     if (page !== 1) {
@@ -285,112 +281,6 @@ export function DocumentsSection() {
     }
 
     setReparseTarget(document);
-  };
-
-  const requestMetadataEdit = (document: DocumentListItem) => {
-    setMetadataTarget(document);
-  };
-
-  const handlePriorityValidationError = (message: string) => {
-    setFeedback({ type: "error", message });
-  };
-
-  const handlePriorityChange = async (
-    documentId: string,
-    nextPriority: number,
-  ) => {
-    if (!token) {
-      setFeedback({ type: "error", message: "Authentication token is missing." });
-      return;
-    }
-
-    if (
-      !Number.isInteger(nextPriority) ||
-      nextPriority < 0 ||
-      nextPriority > 1000
-    ) {
-      setFeedback({ type: "error", message: SOURCE_PRIORITY_ERROR });
-      return;
-    }
-
-    const targetDocument = documents.find((document) => document.id === documentId);
-    if (!targetDocument || nextPriority === targetDocument.sourcePriority) {
-      return;
-    }
-
-    if (updatingPriorityDocumentIds.has(documentId)) {
-      return;
-    }
-
-    setUpdatingPriorityDocumentIds((currentIds) => {
-      const nextIds = new Set(currentIds);
-      nextIds.add(documentId);
-      return nextIds;
-    });
-    setFeedback(null);
-
-    try {
-      await updateDocumentPriority(token, documentId, nextPriority);
-      setFeedback({ type: "success", message: "Priority updated." });
-      await refreshDocuments();
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to update document priority.",
-      });
-    } finally {
-      setUpdatingPriorityDocumentIds((currentIds) => {
-        const nextIds = new Set(currentIds);
-        nextIds.delete(documentId);
-        return nextIds;
-      });
-    }
-  };
-
-  const handleCancelMetadataEdit = () => {
-    if (!metadataTarget || updatingMetadataDocumentIds.has(metadataTarget.id)) {
-      return;
-    }
-
-    setMetadataTarget(null);
-  };
-
-  const handleConfirmMetadataEdit = async (input: DocumentMetadataInput) => {
-    if (!token || !metadataTarget) {
-      return;
-    }
-
-    const targetDocument = metadataTarget;
-    setUpdatingMetadataDocumentIds((currentIds) => {
-      const nextIds = new Set(currentIds);
-      nextIds.add(targetDocument.id);
-      return nextIds;
-    });
-    setFeedback(null);
-
-    try {
-      await updateDocumentMetadata(token, targetDocument.id, input);
-      setFeedback({ type: "success", message: "Metadata updated." });
-      setMetadataTarget(null);
-      await refreshDocuments();
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to update document metadata.",
-      });
-    } finally {
-      setUpdatingMetadataDocumentIds((currentIds) => {
-        const nextIds = new Set(currentIds);
-        nextIds.delete(targetDocument.id);
-        return nextIds;
-      });
-    }
   };
 
   const handleCancelReparse = () => {
@@ -529,7 +419,7 @@ export function DocumentsSection() {
 
   useEffect(() => {
     clearSelectedDocuments();
-  }, [shipFilter, docClassFilter, parseStatusFilter, nameSearch, page, pageSize]);
+  }, [shipFilter, activeSection, parseStatusFilter, nameSearch, page, pageSize]);
 
   useEffect(() => {
     const trimmed = nameSearchInput.trim();
@@ -550,9 +440,10 @@ export function DocumentsSection() {
     <section className="admin-panel__section">
       <div className="admin-panel__section-head">
         <div className="admin-panel__section-intro">
-          <h2 className="admin-panel__section-title">Documents</h2>
+          <h2 className="admin-panel__section-title">Knowledge Base</h2>
           <p className="admin-panel__section-subtitle">
-            Manage ship-scoped documents prepared for RAGFlow ingestion.
+            Per-vessel knowledge: procedures, equipment manuals, forms and
+            vessel plans prepared for RAGFlow ingestion.
           </p>
         </div>
         <button
@@ -576,70 +467,48 @@ export function DocumentsSection() {
         </div>
       )}
 
-      <div className="admin-panel__form-card admin-panel__documents-filters">
-        <div className="admin-panel__form-row">
-          <div className="admin-panel__field">
-            <label className="admin-panel__field-label" htmlFor="documents-class">
-              Document class
-            </label>
-            <select
-              id="documents-class"
-              className="admin-panel__select"
-              value={docClassFilter}
-              onChange={(event) => {
-                setDocClassFilter(
-                  event.target.value as DocumentDocClass | typeof ALL_FILTER,
-                );
-                resetToFirstPage();
-              }}
-            >
-              <option value={ALL_FILTER}>All classes</option>
-              {DOCUMENT_CLASS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+      <div className="kb__layout">
+        <nav className="kb__rail" aria-label="Knowledge Base sections">
+          {KB_SECTION_GROUPS.map((group) => {
+            const sections = KB_SECTIONS.filter((section) =>
+              group.values.includes(section.value),
+            );
+            if (!sections.length) return null;
+            return (
+              <div className="kb__rail-group" key={group.label}>
+                <div className="kb__rail-group-label">{group.label}</div>
+                {sections.map((section) => {
+                  const isActive = section.value === activeSection;
+                  return (
+                    <button
+                      key={section.value}
+                      type="button"
+                      className={`kb__rail-item${
+                        isActive ? " kb__rail-item--active" : ""
+                      }`}
+                      aria-current={isActive ? "true" : undefined}
+                      onClick={() => handleSelectSection(section.value)}
+                    >
+                      <span className="kb__rail-name">{section.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </nav>
 
-          <div className="admin-panel__field">
-            <label className="admin-panel__field-label" htmlFor="documents-status">
-              Parse status
-            </label>
-            <select
-              id="documents-status"
-              className="admin-panel__select"
-              value={parseStatusFilter}
-              onChange={(event) => {
-                setParseStatusFilter(
-                  event.target.value as DocumentParseStatus | typeof ALL_FILTER,
-                );
-                resetToFirstPage();
-              }}
-            >
-              <option value={ALL_FILTER}>All statuses</option>
-              {DOCUMENT_PARSE_STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="admin-panel__field">
-            <label className="admin-panel__field-label" htmlFor="documents-name">
-              Name
-            </label>
-            <input
-              id="documents-name"
-              type="search"
-              className="admin-panel__input"
-              placeholder="Search by document name"
-              value={nameSearchInput}
-              onChange={(event) => setNameSearchInput(event.target.value)}
-            />
-          </div>
-        </div>
+        <div className="kb__main">
+      <div className="admin-panel__documents-search">
+        <input
+          id="documents-name"
+          type="search"
+          className="admin-panel__input admin-panel__documents-search-input"
+          placeholder="Search by document name"
+          value={nameSearchInput}
+          onChange={(event) => setNameSearchInput(event.target.value)}
+          aria-label="Search documents by name"
+        />
       </div>
 
       {documentsData.loading && !documentsPage ? (
@@ -739,27 +608,26 @@ export function DocumentsSection() {
           <DocumentsTable
             token={token}
             documents={documents}
-            shipsById={shipsById}
             selectedDocumentIds={selectedDocumentIds}
             allPageDocumentsSelected={allPageDocumentsSelected}
+            parseStatusFilter={parseStatusFilter}
+            onParseStatusFilterChange={(value) => {
+              setParseStatusFilter(value);
+              resetToFirstPage();
+            }}
             onTogglePageSelection={handleTogglePageSelection}
             onToggleDocumentSelection={handleToggleDocumentSelection}
             onViewDocument={openDocumentInNewTab}
-            onRequestMetadataEdit={requestMetadataEdit}
             onRequestDelete={requestSingleDelete}
             onRequestReparse={requestReparse}
-            onPriorityChange={(documentId, nextPriority) =>
-              void handlePriorityChange(documentId, nextPriority)
-            }
-            onPriorityValidationError={handlePriorityValidationError}
             openingDocumentId={openingDocumentId}
             deletingDocumentIds={deletingDocumentIds}
             reparsingDocumentIds={reparsingDocumentIds}
-            updatingMetadataDocumentIds={updatingMetadataDocumentIds}
-            updatingPriorityDocumentIds={updatingPriorityDocumentIds}
           />
         </div>
       )}
+        </div>
+      </div>
 
       {showUploadModal && (
         <DocumentUploadModal
@@ -777,16 +645,6 @@ export function DocumentsSection() {
           deleting={deletingDocumentIds.size > 0}
           onCancel={() => setDeleteTargets([])}
           onConfirm={() => void handleConfirmDelete()}
-        />
-      )}
-
-      {metadataTarget && (
-        <DocumentMetadataDialog
-          key={metadataTarget.id}
-          document={metadataTarget}
-          saving={updatingMetadataDocumentIds.has(metadataTarget.id)}
-          onCancel={handleCancelMetadataEdit}
-          onConfirm={(input) => void handleConfirmMetadataEdit(input)}
         />
       )}
 

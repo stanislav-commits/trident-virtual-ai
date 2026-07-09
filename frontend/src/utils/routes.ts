@@ -1,4 +1,4 @@
-export type AdminSectionRoute = "users" | "ships" | "assets" | "documents" | "metrics" | "compliance" | "maintenance" | "crew" | "inventory";
+export type AdminSectionRoute = "users" | "ships" | "assets" | "documents" | "metrics" | "compliance" | "maintenance" | "crew" | "inventory" | "alerts" | "publications";
 
 export const appRoutes = {
   root: "/",
@@ -24,6 +24,8 @@ const adminSections = new Set<AdminSectionRoute>([
   "maintenance",
   "crew",
   "inventory",
+  "alerts",
+  "publications",
 ]);
 
 export function isAdminSectionRoute(

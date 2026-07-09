@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
 import { appRoutes } from "../../utils/routes";
+import { listAlerts } from "../../api/alertsApi";
+import { canRead } from "../../api/accessControlApi";
+import { useMyAccess } from "../../hooks/useMyAccess";
 import { UserAvatar } from "./UserAvatar";
 import { getUserAvatarLabel } from "./userAvatarUtils";
 
@@ -11,17 +14,41 @@ function formatActiveVesselName(ship: { name: string }): string {
 }
 
 export function TopBar() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
+  const myAccess = useMyAccess();
   const {
     availableShips,
     selectedShipId,
     selectedShip,
+    sessionShipId,
     isLoading,
     setSelectedShipId,
   } = useAdminShip();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [alertCount, setAlertCount] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  const loadAlertCount = useCallback(() => {
+    if (!token || !sessionShipId) {
+      setAlertCount(0);
+      return;
+    }
+    listAlerts(token, sessionShipId, "firing")
+      .then((a) => setAlertCount(a.length))
+      .catch(() => {});
+  }, [token, sessionShipId]);
+
+  useEffect(() => {
+    loadAlertCount();
+    const id = setInterval(loadAlertCount, 30000);
+    const onChange = () => loadAlertCount();
+    window.addEventListener("trident:alerts-changed", onChange);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("trident:alerts-changed", onChange);
+    };
+  }, [loadAlertCount]);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -85,6 +112,38 @@ export function TopBar() {
         )}
       </div>
       <div className="chat-topbar__right">
+        {canRead(myAccess, "alerts") && (
+        <button
+          type="button"
+          className="chat-topbar__pms-btn chat-topbar__bell-btn"
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent("trident:toggle-alerts"))
+          }
+          aria-label="Toggle alerts panel"
+          title="Alerts"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          {alertCount > 0 && (
+            <span className="chat-topbar__bell-badge">
+              {alertCount > 9 ? "9+" : alertCount}
+            </span>
+          )}
+        </button>
+        )}
+        {canRead(myAccess, "pms_tasks") && (
         <button
           type="button"
           className="chat-topbar__pms-btn"
@@ -110,6 +169,7 @@ export function TopBar() {
             <path d="M9 16l2 2 4-4" />
           </svg>
         </button>
+        )}
         {user && user.role !== "admin" && (
           <UserAvatar
             user={user}

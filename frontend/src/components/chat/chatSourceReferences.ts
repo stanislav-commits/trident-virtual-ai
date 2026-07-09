@@ -39,6 +39,13 @@ export function isMetricSourceReference(
     return true;
   }
 
+  // Metric references are emitted with id "metric-0", "metric-1", … — keep
+  // them out of Sources even if the type tag is missing (older messages).
+  const id = normalizedField(citation, "id");
+  if (/^metric[-:]/.test(id)) {
+    return true;
+  }
+
   if (
     sourceType === "document" ||
     sourceType === "web" ||

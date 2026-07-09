@@ -1,17 +1,14 @@
-import { useRef, useState } from "react";
 import {
   fetchExtractedMarkdown,
   rerunExtraction,
 } from "../../../api/documentsApi";
 import type {
-  DocumentDocClass,
   DocumentListItem,
   DocumentParseStatus,
 } from "../../../api/documentsApi";
-import type { ShipSummaryItem } from "../../../api/shipsApi";
 import { DocumentRowActions } from "./DocumentRowActions";
 import {
-  getDocumentClassLabel,
+  DOCUMENT_PARSE_STATUS_OPTIONS,
   getDocumentParseProfileLabel,
   getDocumentParseStatusLabel,
   getDocumentRoleLabel,
@@ -20,25 +17,18 @@ import {
 interface DocumentsTableProps {
   token: string | null;
   documents: DocumentListItem[];
-  shipsById: Map<
-    string,
-    Pick<ShipSummaryItem, "id" | "name" | "organizationName">
-  >;
   selectedDocumentIds: Set<string>;
   allPageDocumentsSelected: boolean;
+  parseStatusFilter: DocumentParseStatus | "all";
+  onParseStatusFilterChange: (value: DocumentParseStatus | "all") => void;
   onTogglePageSelection: () => void;
   onToggleDocumentSelection: (documentId: string) => void;
   onViewDocument: (document: DocumentListItem) => void;
-  onRequestMetadataEdit: (document: DocumentListItem) => void;
   onRequestDelete: (document: DocumentListItem) => void;
   onRequestReparse: (document: DocumentListItem) => void;
-  onPriorityChange: (documentId: string, nextPriority: number) => void;
-  onPriorityValidationError: (message: string) => void;
   openingDocumentId: string | null;
   deletingDocumentIds: Set<string>;
   reparsingDocumentIds: Set<string>;
-  updatingMetadataDocumentIds: Set<string>;
-  updatingPriorityDocumentIds: Set<string>;
 }
 
 const fullDateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -64,8 +54,6 @@ const STATUS_BADGE_CLASS: Record<DocumentParseStatus, string> = {
   failed: "admin-panel__badge--manual-fail",
   reparse_required: "admin-panel__badge--manual-cancel",
 };
-const SOURCE_PRIORITY_ERROR =
-  "Source priority must be a whole number from 0 to 1000.";
 
 function formatDateTime(value: string): string {
   const parsedDate = new Date(value);
@@ -81,35 +69,11 @@ function formatCompactDate(value: string): string {
     : compactDateFormatter.format(parsedDate);
 }
 
-function getShipDisplay(
-  shipId: string,
-  shipsById: DocumentsTableProps["shipsById"],
-): { name: string; organizationName?: string } {
-  const ship = shipsById.get(shipId);
-
-  if (ship) {
-    return {
-      name: ship.name,
-      organizationName: ship.organizationName ?? undefined,
-    };
-  }
-
-  return { name: shipId.slice(0, 8) };
-}
-
 function getCompactParseProfileLabel(document: DocumentListItem): string {
   return getDocumentParseProfileLabel(document.parseProfile).replace(
     /\s+profile$/i,
     "",
   );
-}
-
-function getClassChipLabel(docClass: DocumentDocClass): string {
-  if (docClass === "historical_procedure") {
-    return "Maintenance";
-  }
-
-  return getDocumentClassLabel(docClass);
 }
 
 function formatChunkCount(chunkCount: number | null): string | null {
@@ -290,115 +254,21 @@ function DocumentStatusCell({ document, token }: DocumentStatusCellProps & { tok
   );
 }
 
-interface DocumentPriorityControlProps {
-  document: DocumentListItem;
-  disabled: boolean;
-  saving: boolean;
-  onPriorityChange: (documentId: string, nextPriority: number) => void;
-  onPriorityValidationError: (message: string) => void;
-}
-
-function DocumentPriorityControl({
-  document,
-  disabled,
-  saving,
-  onPriorityChange,
-  onPriorityValidationError,
-}: DocumentPriorityControlProps) {
-  const currentPriority = document.sourcePriority ?? 100;
-  const [draftValue, setDraftValue] = useState(String(currentPriority));
-  const skipNextBlurCommitRef = useRef(false);
-
-  const resetDraftValue = () => {
-    setDraftValue(String(currentPriority));
-  };
-
-  const commitValue = (value: string) => {
-    if (skipNextBlurCommitRef.current) {
-      skipNextBlurCommitRef.current = false;
-      resetDraftValue();
-      return;
-    }
-
-    const normalized = value.trim();
-    const parsedPriority = Number(normalized);
-
-    if (
-      !normalized ||
-      !Number.isInteger(parsedPriority) ||
-      parsedPriority < 0 ||
-      parsedPriority > 1000
-    ) {
-      onPriorityValidationError(SOURCE_PRIORITY_ERROR);
-      resetDraftValue();
-      return;
-    }
-
-    if (parsedPriority === currentPriority) {
-      resetDraftValue();
-      return;
-    }
-
-    onPriorityChange(document.id, parsedPriority);
-    resetDraftValue();
-  };
-
-  return (
-    <span className="admin-panel__document-priority-control">
-      <label
-        className="admin-panel__document-priority-field"
-        title="Lower number means higher priority"
-      >
-        <span className="admin-panel__visually-hidden">Priority</span>
-        <input
-          className="admin-panel__document-priority-input"
-          type="number"
-          min="0"
-          max="1000"
-          step="1"
-          value={draftValue}
-          disabled={disabled || saving}
-          aria-label={`Source priority for ${document.originalFileName}`}
-          onChange={(event) => setDraftValue(event.target.value)}
-          onBlur={(event) => commitValue(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              event.currentTarget.blur();
-            }
-
-            if (event.key === "Escape") {
-              event.preventDefault();
-              skipNextBlurCommitRef.current = true;
-              resetDraftValue();
-              event.currentTarget.blur();
-            }
-          }}
-        />
-      </label>
-    </span>
-  );
-}
-
 export function DocumentsTable({
   token,
   documents,
-  shipsById,
   selectedDocumentIds,
   allPageDocumentsSelected,
+  parseStatusFilter,
+  onParseStatusFilterChange,
   onTogglePageSelection,
   onToggleDocumentSelection,
   onViewDocument,
-  onRequestMetadataEdit,
   onRequestDelete,
   onRequestReparse,
-  onPriorityChange,
-  onPriorityValidationError,
   openingDocumentId,
   deletingDocumentIds,
   reparsingDocumentIds,
-  updatingMetadataDocumentIds,
-  updatingPriorityDocumentIds,
 }: DocumentsTableProps) {
   return (
     <div className="admin-panel__table-wrap admin-panel__documents-table-wrap">
@@ -406,9 +276,6 @@ export function DocumentsTable({
         <colgroup>
           <col className="admin-panel__documents-col--select" />
           <col className="admin-panel__documents-col--file" />
-          <col className="admin-panel__documents-col--ship" />
-          <col className="admin-panel__documents-col--class" />
-          <col className="admin-panel__documents-col--priority" />
           <col className="admin-panel__documents-col--status" />
           <col className="admin-panel__documents-col--actions" />
         </colgroup>
@@ -424,10 +291,25 @@ export function DocumentsTable({
               />
             </th>
             <th className="admin-panel__th">File name</th>
-            <th className="admin-panel__th">Ship</th>
-            <th className="admin-panel__th">Class</th>
-            <th className="admin-panel__th">Priority</th>
-            <th className="admin-panel__th">Status</th>
+            <th className="admin-panel__th">
+              <select
+                className="admin-panel__th-filter"
+                value={parseStatusFilter}
+                onChange={(event) =>
+                  onParseStatusFilterChange(
+                    event.target.value as DocumentParseStatus | "all",
+                  )
+                }
+                aria-label="Filter by parse status"
+              >
+                <option value="all">Status</option>
+                {DOCUMENT_PARSE_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </th>
             <th className="admin-panel__th admin-panel__th--actions">
               <span className="admin-panel__visually-hidden">Actions</span>
             </th>
@@ -438,17 +320,12 @@ export function DocumentsTable({
             const isSelected = selectedDocumentIds.has(document.id);
             const isDeleting = deletingDocumentIds.has(document.id);
             const isReparsing = reparsingDocumentIds.has(document.id);
-            const isUpdatingMetadata = updatingMetadataDocumentIds.has(document.id);
-            const isUpdatingPriority = updatingPriorityDocumentIds.has(document.id);
             const canView = Boolean(
               document.ragflowDatasetId && document.ragflowDocumentId,
             );
             const fileTitle = document.mimeType
               ? `${document.originalFileName} - ${document.mimeType}`
               : document.originalFileName;
-            const shipDisplay = getShipDisplay(document.shipId, shipsById);
-            const documentClassLabel = getDocumentClassLabel(document.docClass);
-            const documentClassChipLabel = getClassChipLabel(document.docClass);
             const updatedAtLabel = formatCompactDate(document.updatedAt);
             const updatedAtTitle = formatDateTime(document.updatedAt);
             const fileMetaItems = [
@@ -535,18 +412,23 @@ export function DocumentsTable({
                       title={canView ? `Open ${fileTitle}` : fileTitle}
                     >
                       <span className="admin-panel__document-name-text">
-                        {document.originalFileName}
+                        {document.originalFileName.replace(/^\[UNLINKED\]\s*/i, "")}
                       </span>
                     </button>
+                    {!document.linkedAssets?.length && (
+                      <span
+                        className="admin-panel__doc-unlinked"
+                        title="Not linked to any asset yet — link it from an asset's Manuals tab"
+                      >
+                        Unlinked
+                      </span>
+                    )}
                     <div className="admin-panel__document-file-meta">
                       {fileMetaItems.map((item) => (
                         <span key={item.label} title={item.title}>
                           {item.label}
                         </span>
                       ))}
-                      <span className="admin-panel__document-mobile-class">
-                        {documentClassChipLabel}
-                      </span>
                     </div>
                     {metadataMetaItems.length > 0 && (
                       <div className="admin-panel__document-metadata-meta">
@@ -559,29 +441,6 @@ export function DocumentsTable({
                     )}
                   </div>
                 </td>
-                <td className="admin-panel__td admin-panel__td--document-ship">
-                  <span className="admin-panel__document-primary-text">
-                    {shipDisplay.name}
-                  </span>
-                </td>
-                <td className="admin-panel__td admin-panel__td--document-class">
-                  <span
-                    className="admin-panel__document-class-pill"
-                    title={documentClassLabel}
-                  >
-                    {documentClassChipLabel}
-                  </span>
-                </td>
-                <td className="admin-panel__td admin-panel__td--document-priority">
-                  <DocumentPriorityControl
-                    key={`${document.id}:${document.sourcePriority}`}
-                    document={document}
-                    disabled={isDeleting || isReparsing}
-                    saving={isUpdatingPriority}
-                    onPriorityChange={onPriorityChange}
-                    onPriorityValidationError={onPriorityValidationError}
-                  />
-                </td>
                 <td className="admin-panel__td admin-panel__td--status">
                   <DocumentStatusCell document={document} token={token} />
                 </td>
@@ -590,8 +449,6 @@ export function DocumentsTable({
                     document={document}
                     isDeleting={isDeleting}
                     isReparsing={isReparsing}
-                    isUpdatingMetadata={isUpdatingMetadata}
-                    onRequestMetadataEdit={onRequestMetadataEdit}
                     onRequestDelete={onRequestDelete}
                     onRequestReparse={onRequestReparse}
                   />

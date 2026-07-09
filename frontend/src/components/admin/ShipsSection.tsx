@@ -1,25 +1,11 @@
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  createShip,
-  deleteShip,
-  updateShip,
-  type ShipSummaryItem,
-} from "../../api/shipsApi";
-import {
-  getUsers,
-  updateUserShip,
-  type UserListItem,
-} from "../../api/usersApi";
+import { useCallback, useEffect, useState } from "react";
+import { deleteShip, type ShipSummaryItem } from "../../api/shipsApi";
+import { getUsers, type UserListItem } from "../../api/usersApi";
 import { useAdminShip } from "../../context/AdminShipContext";
-import { useShipForm } from "../../hooks/admin/useShipForm";
-import { PlusIcon, XIcon } from "./AdminPanelIcons";
-import { ShipFormModal } from "./ships/ShipFormModal";
+import { XIcon } from "./AdminPanelIcons";
 import { ShipsTable } from "./ships/ShipsTable";
-import {
-  normalizeOptionalText,
-  normalizeOptionalYear,
-} from "./ships/shipForm";
+import { AddVesselModal } from "./AddVesselModal";
 
 interface ShipsSectionProps {
   token: string | null;
@@ -32,315 +18,90 @@ interface ShipsSectionProps {
   onError: (error: string) => void;
 }
 
+/**
+ * Ships registry: list all vessels, edit (full profile + crew via the shared
+ * AddVesselModal), and delete. Vessel CREATION lives in the vessel switcher
+ * (the rich "Add vessel" workspace) — not here.
+ */
 export function ShipsSection({
   token,
   ships,
-  organizations,
-  organizationsLoading,
   loading,
   error,
   onLoadShips,
   onError,
 }: ShipsSectionProps) {
-  const [submittingShip, setSubmittingShip] = useState(false);
+  const { refreshShips: refreshAdminShips } = useAdminShip();
+  const [editingShip, setEditingShip] = useState<ShipSummaryItem | null>(null);
   const [deletingShipId, setDeletingShipId] = useState<string | null>(null);
   const [shipPendingDelete, setShipPendingDelete] =
     useState<ShipSummaryItem | null>(null);
   const [crewUsers, setCrewUsers] = useState<UserListItem[]>([]);
-  const [crewUsersLoading, setCrewUsersLoading] = useState(false);
-  const [selectedCrewUserIds, setSelectedCrewUserIds] = useState<string[]>([]);
-  const [movedCrewTargets, setMovedCrewTargets] = useState<Record<string, string>>(
-    {},
-  );
-  const { refreshShips: refreshAdminShips } = useAdminShip();
-  const {
-    showFormModal,
-    editingShipId,
-    editingShip,
-    shipForm,
-    setShipForm,
-    openCreateModal: openCreateState,
-    openEditModal: openEditState,
-    closeFormModal: closeFormState,
-    resetShipForm,
-  } = useShipForm(ships);
 
-  const availableOrganizations = useMemo(
-    () =>
-      [
-        ...new Set(
-          [...organizations, shipForm.organizationName]
-            .map((organization) => organization.trim())
-            .filter(Boolean),
-        ),
-      ].sort((left, right) => left.localeCompare(right)),
-    [organizations, shipForm.organizationName],
-  );
-
-  const loadCrewUsers = useCallback(async (): Promise<UserListItem[]> => {
+  const loadCrewUsers = useCallback(async () => {
     if (!token) {
       setCrewUsers([]);
-      setCrewUsersLoading(false);
-      return [];
+      return;
     }
-
-    setCrewUsersLoading(true);
-
     try {
       const users = await getUsers(token);
-      const regularUsers = users.filter((user) => user.role === "user");
-      setCrewUsers(regularUsers);
-      return regularUsers;
-    } catch (usersError) {
-      onError(
-        usersError instanceof Error
-          ? usersError.message
-          : "Failed to load crew users",
-      );
+      setCrewUsers(users.filter((u) => u.role === "user"));
+    } catch {
       setCrewUsers([]);
-      return [];
-    } finally {
-      setCrewUsersLoading(false);
     }
-  }, [onError, token]);
+  }, [token]);
 
   useEffect(() => {
     void loadCrewUsers();
   }, [loadCrewUsers]);
 
-  const assignedUsersForEditingShip = useMemo(() => {
-    if (!editingShipId) {
-      return [];
-    }
-
-    return crewUsers.filter((user) => user.shipId === editingShipId);
-  }, [crewUsers, editingShipId]);
-
-  const removedAssignedUsers = useMemo(() => {
-    const selectedSet = new Set(selectedCrewUserIds);
-
-    return assignedUsersForEditingShip.filter((user) => !selectedSet.has(user.id));
-  }, [assignedUsersForEditingShip, selectedCrewUserIds]);
-
-  const hasUnresolvedCrewMoves = removedAssignedUsers.some(
-    (user) => !movedCrewTargets[user.id],
-  );
-
-  const canSubmitShip =
-    Boolean(token) &&
-    !submittingShip &&
-    !organizationsLoading &&
-    availableOrganizations.length > 0 &&
-    !hasUnresolvedCrewMoves;
-
-  const syncAfterShipMutation = useCallback(async () => {
+  const refreshAfterMutation = useCallback(async () => {
     await Promise.all([onLoadShips(), refreshAdminShips(), loadCrewUsers()]);
   }, [loadCrewUsers, onLoadShips, refreshAdminShips]);
 
-  const openCreateModal = async () => {
-    onError("");
-    await loadCrewUsers();
-    setSelectedCrewUserIds([]);
-    setMovedCrewTargets({});
-    openCreateState();
-  };
-
-  const openEditModal = async (ship: ShipSummaryItem) => {
-    onError("");
-    const nextCrewUsers = await loadCrewUsers();
-    setSelectedCrewUserIds(
-      nextCrewUsers
-        .filter((user) => user.shipId === ship.id)
-        .map((user) => user.id),
-    );
-    setMovedCrewTargets({});
-    openEditState(ship);
-  };
-
-  const closeFormModal = () => {
-    setSelectedCrewUserIds([]);
-    setMovedCrewTargets({});
-    closeFormState(submittingShip);
-  };
-
-  const closeDeleteModal = () => {
-    if (deletingShipId) {
-      return;
-    }
-
-    setShipPendingDelete(null);
-  };
-
-  const handleShipSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!token || !canSubmitShip) {
-      return;
-    }
-
-    const name = shipForm.name.trim();
-    const organizationName = shipForm.organizationName.trim();
-
-    if (!name || !organizationName) {
-      return;
-    }
-
-    setSubmittingShip(true);
-    onError("");
-
-    try {
-      const payload = {
-        name,
-        organizationName,
-        imoNumber: normalizeOptionalText(shipForm.imoNumber),
-        buildYear: normalizeOptionalYear(shipForm.buildYear),
-      };
-
-      if (editingShipId) {
-        await updateShip(editingShipId, payload, token);
-      } else {
-        const createdShip = await createShip(payload, token);
-        const reassignmentTasks = selectedCrewUserIds.map((userId) =>
-          updateUserShip(userId, createdShip.id, token),
-        );
-
-        if (reassignmentTasks.length > 0) {
-          await Promise.all(reassignmentTasks);
-        }
-
-        resetShipForm();
-        setSelectedCrewUserIds([]);
-        setMovedCrewTargets({});
-        await syncAfterShipMutation();
-        return;
-      }
-
-      const reassignmentTasks: Promise<unknown>[] = [];
-
-      for (const userId of selectedCrewUserIds) {
-        const user = crewUsers.find((entry) => entry.id === userId);
-
-        if (!user || user.shipId === editingShipId) {
-          continue;
-        }
-
-        reassignmentTasks.push(updateUserShip(userId, editingShipId, token));
-      }
-
-      for (const user of removedAssignedUsers) {
-        const targetShipId = movedCrewTargets[user.id];
-
-        if (!targetShipId) {
-          continue;
-        }
-
-        reassignmentTasks.push(updateUserShip(user.id, targetShipId, token));
-      }
-
-      if (reassignmentTasks.length > 0) {
-        await Promise.all(reassignmentTasks);
-      }
-
-      resetShipForm();
-      setSelectedCrewUserIds([]);
-      setMovedCrewTargets({});
-      await syncAfterShipMutation();
-    } catch (shipError) {
-      onError(
-        shipError instanceof Error
-          ? shipError.message
-          : editingShipId
-            ? "Failed to update ship"
-            : "Failed to create ship",
-      );
-    } finally {
-      setSubmittingShip(false);
-    }
-  };
-
   const handleDeleteRequest = (ship: ShipSummaryItem) => {
-    if (submittingShip || deletingShipId) {
-      return;
-    }
-
+    if (deletingShipId) return;
     onError("");
     setShipPendingDelete(ship);
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!token || !shipPendingDelete) {
-      return;
-    }
+  const closeDeleteModal = () => {
+    if (deletingShipId) return;
+    setShipPendingDelete(null);
+  };
 
+  const handleDeleteConfirm = async () => {
+    if (!token || !shipPendingDelete) return;
     setDeletingShipId(shipPendingDelete.id);
     onError("");
-
     try {
       await deleteShip(shipPendingDelete.id, token);
       setShipPendingDelete(null);
-      await syncAfterShipMutation();
+      await refreshAfterMutation();
     } catch (deleteError) {
       onError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Failed to delete ship",
+        deleteError instanceof Error ? deleteError.message : "Failed to delete ship",
       );
     } finally {
       setDeletingShipId(null);
     }
   };
 
-  const toggleCrewUser = (userId: string) => {
-    setSelectedCrewUserIds((current) => {
-      const exists = current.includes(userId);
-
-      if (exists) {
-        return current.filter((id) => id !== userId);
-      }
-
-      return [...current, userId];
-    });
-
-    setMovedCrewTargets((current) => {
-      if (!(userId in current)) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[userId];
-      return next;
-    });
-  };
-
-  const setMovedCrewTarget = (userId: string, shipId: string) => {
-    setMovedCrewTargets((current) => ({
-      ...current,
-      [userId]: shipId,
-    }));
-  };
-
   const pendingDeleteAssignedUsersCount = shipPendingDelete
-    ? crewUsers.filter((user) => user.shipId === shipPendingDelete.id).length
+    ? crewUsers.filter((u) => u.shipId === shipPendingDelete.id).length
     : 0;
 
   return (
     <>
-      <section className="admin-panel__section">
+      <section className="admin-panel__section ships-section">
         <div className="admin-panel__section-head">
           <div>
             <h2 className="admin-panel__section-title">Ships</h2>
             <p className="admin-panel__section-subtitle">
-              Create the ship registry with the minimum data we need up front.
-              Organization options are loaded from telemetry.
+              All vessels in the registry — general information and editing. To
+              add a new vessel, use “Add vessel” in the vessel switcher.
             </p>
           </div>
-          <button
-            type="button"
-            className="admin-panel__btn admin-panel__btn--primary"
-            onClick={() => void openCreateModal()}
-          >
-            <PlusIcon /> Add ship
-          </button>
         </div>
 
         {error && (
@@ -352,32 +113,21 @@ export function ShipsSection({
         <ShipsTable
           ships={ships}
           loading={loading}
-          onEdit={(ship) => void openEditModal(ship)}
+          onEdit={(ship) => setEditingShip(ship)}
           onDelete={handleDeleteRequest}
           deletingShipId={deletingShipId}
         />
       </section>
 
-      <ShipFormModal
-        canSubmit={canSubmitShip}
-        editingShip={editingShip}
-        form={shipForm}
-        isOpen={showFormModal}
-        organizations={availableOrganizations}
-        organizationsLoading={organizationsLoading}
-        crewUsers={crewUsers}
-        crewUsersLoading={crewUsersLoading}
-        selectedCrewUserIds={selectedCrewUserIds}
-        movedCrewTargets={movedCrewTargets}
-        currentAssignedUsers={assignedUsersForEditingShip}
-        shipOptions={ships.map((ship) => ({ id: ship.id, name: ship.name }))}
-        submitting={submittingShip}
-        onClose={closeFormModal}
-        onFormChange={setShipForm}
-        onToggleCrewUser={toggleCrewUser}
-        onMovedCrewTargetChange={setMovedCrewTarget}
-        onSubmit={handleShipSubmit}
-      />
+      {editingShip && (
+        <AddVesselModal
+          editShip={editingShip}
+          onClose={() => {
+            setEditingShip(null);
+            void refreshAfterMutation();
+          }}
+        />
+      )}
 
       {shipPendingDelete &&
         createPortal(

@@ -16,6 +16,7 @@ export type ShipSummaryItem = {
   homePort: string | null;
   fleetManagerEmail: string | null;
   operationType: string | null;
+  metricAnalysisHint: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -35,6 +36,7 @@ export type CreateShipInput = {
   homePort?: string | null;
   fleetManagerEmail?: string | null;
   operationType?: string | null;
+  metricAnalysisHint?: string | null;
 };
 
 export type UpdateShipInput = {
@@ -52,6 +54,7 @@ export type UpdateShipInput = {
   homePort?: string | null;
   fleetManagerEmail?: string | null;
   operationType?: string | null;
+  metricAnalysisHint?: string | null;
 };
 
 export async function getShips(token: string): Promise<ShipSummaryItem[]> {

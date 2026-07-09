@@ -317,25 +317,6 @@ export function InventorySection({ token }: InventorySectionProps) {
     });
   }, [items, search, catFilter, locFilter, mfrFilter, supFilter, assetFilter, taskFilter]);
 
-  const filtersActive =
-    catFilter !== "all" ||
-    locFilter !== "all" ||
-    mfrFilter !== "all" ||
-    supFilter !== "all" ||
-    assetFilter !== "all" ||
-    taskFilter !== "all" ||
-    search.trim() !== "";
-
-  const clearFilters = () => {
-    setSearch("");
-    setCatFilter("all");
-    setLocFilter("all");
-    setMfrFilter("all");
-    setSupFilter("all");
-    setAssetFilter("all");
-    setTaskFilter("all");
-  };
-
   const allVisibleSelected =
     filtered.length > 0 && filtered.every((i) => selected.has(i.id));
   const toggleAll = () => {
@@ -478,90 +459,6 @@ export function InventorySection({ token }: InventorySectionProps) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select
-          className="pms__cat-filter"
-          value={catFilter}
-          onChange={(e) => setCatFilter(e.target.value)}
-        >
-          <option value="all">All categories</option>
-          {INVENTORY_CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="inv__filters">
-        <select
-          className="pms__cat-filter"
-          value={locFilter}
-          onChange={(e) => setLocFilter(e.target.value)}
-        >
-          <option value="all">All locations</option>
-          {distinct.locations.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <select
-          className="pms__cat-filter"
-          value={mfrFilter}
-          onChange={(e) => setMfrFilter(e.target.value)}
-        >
-          <option value="all">All manufacturers</option>
-          {distinct.manufacturers.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <select
-          className="pms__cat-filter"
-          value={supFilter}
-          onChange={(e) => setSupFilter(e.target.value)}
-        >
-          <option value="all">All suppliers</option>
-          {distinct.suppliers.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <select
-          className="pms__cat-filter"
-          value={assetFilter}
-          onChange={(e) => setAssetFilter(e.target.value)}
-        >
-          <option value="all">All assets</option>
-          {distinct.assets.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <select
-          className="pms__cat-filter"
-          value={taskFilter}
-          onChange={(e) => setTaskFilter(e.target.value)}
-        >
-          <option value="all">All tasks</option>
-          {distinct.tasks.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
-        {filtersActive && (
-          <button
-            type="button"
-            className="pms__btn inv__clear-filters"
-            onClick={clearFilters}
-          >
-            Clear filters
-          </button>
-        )}
       </div>
 
       {selected.size > 0 && (
@@ -600,13 +497,97 @@ export function InventorySection({ token }: InventorySectionProps) {
               </th>
               <th>Name</th>
               <th>Number</th>
-              <th>Cat.</th>
+              <th>
+                <select
+                  className="admin-panel__th-filter"
+                  value={catFilter}
+                  onChange={(e) => setCatFilter(e.target.value)}
+                  aria-label="Filter by category"
+                >
+                  <option value="all">Cat.</option>
+                  {INVENTORY_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </th>
               <th>Qty</th>
-              <th>Location</th>
-              <th>Manufacturer</th>
-              <th>Supplier</th>
-              <th>Asset</th>
-              <th>Task</th>
+              <th>
+                <select
+                  className="admin-panel__th-filter"
+                  value={locFilter}
+                  onChange={(e) => setLocFilter(e.target.value)}
+                  aria-label="Filter by location"
+                >
+                  <option value="all">Location</option>
+                  {distinct.locations.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </th>
+              <th>
+                <select
+                  className="admin-panel__th-filter"
+                  value={mfrFilter}
+                  onChange={(e) => setMfrFilter(e.target.value)}
+                  aria-label="Filter by manufacturer"
+                >
+                  <option value="all">Manufacturer</option>
+                  {distinct.manufacturers.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </th>
+              <th>
+                <select
+                  className="admin-panel__th-filter"
+                  value={supFilter}
+                  onChange={(e) => setSupFilter(e.target.value)}
+                  aria-label="Filter by supplier"
+                >
+                  <option value="all">Supplier</option>
+                  {distinct.suppliers.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </th>
+              <th>
+                <select
+                  className="admin-panel__th-filter"
+                  value={assetFilter}
+                  onChange={(e) => setAssetFilter(e.target.value)}
+                  aria-label="Filter by asset"
+                >
+                  <option value="all">Asset</option>
+                  {distinct.assets.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </th>
+              <th>
+                <select
+                  className="admin-panel__th-filter"
+                  value={taskFilter}
+                  onChange={(e) => setTaskFilter(e.target.value)}
+                  aria-label="Filter by task"
+                >
+                  <option value="all">Task</option>
+                  {distinct.tasks.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </th>
               <th></th>
             </tr>
           </thead>
@@ -685,7 +666,7 @@ export function InventorySection({ token }: InventorySectionProps) {
                 <td>
                   <button
                     type="button"
-                    className="admin-panel__icon-btn"
+                    className="inv__del-btn"
                     onClick={(e) => {
                       e.stopPropagation();
                       void remove(i);

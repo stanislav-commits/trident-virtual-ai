@@ -16,6 +16,8 @@ interface PmsSidePanelProps {
   token: string | null;
   shipId: string | null | undefined;
   closing?: boolean;
+  /** Suppress the width open/close animation (when swapped in for another panel). */
+  noAnim?: boolean;
 }
 
 // Maps onto the app design tokens so the panel matches the main screen.
@@ -124,7 +126,7 @@ function Ring({ ratio, color }: { ratio: number; color: string }) {
   );
 }
 
-export function PmsSidePanel({ token, shipId, closing }: PmsSidePanelProps) {
+export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelProps) {
   const [tasks, setTasks] = useState<PmsTaskDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -267,7 +269,7 @@ export function PmsSidePanel({ token, shipId, closing }: PmsSidePanelProps) {
 
   return (
     <aside
-      className={`chat-pms-panel${closing ? " chat-pms-panel--closing" : ""}`}
+      className={`chat-pms-panel${closing ? " chat-pms-panel--closing" : ""}${noAnim ? " chat-pms-panel--noanim" : ""}`}
       aria-label="Tasks"
       style={{ background: T.bg, color: T.text }}
     >

@@ -143,6 +143,66 @@ function daysUntil(dateStr: string): number {
   return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 
+type DueHorizon = "overdue" | "week" | "month" | "later" | "none";
+function dueHorizon(t: { dueDate: string | null }): DueHorizon {
+  if (!t.dueDate) return "none";
+  const days = daysUntil(t.dueDate);
+  if (days < 0) return "overdue";
+  if (days <= 7) return "week";
+  if (days <= 30) return "month";
+  return "later";
+}
+
+/**
+ * Column-header filter: the label stays fixed (never shows the picked value);
+ * an invisible native <select> overlays it, and the header just highlights
+ * when a filter is active.
+ */
+function HeaderFilter({
+  label,
+  value,
+  active,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  active: boolean;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <span className={`pms__hf${active ? " pms__hf--active" : ""}`}>
+      {label}
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+      <select
+        className="pms__hf-select"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={`Filter by ${label}`}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
 function addInterval(iso: string, value: number, unit: IntervalUnit): string {
   const d = new Date(`${iso}T00:00:00`);
   if (unit === "days") d.setDate(d.getDate() + value);
@@ -463,7 +523,11 @@ export function PmsSection({ token }: PmsSectionProps) {
   const [tasks, setTasks] = useState<PmsTask[]>([]);
   const [view, setView] = useState<"active" | "history">("active");
   const [statusFilter, setStatusFilter] = useState<PmsStatus | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<PmsCategory | "all">("all");
+  const [categoryFilter] = useState<PmsCategory | "all">("all");
+  // Per-column filters for the task table (all but Task).
+  const [assetFilter, setAssetFilter] = useState<string>("all");
+  const [personFilter, setPersonFilter] = useState<string>("all");
+  const [dueFilter, setDueFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -557,11 +621,19 @@ export function PmsSection({ token }: PmsSectionProps) {
   const active = useMemo(() => tasks.filter((t) => !t.completedAt), [tasks]);
   const history = useMemo(() => tasks.filter((t) => t.completedAt), [tasks]);
 
-  const kpis = useMemo(() => {
-    const k = { overdue: 0, "due-soon": 0, ok: 0, total: active.length };
-    for (const t of active) k[t.status] += 1;
-    return k;
-  }, [active]);
+  // Distinct values for the per-column dropdowns.
+  const columnFilterOpts = useMemo(() => {
+    const assets = new Set<string>();
+    const persons = new Set<string>();
+    for (const t of tasks) {
+      t.assets.forEach((a) => a.name && assets.add(a.name));
+      if (t.assigneeName) persons.add(t.assigneeName);
+    }
+    return {
+      assets: [...assets].sort((a, b) => a.localeCompare(b)),
+      persons: [...persons].sort((a, b) => a.localeCompare(b)),
+    };
+  }, [tasks]);
 
   const visible = useMemo(() => {
     const base = view === "active" ? active : history;
@@ -571,6 +643,10 @@ export function PmsSection({ token }: PmsSectionProps) {
         (t) =>
           (view === "history" || !statusFilter || t.status === statusFilter) &&
           (categoryFilter === "all" || t.category === categoryFilter) &&
+          (assetFilter === "all" ||
+            t.assets.some((a) => a.name === assetFilter)) &&
+          (personFilter === "all" || t.assigneeName === personFilter) &&
+          (dueFilter === "all" || dueHorizon(t) === dueFilter) &&
           (!q ||
             t.task.toLowerCase().includes(q) ||
             (t.assigneeName ?? "").toLowerCase().includes(q) ||
@@ -582,7 +658,17 @@ export function PmsSection({ token }: PmsSectionProps) {
           ? (b.completedAt ?? "").localeCompare(a.completedAt ?? "")
           : STATUS_ORDER[a.status] - STATUS_ORDER[b.status],
       );
-  }, [view, active, history, statusFilter, categoryFilter, search]);
+  }, [
+    view,
+    active,
+    history,
+    statusFilter,
+    categoryFilter,
+    assetFilter,
+    personFilter,
+    dueFilter,
+    search,
+  ]);
 
   const detailTask = useMemo(
     () => tasks.find((t) => t.id === detailId) ?? null,
@@ -811,29 +897,6 @@ export function PmsSection({ token }: PmsSectionProps) {
     e.target.value = "";
   };
 
-  const kpiCard = (
-    key: PmsStatus | "total",
-    label: string,
-    value: number,
-    tone: string,
-  ) => (
-    <button
-      type="button"
-      className={`pms__kpi${statusFilter === key && view === "active" ? " pms__kpi--active" : ""}`}
-      disabled={view === "history"}
-      onClick={() =>
-        key === "total"
-          ? setStatusFilter(null)
-          : setStatusFilter(statusFilter === key ? null : (key as PmsStatus))
-      }
-    >
-      <span className="pms__kpi-label">{label}</span>
-      <span className="pms__kpi-value" style={{ color: tone }}>
-        {value}
-      </span>
-    </button>
-  );
-
   return (
     <div className="pms">
       <div className="pms__header">
@@ -871,13 +934,6 @@ export function PmsSection({ token }: PmsSectionProps) {
         </div>
       </div>
 
-      <div className="pms__kpis">
-        {kpiCard("overdue", "Overdue", kpis.overdue, "var(--status-danger)")}
-        {kpiCard("due-soon", "Due soon", kpis["due-soon"], "var(--status-warn)")}
-        {kpiCard("ok", "Healthy", kpis.ok, "var(--status-ok)")}
-        {kpiCard("total", "Active tasks", kpis.total, "var(--chat-text)")}
-      </div>
-
       <div className="pms__viewtabs">
         <button
           type="button"
@@ -903,20 +959,6 @@ export function PmsSection({ token }: PmsSectionProps) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select
-          className="pms__cat-filter"
-          value={categoryFilter}
-          onChange={(e) =>
-            setCategoryFilter(e.target.value as PmsCategory | "all")
-          }
-        >
-          <option value="all">All categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
       </div>
 
       {importNote && <div className="pms__import-note">{importNote}</div>}
@@ -925,11 +967,73 @@ export function PmsSection({ token }: PmsSectionProps) {
         <table className="pms__table">
           <thead>
             <tr>
-              <th>Status</th>
+              <th>
+                <HeaderFilter
+                  label="Status"
+                  value={statusFilter ?? "all"}
+                  active={!!statusFilter}
+                  onChange={(v) =>
+                    setStatusFilter(v === "all" ? null : (v as PmsStatus))
+                  }
+                  options={[
+                    { value: "all", label: "All" },
+                    { value: "overdue", label: "Overdue" },
+                    { value: "due-soon", label: "Due soon" },
+                    { value: "ok", label: "OK" },
+                  ]}
+                />
+              </th>
               <th>Task</th>
-              <th>Asset</th>
-              <th>Person</th>
-              <th>{view === "history" ? "Completed" : "Due"}</th>
+              <th>
+                <HeaderFilter
+                  label="Asset"
+                  value={assetFilter}
+                  active={assetFilter !== "all"}
+                  onChange={setAssetFilter}
+                  options={[
+                    { value: "all", label: "All assets" },
+                    ...columnFilterOpts.assets.map((a) => ({
+                      value: a,
+                      label: a,
+                    })),
+                  ]}
+                />
+              </th>
+              <th>
+                <HeaderFilter
+                  label="Person"
+                  value={personFilter}
+                  active={personFilter !== "all"}
+                  onChange={setPersonFilter}
+                  options={[
+                    { value: "all", label: "All" },
+                    ...columnFilterOpts.persons.map((p) => ({
+                      value: p,
+                      label: p,
+                    })),
+                  ]}
+                />
+              </th>
+              <th>
+                {view === "history" ? (
+                  "Completed"
+                ) : (
+                  <HeaderFilter
+                    label="Due"
+                    value={dueFilter}
+                    active={dueFilter !== "all"}
+                    onChange={setDueFilter}
+                    options={[
+                      { value: "all", label: "All" },
+                      { value: "overdue", label: "Overdue" },
+                      { value: "week", label: "≤ 7 days" },
+                      { value: "month", label: "≤ 30 days" },
+                      { value: "later", label: "Later" },
+                      { value: "none", label: "No date" },
+                    ]}
+                  />
+                )}
+              </th>
               <th aria-label="Actions"></th>
             </tr>
           </thead>

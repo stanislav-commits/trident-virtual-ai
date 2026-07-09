@@ -20,6 +20,8 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
 import { ChatSourcesPanel } from "../components/chat/ChatSourcesPanel";
 import { PmsSidePanel } from "../components/chat/PmsSidePanel";
+import { AlertsSidePanel } from "../components/chat/AlertsSidePanel";
+import type { Alert } from "../api/alertsApi";
 import { MessageInput } from "../components/chat/MessageInput";
 import { MessageList } from "../components/chat/MessageList";
 import logoImg from "../assets/logo-home.png";
@@ -68,6 +70,14 @@ export function ChatPage() {
   const [pmsClosing, setPmsClosing] = useState(false);
   const pmsOpenRef = useRef(false);
   const pmsTimer = useRef<number | null>(null);
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [alertsClosing, setAlertsClosing] = useState(false);
+  const alertsOpenRef = useRef(false);
+  const alertsTimer = useRef<number | null>(null);
+  // True when a panel is shown by swapping in for the other (already-open)
+  // panel — both share the same width, so we suppress the width open/close
+  // animation and just swap the CONTENT, avoiding a workspace jump.
+  const [panelSwap, setPanelSwap] = useState(false);
 
   useEffect(() => {
     setSourcesPanelCitations(null);
@@ -76,7 +86,10 @@ export function ChatPage() {
   // TopBar lives inside AppLayout, so it signals the PMS toggle via a
   // window event rather than a prop drilled through the layout.
   useEffect(() => {
-    const toggle = () => {
+    // Only one right-hand panel is open at a time. When one is already open
+    // and the user opens the other, we swap the CONTENT in place (no width
+    // animation) so the chat workspace width doesn't jump.
+    const togglePms = () => {
       if (pmsTimer.current) {
         window.clearTimeout(pmsTimer.current);
         pmsTimer.current = null;
@@ -85,19 +98,75 @@ export function ChatPage() {
         // Closing — keep it mounted briefly so the exit animation can play.
         pmsOpenRef.current = false;
         setPmsClosing(true);
+        setPanelSwap(false);
         pmsTimer.current = window.setTimeout(() => {
           setShowPms(false);
           setPmsClosing(false);
           pmsTimer.current = null;
         }, 400);
-      } else {
+      } else if (alertsOpenRef.current) {
+        // Alerts is already open at full width — swap to PMS without animating.
+        if (alertsTimer.current) {
+          window.clearTimeout(alertsTimer.current);
+          alertsTimer.current = null;
+        }
+        alertsOpenRef.current = false;
+        setAlertsClosing(false);
+        setShowAlerts(false);
         pmsOpenRef.current = true;
         setPmsClosing(false);
+        setPanelSwap(true);
+        setShowPms(true);
+      } else {
+        // Opening from nothing — play the width animation.
+        pmsOpenRef.current = true;
+        setPmsClosing(false);
+        setPanelSwap(false);
         setShowPms(true);
       }
     };
-    window.addEventListener("trident:toggle-pms", toggle);
-    return () => window.removeEventListener("trident:toggle-pms", toggle);
+
+    const toggleAlerts = () => {
+      if (alertsTimer.current) {
+        window.clearTimeout(alertsTimer.current);
+        alertsTimer.current = null;
+      }
+      if (alertsOpenRef.current) {
+        alertsOpenRef.current = false;
+        setAlertsClosing(true);
+        setPanelSwap(false);
+        alertsTimer.current = window.setTimeout(() => {
+          setShowAlerts(false);
+          setAlertsClosing(false);
+          alertsTimer.current = null;
+        }, 400);
+      } else if (pmsOpenRef.current) {
+        // PMS is already open at full width — swap to alerts without animating.
+        if (pmsTimer.current) {
+          window.clearTimeout(pmsTimer.current);
+          pmsTimer.current = null;
+        }
+        pmsOpenRef.current = false;
+        setPmsClosing(false);
+        setShowPms(false);
+        alertsOpenRef.current = true;
+        setAlertsClosing(false);
+        setPanelSwap(true);
+        setShowAlerts(true);
+      } else {
+        // Opening from nothing — play the width animation.
+        alertsOpenRef.current = true;
+        setAlertsClosing(false);
+        setPanelSwap(false);
+        setShowAlerts(true);
+      }
+    };
+    window.addEventListener("trident:toggle-pms", togglePms);
+    window.addEventListener("trident:toggle-alerts", toggleAlerts);
+    return () => {
+      window.removeEventListener("trident:toggle-pms", togglePms);
+      window.removeEventListener("trident:toggle-alerts", toggleAlerts);
+    };
   }, []);
 
   // Live SSE progress while the reply is generating: shows real pipeline
@@ -273,6 +342,39 @@ export function ChatPage() {
     ],
   );
 
+  // "Ask AI" on an alert: close the alerts panel and send a context-rich
+  // question into the chat so the assistant (with asset/metric/manual tools)
+  // returns recommendations grounded in the alerting equipment.
+  const handleAskAlertAi = useCallback(
+    (alert: Alert) => {
+      if (alertsTimer.current) {
+        window.clearTimeout(alertsTimer.current);
+        alertsTimer.current = null;
+      }
+      alertsOpenRef.current = false;
+      setAlertsClosing(false);
+      setShowAlerts(false);
+
+      const subject = alert.assetName ?? "the affected equipment";
+      // Encode the alert as a marker the chat renders as a card; the text that
+      // follows is the (hidden) instruction the assistant actually answers.
+      const card = JSON.stringify({
+        title: alert.title,
+        asset: alert.assetName,
+        severity: alert.severity,
+        value: alert.value,
+        startedAt: alert.startedAt,
+      });
+      const prompt =
+        `[[ALERT]]${card}\n` +
+        `Briefly explain this alert on ${subject}: what the reading means, ` +
+        `how serious it is, and what to check first. Keep it short and ` +
+        `practical — only mention related tasks or parts if they are clearly relevant.`;
+      void handleSend(prompt);
+    },
+    [handleSend],
+  );
+
   const handleDeleteSession = useCallback(
     async (targetSessionId: string) => {
       try {
@@ -390,7 +492,7 @@ export function ChatPage() {
 
         {activeSessionId ? (
           <div
-            className={`chat-main__workspace${sourcesPanelCitations || showPms || pmsClosing ? " chat-main__workspace--with-panel" : ""}`}
+            className={`chat-main__workspace${sourcesPanelCitations || showPms || pmsClosing || showAlerts || alertsClosing ? " chat-main__workspace--with-panel" : ""}`}
           >
             <div className="chat-main__stars" aria-hidden />
             <section className="chat-main__conversation">
@@ -425,12 +527,22 @@ export function ChatPage() {
                 token={token}
                 shipId={sessionShipId}
                 closing={pmsClosing}
+                noAnim={panelSwap}
+              />
+            )}
+            {(showAlerts || alertsClosing) && (
+              <AlertsSidePanel
+                token={token}
+                shipId={sessionShipId}
+                closing={alertsClosing}
+                noAnim={panelSwap}
+                onAskAi={handleAskAlertAi}
               />
             )}
           </div>
         ) : (
           <div
-            className={`chat-main__workspace${showPms || pmsClosing ? " chat-main__workspace--with-panel" : ""}`}
+            className={`chat-main__workspace${showPms || pmsClosing || showAlerts || alertsClosing ? " chat-main__workspace--with-panel" : ""}`}
           >
             <div className="chat-main__welcome-wrap">
               <div className="chat-welcome">
@@ -464,6 +576,16 @@ export function ChatPage() {
                 token={token}
                 shipId={sessionShipId}
                 closing={pmsClosing}
+                noAnim={panelSwap}
+              />
+            )}
+            {(showAlerts || alertsClosing) && (
+              <AlertsSidePanel
+                token={token}
+                shipId={sessionShipId}
+                closing={alertsClosing}
+                noAnim={panelSwap}
+                onAskAi={handleAskAlertAi}
               />
             )}
           </div>

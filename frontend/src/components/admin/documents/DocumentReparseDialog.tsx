@@ -30,7 +30,6 @@ interface DocumentReparseFormState {
   model: string;
   revision: string;
   timeScope: DocumentTimeScope;
-  sourcePriority: string;
   contentFocus: string;
 }
 
@@ -126,7 +125,6 @@ function buildInitialFormState(
     model: document.model ?? "",
     revision: document.revision ?? "",
     timeScope: document.timeScope,
-    sourcePriority: String(document.sourcePriority),
     contentFocus: document.contentFocus ?? "",
   };
 }
@@ -143,17 +141,6 @@ function buildNullableTextOverride(
   }
 
   return nextNormalized || null;
-}
-
-function parseSourcePriority(value: string): number | undefined {
-  const normalized = value.trim();
-
-  if (!normalized) {
-    return undefined;
-  }
-
-  const parsed = Number.parseInt(normalized, 10);
-  return Number.isInteger(parsed) ? parsed : undefined;
 }
 
 function buildReparseInput(
@@ -200,15 +187,6 @@ function buildReparseInput(
 
   if (form.timeScope !== document.timeScope) {
     metadata.timeScope = form.timeScope;
-  }
-
-  const sourcePriority = parseSourcePriority(form.sourcePriority);
-
-  if (
-    sourcePriority !== undefined &&
-    sourcePriority !== document.sourcePriority
-  ) {
-    metadata.sourcePriority = sourcePriority;
   }
 
   if (Object.keys(metadata).length > 0) {
@@ -479,27 +457,6 @@ export function DocumentReparseDialog({
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  <div className="admin-panel__modal-field">
-                    <label
-                      className="admin-panel__field-label"
-                      htmlFor="reparse-priority"
-                    >
-                      Source priority
-                    </label>
-                    <input
-                      id="reparse-priority"
-                      className="admin-panel__input admin-panel__input--full"
-                      type="number"
-                      min="0"
-                      max="1000"
-                      value={form.sourcePriority}
-                      disabled={reparsing}
-                      onChange={(event) =>
-                        updateForm("sourcePriority", event.target.value)
-                      }
-                    />
                   </div>
 
                   <div className="admin-panel__modal-field">

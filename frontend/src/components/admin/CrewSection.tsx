@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { PlusIcon, XIcon, TrashIcon } from "./AdminPanelIcons";
+import { CrewAccessMatrix } from "./CrewAccessMatrix";
 import {
   listCrew,
   createCrew,
@@ -283,7 +284,7 @@ export function CrewSection({ token }: CrewSectionProps) {
                   </button>
                   <button
                     type="button"
-                    className="admin-panel__icon-btn"
+                    className="admin-panel__icon-btn admin-panel__icon-btn--danger"
                     onClick={() => void remove(c)}
                     title="Remove"
                   >
@@ -295,6 +296,8 @@ export function CrewSection({ token }: CrewSectionProps) {
           </div>
         </div>
       ))}
+
+      <CrewAccessMatrix token={token} shipId={shipId} />
 
       {showForm &&
         createPortal(

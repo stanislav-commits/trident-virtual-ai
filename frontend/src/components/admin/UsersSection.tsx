@@ -220,14 +220,106 @@ export function UsersSection({
 
   const copyToClipboard = (text: string) => navigator.clipboard.writeText(text);
 
+  // ── Partition users into sections ──
+  const admins = users.filter((u) => u.role === "admin");
+  const crew = users.filter((u) => u.role === "user");
+  const usersByShip: Record<string, UserListItem[]> = {};
+  for (const u of crew) {
+    const key = u.shipId ?? "__unassigned__";
+    (usersByShip[key] ??= []).push(u);
+  }
+  // Ships that have users but are not in the loaded ship list (defensive).
+  const knownShipIds = new Set(ships.map((s) => s.id));
+  const orphanShipIds = Object.keys(usersByShip).filter(
+    (id) => id !== "__unassigned__" && !knownShipIds.has(id),
+  );
+
+  const renderUserRows = (list: UserListItem[]) =>
+    list.map((u) => (
+      <tr key={u.id} className="admin-panel__row">
+        <td className="admin-panel__td admin-panel__td--userid">{u.userId}</td>
+        <td className="admin-panel__td">
+          <EditableName
+            userId={u.id}
+            currentName={u.name ?? ""}
+            token={token}
+            onSaved={onLoadUsers}
+            onError={onError}
+          />
+        </td>
+        <td className="admin-panel__td">
+          <span className={`admin-panel__badge admin-panel__badge--${u.role}`}>
+            {u.role}
+          </span>
+        </td>
+        <td className="admin-panel__td">
+          <div className="admin-panel__actions">
+            <button
+              type="button"
+              className="admin-panel__btn admin-panel__btn--ghost"
+              onClick={() => handleResetPassword(u.id)}
+              disabled={resettingId === u.id}
+            >
+              {resettingId === u.id ? "…" : "Reset password"}
+            </button>
+            <button
+              type="button"
+              className="admin-panel__btn admin-panel__btn--danger"
+              onClick={() => handleDeleteClick(u.id, u.userId)}
+              disabled={deletingId === u.id}
+            >
+              {deletingId === u.id ? "…" : "Delete"}
+            </button>
+          </div>
+        </td>
+      </tr>
+    ));
+
+  const renderGroup = (
+    key: string,
+    title: string,
+    subtitle: string,
+    list: UserListItem[],
+    emptyLabel: string,
+  ) => (
+    <div className="users-section__group" key={key}>
+      <div className="users-section__group-head">
+        <h3 className="users-section__group-title">
+          {title}
+          <span className="users-section__group-count">{list.length}</span>
+        </h3>
+        <p className="users-section__group-subtitle">{subtitle}</p>
+      </div>
+      {list.length === 0 ? (
+        <div className="users-section__group-empty admin-panel__muted">
+          {emptyLabel}
+        </div>
+      ) : (
+        <div className="admin-panel__card">
+          <table className="admin-panel__table">
+            <thead>
+              <tr>
+                <th className="admin-panel__th">User ID</th>
+                <th className="admin-panel__th">Name</th>
+                <th className="admin-panel__th">Role</th>
+                <th className="admin-panel__th">Actions</th>
+              </tr>
+            </thead>
+            <tbody>{renderUserRows(list)}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
-      <section className="admin-panel__section">
+      <section className="admin-panel__section users-section">
         <div className="admin-panel__section-head">
           <div>
             <h2 className="admin-panel__section-title">Users</h2>
             <p className="admin-panel__section-subtitle">
-              Manage user accounts and credentials.
+              Platform staff and per-vessel user accounts.
             </p>
           </div>
           <button
@@ -256,66 +348,40 @@ export function UsersSection({
             <span className="admin-panel__muted">No users yet.</span>
           </div>
         ) : (
-          <div className="admin-panel__card">
-            <table className="admin-panel__table">
-              <thead>
-                <tr>
-                  <th className="admin-panel__th">User ID</th>
-                  <th className="admin-panel__th">Name</th>
-                  <th className="admin-panel__th">Role</th>
-                  <th className="admin-panel__th">Ship</th>
-                  <th className="admin-panel__th">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="admin-panel__row">
-                    <td className="admin-panel__td admin-panel__td--userid">
-                      {u.userId}
-                    </td>
-                    <td className="admin-panel__td">
-                      <EditableName
-                        userId={u.id}
-                        currentName={u.name ?? ""}
-                        token={token}
-                        onSaved={onLoadUsers}
-                        onError={onError}
-                      />
-                    </td>
-                    <td className="admin-panel__td">
-                      <span
-                        className={`admin-panel__badge admin-panel__badge--${u.role}`}
-                      >
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="admin-panel__td">
-                      {u.role === "user" ? (u.ship?.name ?? "—") : "—"}
-                    </td>
-                    <td className="admin-panel__td">
-                      <div className="admin-panel__actions">
-                        <button
-                          type="button"
-                          className="admin-panel__btn admin-panel__btn--ghost"
-                          onClick={() => handleResetPassword(u.id)}
-                          disabled={resettingId === u.id}
-                        >
-                          {resettingId === u.id ? "…" : "Reset password"}
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-panel__btn admin-panel__btn--danger"
-                          onClick={() => handleDeleteClick(u.id, u.userId)}
-                          disabled={deletingId === u.id}
-                        >
-                          {deletingId === u.id ? "…" : "Delete"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="users-section__groups">
+            {renderGroup(
+              "admins",
+              "Admins",
+              "Trident Intelligence staff — full platform access",
+              admins,
+              "No admins yet.",
+            )}
+            {ships.map((ship) =>
+              renderGroup(
+                ship.id,
+                ship.name,
+                "Vessel users",
+                usersByShip[ship.id] ?? [],
+                "No users assigned to this vessel yet.",
+              ),
+            )}
+            {orphanShipIds.map((id) =>
+              renderGroup(
+                id,
+                usersByShip[id][0]?.ship?.name ?? "Unknown vessel",
+                "Vessel users",
+                usersByShip[id],
+                "",
+              ),
+            )}
+            {usersByShip["__unassigned__"] &&
+              renderGroup(
+                "unassigned",
+                "Unassigned",
+                "Users not linked to any vessel",
+                usersByShip["__unassigned__"],
+                "",
+              )}
           </div>
         )}
       </section>
