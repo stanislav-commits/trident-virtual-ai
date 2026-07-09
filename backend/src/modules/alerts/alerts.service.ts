@@ -5,6 +5,7 @@ import { In, Repository } from 'typeorm';
 import { AlertEntity } from './entities/alert.entity';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { AssetEntity } from '../assets/entities/asset.entity';
+import { ShipEntity } from '../ships/entities/ship.entity';
 import { PmsService } from '../pms/pms.service';
 
 export type AlertDto = AlertEntity & { assetName: string | null };
@@ -44,6 +45,8 @@ export class AlertsService {
     private readonly catalogRepository: Repository<ShipMetricCatalogEntity>,
     @InjectRepository(AssetEntity)
     private readonly assetRepository: Repository<AssetEntity>,
+    @InjectRepository(ShipEntity)
+    private readonly shipRepository: Repository<ShipEntity>,
     private readonly pmsService: PmsService,
     private readonly configService: ConfigService,
   ) {}
@@ -88,8 +91,13 @@ export class AlertsService {
       return;
     }
 
-    // Firing: resolve domain context from the metric.
-    const metricKey = labels.metric_key || labels.metricKey || null;
+    // Firing: resolve domain context from the metric. If no explicit metric_key
+    // label, derive it from the Influx result labels Grafana carries on the
+    // instance (bucket::_measurement::_field) so unlabelled rules still bind.
+    const metricKey =
+      labels.metric_key ||
+      labels.metricKey ||
+      this.deriveMetricKey(labels);
     const { shipId, assetId } = await this.resolve(metricKey, labels);
     const severity = this.normSeverity(labels.severity);
     const value = this.firstValue(a);
@@ -162,8 +170,36 @@ export class AlertsService {
         return { shipId: cat.shipId, assetId: cat.boundAssetId ?? null };
       }
     }
-    // Fallback: an explicit ship_id label keeps the alert attached to a vessel.
-    return { shipId: labels.ship_id ?? null, assetId: labels.asset_id ?? null };
+    // Explicit ship_id label wins next.
+    if (labels.ship_id) {
+      return { shipId: labels.ship_id, assetId: labels.asset_id ?? null };
+    }
+    // Single-vessel fallback: with exactly one real (non-platform) ship, every
+    // alert belongs to it — so unlabelled rules still attach to the vessel.
+    const ships = await this.shipRepository.find({
+      where: { isPlatform: false },
+      select: ['id'],
+      take: 2,
+    });
+    if (ships.length === 1) {
+      return { shipId: ships[0].id, assetId: labels.asset_id ?? null };
+    }
+    return { shipId: null, assetId: labels.asset_id ?? null };
+  }
+
+  /**
+   * Build a `bucket::measurement::field` key from the Influx result labels
+   * Grafana attaches to a firing instance. Bucket isn't a series label, so it
+   * defaults to the fleet's trending bucket. Returns null if the shape is absent.
+   */
+  private deriveMetricKey(labels: Record<string, string>): string | null {
+    const measurement = labels._measurement || labels.measurement;
+    const field = labels._field || labels.field;
+    if (!measurement || !field) {
+      return null;
+    }
+    const bucket = labels.bucket || labels._bucket || 'Trending';
+    return `${bucket}::${measurement}::${field}`;
   }
 
   private shouldSpawnTask(severity: string): boolean {

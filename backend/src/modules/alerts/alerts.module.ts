@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AlertEntity } from './entities/alert.entity';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { AssetEntity } from '../assets/entities/asset.entity';
+import { ShipEntity } from '../ships/entities/ship.entity';
 import { AlertsService } from './alerts.service';
 import { AlertsController, AlertsWebhookController } from './alerts.controller';
 import { PmsModule } from '../pms/pms.module';
@@ -13,6 +14,7 @@ import { PmsModule } from '../pms/pms.module';
       AlertEntity,
       ShipMetricCatalogEntity,
       AssetEntity,
+      ShipEntity,
     ]),
     PmsModule,
   ],
