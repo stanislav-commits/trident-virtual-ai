@@ -10,6 +10,7 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { RagService } from '../../integrations/rag/rag.service';
 import { ShipEntity } from '../ships/entities/ship.entity';
+import { PLATFORM_SHIP_ID } from '../ships/platform-ship.constants';
 import {
   BulkDeleteDocumentsDto,
   BulkDeleteDocumentsResponseDto,
@@ -120,13 +121,13 @@ export class DocumentsService {
       });
     }
 
-    // Manuals run through the local vision extractor BEFORE RAGFlow sees
-    // them: the dispatcher skips pending/running extractions, and once the
-    // markdown is attached the dispatcher uploads the MD instead of the
-    // PDF. Other doc classes (and disabled extractor) flow as before.
+    // Text-bearing docs run through the local vision extractor BEFORE RAGFlow
+    // sees them: the dispatcher skips pending/running extractions, and once the
+    // markdown is attached it uploads the MD instead of the PDF. PLANS are a
+    // pure file store (drawings — no useful text extraction), so they skip it.
     if (
       this.visionExtraction.isEnabled() &&
-      input.docClass === DocumentDocClass.MANUAL
+      input.docClass !== DocumentDocClass.PLAN
     ) {
       await this.documentsRepository.update(document.id, {
         extractionStatus: 'pending',
@@ -137,6 +138,44 @@ export class DocumentsService {
 
     void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
     return document;
+  }
+
+  /**
+   * Fleet-wide Publications (MARPOL/IMO/rules) are owned by the hidden platform
+   * scope row, not a vessel. Admins upload them here without picking a ship; the
+   * platform ship id + `publication` class are forced server-side so the file
+   * lands in the shared platform RAGFlow dataset. Every vessel's chat sees them
+   * via the retrieval union (see DocumentsRetrievalService).
+   */
+  async uploadPublication(
+    input: UploadDocumentDto,
+    file: UploadedDocumentFile,
+    user: AuthenticatedUser,
+  ): Promise<DocumentResponseDto> {
+    return this.upload(
+      {
+        ...input,
+        shipId: PLATFORM_SHIP_ID,
+        docClass: DocumentDocClass.PUBLICATION,
+        assetId: undefined,
+      },
+      file,
+      user,
+    );
+  }
+
+  async listPublications(
+    input: ListDocumentsQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<DocumentListResponseDto> {
+    return this.list(
+      {
+        ...input,
+        shipId: PLATFORM_SHIP_ID,
+        docClass: DocumentDocClass.PUBLICATION,
+      },
+      user,
+    );
   }
 
   async list(

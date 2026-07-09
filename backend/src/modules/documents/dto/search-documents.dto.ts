@@ -91,6 +91,16 @@ export class SearchDocumentsDto {
   shipId?: string;
 
   /**
+   * The logged-in viewer (chat session user). When set AND linked to a crew
+   * member, RBAC filters the retrievable doc classes to what their position may
+   * read. Absent / admins / unlinked users → no restriction.
+   */
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  viewerUserId?: string;
+
+  /**
    * Legacy category input retained for older callers. New callers should use
    * candidateDocClasses.
    */

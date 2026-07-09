@@ -276,7 +276,7 @@ export class MetricUnderstandingService {
 
     const bundle: AnalyzeBundle = {
       metric: { name_in_influx: selector.field, measurement: selector.measurement, bucket: selector.bucket },
-      context: { vessel: vesselHintForShip(metric.shipId) },
+      context: { vessel: vesselHintForShip(ship.metricAnalysisHint) },
       assets: shortlist,
       statistical_summary_7d: fingerprint,
       recent_samples: [...samples.slice(0, 5), ...samples.slice(-5)].map((s) => ({
@@ -359,6 +359,16 @@ export class MetricUnderstandingService {
     metric.aiQuestionsCanAnswer = JSON.stringify(analysis.questions_can_answer ?? []);
     metric.aiWarnings = JSON.stringify(analysis.warnings ?? []);
     metric.aiReasoning = analysis.reasoning ?? null;
+
+    // Auto-detected scale correction — never override a manual admin value.
+    if (metric.scaleSource !== 'manual') {
+      const detected = numOrNull(analysis.scale_factor);
+      const sf =
+        detected != null && Number.isFinite(detected) && detected > 0 ? detected : 1;
+      metric.scaleFactor = sf;
+      metric.scaleSource = sf === 1 ? 'default' : 'auto';
+    }
+
     metric.aiGeneratedAt = new Date();
     metric.aiModel = process.env.LLM_MODEL ?? 'gpt-4o-mini';
 

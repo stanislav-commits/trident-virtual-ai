@@ -10,6 +10,7 @@ import { AssetDocumentLinkEntity } from '../../modules/assets/entities/asset-doc
 import { AssetSnapshotEntity } from '../../modules/assets/entities/asset-snapshot.entity';
 import { ServiceRuleEntity } from '../../modules/assets/entities/service-rule.entity';
 import { DocumentEntity } from '../../modules/documents/entities/document.entity';
+import { PublicationCatalogEntity } from '../../modules/documents/entities/publication-catalog.entity';
 import { MetricConceptAliasEntity } from '../../modules/metrics/entities/metric-concept-alias.entity';
 import { MetricConceptEntity } from '../../modules/metrics/entities/metric-concept.entity';
 import { MetricConceptMemberEntity } from '../../modules/metrics/entities/metric-concept-member.entity';
@@ -56,8 +57,21 @@ import { AddInventory20260619000100 } from './migrations/20260619000100-add-inve
 import { AddInventoryItemAssets20260619000200 } from './migrations/20260619000200-add-inventory-item-assets';
 import { AddPmsTaskAnchors20260619000300 } from './migrations/20260619000300-add-pms-task-anchors';
 import { AddInventoryItemTasks20260619000400 } from './migrations/20260619000400-add-inventory-item-tasks';
+import { AddAlerts20260622000100 } from './migrations/20260622000100-add-alerts';
+import { AddKnowledgeBaseDocClasses20260623000100 } from './migrations/20260623000100-add-knowledge-base-doc-classes';
+import { AddPlatformShipScope20260623000200 } from './migrations/20260623000200-add-platform-ship-scope';
+import { AddDocumentAiSummary20260624000100 } from './migrations/20260624000100-add-document-ai-summary';
+import { ReclassifyRegulationToPublication20260624000200 } from './migrations/20260624000200-reclassify-regulation-to-publication';
+import { AddPublicationCatalog20260624000300 } from './migrations/20260624000300-add-publication-catalog';
+import { RemoveCatalogPublicationsFromCompliance20260624000400 } from './migrations/20260624000400-remove-catalog-publications-from-compliance';
+import { AddShipMetricAnalysisHint20260630000100 } from './migrations/20260630000100-add-ship-metric-analysis-hint';
 import { AddSfiTaxonomy20260615000100 } from './migrations/20260615000100-add-sfi-taxonomy';
 import { AddSfiTaxonomySource20260615000200 } from './migrations/20260615000200-add-sfi-taxonomy-source';
+import { AddAccessMatrix20260703000100 } from './migrations/20260703000100-add-access-matrix';
+import { AddMetricScaleFactor20260703000200 } from './migrations/20260703000200-add-metric-scale-factor';
+import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
+import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
+import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -73,6 +87,7 @@ const dataSource = new DataSource({
     UserEntity,
     ShipEntity,
     DocumentEntity,
+    PublicationCatalogEntity,
     ShipMetricCatalogEntity,
     MetricConceptEntity,
     MetricConceptAliasEntity,
@@ -84,6 +99,9 @@ const dataSource = new DataSource({
     AssetDocumentLinkEntity,
     AssetSnapshotEntity,
     ServiceRuleEntity,
+    AccessMatrixCellEntity,
+    CrewMemberEntity,
+    PmsTaskEntity,
   ],
   migrations: [
     InitAccessControlSchema20260418000100,
@@ -128,8 +146,18 @@ const dataSource = new DataSource({
     AddInventoryItemAssets20260619000200,
     AddPmsTaskAnchors20260619000300,
     AddInventoryItemTasks20260619000400,
+    AddAlerts20260622000100,
+    AddKnowledgeBaseDocClasses20260623000100,
+    AddPlatformShipScope20260623000200,
+    AddDocumentAiSummary20260624000100,
+    ReclassifyRegulationToPublication20260624000200,
+    AddPublicationCatalog20260624000300,
+    RemoveCatalogPublicationsFromCompliance20260624000400,
+    AddShipMetricAnalysisHint20260630000100,
     AddSfiTaxonomy20260615000100,
     AddSfiTaxonomySource20260615000200,
+    AddAccessMatrix20260703000100,
+    AddMetricScaleFactor20260703000200,
   ],
   synchronize: false,
   ssl: db.ssl

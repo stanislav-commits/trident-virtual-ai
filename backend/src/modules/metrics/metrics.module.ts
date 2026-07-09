@@ -4,6 +4,14 @@ import { IntegrationsModule } from '../../integrations/integrations.module';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { ServiceRuleEntity } from '../assets/entities/service-rule.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
+// Entities (NOT modules) for the analyzer's cross-domain tools — registering an
+// entity in forFeature does not import its owning module, so this avoids the
+// Metrics↔Pms↔Crew↔Users↔Ships DI cycle.
+import { PmsTaskEntity } from '../pms/entities/pms-task.entity';
+import { ComplianceDocEntity } from '../compliance/entities/compliance-doc.entity';
+import { ComplianceDocTypeEntity } from '../compliance/entities/compliance-doc-type.entity';
+import { InventoryItemEntity } from '../inventory/entities/inventory-item.entity';
+import { InventoryItemAssetEntity } from '../inventory/entities/inventory-item-asset.entity';
 import { MetricConceptAliasEntity } from './entities/metric-concept-alias.entity';
 import { MetricConceptEntity } from './entities/metric-concept.entity';
 import { MetricConceptMemberEntity } from './entities/metric-concept-member.entity';
@@ -32,6 +40,11 @@ import { MetricsService } from './metrics.service';
       MetricConceptEntity,
       MetricConceptAliasEntity,
       MetricConceptMemberEntity,
+      PmsTaskEntity,
+      ComplianceDocEntity,
+      ComplianceDocTypeEntity,
+      InventoryItemEntity,
+      InventoryItemAssetEntity,
     ]),
   ],
   controllers: [MetricsController],

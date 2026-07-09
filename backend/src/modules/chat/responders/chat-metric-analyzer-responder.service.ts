@@ -165,6 +165,9 @@ export class ChatMetricAnalyzerResponderService {
       .filter((tc) => tc.ok && tc.value !== null)
       .map((tc, idx) => ({
         id: `metric-${idx}`,
+        // Tag as a metric so the UI keeps it out of the Sources panel
+        // (only manuals / documents / web results are shown there).
+        sourceType: 'metric',
         sourceTitle: `${tc.measurement} :: ${tc.resolvedField}`,
         snippet: `${tc.aggregation}(${tc.rangeStart}${
           tc.rangeStop ? ` → ${tc.rangeStop}` : ''

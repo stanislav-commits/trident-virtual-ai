@@ -3,5 +3,8 @@ export enum ChatTurnResponderKind {
   WEB_SEARCH = 'web_search',
   METRICS = 'metrics',
   DOCUMENTS = 'documents',
+  PMS = 'pms',
+  COMPLIANCE = 'compliance',
+  FILES = 'files',
   IN_DEVELOPMENT = 'in_development',
 }

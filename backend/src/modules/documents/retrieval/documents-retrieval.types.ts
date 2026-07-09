@@ -16,6 +16,25 @@ export const RAGFLOW_RETRIEVAL_TOP_K = 1024;
 export const RAGFLOW_VECTOR_SIMILARITY_WEIGHT = 0.55;
 export const ALL_DOCUMENT_CLASSES = Object.values(DocumentDocClass);
 
+/**
+ * Classes the documents responder may actually retrieve. Retired classes are
+ * answered from their dedicated structured chat routes instead of stale
+ * uploaded document snapshots:
+ *   - `historical_procedure` → `pms` route (live Tasks register)
+ *   - `certificate` → `compliance` route (live Compliance register)
+ * The enum values are kept until the prod data migration, but these docs are no
+ * longer retrievable so they can't drive answers.
+ */
+const RETIRED_DOCUMENT_CLASSES: DocumentDocClass[] = [
+  DocumentDocClass.HISTORICAL_PROCEDURE,
+  DocumentDocClass.CERTIFICATE,
+];
+
+export const RETRIEVABLE_DOCUMENT_CLASSES: DocumentDocClass[] =
+  ALL_DOCUMENT_CLASSES.filter(
+    (docClass) => !RETIRED_DOCUMENT_CLASSES.includes(docClass),
+  );
+
 export interface DocumentRetrievalHints {
   equipmentOrSystem: string[];
   manufacturer: string[];

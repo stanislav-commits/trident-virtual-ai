@@ -11,7 +11,10 @@ import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
 import { ChatDocumentsResponderService } from '../responders/documents/chat-documents-responder.service';
 import { ChatInDevelopmentResponderService } from '../responders/chat-in-development-responder.service';
 import { ChatMetricAnalyzerResponderService } from '../responders/chat-metric-analyzer-responder.service';
+import { ChatComplianceResponderService } from '../responders/chat-compliance-responder.service';
+import { ChatFilesResponderService } from '../responders/chat-files-responder.service';
 import { ChatMetricsResponderService } from '../responders/chat-metrics-responder.service';
+import { ChatPmsResponderService } from '../responders/chat-pms-responder.service';
 import { ChatSmallTalkResponderService } from '../responders/chat-small-talk-responder.service';
 import { ChatWebSearchResponderService } from '../responders/chat-web-search-responder.service';
 import { ChatTurnAskResult } from '../responders/interfaces/chat-turn-responder.types';
@@ -60,6 +63,9 @@ export class ChatTurnOrchestratorService {
     private readonly chatMetricsResponderService: ChatMetricsResponderService,
     private readonly chatMetricAnalyzerResponderService: ChatMetricAnalyzerResponderService,
     private readonly chatDocumentsResponderService: ChatDocumentsResponderService,
+    private readonly chatPmsResponderService: ChatPmsResponderService,
+    private readonly chatComplianceResponderService: ChatComplianceResponderService,
+    private readonly chatFilesResponderService: ChatFilesResponderService,
     private readonly chatInDevelopmentResponderService: ChatInDevelopmentResponderService,
     private readonly chatProgressBus: ChatProgressBus,
   ) {}
@@ -78,7 +84,10 @@ export class ChatTurnOrchestratorService {
     if (
       asks.length === 1 &&
       asks[0].responder === ChatTurnResponderKind.SMALL_TALK &&
-      !this.shouldUseDocumentsResponder(asks[0])
+      !this.shouldUseDocumentsResponder(asks[0]) &&
+      !this.shouldUsePmsResponder(asks[0]) &&
+      !this.shouldUseComplianceResponder(asks[0]) &&
+      !this.shouldUseFilesResponder(asks[0])
     ) {
       const singleResult = await this.chatSmallTalkResponderService.respond({
         plan,
@@ -121,7 +130,10 @@ export class ChatTurnOrchestratorService {
     if (
       askResults.length === 1 &&
       (askResults[0].responder === ChatTurnResponderKind.DOCUMENTS ||
-        askResults[0].responder === ChatTurnResponderKind.METRICS)
+        askResults[0].responder === ChatTurnResponderKind.METRICS ||
+        askResults[0].responder === ChatTurnResponderKind.PMS ||
+        askResults[0].responder === ChatTurnResponderKind.COMPLIANCE ||
+        askResults[0].responder === ChatTurnResponderKind.FILES)
     ) {
       // Single-ask pass-through: the metric-analyzer responder already
       // produces a polished, user-facing answer in the user's language.
@@ -214,6 +226,18 @@ export class ChatTurnOrchestratorService {
       type: 'ask_started',
       text: this.describeAskForProgress(input.ask),
     });
+
+    if (this.shouldUsePmsResponder(input.ask)) {
+      return this.chatPmsResponderService.respond(input);
+    }
+
+    if (this.shouldUseComplianceResponder(input.ask)) {
+      return this.chatComplianceResponderService.respond(input);
+    }
+
+    if (this.shouldUseFilesResponder(input.ask)) {
+      return this.chatFilesResponderService.respond(input);
+    }
 
     if (this.shouldUseDocumentsResponder(input.ask)) {
       const documentResult = await this.chatDocumentsResponderService.respond(input);
@@ -464,6 +488,30 @@ export class ChatTurnOrchestratorService {
     );
   }
 
+  /**
+   * PMS/maintenance asks are answered from the structured Tasks register, not
+   * documents. Route-gated like the documents responder.
+   */
+  private shouldUsePmsResponder(ask: ChatTurnPlanAsk): boolean {
+    return ask.semanticRoute.route === ChatSemanticRoute.PMS;
+  }
+
+  /**
+   * Certificate/compliance asks are answered from the structured Compliance
+   * Docs register, not documents. Route-gated like the PMS responder.
+   */
+  private shouldUseComplianceResponder(ask: ChatTurnPlanAsk): boolean {
+    return ask.semanticRoute.route === ChatSemanticRoute.COMPLIANCE;
+  }
+
+  /**
+   * "Show me / open / give me the file" asks return the original document via a
+   * metadata catalog lookup. Route-gated like the other structured responders.
+   */
+  private shouldUseFilesResponder(ask: ChatTurnPlanAsk): boolean {
+    return ask.semanticRoute.route === ChatSemanticRoute.FILES;
+  }
+
   private shouldUseDocumentContextualWebExecution(
     asks: ChatTurnPlanAsk[],
   ): boolean {
@@ -483,6 +531,17 @@ export class ChatTurnOrchestratorService {
   /** Short human-readable progress line for an ask. */
   private describeAskForProgress(ask: ChatTurnPlanAsk): string {
     const q = ask.question.length > 80 ? ask.question.slice(0, 77) + '…' : ask.question;
+    // PMS is route-gated, so the planner's responder kind may still read
+    // metrics/small_talk — branch on the route first for an accurate label.
+    if (ask.semanticRoute.route === ChatSemanticRoute.PMS) {
+      return `Checking maintenance tasks: ${q}`;
+    }
+    if (ask.semanticRoute.route === ChatSemanticRoute.COMPLIANCE) {
+      return `Checking certificates & compliance: ${q}`;
+    }
+    if (ask.semanticRoute.route === ChatSemanticRoute.FILES) {
+      return `Finding the file: ${q}`;
+    }
     switch (ask.responder) {
       case ChatTurnResponderKind.METRICS:
         return `Analyzing telemetry: ${q}`;

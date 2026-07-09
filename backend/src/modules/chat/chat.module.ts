@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '../../integrations/integrations.module';
+import { ComplianceModule } from '../compliance/compliance.module';
+import { AccessControlModule } from '../access-control/access-control.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { MetricsModule } from '../metrics/metrics.module';
+import { PmsModule } from '../pms/pms.module';
 import { ShipsModule } from '../ships/ships.module';
 import { WebModule } from '../web/web.module';
 import { ChatController } from './chat.controller';
@@ -26,7 +29,10 @@ import { ChatSemanticRouterService } from './routing/chat-semantic-router.servic
 import { ChatDocumentsResponderService } from './responders/documents/chat-documents-responder.service';
 import { ChatInDevelopmentResponderService } from './responders/chat-in-development-responder.service';
 import { ChatMetricAnalyzerResponderService } from './responders/chat-metric-analyzer-responder.service';
+import { ChatComplianceResponderService } from './responders/chat-compliance-responder.service';
+import { ChatFilesResponderService } from './responders/chat-files-responder.service';
 import { ChatMetricsResponderService } from './responders/chat-metrics-responder.service';
+import { ChatPmsResponderService } from './responders/chat-pms-responder.service';
 import { ChatSmallTalkResponderService } from './responders/chat-small-talk-responder.service';
 import { ChatWebSearchResponderService } from './responders/chat-web-search-responder.service';
 import { ChatVoiceController } from './voice/chat-voice.controller';
@@ -35,8 +41,11 @@ import { ChatVoiceTranscriptionService } from './voice/chat-voice-transcription.
 @Module({
   imports: [
     IntegrationsModule,
+    ComplianceModule,
+    AccessControlModule,
     DocumentsModule,
     MetricsModule,
+    PmsModule,
     ShipsModule,
     WebModule,
     TypeOrmModule.forFeature([
@@ -65,6 +74,9 @@ import { ChatVoiceTranscriptionService } from './voice/chat-voice-transcription.
     ChatMetricsResponderService,
     ChatMetricAnalyzerResponderService,
     ChatDocumentsResponderService,
+    ChatPmsResponderService,
+    ChatComplianceResponderService,
+    ChatFilesResponderService,
     ChatInDevelopmentResponderService,
     ChatVoiceTranscriptionService,
     ChatProgressBus,

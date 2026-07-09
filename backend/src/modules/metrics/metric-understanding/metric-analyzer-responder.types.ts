@@ -53,4 +53,6 @@ export interface AnalyzedCatalogItem {
   typicalP95: number | null;
   nonZeroSharePct: number | null;
   isMonotonic: boolean | null;
+  /** Raw→display multiplier; already applied to typical percentiles above. */
+  scaleFactor: number;
 }

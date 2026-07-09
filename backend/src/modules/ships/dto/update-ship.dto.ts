@@ -91,4 +91,9 @@ export class UpdateShipDto {
   @IsOptional()
   @IsIn(['private', 'commercial'])
   operationType?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  metricAnalysisHint?: string | null;
 }

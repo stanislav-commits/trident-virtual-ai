@@ -5,6 +5,9 @@ import { ChatMetricsAskTimeMode } from '../planning/chat-metrics-ask-time-mode.e
 export enum ChatSemanticRoute {
   DOCUMENTS = 'documents',
   METRICS = 'metrics',
+  PMS = 'pms',
+  COMPLIANCE = 'compliance',
+  FILES = 'files',
   WEB = 'web',
   MIXED = 'mixed',
   UNCLEAR = 'unclear',

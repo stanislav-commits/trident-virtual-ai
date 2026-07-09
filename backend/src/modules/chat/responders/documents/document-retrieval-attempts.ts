@@ -23,7 +23,6 @@ export function buildDocumentClassAttempts(
 ): DocumentClassAttempt[] {
   const attempts: DocumentClassAttempt[] = [];
   const intentText = buildIntentText(documentsRoute, options.intentText);
-  const maintenanceRecordIntent = isMaintenanceRecordIntent(intentText);
   const administrativeComplianceIntent =
     isAdministrativeComplianceIntent(intentText);
 
@@ -56,21 +55,9 @@ export function buildDocumentClassAttempts(
     return dedupeAttempts(attempts);
   }
 
-  if (maintenanceRecordIntent) {
-    attempts.push({
-      reason: 'primary',
-      candidateDocClasses: [DocumentDocClass.HISTORICAL_PROCEDURE],
-    });
-
-    if (shouldTryManualMaintenanceFallback(documentsRoute, intentText)) {
-      attempts.push({
-        reason: 'secondary_fallback',
-        candidateDocClasses: [DocumentDocClass.MANUAL],
-      });
-    }
-
-    return dedupeAttempts(attempts);
-  }
+  // Maintenance/PMS record asks are no longer answered from documents — they
+  // route to the dedicated `pms` chat path (live Tasks register). The retired
+  // historical_procedure retrieval attempt was removed here.
 
   const policy = getDocumentQuestionClassPolicy(documentsRoute.questionType);
 

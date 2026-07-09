@@ -122,6 +122,7 @@ export function buildDocumentRetrievalRequest(
       input.context.latestUserMessage?.content?.trim() ||
       queryPlan.originalQuestion,
     shipId,
+    viewerUserId: input.session.userId,
     candidateDocClasses: attempt.candidateDocClasses,
     questionType:
       resolveRetrievalQuestionType(documentsRoute, attempt, queryPlan) ??

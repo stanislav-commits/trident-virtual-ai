@@ -63,6 +63,19 @@ export class ShipMetricCatalogEntity {
   @Column({ name: 'ai_unit_confidence', type: 'real', nullable: true })
   aiUnitConfidence!: number | null;
 
+  /**
+   * Scaling correction applied to the RAW stored value before anyone (AI,
+   * dashboards, profiler percentiles) reads it: displayed = raw * scaleFactor.
+   * Fixes sensors ingested at the wrong magnitude (e.g. oil pressure stored as
+   * 0.035 → ×100 = 3.5 bar). Default 1 = no change.
+   */
+  @Column({ name: 'scale_factor', type: 'double precision', default: 1 })
+  scaleFactor!: number;
+
+  /** Who set scaleFactor: 'default' | 'auto' (profiler) | 'manual' (admin). Manual wins over auto. */
+  @Column({ name: 'scale_source', type: 'varchar', length: 10, default: 'default' })
+  scaleSource!: string;
+
   // Effective asset binding. NULL = unbound. May be set by AI (with
   // aiBoundConfidence != null) or by admin (in which case aiBoundConfidence
   // is NULL — "manual override").

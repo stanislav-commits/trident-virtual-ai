@@ -16,6 +16,7 @@ export interface ShipResponseDto {
   homePort: string | null;
   fleetManagerEmail: string | null;
   operationType: string | null;
+  metricAnalysisHint: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -37,6 +38,7 @@ export function toShipResponse(ship: ShipEntity): ShipResponseDto {
     homePort: ship.homePort,
     fleetManagerEmail: ship.fleetManagerEmail,
     operationType: ship.operationType,
+    metricAnalysisHint: ship.metricAnalysisHint,
     createdAt: ship.createdAt.toISOString(),
     updatedAt: ship.updatedAt.toISOString(),
   };

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, IsNull, Not, Repository } from 'typeorm';
+import { Brackets, In, IsNull, Not, Repository } from 'typeorm';
 import {
   InfluxMetricSelector,
   InfluxService,
@@ -24,6 +24,16 @@ import { AssetEntity } from '../../assets/entities/asset.entity';
 import { ServiceRuleEntity } from '../../assets/entities/service-rule.entity';
 import { buildAssetFullLocator } from '../../assets/enums/asset-location-vocab';
 import { ShipEntity } from '../../ships/entities/ship.entity';
+import { PmsTaskEntity } from '../../pms/entities/pms-task.entity';
+import {
+  computeTaskDueHours,
+  derivePmsStatus,
+  effectiveDueDate,
+} from '../../pms/pms-status.util';
+import { ComplianceDocEntity } from '../../compliance/entities/compliance-doc.entity';
+import { ComplianceDocTypeEntity } from '../../compliance/entities/compliance-doc-type.entity';
+import { InventoryItemEntity } from '../../inventory/entities/inventory-item.entity';
+import { InventoryItemAssetEntity } from '../../inventory/entities/inventory-item-asset.entity';
 import { ShipMetricCatalogEntity } from '../entities/ship-metric-catalog.entity';
 import {
   AnalyzedCatalogItem,
@@ -32,6 +42,7 @@ import {
   ToolCallAudit,
 } from './metric-analyzer-responder.types';
 import { SYSTEM_PROMPT_BASE } from './prompts/system-prompt.const';
+import { vesselHintForShip } from './metric-understanding.prompts';
 import { TOOL_DEFINITIONS } from './tools/tool-definitions.const';
 import { haversineNm } from './utils/geo.util';
 import { tokenizeForSearch } from './utils/text.util';
@@ -101,6 +112,16 @@ export class MetricAnalyzerResponderService {
     private readonly serviceRuleRepository: Repository<ServiceRuleEntity>,
     @InjectRepository(ShipEntity)
     private readonly shipRepository: Repository<ShipEntity>,
+    @InjectRepository(PmsTaskEntity)
+    private readonly pmsTaskRepository: Repository<PmsTaskEntity>,
+    @InjectRepository(ComplianceDocEntity)
+    private readonly complianceDocRepository: Repository<ComplianceDocEntity>,
+    @InjectRepository(ComplianceDocTypeEntity)
+    private readonly complianceTypeRepository: Repository<ComplianceDocTypeEntity>,
+    @InjectRepository(InventoryItemEntity)
+    private readonly inventoryRepository: Repository<InventoryItemEntity>,
+    @InjectRepository(InventoryItemAssetEntity)
+    private readonly inventoryAssetLinkRepository: Repository<InventoryItemAssetEntity>,
     private readonly influxService: InfluxService,
     private readonly llmService: LlmService,
     private readonly ragService: RagService,
@@ -146,6 +167,12 @@ export class MetricAnalyzerResponderService {
 
     const catalog: AnalyzedCatalogItem[] = catalogRaw.map((m) => {
       const { measurement, field } = this.splitKey(m.key, m.field);
+      const sf =
+        typeof m.scaleFactor === 'number' && Number.isFinite(m.scaleFactor) && m.scaleFactor !== 0
+          ? m.scaleFactor
+          : 1;
+      const scale = (v: number | null): number | null =>
+        v == null ? null : v * sf;
       return {
         metricId: m.id,
         measurement,
@@ -156,11 +183,14 @@ export class MetricAnalyzerResponderService {
         unit: m.aiUnit,
         boundAssetIdInternal: m.boundAsset?.assetIdInternal ?? null,
         boundAssetName: m.boundAsset?.displayName ?? null,
-        typicalP5: m.aiTypicalP5,
-        typicalP50: m.aiTypicalP50,
-        typicalP95: m.aiTypicalP95,
+        // Typical percentiles are pre-scaled so the AI's context matches the
+        // displayed values (raw × scaleFactor).
+        typicalP5: scale(m.aiTypicalP5),
+        typicalP50: scale(m.aiTypicalP50),
+        typicalP95: scale(m.aiTypicalP95),
         nonZeroSharePct: m.aiNonZeroSharePct,
         isMonotonic: m.aiIsMonotonic,
+        scaleFactor: sf,
       };
     });
 
@@ -182,6 +212,8 @@ export class MetricAnalyzerResponderService {
         role: 'system',
         content:
           SYSTEM_PROMPT_BASE +
+          '\n\nVESSEL PROFILE (this ship — use it for equipment, sides and naming):\n' +
+          vesselHintForShip(ship.metricAnalysisHint) +
           '\n\nMETRIC CATALOG (ship: ' +
           (ship.name || ship.id) +
           '):\n' +
@@ -439,6 +471,12 @@ export class MetricAnalyzerResponderService {
         return await this.toolForecastMetric(tc, args, orgName, catalogIndex, iteration);
       case 'find_pms_due':
         return await this.toolFindPmsDue(tc, args, orgName, catalogIndex, shipId, iteration);
+      case 'get_maintenance_tasks':
+        return await this.toolGetMaintenanceTasks(tc, args, shipId, iteration);
+      case 'get_compliance_status':
+        return await this.toolGetComplianceStatus(tc, args, shipId, iteration);
+      case 'get_inventory':
+        return await this.toolGetInventory(tc, args, shipId, iteration);
       case 'compare_periods':
         return await this.toolComparePeriods(tc, args, orgName, catalogIndex, iteration);
       case 'infer_runtime_from_power':
@@ -562,9 +600,13 @@ export class MetricAnalyzerResponderService {
         aggregation,
       );
       const rawValue = sample?.value;
+      const sf =
+        typeof item.scaleFactor === 'number' && Number.isFinite(item.scaleFactor) && item.scaleFactor !== 0
+          ? item.scaleFactor
+          : 1;
       audit.value =
         typeof rawValue === 'number' && Number.isFinite(rawValue)
-          ? rawValue
+          ? rawValue * sf
           : null;
       audit.ok = audit.value !== null;
     } catch (err) {
@@ -1048,14 +1090,14 @@ export class MetricAnalyzerResponderService {
         code: 'instrumented_exceeds_tank_balance',
         severity: 'high',
         observation:
-          `MASE engine counters report ${instrumentedTotal} L burnt over the window, ` +
+          `Metered engine counters report ${instrumentedTotal} L burnt over the window, ` +
           `but the tank-balance method (which captures the true fuel that left the tanks) ` +
           `shows only ${tankBalanceLiters} L net consumption. The gap is ${uninstrumentedEstimate} L, ` +
-          `i.e. the MASE counters overcount by about ${Math.abs(uninstrumentedEstimate)} L.`,
+          `i.e. the metered counters overcount by about ${Math.abs(uninstrumentedEstimate)} L.`,
         possible_causes: [
-          'MASE fuel counter reset or rolled over inside the window (delta on a reset counter is wrong).',
-          'MASE fuel counter is mis-calibrated (reports too much per actual liter consumed).',
-          'There is a fuel-return line from the MASE engines back to the tank — counter sees outbound flow but some returns, so tanks lose less than the counter shows.',
+          'metered fuel counter reset or rolled over inside the window (delta on a reset counter is wrong).',
+          'metered fuel counter is mis-calibrated (reports too much per actual liter consumed).',
+          'There is a fuel-return line from a metered engine back to the tank — counter sees outbound flow but some returns, so tanks lose less than the counter shows.',
           'Bunker inflow was actually larger than the ' + Math.round(bunkerInflow) + ' L detected (e.g. multiple top-ups below the qualifying threshold, or splash/venting not captured by sensors).',
           'Tank-level sensors have calibration drift in one direction (under-reporting consumption).',
         ],
@@ -1090,12 +1132,12 @@ export class MetricAnalyzerResponderService {
         code: 'near_zero_consumption',
         severity: 'info',
         observation:
-          `Both tank balance (${tankBalanceLiters} L) and MASE counters (${instrumentedTotal} L) ` +
+          `Both tank balance (${tankBalanceLiters} L) and the metered counters (${instrumentedTotal} L) ` +
           `report essentially zero consumption. This is consistent with a quiet vessel state ` +
           `(no engines running, shore power, etc.). Any small non-zero figure is sensor noise.`,
         possible_causes: [
           'Vessel was on shore power / batteries; no gensets ran.',
-          'Tank-level noise (each tank ±20 L sensor jitter sums up across 8 tanks).',
+          'Tank-level noise (each tank ±20 L sensor jitter sums up across the tanks).',
         ],
       });
     }
@@ -1129,10 +1171,10 @@ export class MetricAnalyzerResponderService {
       'Total is computed from the tank-balance method: ' +
       'sum(fuel-tank levels at start) − sum(levels at end) + bunker inflow during the window. ' +
       'This captures ALL fuel consumers regardless of whether they have flow meters ' +
-      '(primary Siemens gensets, MASE auxiliaries, boilers, anything that drew fuel). ' +
+      '(all gensets, auxiliaries, boilers, and anything that drew fuel). ' +
       'The `by_instrumented_engine` breakdown only shows engines with `Total Fuel Used (l)` ' +
-      'counters (MASE on this vessel); the `uninstrumented_estimate` is the gap and represents ' +
-      'consumption by everything else (primarily the Siemens-controlled diesel gensets).';
+      'counters; the `uninstrumented_estimate` is the gap and represents ' +
+      'consumption by everything else (primarily the consumers without fuel counters).';
 
     return {
       toolCallId: tc.id,
@@ -1192,7 +1234,7 @@ export class MetricAnalyzerResponderService {
         payload: {
           ok: false,
           error:
-            'For fuel use `find_fuel_consumption_total` — it includes the MASE engine-counter breakdown that this generic tool omits.',
+            'For fuel use `find_fuel_consumption_total` — it includes the metered engine-counter breakdown that this generic tool omits.',
         },
         otherCall: {
           iteration, tool: 'find_consumable_consumption_total', args: callArgs, ok: false,
@@ -3199,6 +3241,364 @@ export class MetricAnalyzerResponderService {
     };
   }
 
+  /**
+   * Live PMS Tasks register (PmsTaskEntity) read DIRECTLY via repository — no
+   * PmsService/PmsModule import, so no DI cycle. Status is the calendar verdict
+   * (overdue / due-soon / ok) from the pure pms-status util; running-hours-based
+   * tasks also report their due-hours target so the model can cross-check live
+   * hours via find_running_hours. This is the cross-domain bridge: combine
+   * telemetry/alarms with "is this equipment due for service?" in one answer.
+   */
+  private async toolGetMaintenanceTasks(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const callArgs = args ?? {};
+    const statusFilter =
+      typeof callArgs.status === 'string' ? callArgs.status : 'all';
+    const assetQuery =
+      typeof callArgs.assetQuery === 'string'
+        ? callArgs.assetQuery.toLowerCase().trim()
+        : null;
+
+    const rows = await this.pmsTaskRepository.find({
+      where: { shipId, completedAt: IsNull() },
+      relations: { assets: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    const enriched = rows.map((task) => {
+      const dueHours = computeTaskDueHours(task);
+      const { status, due } = derivePmsStatus({
+        dueDate: effectiveDueDate(task),
+        currentHours: null,
+        dueHours,
+      });
+      return {
+        task: task.task,
+        status,
+        due,
+        equipment: (task.assets ?? []).map((a) => a.displayName).filter(Boolean),
+        category: task.category,
+        department: task.department ?? null,
+        due_hours: dueHours,
+        interval_hours: task.intervalHours,
+        last_done: task.lastDoneAt,
+      };
+    });
+
+    let filtered = enriched;
+    if (assetQuery) {
+      const qTokens = assetQuery
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((t) => t.length >= 3);
+      filtered = filtered.filter((t) => {
+        const hay = [t.task, ...t.equipment].join(' ').toLowerCase();
+        return hay.includes(assetQuery) || qTokens.some((q) => hay.includes(q));
+      });
+    }
+    if (statusFilter === 'overdue') {
+      filtered = filtered.filter((t) => t.status === 'overdue');
+    } else if (statusFilter === 'due_soon') {
+      filtered = filtered.filter((t) => t.status === 'due-soon');
+    }
+
+    const statusRank: Record<string, number> = {
+      overdue: 0,
+      'due-soon': 1,
+      ok: 2,
+    };
+    filtered.sort(
+      (a, b) => (statusRank[a.status] ?? 3) - (statusRank[b.status] ?? 3),
+    );
+    const capped = filtered.slice(0, 60);
+
+    const overdue = enriched.filter((t) => t.status === 'overdue').length;
+    const dueSoon = enriched.filter((t) => t.status === 'due-soon').length;
+
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration,
+        tool: 'get_maintenance_tasks',
+        args: callArgs,
+        ok: true,
+        resultSummary: `${capped.length} task(s); ${overdue} overdue, ${dueSoon} due-soon`,
+        latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        total: enriched.length,
+        overdue_count: overdue,
+        due_soon_count: dueSoon,
+        tasks: capped,
+        note: 'Live PMS Tasks register = source of truth for maintenance status. status/due are the calendar verdict; for due_hours tasks, cross-check the live reading with find_running_hours.',
+      },
+    };
+  }
+
+  /**
+   * Live Compliance / certificates register read DIRECTLY via repositories.
+   * Status is derived from expiry dates (expired / expiring ≤90 days / valid)
+   * and required-but-missing types surface as `missing` — mirrors
+   * ComplianceService without importing its module. Lets the analyzer answer
+   * survey-readiness / "is the cert in date?" alongside telemetry + maintenance.
+   */
+  private async toolGetComplianceStatus(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const callArgs = args ?? {};
+    const filter =
+      typeof callArgs.filter === 'string' ? callArgs.filter : 'attention';
+    const query =
+      typeof callArgs.query === 'string' ? callArgs.query.toLowerCase().trim() : null;
+
+    const EXPIRING_DAYS = 90;
+    const recordStatus = (
+      expiryDate: string | null,
+    ): 'valid' | 'expiring' | 'expired' => {
+      if (!expiryDate) return 'valid';
+      const expiry = new Date(expiryDate).getTime();
+      const now = Date.now();
+      if (expiry < now) return 'expired';
+      return (expiry - now) / 86_400_000 <= EXPIRING_DAYS ? 'expiring' : 'valid';
+    };
+
+    const [types, docs] = await Promise.all([
+      this.complianceTypeRepository.find({ where: { shipId } }),
+      this.complianceDocRepository.find({
+        where: { shipId },
+        relations: { asset: true },
+      }),
+    ]);
+
+    const docsByType = new Map<string, ComplianceDocEntity[]>();
+    for (const doc of docs) {
+      const list = docsByType.get(doc.docTypeId) ?? [];
+      list.push(doc);
+      docsByType.set(doc.docTypeId, list);
+    }
+
+    const items: Array<{
+      type: string;
+      section: string;
+      status: string;
+      expiry: string | null;
+      certNo: string | null;
+      issuer: string | null;
+      equipment: string | null;
+    }> = [];
+    for (const type of types) {
+      const records = docsByType.get(type.id) ?? [];
+      const required =
+        type.applicability === 'Y' || type.applicability === 'C';
+      if (!records.length) {
+        if (required) {
+          items.push({
+            type: type.name,
+            section: type.sectionName,
+            status: 'missing',
+            expiry: null,
+            certNo: null,
+            issuer: null,
+            equipment: null,
+          });
+        }
+        continue;
+      }
+      for (const doc of records) {
+        items.push({
+          type: type.name,
+          section: type.sectionName,
+          status: recordStatus(doc.expiryDate),
+          expiry: doc.expiryDate,
+          certNo: doc.certNo,
+          issuer: doc.issuer,
+          equipment: doc.asset?.displayName ?? null,
+        });
+      }
+    }
+
+    let filtered = items;
+    if (query) {
+      filtered = filtered.filter((i) =>
+        `${i.type} ${i.section}`.toLowerCase().includes(query),
+      );
+    }
+    if (filter === 'expiring') filtered = filtered.filter((i) => i.status === 'expiring');
+    else if (filter === 'expired') filtered = filtered.filter((i) => i.status === 'expired');
+    else if (filter === 'missing') filtered = filtered.filter((i) => i.status === 'missing');
+    else if (filter === 'attention') {
+      filtered = filtered.filter((i) =>
+        ['expired', 'expiring', 'missing'].includes(i.status),
+      );
+    }
+
+    const statusRank: Record<string, number> = {
+      expired: 0,
+      expiring: 1,
+      missing: 2,
+      valid: 3,
+    };
+    filtered.sort(
+      (a, b) => (statusRank[a.status] ?? 4) - (statusRank[b.status] ?? 4),
+    );
+    const capped = filtered.slice(0, 80);
+
+    const counts = {
+      expired: items.filter((i) => i.status === 'expired').length,
+      expiring: items.filter((i) => i.status === 'expiring').length,
+      missing: items.filter((i) => i.status === 'missing').length,
+    };
+
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration,
+        tool: 'get_compliance_status',
+        args: callArgs,
+        ok: true,
+        resultSummary: `${capped.length} item(s); ${counts.expired} expired, ${counts.expiring} expiring, ${counts.missing} missing`,
+        latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        counts,
+        items: capped,
+        note: 'Live Compliance register = source of truth for certificate/statutory-doc status. expiring ≈ within 90 days. Quote expiry dates + certificate numbers.',
+      },
+    };
+  }
+
+  /**
+   * Live onboard Inventory read DIRECTLY via repositories. Answers "do we have
+   * the spares / consumables onboard?" — the cross-domain payoff (e.g. service
+   * due → which parts are needed → are they in stock). Matches the query
+   * against item name / part number / manufacturer / supplier / category AND
+   * the names of assets each item is linked to, so an equipment query surfaces
+   * its linked spares.
+   */
+  private async toolGetInventory(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const callArgs = args ?? {};
+    const query =
+      typeof callArgs.query === 'string' ? callArgs.query.toLowerCase().trim() : '';
+    const category =
+      typeof callArgs.category === 'string' ? callArgs.category.toLowerCase().trim() : null;
+
+    const items = await this.inventoryRepository.find({ where: { shipId } });
+
+    // Resolve which assets each item is linked to (for equipment-based search).
+    const links = items.length
+      ? await this.inventoryAssetLinkRepository.find({
+          where: { inventoryItemId: In(items.map((i) => i.id)) },
+        })
+      : [];
+    const assetIds = Array.from(new Set(links.map((l) => l.assetId)));
+    const assets = assetIds.length
+      ? await this.assetRepository.find({ where: { id: In(assetIds) } })
+      : [];
+    const assetNameById = new Map(assets.map((a) => [a.id, a.displayName]));
+    const linkedAssetNamesByItem = new Map<string, string[]>();
+    for (const link of links) {
+      const name = assetNameById.get(link.assetId);
+      if (!name) continue;
+      const list = linkedAssetNamesByItem.get(link.inventoryItemId) ?? [];
+      list.push(name);
+      linkedAssetNamesByItem.set(link.inventoryItemId, list);
+    }
+
+    const qTokens = query
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((t) => t.length >= 3);
+
+    const scored = items
+      .map((item) => {
+        const linkedAssets = linkedAssetNamesByItem.get(item.id) ?? [];
+        const hay = [
+          item.name,
+          item.partNumber,
+          item.manufacturer,
+          item.supplier,
+          item.category,
+          ...linkedAssets,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        let score = 0;
+        if (!query) {
+          score = 1; // no query → return everything (cap applies)
+        } else if (hay.includes(query)) {
+          score = 3;
+        } else {
+          score = qTokens.filter((t) => hay.includes(t)).length;
+        }
+        if (category && item.category.toLowerCase() === category) {
+          score += 1;
+        } else if (category && item.category.toLowerCase() !== category) {
+          score = 0;
+        }
+        return { item, score, linkedAssets };
+      })
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 60);
+
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration,
+        tool: 'get_inventory',
+        args: callArgs,
+        ok: true,
+        resultSummary: `${scored.length} item(s) matched`,
+        latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        total: items.length,
+        matched: scored.length,
+        items: scored.map(({ item, linkedAssets }) => ({
+          name: item.name,
+          category: item.category,
+          part_number: item.partNumber,
+          quantity: item.quantity != null ? Number(item.quantity) : null,
+          unit: item.unit,
+          location: item.location,
+          manufacturer: item.manufacturer,
+          supplier: item.supplier,
+          linked_equipment: linkedAssets,
+        })),
+        note: 'Live onboard inventory. quantity is current stock on board (null = not tracked). Use to answer "do we have the spares/consumables onboard" — combine with get_maintenance_tasks and the manual to verify the parts a service needs are in stock.',
+      },
+    };
+  }
+
   private async toolComparePeriods(
     tc: OpenAiToolCall,
     args: Record<string, unknown>,
@@ -4046,12 +4446,8 @@ export class MetricAnalyzerResponderService {
     });
 
     const sog = this.findCatalogItem(catalogIndex, 'navigation.speedOverGround', 'value');
-    const propPs = this.findCatalogItem(catalogIndex, 'SIEMENS-PROPULSION-PS', 'Actual motor power (kW)');
-    const propSb = this.findCatalogItem(catalogIndex, 'SIEMENS-PROPULSION-SB', 'Actual motor power (kW)');
-    const gensetPs = this.findCatalogItem(catalogIndex, 'SIEMENS-GENSET-PS', 'Actual motor power (kW)');
-    const gensetSb = this.findCatalogItem(catalogIndex, 'SIEMENS-GENSET-SB', 'Actual motor power (kW)');
-    const masePs = this.findCatalogItem(catalogIndex, 'SIEMENS-MASE-GENSET-PS', 'Actual motor power (kW)');
-    const maseSb = this.findCatalogItem(catalogIndex, 'SIEMENS-MASE-GENSET-SB', 'Actual motor power (kW)');
+    const propItems = this.findPropulsionPowerItems(catalogIndex);
+    const gensetItems = this.findGensetPowerItems(catalogIndex);
 
     const fetchSamples = (item: AnalyzedCatalogItem | null) =>
       item
@@ -4062,18 +4458,20 @@ export class MetricAnalyzerResponderService {
           )
         : Promise.resolve([] as Array<{ timestamp: string; value: number }>);
 
-    const [sogS, propPsS, propSbS, gPsS, gSbS, mPsS, mSbS] = await Promise.all([
-      fetchSamples(sog), fetchSamples(propPs), fetchSamples(propSb),
-      fetchSamples(gensetPs), fetchSamples(gensetSb),
-      fetchSamples(masePs), fetchSamples(maseSb),
+    const [sogS, propSets, gensetSets] = await Promise.all([
+      fetchSamples(sog),
+      Promise.all(propItems.map((it) => fetchSamples(it))),
+      Promise.all(gensetItems.map((it) => fetchSamples(it))),
     ]);
     const idx = (arr: typeof sogS) => new Map(arr.map((s) => [s.timestamp, s.value]));
-    const sogI = idx(sogS), propPsI = idx(propPsS), propSbI = idx(propSbS);
-    const gPsI = idx(gPsS), gSbI = idx(gSbS), mPsI = idx(mPsS), mSbI = idx(mSbS);
+    const sogI = idx(sogS);
+    const propMaps = propSets.map(idx);
+    const gensetMaps = gensetSets.map(idx);
     const times = Array.from(
       new Set([
-        ...sogI.keys(), ...propPsI.keys(), ...propSbI.keys(),
-        ...gPsI.keys(), ...gSbI.keys(), ...mPsI.keys(), ...mSbI.keys(),
+        ...sogI.keys(),
+        ...propMaps.flatMap((m) => [...m.keys()]),
+        ...gensetMaps.flatMap((m) => [...m.keys()]),
       ]),
     ).sort();
 
@@ -4081,10 +4479,8 @@ export class MetricAnalyzerResponderService {
     let sumKw = 0;
     for (const ts of times) {
       const sogV = sogI.get(ts) ?? 0;
-      const propPower = (propPsI.get(ts) ?? 0) + (propSbI.get(ts) ?? 0);
-      const gensetPower =
-        (gPsI.get(ts) ?? 0) + (gSbI.get(ts) ?? 0) +
-        (mPsI.get(ts) ?? 0) + (mSbI.get(ts) ?? 0);
+      const propPower = propMaps.reduce((s, m) => s + (m.get(ts) ?? 0), 0);
+      const gensetPower = gensetMaps.reduce((s, m) => s + (m.get(ts) ?? 0), 0);
 
       let state: string;
       if (sogV > 0.5 || Math.abs(propPower) > 5) state = 'underway';
@@ -4118,7 +4514,7 @@ export class MetricAnalyzerResponderService {
         fraction_of_window_in_state: Math.round(fractionOfWindow * 1000) / 1000,
         avg_kw_in_state: avgKw === null ? null : Math.round(avgKw * 10) / 10,
         note:
-          'kW value is the sum of all four genset Actual motor power readings at each time bucket (primary Siemens + MASE). ' +
+          'kW value is the sum of all discovered genset power (kW) readings at each time bucket. ' +
           'When state=alongside_on_shore, gensets are 0 by definition and the average is 0 kW (true on-shore consumption ' +
           'is invisible without a shore-power input meter).',
       },
@@ -4786,10 +5182,8 @@ export class MetricAnalyzerResponderService {
     const heading = this.findCatalogItem(catalogIndex, 'navigation.headingTrue', 'value');
     const lat = this.findCatalogItem(catalogIndex, 'navigation.position', 'lat');
     const lon = this.findCatalogItem(catalogIndex, 'navigation.position', 'lon');
-    const propPs = this.findCatalogItem(catalogIndex, 'SIEMENS-PROPULSION-PS', 'Actual motor power (kW)');
-    const propSb = this.findCatalogItem(catalogIndex, 'SIEMENS-PROPULSION-SB', 'Actual motor power (kW)');
-    const masePs = this.findCatalogItem(catalogIndex, 'SIEMENS-MASE-GENSET-PS', 'Actual motor power (kW)');
-    const maseSb = this.findCatalogItem(catalogIndex, 'SIEMENS-MASE-GENSET-SB', 'Actual motor power (kW)');
+    const propItems = this.findPropulsionPowerItems(catalogIndex);
+    const gensetItems = this.findGensetPowerItems(catalogIndex);
 
     const lastOf = async (
       sel: AnalyzedCatalogItem | null,
@@ -4844,12 +5238,14 @@ export class MetricAnalyzerResponderService {
       return null;
     };
 
-    const [sogV, headingV, latHit, lonHit, propPsV, propSbV, masePsV, maseSbV] =
-      await Promise.all([
-        lastOf(sog), lastOf(heading),
-        lastOfProgressive(lat), lastOfProgressive(lon),
-        lastOf(propPs), lastOf(propSb), lastOf(masePs), lastOf(maseSb),
-      ]);
+    const [sogV, headingV, latHit, lonHit] = await Promise.all([
+      lastOf(sog),
+      lastOf(heading),
+      lastOfProgressive(lat),
+      lastOfProgressive(lon),
+    ]);
+    const propVals = await Promise.all(propItems.map((it) => lastOf(it)));
+    const gensetVals = await Promise.all(gensetItems.map((it) => lastOf(it)));
     const latV = latHit?.value ?? null;
     const lonV = lonHit?.value ?? null;
     // Use the older of lat/lon timestamps — both are written together, so
@@ -4871,18 +5267,10 @@ export class MetricAnalyzerResponderService {
     // "knots-ish" — for SignalK m/s 0.5 means barely moving, so treat
     // values < 0.5 as "not moving" regardless of unit (covers both).
     const sogNum = sogV ?? 0;
-    const propPower = (propPsV ?? 0) + (propSbV ?? 0);
-    const masePower = (masePsV ?? 0) + (maseSbV ?? 0);
-
-    // Also check primary Siemens gensets, since shore power and gensets are
-    // mutually exclusive — any nonzero genset output means we are NOT on shore.
-    const siemensPs = this.findCatalogItem(catalogIndex, 'SIEMENS-GENSET-PS', 'Actual motor power (kW)');
-    const siemensSb = this.findCatalogItem(catalogIndex, 'SIEMENS-GENSET-SB', 'Actual motor power (kW)');
-    const [siemensPsV, siemensSbV] = await Promise.all([
-      lastOf(siemensPs), lastOf(siemensSb),
-    ]);
-    const primaryGensetPower = (siemensPsV ?? 0) + (siemensSbV ?? 0);
-    const totalGensetPower = masePower + primaryGensetPower;
+    const propPower = propVals.reduce<number>((s, v) => s + (v ?? 0), 0);
+    // Any nonzero genset output means we are NOT on shore (shore power and
+    // gensets are mutually exclusive sources).
+    const totalGensetPower = gensetVals.reduce<number>((s, v) => s + (v ?? 0), 0);
 
     let state: 'underway' | 'at_anchor' | 'alongside_on_shore' | 'idle' = 'idle';
     const reasons: string[] = [];
@@ -4892,12 +5280,12 @@ export class MetricAnalyzerResponderService {
     } else if (totalGensetPower > 1) {
       state = 'at_anchor';
       reasons.push(
-        `vessel not moving (SOG≈0) and gensets active (MASE=${Math.round(masePower)} kW, primary Siemens=${Math.round(primaryGensetPower)} kW) — running off own gensets, so NOT on shore power (shore and gensets are mutually exclusive sources).`,
+        `vessel not moving (SOG≈0) and gensets active (${Math.round(totalGensetPower)} kW total) — running off own gensets, so NOT on shore power (shore and gensets are mutually exclusive sources).`,
       );
     } else {
       state = 'alongside_on_shore';
       reasons.push(
-        `vessel idle (SOG≈0, propulsion=0), AND all gensets at zero — by exclusion, the bus is fed from shore power (or pure battery operation if no shore tie). Shore-power input is not directly telemetered on this vessel.`,
+        `vessel idle (SOG≈0, propulsion=0), AND all gensets at zero — by exclusion, the bus is fed from shore power (or pure battery operation if no shore tie). Shore-power input is not directly telemetered.`,
       );
     }
 
@@ -4905,7 +5293,7 @@ export class MetricAnalyzerResponderService {
       toolCallId: tc.id,
       otherCall: {
         iteration, tool: 'get_vessel_state', args: callArgs, ok: true,
-        resultSummary: `state=${state}; SOG=${sogNum}, propulsion=${Math.round(propPower)}kW, MASE=${Math.round(masePower)}kW, primary-Siemens=${Math.round(primaryGensetPower)}kW`,
+        resultSummary: `state=${state}; SOG=${sogNum}, propulsion=${Math.round(propPower)}kW, gensets=${Math.round(totalGensetPower)}kW`,
         latencyMs: Date.now() - t0,
       },
       payload: {
@@ -4933,20 +5321,63 @@ export class MetricAnalyzerResponderService {
           'navigation.headingTrue': headingV,
           'navigation.position.lat': latV,
           'navigation.position.lon': lonV,
-          'SIEMENS-PROPULSION-PS.Actual motor power (kW)': propPsV,
-          'SIEMENS-PROPULSION-SB.Actual motor power (kW)': propSbV,
-          'SIEMENS-GENSET-PS.Actual motor power (kW)': siemensPsV,
-          'SIEMENS-GENSET-SB.Actual motor power (kW)': siemensSbV,
-          'SIEMENS-MASE-GENSET-PS.Actual motor power (kW)': masePsV,
-          'SIEMENS-MASE-GENSET-SB.Actual motor power (kW)': maseSbV,
+          ...Object.fromEntries(
+            propItems.map((it, i) => [`${it.measurement}.${it.field}`, propVals[i]]),
+          ),
+          ...Object.fromEntries(
+            gensetItems.map((it, i) => [`${it.measurement}.${it.field}`, gensetVals[i]]),
+          ),
         },
         rationale: reasons,
         note:
-          'Shore power and gensets are mutually exclusive sources on this vessel — at any moment ONE feeds the bus, never both. ' +
-          'Pure-batteries operation is theoretically possible but uncommon for sustained periods on a 50m yacht. ' +
-          'Direct shore-tie sensor is not telemetered here, so `alongside_on_shore` is inferred from "all gensets at zero".',
+          'Shore power and gensets are mutually exclusive sources — at any moment ONE feeds the bus, never both. ' +
+          'Pure-batteries operation is theoretically possible but uncommon for sustained periods. ' +
+          'A direct shore-tie sensor is typically not telemetered, so `alongside_on_shore` is inferred from "all gensets at zero".',
       },
     };
+  }
+
+  /**
+   * Discover instantaneous electrical-power catalog items (kW) whose bound
+   * asset (or measurement name) matches a predicate. Replaces hard-coded
+   * per-vessel genset/propulsion measurement names so the power & state tools
+   * work on ANY vessel (the binding/asset register identifies the equipment).
+   */
+  private findPowerItems(
+    catalogIndex: Map<string, Map<string, AnalyzedCatalogItem>>,
+    predicate: (assetName: string, measurement: string) => boolean,
+  ): AnalyzedCatalogItem[] {
+    const out: AnalyzedCatalogItem[] = [];
+    for (const byField of catalogIndex.values()) {
+      for (const item of byField.values()) {
+        const f = item.field.toLowerCase();
+        if (!(f.includes('power') && f.includes('kw'))) continue;
+        const asset = (item.boundAssetName ?? '').toLowerCase();
+        const meas = item.measurement.toLowerCase();
+        if (predicate(asset, meas)) out.push(item);
+      }
+    }
+    return out;
+  }
+
+  /** Genset electrical-power items (kW), discovered from the catalog/register. */
+  private findGensetPowerItems(
+    catalogIndex: Map<string, Map<string, AnalyzedCatalogItem>>,
+  ): AnalyzedCatalogItem[] {
+    return this.findPowerItems(
+      catalogIndex,
+      (a, m) => /gen.?set|generator|genny/.test(a) || /gen.?set|generator/.test(m),
+    );
+  }
+
+  /** Main-propulsion electrical-power items (kW), discovered from the catalog. */
+  private findPropulsionPowerItems(
+    catalogIndex: Map<string, Map<string, AnalyzedCatalogItem>>,
+  ): AnalyzedCatalogItem[] {
+    return this.findPowerItems(
+      catalogIndex,
+      (a, m) => /propuls|propeller/.test(a) || /propuls|propeller/.test(m),
+    );
   }
 
   private findCatalogItem(
@@ -5192,32 +5623,20 @@ export class MetricAnalyzerResponderService {
     const windowHours =
       Math.max(1, (stop.getTime() - start.getTime()) / (60 * 60 * 1000));
 
-    // ── PRIMARY method: integrate Actual motor power (kW) on every genset ──
-    // The 4 gensets on this vessel are the ONLY power sources we can meter
-    // directly (no shore-power input meter is published). They are mutually
-    // exclusive with shore power — at any moment the bus is fed by either
-    // the gensets OR shore power, never both. So during genset operation,
+    // ── PRIMARY method: integrate genset power (kW) on every genset ──
+    // The vessel's gensets are the only power sources we can meter directly
+    // (a shore-power input meter is usually not published). They are mutually
+    // exclusive with shore power — at any moment the bus is fed by either the
+    // gensets OR shore power, never both. So during genset operation,
     // ∫(genset kW) over time is the entire ship energy in that interval; any
-    // time on shore power is INVISIBLE to telemetry on this vessel.
-    const genSelectors: Array<{
-      measurement: string; field: string; bucket: string; label: string;
-    }> = [];
-    for (const measName of [
-      'SIEMENS-GENSET-PS',
-      'SIEMENS-GENSET-SB',
-      'SIEMENS-MASE-GENSET-PS',
-      'SIEMENS-MASE-GENSET-SB',
-    ]) {
-      const item = this.findCatalogItem(catalogIndex, measName, 'Actual motor power (kW)');
-      if (item) {
-        genSelectors.push({
-          measurement: measName,
-          field: item.field,
-          bucket: item.bucket,
-          label: measName,
-        });
-      }
-    }
+    // time on shore power is INVISIBLE to telemetry. Gensets are discovered
+    // dynamically from the catalog/asset register (not hard-coded names).
+    const genSelectors = this.findGensetPowerItems(catalogIndex).map((item) => ({
+      measurement: item.measurement,
+      field: item.field,
+      bucket: item.bucket,
+      label: item.boundAssetName ?? item.measurement,
+    }));
 
     const perGenset = await Promise.all(
       genSelectors.map(async (sel) => {

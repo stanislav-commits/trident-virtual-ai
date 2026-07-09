@@ -167,6 +167,13 @@ export default function configuration() {
           process.env.GRAFANA_LLM_API_KEY ?? process.env.GRAFANA_SA_TOKEN ?? '',
         model: process.env.GRAFANA_LLM_MODEL ?? 'gpt-4o',
       },
+      // Grafana alerting webhook -> Trident. Shared secret authenticates the
+      // webhook (no JWT). autoTaskSeverity: at/above this severity a firing
+      // alert spawns an unplanned PMS task ('off' disables).
+      grafanaAlerts: {
+        webhookSecret: process.env.GRAFANA_WEBHOOK_SECRET ?? '',
+        autoTaskSeverity: process.env.ALERT_AUTO_TASK_SEVERITY ?? 'critical',
+      },
       visionExtractor: {
       dir: process.env.VISION_EXTRACTOR_DIR ?? '',
     },

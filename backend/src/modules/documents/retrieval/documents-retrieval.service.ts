@@ -8,6 +8,10 @@ import { Repository } from 'typeorm';
 import { RagService } from '../../../integrations/rag/rag.service';
 import { LlmService } from '../../../integrations/llm/llm.service';
 import { ShipEntity } from '../../ships/entities/ship.entity';
+import { PLATFORM_SHIP_ID } from '../../ships/platform-ship.constants';
+import { DocumentDocClass } from '../enums/document-doc-class.enum';
+import { AccessControlService } from '../../access-control/access-control.service';
+import { categoryForDocClass } from '../../access-control/access-positions';
 import { DocumentRetrievalResponseDto } from '../dto/document-retrieval-response.dto';
 import { SearchDocumentsDto } from '../dto/search-documents.dto';
 import { assessDocumentRetrievalEvidenceQuality } from './scoring/documents-retrieval-evidence-assessor';
@@ -31,6 +35,7 @@ export class DocumentsRetrievalService {
     private readonly neighborExpander: DocumentsRetrievalNeighborExpander,
     private readonly mapper: DocumentsRetrievalMapper,
     private readonly llmService: LlmService,
+    private readonly accessControlService: AccessControlService,
   ) {}
 
   async search(input: SearchDocumentsDto): Promise<DocumentRetrievalResponseDto> {
@@ -44,7 +49,55 @@ export class DocumentsRetrievalService {
     const ship = await this.resolveShip(input.shipId);
     const context = this.filterBuilder.buildContext(input);
 
-    if (!ship.ragflowDatasetId) {
+    // RBAC: if the viewer is linked to a crew member, drop doc classes their
+    // position may not read. Admins / unlinked users → allowed === null → no-op.
+    if (input.viewerUserId && input.shipId) {
+      const allowed = await this.accessControlService.allowedCategories(
+        input.viewerUserId,
+        input.shipId,
+      );
+      if (allowed) {
+        context.requestedDocClasses = context.requestedDocClasses.filter(
+          (docClass) => {
+            const category = categoryForDocClass(docClass);
+            return category === null || allowed.has(category);
+          },
+        );
+      }
+    }
+
+    // Fleet-wide Publications (platform scope) are unioned into every vessel's
+    // retrieval: a ship's chat sees its own KB documents PLUS the shared
+    // rules/regs, each living in its own RAGFlow dataset (approach B).
+    const platformShip = context.requestedDocClasses.includes(
+      DocumentDocClass.PUBLICATION,
+    )
+      ? await this.shipsRepository.findOne({ where: { id: PLATFORM_SHIP_ID } })
+      : null;
+
+    const shipDocuments = ship.ragflowDatasetId
+      ? await this.filterBuilder.loadUsableDocuments(
+          ship.id,
+          ship.ragflowDatasetId,
+          context.requestedDocClasses,
+        )
+      : [];
+    const publicationDocuments = platformShip?.ragflowDatasetId
+      ? await this.filterBuilder.loadPublicationDocuments(
+          platformShip.ragflowDatasetId,
+        )
+      : [];
+
+    const datasetIds = Array.from(
+      new Set(
+        [
+          ship.ragflowDatasetId,
+          publicationDocuments.length ? platformShip?.ragflowDatasetId : null,
+        ].filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    if (!datasetIds.length) {
       return this.mapper.buildEmptyResponse({
         input,
         normalizedQuestion,
@@ -55,11 +108,7 @@ export class DocumentsRetrievalService {
       });
     }
 
-    let usableDocuments = await this.filterBuilder.loadUsableDocuments(
-      ship.id,
-      ship.ragflowDatasetId,
-      context.requestedDocClasses,
-    );
+    let usableDocuments = [...shipDocuments, ...publicationDocuments];
     if (input.scopeRagflowDocumentIds?.length) {
       const scope = new Set(input.scopeRagflowDocumentIds);
       usableDocuments = usableDocuments.filter(
@@ -96,7 +145,7 @@ export class DocumentsRetrievalService {
 
     const ragflowResponse = await this.ragService.retrieveChunks({
       question: normalizedQuestion,
-      datasetIds: [ship.ragflowDatasetId],
+      datasetIds,
       documentIds: retrievalDocuments
         .map((document) => document.ragflowDocumentId)
         .filter((id): id is string => Boolean(id)),
@@ -126,17 +175,18 @@ export class DocumentsRetrievalService {
     const expandedCandidates = await this.neighborExpander.expand({
       selectedCandidates,
       allCandidates: enrichedCandidates,
-      datasetId: ship.ragflowDatasetId,
+      // Neighbor expansion fetches adjacent chunks within one dataset; use the
+      // ship's own dataset (publications are short, single-chunk regs that
+      // rarely need neighbor stitching). Falls back to the platform dataset for
+      // a publications-only ship.
+      datasetId: datasetIds[0],
       context,
       question: assessmentQuestion,
       questionType: input.questionType ?? null,
       evidenceQuality: initialEvidenceQuality,
     });
-    const orderedExpandedCandidates = this.reranker.orderExpandedResultsForPrompt(
-      expandedCandidates,
-      context,
-      assessmentQuestion,
-    );
+    const orderedExpandedCandidates =
+      this.reranker.orderExpandedResultsForPrompt(expandedCandidates);
     const results = this.mapper.toResults(orderedExpandedCandidates);
     const evidenceQuality = assessDocumentRetrievalEvidenceQuality({
       candidates: orderedExpandedCandidates,
@@ -148,7 +198,7 @@ export class DocumentsRetrievalService {
       input,
       normalizedQuestion,
       shipId: ship.id,
-      shipDatasetId: ship.ragflowDatasetId,
+      shipDatasetId: ship.ragflowDatasetId ?? datasetIds[0],
       context,
       retrievalDocuments,
       metadataMatchedDocumentCount: metadataMatchedDocuments.length,

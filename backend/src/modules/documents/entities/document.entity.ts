@@ -130,6 +130,15 @@ export class DocumentEntity {
   @Column({ name: 'document_purpose', type: 'text', nullable: true })
   documentPurpose!: string | null;
 
+  /**
+   * Short AI-generated descriptor used for FILE lookup ("which file does the
+   * user want?") — not full content. Populated cheaply at upload for plans
+   * (single-page vision caption) and reusable for any type. Powers the `files`
+   * chat route that returns the original file.
+   */
+  @Column({ name: 'ai_summary', type: 'text', nullable: true })
+  aiSummary!: string | null;
+
   @Column({
     name: 'document_role',
     type: 'varchar',

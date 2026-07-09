@@ -6,8 +6,10 @@ import { DocumentEntity } from '../../entities/document.entity';
 import { DocumentDocClass } from '../../enums/document-doc-class.enum';
 import { DocumentParseStatus } from '../../enums/document-parse-status.enum';
 import { DocumentRetrievalQuestionType } from '../../enums/document-retrieval-question-type.enum';
+import { PLATFORM_SHIP_ID } from '../../../ships/platform-ship.constants';
 import {
   ALL_DOCUMENT_CLASSES,
+  RETRIEVABLE_DOCUMENT_CLASSES,
   DOCUMENT_RETRIEVAL_DEFAULT_CANDIDATE_K,
   DOCUMENT_RETRIEVAL_DEFAULT_TOP_K,
   DOCUMENT_TITLE_HINT_NARROWING_THRESHOLD,
@@ -77,6 +79,29 @@ export class DocumentsRetrievalFilterBuilder {
     });
   }
 
+  /**
+   * Fleet-wide Publications live under the hidden platform scope in their own
+   * shared RAGFlow dataset. They are unioned into every vessel's retrieval so a
+   * ship's chat sees its own KB PLUS the shared rules/regs (approach B).
+   */
+  async loadPublicationDocuments(
+    platformDatasetId: string,
+  ): Promise<DocumentEntity[]> {
+    return this.documentsRepository.find({
+      where: {
+        shipId: PLATFORM_SHIP_ID,
+        ragflowDatasetId: platformDatasetId,
+        ragflowDocumentId: Not(IsNull()),
+        parseStatus: DocumentParseStatus.PARSED,
+        docClass: DocumentDocClass.PUBLICATION,
+      },
+      order: {
+        sourcePriority: 'ASC',
+        updatedAt: 'DESC',
+      },
+    });
+  }
+
   applyLocalMetadataPrefilter(
     documents: DocumentEntity[],
     context: DocumentRetrievalFilterContext,
@@ -134,14 +159,27 @@ export class DocumentsRetrievalFilterBuilder {
 
   private resolveCandidateDocClasses(input: SearchDocumentsDto): DocumentDocClass[] {
     if (input.candidateDocClasses?.length) {
-      return Array.from(new Set(input.candidateDocClasses));
+      return this.excludeRetiredClasses(Array.from(new Set(input.candidateDocClasses)));
     }
 
     if (input.category && this.isDocumentClass(input.category)) {
-      return [input.category];
+      return this.excludeRetiredClasses([input.category]);
     }
 
-    return [...ALL_DOCUMENT_CLASSES];
+    return [...RETRIEVABLE_DOCUMENT_CLASSES];
+  }
+
+  /**
+   * Drop retired classes (e.g. historical_procedure) that must never be
+   * retrieved, even if a caller or the router still requests them. Maintenance
+   * is owned by the `pms` chat route reading the live Tasks register.
+   */
+  private excludeRetiredClasses(
+    docClasses: DocumentDocClass[],
+  ): DocumentDocClass[] {
+    return docClasses.filter((docClass) =>
+      RETRIEVABLE_DOCUMENT_CLASSES.includes(docClass),
+    );
   }
 
   private normalizeLimit(

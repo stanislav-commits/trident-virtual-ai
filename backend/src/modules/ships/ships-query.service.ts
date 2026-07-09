@@ -15,7 +15,9 @@ export class ShipsQueryService {
 
   async listForUser(user: AuthenticatedUser): Promise<ShipResponseDto[]> {
     if (user.role === UserRole.ADMIN) {
+      // The platform scope row (Publications owner) is never a navigable vessel.
       const ships = await this.shipsRepository.find({
+        where: { isPlatform: false },
         order: { name: 'ASC' },
       });
 

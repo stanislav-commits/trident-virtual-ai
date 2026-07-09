@@ -7,10 +7,6 @@ import { getPreferredDocumentClassesForQuestionType } from '../query/document-qu
 import { getQuestionContentSignalBonus } from './documents-retrieval-query-signals';
 import { getQuestionTypeSectionBonus } from './documents-retrieval-text-signals';
 import {
-  applyPmsFutureTaskOrderBonuses,
-  getPmsTaskSelectionBonus,
-} from './documents-retrieval-pms-signals';
-import {
   DocumentRetrievalCandidateScoreInput,
   DocumentRetrievalFilterContext,
   EnrichedDocumentRetrievalCandidate,
@@ -59,12 +55,9 @@ export class DocumentsRetrievalReranker {
       })
       .filter((item): item is EnrichedDocumentRetrievalCandidate => item !== null);
 
-    return applyPmsFutureTaskOrderBonuses(
-      candidates,
-      question,
-      context.hints,
-    )
-      .sort((left, right) => right.rerankScore - left.rerankScore);
+    return candidates.sort(
+      (left, right) => right.rerankScore - left.rerankScore,
+    );
   }
 
   selectResults(
@@ -110,22 +103,12 @@ export class DocumentsRetrievalReranker {
 
   orderExpandedResultsForPrompt(
     candidates: EnrichedDocumentRetrievalCandidate[],
-    context: DocumentRetrievalFilterContext,
-    question: string,
   ): EnrichedDocumentRetrievalCandidate[] {
-    const adjustedCandidates = applyPmsFutureTaskOrderBonuses(
-      candidates,
-      question,
-      context.hints,
-    );
-
-    if (adjustedCandidates === candidates) {
-      return candidates;
-    }
-
-    return [...adjustedCandidates].sort(
-      (left, right) => right.rerankScore - left.rerankScore,
-    );
+    // Previously re-ordered candidates by PMS future-task signals on
+    // historical_procedure docs. That class is retired (maintenance → pms
+    // route), so this is now a passthrough; the candidates keep their
+    // rerank order.
+    return candidates;
   }
 }
 
@@ -161,7 +144,6 @@ export function scoreDocumentRetrievalCandidate(
     input.question,
     input.content,
   );
-  const pmsTaskSelectionBonus = getPmsTaskSelectionBonus(input);
 
   return roundScore(
     baseScore +
@@ -171,8 +153,7 @@ export function scoreDocumentRetrievalCandidate(
       priorityBonus +
       sectionBonus +
       titleHintBonus +
-      questionContentBonus +
-      pmsTaskSelectionBonus,
+      questionContentBonus,
   );
 }
 

@@ -84,6 +84,14 @@ export class ShipEntity {
   })
   buildYear!: number | null;
 
+  /**
+   * Free-text vessel technical profile fed to the metric-analysis AI per ship
+   * (propulsion, power generation, naming conventions, side suffixes, quirks).
+   * Replaces the old hard-coded SeaWolf X hint — empty = generic, infer from data.
+   */
+  @Column({ name: 'metric_analysis_hint', type: 'text', nullable: true })
+  metricAnalysisHint!: string | null;
+
   @Column({
     name: 'ragflow_dataset_id',
     type: 'varchar',
@@ -91,6 +99,14 @@ export class ShipEntity {
     nullable: true,
   })
   ragflowDatasetId!: string | null;
+
+  /**
+   * Marks the single hidden "platform" scope row that owns fleet-wide
+   * Publications + their shared RAGFlow dataset. Hidden from ship lists and
+   * the vessel switcher; never a navigable vessel. See platform-ship.constants.
+   */
+  @Column({ name: 'is_platform', type: 'boolean', default: false })
+  isPlatform!: boolean;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

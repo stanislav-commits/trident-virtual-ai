@@ -5,7 +5,7 @@ import { promisify } from 'util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { LlmService } from '../../../integrations/llm/llm.service';
 import { AssetEntity } from '../../assets/entities/asset.entity';
 import { AssetDocumentLinkEntity } from '../../assets/entities/asset-document-link.entity';
@@ -308,24 +308,45 @@ export class VisionExtractionService {
     const head = markdown.slice(0, 4000);
     const identified = await this.llmService.createJsonChatCompletion<{
       manufacturer?: string | null;
-      model?: string | null;
       equipment?: string | null;
+      models?: (string | null)[] | null;
+      series?: string | null;
     }>({
       systemPrompt:
         'You read the opening pages of a ship equipment manual and identify the equipment. ' +
-        'Return raw JSON: {"manufacturer": string|null, "model": string|null, "equipment": short noun phrase|null}. ' +
-        'manufacturer/model must be EXACT strings from the text, no guessing.',
+        'Return raw JSON: {"manufacturer": string|null, "equipment": short noun phrase|null, ' +
+        '"models": string[] (every model number this manual covers — may be one or many), ' +
+        '"series": string|null (the shared family/series name if it covers several models, e.g. "EOZDJ", else null)}. ' +
+        'manufacturer/models must be EXACT strings from the text, no guessing.',
       userPrompt: head,
       temperature: 0,
-      maxTokens: 200,
+      maxTokens: 300,
     });
 
     const manufacturer = identified?.manufacturer?.trim() || null;
-    const model = identified?.model?.trim() || null;
     const equipment = identified?.equipment?.trim() || null;
+    const models = (identified?.models ?? [])
+      .map((m) => (m ? String(m).trim() : ''))
+      .filter(Boolean);
+    const series = identified?.series?.trim() || null;
 
+    // 1) RENAME — always, independent of linking. Multi-model manuals name by
+    //    equipment + brand (+ shared series, or a single model when there's
+    //    exactly one), never by an arbitrary one of several models.
+    const ext = document.originalFileName.match(/\.[^.]+$/)?.[0] ?? '.pdf';
+    const newName = this.buildDocName(manufacturer, equipment, models, series, ext);
+    if (newName) document.originalFileName = newName;
+    if (manufacturer && !document.manufacturer) {
+      document.manufacturer = manufacturer;
+    }
+    if (models.length === 1 && !document.model) document.model = models[0];
+    if (equipment && !document.equipmentName) document.equipmentName = equipment;
+
+    // 2) LINK — separate concern. Skip if the uploader already pinned an asset;
+    //    otherwise pin EVERY ship asset whose model matches ANY covered model
+    //    (twin/sister units, or several models sharing one manual).
     let matches: AssetEntity[] = [];
-    if (manufacturer && model) {
+    if (!alreadyLinked && manufacturer && models.length) {
       matches = await this.assetsRepository
         .createQueryBuilder('a')
         .where('a.ship_id = :shipId', { shipId: document.shipId })
@@ -333,19 +354,22 @@ export class VisionExtractionService {
           mfr: `%${manufacturer}%`,
           mfrLike: `%${manufacturer}%`,
         })
-        .andWhere(
-          "(a.model ILIKE :model OR :model ILIKE '%' || a.model || '%')",
-          { model: `%${model}%` },
-        )
         .andWhere("a.model IS NOT NULL AND a.model <> ''")
+        .andWhere(
+          new Brackets((qb) => {
+            models.forEach((m, i) => {
+              qb.orWhere(
+                `(a.model ILIKE :m${i} OR :m${i} ILIKE '%' || a.model || '%')`,
+                { [`m${i}`]: `%${m}%` },
+              );
+            });
+          }),
+        )
         // Retired equipment must not collect new manuals.
         .andWhere("a.lifecycle_status NOT ILIKE '%deprecat%'")
         .andWhere("a.display_name NOT ILIKE '[DEPRECATED]%'")
-        .limit(6)
+        .limit(12)
         .getMany();
-    }
-
-    if (matches.length) {
       for (const asset of matches) {
         await this.assetDocLinkRepository.save({
           assetId: asset.id,
@@ -354,44 +378,35 @@ export class VisionExtractionService {
           createdByUserId: null,
         });
       }
-      const first = matches[0];
-      const ext = document.originalFileName.match(/\.[^.]+$/)?.[0] ?? '.pdf';
-      const descriptor =
-        matches.length > 1
-          ? (equipment ?? first.displayName.replace(/\s*[—-]\s*(Port|Stbd|Starboard|PS|SB)\b.*$/i, ''))
-          : first.displayName;
-      document.originalFileName = `${[first.brand, first.model]
-        .filter(Boolean)
-        .join(' ')} — ${descriptor}${ext}`;
-      document.manufacturer = document.manufacturer ?? first.brand;
-      document.model = document.model ?? first.model;
-      document.equipmentName = document.equipmentName ?? descriptor;
-      await this.documentsRepository.save(document);
-      this.logger.log(
-        `Auto-matched "${document.originalFileName}" to ${matches.length} asset(s)`,
-      );
-    } else {
-      // No confident match — flag for the operator, keep what the LLM
-      // learned so the file is at least recognizable.
-      const ext = document.originalFileName.match(/\.[^.]+$/)?.[0] ?? '.pdf';
-      const base = document.originalFileName
-        .replace(/\.[^.]+$/, '')
-        .replace(/^\[UNLINKED\]\s*/i, ''); // re-runs must not stack prefixes
-      const ident = [manufacturer, model].filter(Boolean).join(' ');
-      const needIdent =
-        ident && !base.toLowerCase().includes(ident.toLowerCase());
-      document.originalFileName = `[UNLINKED] ${
-        needIdent ? `${ident} — ` : ''
-      }${base}${ext}`;
-      if (manufacturer && !document.manufacturer) {
-        document.manufacturer = manufacturer;
-      }
-      if (model && !document.model) document.model = model;
-      await this.documentsRepository.save(document);
-      this.logger.log(
-        `No asset match for "${document.originalFileName}" — flagged for operator`,
-      );
     }
+
+    await this.documentsRepository.save(document);
+    this.logger.log(
+      `Identified "${document.originalFileName}" (${models.length} model(s)) — linked ${matches.length} asset(s)`,
+    );
+  }
+
+  /**
+   * Build a stable document name from the identified equipment. Single model →
+   * "Brand Model — Equipment"; several models → "Brand <Series> — Equipment"
+   * or just "Brand — Equipment" so a multi-model manual isn't mislabelled with
+   * one arbitrary model. Returns null when nothing was confidently identified
+   * (then the original filename is kept).
+   */
+  private buildDocName(
+    manufacturer: string | null,
+    equipment: string | null,
+    models: string[],
+    series: string | null,
+    ext: string,
+  ): string | null {
+    if (!manufacturer && !equipment) return null;
+    let head = manufacturer ?? '';
+    if (models.length === 1) head = `${head} ${models[0]}`.trim();
+    else if (models.length > 1 && series) head = `${head} ${series}`.trim();
+    const desc = equipment || 'manual';
+    const prefix = head ? `${head} — ` : '';
+    return `${prefix}${desc}${ext}`;
   }
 
   private async markFailed(

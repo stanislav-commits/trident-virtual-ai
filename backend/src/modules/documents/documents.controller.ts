@@ -21,18 +21,23 @@ import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { BulkDeleteDocumentsDto } from './dto/delete-documents.dto';
+import { CreatePublicationCatalogDto } from './dto/create-publication-catalog.dto';
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto';
 import { ReparseDocumentDto } from './dto/reparse-document.dto';
 import { SearchDocumentsDto } from './dto/search-documents.dto';
 import { UpdateDocumentClassificationDto } from './dto/update-document-classification.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentsService } from './documents.service';
+import { PublicationCatalogService } from './publications/publication-catalog.service';
 import { UploadedDocumentFile } from './ingestion/documents-upload.types';
 
 @Controller('documents')
 @UseGuards(JwtAuthGuard)
 export class DocumentsController {
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(
+    private readonly documentsService: DocumentsService,
+    private readonly publicationCatalogService: PublicationCatalogService,
+  ) {}
 
   @Post()
   @UseInterceptors(FileInterceptor('file'))
@@ -50,6 +55,67 @@ export class DocumentsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.documentsService.list(query, user);
+  }
+
+  // Fleet-wide Publications (platform scope) — admin-only, no ship selection.
+  // Declared before the `:id` routes so "publications" isn't captured as an id.
+  @Post('publications')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @UseInterceptors(FileInterceptor('file'))
+  uploadPublication(
+    @Body() body: UploadDocumentDto,
+    @UploadedFile() file: UploadedDocumentFile,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentsService.uploadPublication(body, file, user);
+  }
+
+  @Get('publications')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  listPublications(
+    @Query() query: ListDocumentsQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentsService.listPublications(query, user);
+  }
+
+  // Publications Library catalog (fleet-wide list of expected publications).
+  @Get('publications/catalog')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  listPublicationCatalog() {
+    return this.publicationCatalogService.list();
+  }
+
+  @Post('publications/catalog')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  createPublicationCatalogItem(@Body() body: CreatePublicationCatalogDto) {
+    return this.publicationCatalogService.create(body);
+  }
+
+  @Post('publications/catalog/:id/file')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @UseInterceptors(FileInterceptor('file'))
+  attachPublicationFile(
+    @Param('id') id: string,
+    @UploadedFile() file: UploadedDocumentFile,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.publicationCatalogService.attachFile(id, file, user);
+  }
+
+  @Delete('publications/catalog/:id/file')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  detachPublicationFile(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.publicationCatalogService.detachFile(id, user);
   }
 
   @Post('bulk-delete')

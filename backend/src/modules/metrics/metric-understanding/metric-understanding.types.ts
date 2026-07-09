@@ -12,6 +12,13 @@ export interface MetricAnalysisJson {
   questions_can_answer: string[];
   warnings: string[];
   reasoning: string;
+  /**
+   * Magnitude correction: multiply the raw value by this to reach a physically
+   * sensible value in `unit`. 1 = correct as-is. Use a power of ten (10, 100,
+   * 0.1, 0.001…) ONLY when the typical percentiles are clearly off-scale for the
+   * quantity+unit (e.g. oil pressure p50≈0.035 but bar means ~3.5 → 100).
+   */
+  scale_factor?: number;
 }
 
 /** Statistical fingerprint pulled from Influx and fed into the LLM bundle. */

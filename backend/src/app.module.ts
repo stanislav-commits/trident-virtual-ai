@@ -12,7 +12,9 @@ import { AssetsModule } from './modules/assets/assets.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { PmsModule } from './modules/pms/pms.module';
 import { CrewModule } from './modules/crew/crew.module';
+import { AccessControlModule } from './modules/access-control/access-control.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { AlertsModule } from './modules/alerts/alerts.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
@@ -44,7 +46,9 @@ import { AppController } from './app.controller';
     ComplianceModule,
     PmsModule,
     CrewModule,
+    AccessControlModule,
     InventoryModule,
+    AlertsModule,
     DocumentsModule,
     WebModule,
     ChatModule,

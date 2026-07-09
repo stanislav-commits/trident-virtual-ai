@@ -39,7 +39,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
       parameters: {
         type: 'object',
         properties: {
-          asset_id_internal: { type: 'string', description: 'Yard-issued asset id, e.g. "SWX.3.2.3.01-PS"' },
+          asset_id_internal: { type: 'string', description: 'The asset_id_internal value from the ship register' },
         },
         required: ['asset_id_internal'],
       },
@@ -199,11 +199,76 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
         type: 'object',
         properties: {
           asset_id_internal: { type: 'string', description: 'Exact asset id.' },
-          asset_query: { type: 'string', description: 'Free-text asset filter (e.g. "MASE", "watermaker").' },
+          asset_query: { type: 'string', description: 'Free-text asset filter (e.g. "port genset", "watermaker").' },
           all_with_rules: {
             type: 'boolean',
             description:
               'true = evaluate every asset that has service rules configured (ship-wide due list, ranked overdue-first).',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_maintenance_tasks',
+      description:
+        "The vessel's LIVE PMS Tasks register — the source of truth for maintenance status. Returns tasks with status (overdue / due-soon / ok), a human 'due' description, equipment, category, and the running-hours target (due_hours). Prefer this over find_pms_due for planned-maintenance questions (what is due/overdue, is X due for service, maintenance list). ALSO call it whenever a telemetry/alarm answer needs to know if the equipment is due or overdue for service (cross-domain). For tasks tracked by running hours, cross-check due_hours against find_running_hours.",
+      parameters: {
+        type: 'object',
+        properties: {
+          assetQuery: {
+            type: 'string',
+            description: 'Optional equipment/system name to narrow tasks (e.g. "port generator", "watermaker").',
+          },
+          status: {
+            type: 'string',
+            enum: ['overdue', 'due_soon', 'all'],
+            description: 'Filter by status. Default all.',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_compliance_status',
+      description:
+        "The vessel's LIVE Compliance / certificates register — source of truth for certificate & statutory-document status: expired / expiring (~within 90 days) / missing / valid, with expiry dates, certificate numbers, issuers. Use for 'which certificates expire / are overdue / are missing', survey readiness, and whenever an answer needs certificate or compliance status alongside telemetry/maintenance.",
+      parameters: {
+        type: 'object',
+        properties: {
+          filter: {
+            type: 'string',
+            enum: ['attention', 'expiring', 'expired', 'missing', 'all'],
+            description: 'attention (default) = expired + expiring + missing.',
+          },
+          query: {
+            type: 'string',
+            description: 'Optional text to narrow to a document type or equipment.',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_inventory',
+      description:
+        "The vessel's LIVE onboard inventory / spares / consumables. Returns matching items with current quantity, unit, location, manufacturer, part number, and the equipment each item is linked to. Use to answer 'do we have the spares/consumables onboard', 'how many X in stock', 'where is part Y'. Cross-domain: when a service is due (get_maintenance_tasks) and the manual lists required parts, call get_inventory to check those parts are in stock.",
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Part name / number / equipment / consumable to search for (e.g. "oil filter", "Port Genset", "impeller").',
+          },
+          category: {
+            type: 'string',
+            description: 'Optional category filter (e.g. "part", "consumable").',
           },
         },
       },
@@ -455,7 +520,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
         properties: {
           asset_id_internal: {
             type: 'string',
-            description: 'Asset to look up (e.g. SWX.3.2.3.01-PS). Tool will resolve brand/model from the asset register and bias the search toward the right manual.',
+            description: 'Asset to look up (the asset_id_internal from the register). Tool will resolve brand/model from the asset register and bias the search toward the right manual.',
           },
           parameter: {
             type: 'string',
@@ -522,7 +587,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
         properties: {
           asset_id_internal: {
             type: 'string',
-            description: 'Exact asset id, e.g. "SWX.2.8.1.03-PS".',
+            description: 'Exact asset_id_internal from the register.',
           },
           question: {
             type: 'string',
@@ -676,10 +741,10 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
       parameters: {
         type: 'object',
         properties: {
-          asset_id_internal: { type: 'string', description: 'Exact asset id, e.g. SWX.3.2.3.01-PS' },
+          asset_id_internal: { type: 'string', description: 'Exact asset_id_internal from the register' },
           asset_id_internal_prefix: { type: 'string', description: 'LIKE prefix; matches any asset starting with this.' },
           sfi_sub: { type: 'string', description: 'Broad SFI 2-level group (e.g. "3.2").' },
-          asset_query: { type: 'string', description: 'Free-text search like "MASE PS", "watermaker", "propulsion SB". Tool finds matching asset(s) via the same logic as find_assets_by_function and takes the top match per side.' },
+          asset_query: { type: 'string', description: 'Free-text search like "port genset", "watermaker", "propulsion SB". Tool finds matching asset(s) via the same logic as find_assets_by_function and takes the top match per side.' },
           range: {
             type: 'object',
             properties: {
@@ -859,7 +924,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
         properties: {
           asset_id_internal: {
             type: 'string',
-            description: 'Yard-issued asset id, e.g. "SWX.2.5.1.02".',
+            description: 'The asset_id_internal value from the register.',
           },
         },
         required: ['asset_id_internal'],
@@ -899,7 +964,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           asset_id_internal: {
             type: 'string',
             description:
-              'Yard-issued asset id, e.g. "SWX.6.1.03". Resolve via lookup_asset / find_assets_by_function first if the user gave a colloquial name.',
+              'The asset_id_internal value from the register. Resolve via lookup_asset / find_assets_by_function first if the user gave a colloquial name.',
           },
           direction: {
             type: 'string',

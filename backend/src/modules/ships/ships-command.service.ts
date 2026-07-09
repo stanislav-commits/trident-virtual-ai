@@ -39,6 +39,7 @@ export class ShipsCommandService {
       homePort: input.homePort ?? null,
       fleetManagerEmail: input.fleetManagerEmail ?? null,
       operationType: input.operationType ?? null,
+      metricAnalysisHint: input.metricAnalysisHint ?? null,
     });
 
     const savedShip = await this.shipsRepository.save(ship);
@@ -103,6 +104,9 @@ export class ShipsCommandService {
     }
     if (input.operationType !== undefined) {
       ship.operationType = input.operationType ?? null;
+    }
+    if (input.metricAnalysisHint !== undefined) {
+      ship.metricAnalysisHint = input.metricAnalysisHint ?? null;
     }
 
     const savedShip = await this.shipsRepository.save(ship);

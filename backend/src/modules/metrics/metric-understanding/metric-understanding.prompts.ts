@@ -1,45 +1,46 @@
 import { AssetCandidate, MetricFingerprint } from './metric-understanding.types';
 
 /**
- * Vessel naming convention hints. For now hard-coded for SeaWolf X — once
- * we have more than one vessel under management this should move onto the
- * ship entity as a `metric_analysis_hint` JSONB column.
+ * Per-vessel technical profile for metric analysis. Takes the ship's
+ * `metric_analysis_hint` (operator-supplied free text describing propulsion,
+ * power generation, naming conventions, side suffixes, data quirks). When
+ * empty, returns generic detection guidance — NO assumption of any specific
+ * vessel, make or model. (Replaces the old hard-coded SeaWolf X hint.)
  */
-export function vesselHintForShip(_shipId: string): string {
+export function vesselHintForShip(hint: string | null | undefined): string {
+  const profile = hint?.trim();
+
+  const generic = [
+    'GENERAL BINDING GUIDANCE (applies to any vessel — detect, never assume):',
+    '  - Some fleets encode the equipment side in the measurement-name suffix',
+    '    (e.g. "-PS" = PORT, "-SB" = STARBOARD). If THIS vessel uses such a',
+    '    convention, honor the suffix when choosing bound_asset_id — but detect',
+    '    it from the measurement names and the asset list, do not assume it.',
+    '  - SignalK-style measurements (navigation.*, environment.wind.*,',
+    '    environment.depth.*, steering.autopilot.*, notifications.*) have no',
+    '    physical device per channel; bind them to the matching virtual',
+    '    subsystem asset from the shortlist by namespace (Navigation Data',
+    '    System, Wind Instruments, Depth Sounder, Autopilot, etc.).',
+    '  - Infer equipment, units and kinds from the field names and the provided',
+    '    asset shortlist. Never assume a make/model that is not present in the',
+    '    data or in the vessel profile below.',
+  ];
+
+  if (profile) {
+    return [
+      'VESSEL TECHNICAL PROFILE (operator-supplied for THIS vessel):',
+      profile,
+      '',
+      ...generic,
+    ].join('\n');
+  }
+
   return [
-    'Hybrid 50m motor yacht "SeaWolf X" (Rossinavi FR05).',
-    'Propulsion: 2× Lucchi PM electric motors (port + starboard) driven by Siemens inverters; 2× alternators on the propulsion shafts.',
-    'Power generation: 2× Siemens-controlled diesel gensets + 2× MASE VS350V auxiliary diesel gensets.',
-    'DEF (AdBlue) tanks feed the MASE SCR systems.',
+    'No vessel-specific technical profile has been configured for this vessel.',
+    'Do NOT assume any particular vessel, make or model — infer everything from',
+    'the measurement/field names and the provided asset shortlist.',
     '',
-    'NAMING CONVENTION (CRITICAL — measurement-name suffix encodes the side):',
-    '  Any Influx measurement ending in "-PS" = PORT side (left, facing forward).',
-    '  Any Influx measurement ending in "-SB" = STARBOARD side (right, facing forward).',
-    '  Examples:',
-    '    SIEMENS-PROPULSION-PS  → port propulsion motor / inverter',
-    '    SIEMENS-PROPULSION-SB  → starboard propulsion motor / inverter',
-    '    SIEMENS-GENSET-PS      → port primary Siemens-controlled diesel genset',
-    '    SIEMENS-GENSET-SB      → starboard primary Siemens-controlled diesel genset',
-    '    SIEMENS-MASE-GENSET-PS → port MASE auxiliary diesel genset',
-    '    SIEMENS-MASE-GENSET-SB → starboard MASE auxiliary diesel genset',
-    'You MUST honor the side suffix when choosing bound_asset_id.',
-    '',
-    'UPSTREAM DATA QUIRKS (override what measurement-name suggests):',
-    '  Influx measurement "Tanks-Temperatures" is mislabeled — the Fuel_Tank_*',
-    '  fields under it report the TANK LEVEL IN LITERS (L), not temperature.',
-    '  Treat these as kind=gauge, unit=L. Other fields under the same',
-    '  measurement may still be actual temperatures — judge per field name.',
-    '',
-    'NAVIGATION / ENVIRONMENT SUBSYSTEM BINDINGS:',
-    '  SignalK-style measurements have no physical device per channel; bind',
-    '  to the appropriate virtual subsystem asset:',
-    '    measurement starts with "navigation."   →  SWX.7.1.05  (Navigation Data System)',
-    '    measurement starts with "environment.wind."   →  SWX.7.1.06  (Wind Instruments)',
-    '    measurement starts with "environment.depth."  →  SWX.7.1.03  (Depth Sounder)',
-    '    measurement starts with "steering.autopilot." →  SWX.7.1.04  (Autopilot)',
-    '    measurement starts with "notifications."  →  the same subsystem',
-    '      its inner path resembles (e.g. notifications.navigation.* → SWX.7.1.05).',
-    '  Use confidence 0.9 for these bindings; the routing is by namespace.',
+    ...generic,
   ].join('\n');
 }
 
@@ -58,11 +59,12 @@ export const ANALYZE_METRIC_SYSTEM_PROMPT = [
   '  "bound_asset_confidence": 0.0-1.0,',
   '  "questions_can_answer":   [ "<plain question>", ... ],',
   '  "warnings":               [ "<anomaly, e.g. \\"always zero\\", \\"non-monotonic counter\\">", ... ],',
-  '  "reasoning":              "<1-2 sentences explaining bound_asset_id + kind choice>"',
+  '  "reasoning":              "<1-2 sentences explaining bound_asset_id + kind choice>",',
+  '  "scale_factor":           <number, default 1 — see SCALE CORRECTION>',
   '}',
   '',
   'Rules:',
-  '- bound_asset_id MUST exactly match an `asset_id_internal` from the assets list (e.g. "SWX.3.2.3.01-PS"). If you cannot fit, return "NONE" with a low confidence.',
+  '- bound_asset_id MUST exactly match an `asset_id_internal` from the assets list. If you cannot fit, return "NONE" with a low confidence.',
   '- kind=counter only when is_monotonic AND values grow.',
   '- kind=rate for per-time signals (unit ends in /h, /min, etc., or "kW" for instantaneous power).',
   '- kind=gauge for instantaneous physical readings (RPM, temp, pressure, voltage, %).',
@@ -86,6 +88,17 @@ export const ANALYZE_METRIC_SYSTEM_PROMPT = [
   '    V:                  -1500 … 10000',
   '- Sensor stuck near 65535 (e.g. p50 ≈ 65496) means the sensor is disconnected',
   '  or overflowing; set unit_confidence ≤ 0.3 and emit a warning',
+  '',
+  'SCALE CORRECTION (`scale_factor`):',
+  '- Default is 1. Only deviate when you are confident of BOTH the quantity and',
+  '  its unit, yet the typical percentiles are off by a clean power of ten.',
+  '- Example: field says oil pressure, unit "bar", but p50 ≈ 0.035. Real oil',
+  '  pressure is ~3–5 bar, so the raw value is 100× too small → scale_factor=100.',
+  '- Use only powers of ten (…0.01, 0.1, 10, 100, 1000…). The system multiplies',
+  '  the raw value by scale_factor everywhere, so pick it to make the TYPICAL',
+  '  values land in the physical range for `unit`.',
+  '- If unit is uncertain (unit_confidence ≤ 0.3) or values look plausible,',
+  '  return scale_factor=1. Do NOT guess — a wrong scale is worse than none.',
   '  "sensor likely reporting 16-bit overflow". Do NOT pretend the value is real.',
   '- Concretely: if measurement="Tanks-Temperatures" but the field values are in',
   '  the thousands, the measurement is mislabeled upstream — pick unit="" with low',

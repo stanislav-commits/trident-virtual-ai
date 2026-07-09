@@ -17,24 +17,38 @@ const DOCUMENT_QUESTION_CLASS_POLICIES: Partial<
     primary: [DocumentDocClass.MANUAL],
     secondary: [],
   },
+  // NOTE on PUBLICATION vs legacy REGULATION: the Knowledge Base redesign
+  // renamed rules/regs to the `publication` class (fleet-wide, platform scope),
+  // and `procedure` is now a first-class SMS/SOP class. Legacy `regulation`
+  // docs still exist until the prod data migration (regulation → publication),
+  // so both are listed during the transition — retrieval simply ignores classes
+  // with no parsed docs.
   [DocumentRetrievalQuestionType.STEP_BY_STEP_PROCEDURE]: {
-    primary: [DocumentDocClass.REGULATION],
+    primary: [
+      DocumentDocClass.PROCEDURE,
+      DocumentDocClass.PUBLICATION,
+      DocumentDocClass.REGULATION,
+    ],
     secondary: [DocumentDocClass.MANUAL],
   },
+  // Certificate STATUS is answered from the live Compliance register via the
+  // `compliance` chat route, not from retired certificate documents. A
+  // compliance_or_certificate documents ask that still lands here looks only at
+  // the regulation/publication TEXT behind the requirement.
   [DocumentRetrievalQuestionType.COMPLIANCE_OR_CERTIFICATE]: {
-    primary: [DocumentDocClass.CERTIFICATE],
-    secondary: [DocumentDocClass.REGULATION],
-  },
-  [DocumentRetrievalQuestionType.HISTORICAL_CASE]: {
-    primary: [DocumentDocClass.HISTORICAL_PROCEDURE],
+    primary: [DocumentDocClass.PUBLICATION, DocumentDocClass.REGULATION],
     secondary: [],
   },
+  // HISTORICAL_CASE intentionally has NO policy: maintenance/PMS history is
+  // answered from the live Tasks register via the `pms` chat route, not from
+  // retired historical_procedure documents. A historical_case documents ask
+  // falls back to the router's candidate classes (minus retired ones).
   [DocumentRetrievalQuestionType.MULTI_DOCUMENT_COMPARE]: {
     primary: [
       DocumentDocClass.MANUAL,
+      DocumentDocClass.PROCEDURE,
+      DocumentDocClass.PUBLICATION,
       DocumentDocClass.REGULATION,
-      DocumentDocClass.CERTIFICATE,
-      DocumentDocClass.HISTORICAL_PROCEDURE,
     ],
     secondary: [],
   },

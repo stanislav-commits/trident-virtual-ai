@@ -139,7 +139,15 @@ const MANUAL_STABLE_PROFILE_DEFINITION: DocumentFallbackParsingProfileDefinition
   };
 
 const DOC_CLASS_PROFILE_MAP: Record<DocumentDocClass, DocumentParseProfile> = {
+  // Knowledge Base
+  [DocumentDocClass.PROCEDURE]: DocumentParseProfile.PROCEDURE_BUNKERING,
   [DocumentDocClass.MANUAL]: DocumentParseProfile.MANUAL_LONG,
+  [DocumentDocClass.FORM]: DocumentParseProfile.MANUAL_LONG,
+  // Plans are a file store (extraction is skipped) — profile is a placeholder.
+  [DocumentDocClass.PLAN]: DocumentParseProfile.MANUAL_LONG,
+  // Platform
+  [DocumentDocClass.PUBLICATION]: DocumentParseProfile.REGULATION_BASELINE,
+  // Legacy
   [DocumentDocClass.HISTORICAL_PROCEDURE]:
     DocumentParseProfile.PROCEDURE_BUNKERING,
   [DocumentDocClass.CERTIFICATE]: DocumentParseProfile.SAFETY_HARD_PARSE,
