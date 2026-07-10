@@ -268,8 +268,10 @@ export type UpdateAssetInput = Partial<{
   criticality: number | null;
   lifecycleStatus: string;
   sfiGroup: string | null;
+  sfiGroupName: string | null;
   sfiSub: string | null;
   sfiSubName: string | null;
+  drawingCode: string | null;
   commissionedDate: string | null;
   // v14.6
   zone: string | null;

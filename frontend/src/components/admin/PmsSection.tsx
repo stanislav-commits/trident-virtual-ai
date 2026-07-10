@@ -95,6 +95,8 @@ interface PmsTask {
   status: PmsStatus;
   due: string;
   completedAt: string | null;
+  completedByName: string | null;
+  completedByPosition: string | null;
 }
 
 const STATUS_LABEL: Record<PmsStatus, string> = {

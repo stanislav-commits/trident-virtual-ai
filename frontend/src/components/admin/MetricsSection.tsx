@@ -17,6 +17,7 @@ interface MetricsTableRow {
   bucket: string;
   key: string;
   description: string | null;
+  aiDescription: string | null;
   isEnabled: boolean;
   boundAssetId: string | null;
   boundAssetIdInternal: string | null;
@@ -335,6 +336,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
       bucket: metric.bucket,
       key: metric.key,
       description: metric.description,
+      aiDescription: metric.aiDescription,
       isEnabled: metric.isEnabled,
       boundAssetId: metric.boundAssetId,
       boundAssetIdInternal: metric.boundAsset?.assetIdInternal ?? null,
