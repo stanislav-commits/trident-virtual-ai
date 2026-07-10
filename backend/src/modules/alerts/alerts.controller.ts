@@ -110,11 +110,13 @@ export class AlertsController {
   }
 
   @Get('asset/:assetId')
-  listForAsset(
+  async listForAsset(
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @Param('assetId', ParseUUIDPipe) assetId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.alertsService.listForAsset(shipId, assetId);
+    const allowedSources = await this.allowedAlertSources(user, shipId);
+    return this.alertsService.listForAsset(shipId, assetId, allowedSources);
   }
 
   @Post(':id/ack')

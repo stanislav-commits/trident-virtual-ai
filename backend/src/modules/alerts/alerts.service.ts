@@ -330,9 +330,20 @@ export class AlertsService {
     }
   }
 
-  async listForAsset(shipId: string, assetId: string): Promise<AlertDto[]> {
+  async listForAsset(
+    shipId: string,
+    assetId: string,
+    allowedSources?: string[],
+  ): Promise<AlertDto[]> {
+    // Same access-matrix gate as list() — crew must not see alert kinds their
+    // position isn't granted, even via the per-asset endpoint.
+    if (allowedSources && allowedSources.length === 0) return [];
+    const where: Record<string, unknown> = { shipId, assetId };
+    if (allowedSources && allowedSources.length < 2) {
+      where.source = In(allowedSources);
+    }
     const rows = await this.alertRepository.find({
-      where: { shipId, assetId },
+      where,
       order: { startedAt: 'DESC' },
       take: 200,
     });
