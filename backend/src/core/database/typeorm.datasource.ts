@@ -69,6 +69,13 @@ import { AddSfiTaxonomy20260615000100 } from './migrations/20260615000100-add-sf
 import { AddSfiTaxonomySource20260615000200 } from './migrations/20260615000200-add-sfi-taxonomy-source';
 import { AddAccessMatrix20260703000100 } from './migrations/20260703000100-add-access-matrix';
 import { AddMetricScaleFactor20260703000200 } from './migrations/20260703000200-add-metric-scale-factor';
+import { AddAssetDrawingCodeGroupName20260709000100 } from './migrations/20260709000100-add-asset-drawing-code-group-name';
+import { AddAlertSource20260710000100 } from './migrations/20260710000100-add-alert-source';
+import { AddUserAccessPosition20260710000200 } from './migrations/20260710000200-add-user-access-position';
+import { AddComplianceDocFile20260710000300 } from './migrations/20260710000300-add-compliance-doc-file';
+import { AddComplianceDocExtractedText20260710000400 } from './migrations/20260710000400-add-compliance-doc-extracted-text';
+import { WidenPmsTaskSfiGroup20260710000500 } from './migrations/20260710000500-widen-pms-task-sfi-group';
+import { AddPmsTaskCompletedBy20260710000600 } from './migrations/20260710000600-add-pms-task-completed-by';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -158,6 +165,13 @@ const dataSource = new DataSource({
     AddSfiTaxonomySource20260615000200,
     AddAccessMatrix20260703000100,
     AddMetricScaleFactor20260703000200,
+    AddAssetDrawingCodeGroupName20260709000100,
+    AddAlertSource20260710000100,
+    AddUserAccessPosition20260710000200,
+    AddComplianceDocFile20260710000300,
+    AddComplianceDocExtractedText20260710000400,
+    WidenPmsTaskSfiGroup20260710000500,
+    AddPmsTaskCompletedBy20260710000600,
   ],
   synchronize: false,
   ssl: db.ssl
