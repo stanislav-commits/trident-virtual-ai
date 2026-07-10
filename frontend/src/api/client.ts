@@ -419,47 +419,6 @@ export type ShipListItem = ShipSummaryItem & {
   manuals?: ShipManualItem[];
 };
 
-export async function getMetricDefinitions(
-  token: string,
-): Promise<MetricDefinitionItem[]> {
-  const res = await fetchWithAuth("ships/metric-definitions", { token });
-  if (!res.ok) throw new Error("Failed to fetch metric definitions");
-  return res.json();
-}
-
-export async function getMetrics(
-  token: string,
-): Promise<MetricDefinitionItem[]> {
-  const res = await fetchWithAuth("metrics", { token });
-  if (!res.ok) throw new Error("Failed to fetch metrics");
-  return res.json();
-}
-
-export type CreateMetricBody = {
-  key: string;
-  label: string;
-  description?: string;
-  unit?: string;
-  dataType?: string;
-};
-
-export async function createMetric(
-  body: CreateMetricBody,
-  token: string,
-): Promise<MetricDefinitionItem> {
-  const res = await fetchWithAuth("metrics", {
-    token,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? "Failed to create metric");
-  }
-  return res.json();
-}
-
 export type UpdateMetricBody = {
   label?: string;
   description?: string;
@@ -483,49 +442,6 @@ export async function updateMetric(
     throw new Error(err.message ?? "Failed to update metric");
   }
   return res.json();
-}
-
-export async function getMetricTags(
-  key: string,
-  token: string,
-): Promise<TagOption[]> {
-  const res = await fetchWithAuth(`metrics/${encodeURIComponent(key)}/tags`, {
-    token,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? "Failed to fetch metric tags");
-  }
-  return res.json();
-}
-
-export async function replaceMetricTags(
-  key: string,
-  tagIds: string[],
-  token: string,
-): Promise<TagOption[]> {
-  const res = await fetchWithAuth(`metrics/${encodeURIComponent(key)}/tags`, {
-    token,
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tagIds }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? "Failed to update metric tags");
-  }
-  return res.json();
-}
-
-export async function deleteMetric(key: string, token: string): Promise<void> {
-  const res = await fetchWithAuth(`metrics/${encodeURIComponent(key)}`, {
-    token,
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? "Failed to delete metric");
-  }
 }
 
 export async function updateShipMetricActivity(
@@ -556,21 +472,6 @@ export async function uploadManual(
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to upload manual");
   }
-  return res.json();
-}
-
-export async function getManuals(
-  shipId: string,
-  token: string,
-  params?: ManualPaginationParams,
-): Promise<PaginatedListResult<ShipManualItem>> {
-  const res = await fetchWithAuth(
-    withPaginationQuery(`ships/${shipId}/manuals`, params),
-    {
-      token,
-    },
-  );
-  if (!res.ok) throw new Error("Failed to fetch manuals");
   return res.json();
 }
 
@@ -649,40 +550,6 @@ export async function updateManual(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? "Failed to update manual");
-  }
-  return res.json();
-}
-
-export async function getManualTags(
-  shipId: string,
-  manualId: string,
-  token: string,
-): Promise<TagOption[]> {
-  const res = await fetchWithAuth(`ships/${shipId}/manuals/${manualId}/tags`, {
-    token,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? "Failed to fetch manual tags");
-  }
-  return res.json();
-}
-
-export async function replaceManualTags(
-  shipId: string,
-  manualId: string,
-  tagIds: string[],
-  token: string,
-): Promise<TagOption[]> {
-  const res = await fetchWithAuth(`ships/${shipId}/manuals/${manualId}/tags`, {
-    token,
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tagIds }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message ?? "Failed to update manual tags");
   }
   return res.json();
 }
