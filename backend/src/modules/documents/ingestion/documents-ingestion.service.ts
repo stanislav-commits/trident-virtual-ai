@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import {
   BadGatewayException,
   BadRequestException,
@@ -116,7 +117,7 @@ export class DocumentsIngestionService {
       return toDocumentResponse(await this.documentsRepository.save(savedDocument));
     } catch (error) {
       savedDocument.parseStatus = DocumentParseStatus.FAILED;
-      savedDocument.parseError = `Local upload staging failed: ${this.formatError(error)}`;
+      savedDocument.parseError = `Local upload staging failed: ${formatError(error)}`;
       savedDocument.lastSyncedAt = new Date();
       await this.documentsRepository.save(savedDocument);
       throw new BadRequestException(savedDocument.parseError);
@@ -224,7 +225,7 @@ export class DocumentsIngestionService {
       await this.reloadDocument(savedDocument);
     } catch (error) {
       document.parseStatus = DocumentParseStatus.FAILED;
-      document.parseError = this.formatError(error);
+      document.parseError = formatError(error);
       document.parseProgressPercent = null;
       document.lastSyncedAt = new Date();
       await this.documentsRepository.save(document);
@@ -280,7 +281,7 @@ export class DocumentsIngestionService {
       this.logger.warn(
         `Failed to delete local upload spool for document ${
           typeof input === 'string' ? documentId ?? 'unknown' : input.id
-        }: ${this.formatError(error)}`,
+        }: ${formatError(error)}`,
       );
     }
   }
@@ -368,7 +369,7 @@ export class DocumentsIngestionService {
         throw error;
       }
 
-      const errorMessage = this.formatError(error);
+      const errorMessage = formatError(error);
       this.logger.warn(
         `RAGFlow reparse could not be queued for document ${freshDocument.id}: ${errorMessage}`,
       );
@@ -485,9 +486,6 @@ export class DocumentsIngestionService {
     return createHash('sha256').update(buffer).digest('hex');
   }
 
-  private formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 
   private applyCurrentParsingProfile(document: DocumentEntity): void {
     const profile = getParsingProfileForDocClass(document.docClass);

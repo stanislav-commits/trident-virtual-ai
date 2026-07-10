@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import {
   BadRequestException,
   Injectable,
@@ -145,7 +146,7 @@ export class PmsService {
         skipped++;
         this.logger.warn(
           `Skipped import task "${input.task}": ${
-            error instanceof Error ? error.message : String(error)
+            formatError(error)
           }`,
         );
       }

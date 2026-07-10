@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import {
   BadRequestException,
   Injectable,
@@ -524,7 +525,7 @@ export class MetricAnalyzerResponderService {
       // time format thrown by parseFluxTime) is surfaced to the LLM as a
       // tool-level error message rather than crashing the whole turn. The
       // LLM can then retry with corrected args.
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       this.logger.warn(
         `Tool ${tc.function.name} threw: ${msg}`,
       );
@@ -610,7 +611,7 @@ export class MetricAnalyzerResponderService {
           : null;
       audit.ok = audit.value !== null;
     } catch (err) {
-      audit.errorMessage = err instanceof Error ? err.message : String(err);
+      audit.errorMessage = formatError(err);
     }
     audit.latencyMs = Date.now() - t0;
 
@@ -725,7 +726,7 @@ export class MetricAnalyzerResponderService {
         },
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: { ok: false, error: msg },
@@ -840,7 +841,7 @@ export class MetricAnalyzerResponderService {
         }),
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: { ok: false, error: msg },
@@ -1060,7 +1061,7 @@ export class MetricAnalyzerResponderService {
             field: sel.field,
             liters: null,
             ok: false,
-            errorMessage: err instanceof Error ? err.message : String(err),
+            errorMessage: formatError(err),
           };
         }
       }),
@@ -2291,11 +2292,11 @@ export class MetricAnalyzerResponderService {
     } catch (err) {
       return {
         toolCallId: tc.id,
-        payload: { ok: false, error: err instanceof Error ? err.message : String(err) },
+        payload: { ok: false, error: formatError(err) },
         otherCall: {
           iteration, tool: 'compare_to_typical', args: callArgs, ok: false,
           resultSummary: 'influx query failed',
-          errorMessage: err instanceof Error ? err.message : String(err),
+          errorMessage: formatError(err),
           latencyMs: Date.now() - t0,
         },
       };
@@ -2454,7 +2455,7 @@ export class MetricAnalyzerResponderService {
         },
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: {
@@ -2611,7 +2612,7 @@ export class MetricAnalyzerResponderService {
         },
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: { ok: false, error: `web search failed: ${msg}` },
@@ -2773,7 +2774,7 @@ export class MetricAnalyzerResponderService {
         },
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: { ok: false, error: `Flux query failed: ${msg}` },
@@ -3954,7 +3955,7 @@ export class MetricAnalyzerResponderService {
           primaryNote = 'integral over Total active power returned no data';
         }
       } catch (err) {
-        primaryNote = `integration failed: ${err instanceof Error ? err.message : String(err)}`;
+        primaryNote = `integration failed: ${formatError(err)}`;
       }
     } else {
       primaryNote = 'no `Total active power` field — primary method unavailable';
@@ -4075,7 +4076,7 @@ export class MetricAnalyzerResponderService {
         start, stop, every,
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: { ok: false, error: msg },
@@ -4834,7 +4835,7 @@ export class MetricAnalyzerResponderService {
       const dataset = await this.ragService.findAccessibleDatasetByExactName(datasetName);
       datasetId = dataset?.id ?? null;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: { ok: false, error: `RAG dataset lookup failed: ${msg}` },
@@ -4879,7 +4880,7 @@ export class MetricAnalyzerResponderService {
         highlight: c.highlight ?? null,
       }));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: { ok: false, error: `RAG retrieval failed: ${msg}` },
@@ -5144,7 +5145,7 @@ export class MetricAnalyzerResponderService {
         },
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: { ok: false, error: msg },
@@ -5575,7 +5576,7 @@ export class MetricAnalyzerResponderService {
             measurement: target.item.measurement,
             field: target.item.field,
             hours_run: null,
-            error: err instanceof Error ? err.message : String(err),
+            error: formatError(err),
           };
         }
       }),
@@ -5662,7 +5663,7 @@ export class MetricAnalyzerResponderService {
             field: sel.field,
             kwh: null,
             ok: false,
-            errorMessage: err instanceof Error ? err.message : String(err),
+            errorMessage: formatError(err),
           };
         }
       }),
@@ -5731,7 +5732,7 @@ export class MetricAnalyzerResponderService {
           return {
             measurement: sel.measurement, field: sel.field, unit_raw: sel.unit,
             kwh: null, ok: false,
-            errorMessage: err instanceof Error ? err.message : String(err),
+            errorMessage: formatError(err),
           };
         }
       }),
@@ -6470,7 +6471,7 @@ export class MetricAnalyzerResponderService {
         }),
       ]);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       return {
         toolCallId: tc.id,
         payload: { ok: false, error: `Windy request failed: ${msg}` },

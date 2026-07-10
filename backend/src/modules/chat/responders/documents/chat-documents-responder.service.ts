@@ -1,3 +1,4 @@
+import { formatError } from '../../../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -146,7 +147,7 @@ export class ChatDocumentsResponderService {
       return this.buildStaticResponse(
         input,
         'retrieval_failed',
-        `I could not search the ship documents for this request: ${this.formatError(error)}`,
+        `I could not search the ship documents for this request: ${formatError(error)}`,
       );
     }
 
@@ -249,7 +250,7 @@ export class ChatDocumentsResponderService {
       return this.buildStaticResponse(
         input,
         'retrieval_failed',
-        `I could not search the ship documents for this request: ${this.formatError(error)}`,
+        `I could not search the ship documents for this request: ${formatError(error)}`,
       );
     }
 
@@ -581,9 +582,6 @@ export class ChatDocumentsResponderService {
     return 'no_evidence';
   }
 
-  private formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 
   private buildDocumentIntentText(
     documentsRoute: ChatSemanticDocumentsRoute,
@@ -755,7 +753,7 @@ export class ChatDocumentsResponderService {
       };
     } catch (error) {
       this.logger.warn(
-        `Asset equipment context lookup failed: ${this.formatError(error)}`,
+        `Asset equipment context lookup failed: ${formatError(error)}`,
       );
       return null;
     }

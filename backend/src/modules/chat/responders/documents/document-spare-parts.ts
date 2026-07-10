@@ -9,6 +9,7 @@
  * the answer can cite exact part codes.
  */
 
+import { formatError } from '../../../../common/utils/error.utils';
 import { Logger } from '@nestjs/common';
 import { DocumentsService } from '../../../documents/documents.service';
 import { DocumentRetrievalResponseDto } from '../../../documents/dto/document-retrieval-response.dto';
@@ -149,7 +150,7 @@ export async function retrieveSparePartsEvidence(input: {
   } catch (error) {
     logger.warn(
       `Spare-parts supplemental retrieval failed: ${
-        error instanceof Error ? error.message : String(error)
+        formatError(error)
       }`,
     );
     return null;

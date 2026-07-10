@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import {
   Injectable,
   Logger,
@@ -80,7 +81,7 @@ export class DocumentsRemoteIngestionDispatcherService
         }
       } catch (error) {
         this.logger.warn(
-          `Document remote ingestion dispatch failed: ${this.formatError(error)}`,
+          `Document remote ingestion dispatch failed: ${formatError(error)}`,
         );
       }
     } while (this.dispatchAgain);
@@ -162,7 +163,4 @@ export class DocumentsRemoteIngestionDispatcherService
       : fallback;
   }
 
-  private formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 }

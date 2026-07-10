@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import {
   Injectable,
   Logger,
@@ -64,7 +65,7 @@ export class TranscriptionService {
       };
     } catch (error) {
       this.logger.warn(
-        `Voice transcription request ${input.requestId} failed: ${this.formatError(error)}`,
+        `Voice transcription request ${input.requestId} failed: ${formatError(error)}`,
       );
       throw new ServiceUnavailableException(
         'Voice transcription is temporarily unavailable.',
@@ -108,7 +109,4 @@ export class TranscriptionService {
       .trim();
   }
 
-  private formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 }

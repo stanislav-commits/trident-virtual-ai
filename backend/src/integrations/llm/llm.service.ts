@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IntegrationStatusDto } from '../../common/dto/integration-status.dto';
@@ -84,7 +85,7 @@ export class LlmService {
       });
     } catch (error) {
       this.logger.warn(
-        `LLM request failed: ${error instanceof Error ? error.message : String(error)}`,
+        `LLM request failed: ${formatError(error)}`,
       );
       return null;
     }
@@ -120,7 +121,7 @@ export class LlmService {
       return JSON.parse(raw) as T;
     } catch (error) {
       this.logger.warn(
-        `LLM JSON completion failed: ${error instanceof Error ? error.message : String(error)}`,
+        `LLM JSON completion failed: ${formatError(error)}`,
       );
       return null;
     }
@@ -172,7 +173,7 @@ export class LlmService {
       return JSON.parse(slice) as T;
     } catch (error) {
       this.logger.warn(
-        `Anthropic JSON completion failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Anthropic JSON completion failed: ${formatError(error)}`,
       );
       return null;
     }
@@ -205,7 +206,7 @@ export class LlmService {
       });
     } catch (error) {
       this.logger.warn(
-        `Vision extraction failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Vision extraction failed: ${formatError(error)}`,
       );
       return null;
     }
@@ -235,7 +236,7 @@ export class LlmService {
       });
     } catch (error) {
       this.logger.warn(
-        `PDF extraction failed: ${error instanceof Error ? error.message : String(error)}`,
+        `PDF extraction failed: ${formatError(error)}`,
       );
       return null;
     }
@@ -322,7 +323,7 @@ export class LlmService {
           });
       return { ok: true, result };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = formatError(error);
       const status = (error as { status?: number })?.status;
       const retryAfterSeconds = (error as { retryAfterSeconds?: number })
         ?.retryAfterSeconds;

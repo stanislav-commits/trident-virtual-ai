@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import {
   Injectable,
   Logger,
@@ -104,7 +105,7 @@ export class DocumentsParseDrainService
         }
       } catch (error) {
         this.logger.warn(
-          `Document parse drain failed: ${this.formatError(error)}`,
+          `Document parse drain failed: ${formatError(error)}`,
         );
         this.scheduleDrain(this.getDrainIntervalMs());
       }
@@ -139,7 +140,7 @@ export class DocumentsParseDrainService
         await this.parseStatusSync.syncRemoteParseStatus(document);
       } catch (error) {
         this.logger.warn(
-          `Document parse status sync failed for ${document.id}: ${this.formatError(error)}`,
+          `Document parse status sync failed for ${document.id}: ${formatError(error)}`,
         );
       }
     }
@@ -179,7 +180,4 @@ export class DocumentsParseDrainService
       : DEFAULT_PARSE_DRAIN_INTERVAL_MS;
   }
 
-  private formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 }

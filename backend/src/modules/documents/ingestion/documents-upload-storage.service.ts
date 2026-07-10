@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { promises as fs } from 'fs';
@@ -130,7 +131,7 @@ export class DocumentsUploadStorageService {
         } catch (error) {
           this.logger.warn(
             `Spaces delete failed for documents/${docId}/${name}: ${
-              error instanceof Error ? error.message : String(error)
+              formatError(error)
             }`,
           );
         }

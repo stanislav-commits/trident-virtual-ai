@@ -1,3 +1,4 @@
+import { formatError } from '../../../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { RagService } from '../../../../integrations/rag/rag.service';
 import { RagflowRetrievalChunk } from '../../../../integrations/rag/ragflow.types';
@@ -73,7 +74,7 @@ export class DocumentsRetrievalNeighborExpander {
     } catch (error) {
       this.logger.warn(
         `Document neighbor expansion skipped: ${
-          error instanceof Error ? error.message : String(error)
+          formatError(error)
         }`,
       );
       return input.selectedCandidates;

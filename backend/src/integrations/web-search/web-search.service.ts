@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import {
   Injectable,
   Logger,
@@ -105,7 +106,7 @@ export class WebSearchService {
       } catch (error) {
         this.logger.warn(
           `Anthropic web search failed, falling back to OpenAI: ${
-            error instanceof Error ? error.message : String(error)
+            formatError(error)
           }`,
         );
       }

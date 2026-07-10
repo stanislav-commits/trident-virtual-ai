@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -62,7 +63,7 @@ export class AlertsService {
       } catch (e) {
         this.logger.warn(
           `Failed to apply alert ${a?.fingerprint}: ${
-            e instanceof Error ? e.message : String(e)
+            formatError(e)
           }`,
         );
       }
@@ -233,7 +234,7 @@ export class AlertsService {
     } catch (e) {
       this.logger.warn(
         `Could not spawn PMS task for alert ${alert.id}: ${
-          e instanceof Error ? e.message : String(e)
+          formatError(e)
         }`,
       );
     }

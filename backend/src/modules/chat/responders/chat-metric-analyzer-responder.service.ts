@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { MetricAnalyzerResponderService } from '../../metrics/metric-understanding/metric-analyzer-responder.service';
 import { ChatContextQueryResolverService } from '../context/chat-context-query-resolver.service';
@@ -51,7 +52,7 @@ export class ChatMetricAnalyzerResponderService {
       } catch (err) {
         this.logger.warn(
           `Context resolution failed, falling back to raw ask: ${
-            err instanceof Error ? err.message : String(err)
+            formatError(err)
           }`,
         );
       }
@@ -94,7 +95,7 @@ export class ChatMetricAnalyzerResponderService {
     } catch (error) {
       this.logger.error(
         `Metric analyzer responder failed: ${
-          error instanceof Error ? error.message : String(error)
+          formatError(error)
         }`,
       );
       return {
@@ -109,7 +110,7 @@ export class ChatMetricAnalyzerResponderService {
         }`,
         data: {
           status: 'execution_failed',
-          error: error instanceof Error ? error.message : String(error),
+          error: formatError(error),
         },
         contextReferences: [],
       };

@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import {
   BadRequestException,
   Injectable,
@@ -91,7 +92,7 @@ export class MetricUnderstandingService {
     // poll the progress endpoint for status.
     void this.runAnalyzeLoop(shipId, target, opts).catch((err) => {
       this.logger.error(
-        `Background analyze for ship ${shipId} crashed: ${err instanceof Error ? err.message : String(err)}`,
+        `Background analyze for ship ${shipId} crashed: ${formatError(err)}`,
       );
       this.inFlight.delete(shipId);
     });
@@ -172,7 +173,7 @@ export class MetricUnderstandingService {
               metricId: m.id,
               status: 'llm_failed' as const,
               durationMs: 0,
-              errorMessage: err instanceof Error ? err.message : String(err),
+              errorMessage: formatError(err),
             })),
           ),
         );
@@ -259,7 +260,7 @@ export class MetricUnderstandingService {
         metricId: metric.id,
         status: 'no_data',
         durationMs: Date.now() - t0,
-        errorMessage: `Influx query failed: ${err instanceof Error ? err.message : String(err)}`,
+        errorMessage: `Influx query failed: ${formatError(err)}`,
       };
     }
 
@@ -314,7 +315,7 @@ export class MetricUnderstandingService {
         metricId: metric.id,
         status: 'parse_failed',
         durationMs: Date.now() - t0,
-        errorMessage: err instanceof Error ? err.message : String(err),
+        errorMessage: formatError(err),
       };
     }
 

@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createOpenAiCompatibleChatCompletion } from '../shared/openai-compatible-http';
@@ -54,7 +55,7 @@ export class GrafanaLlmService {
         this.logCooldown(cooldownMs);
       } else {
         this.logger.warn(
-          `Grafana LLM request failed: ${error instanceof Error ? error.message : String(error)}`,
+          `Grafana LLM request failed: ${formatError(error)}`,
         );
       }
 
@@ -92,7 +93,7 @@ export class GrafanaLlmService {
   }
 
   private extractCooldownMs(error: unknown): number {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatError(error);
     const looksRateLimited =
       /\b429\b/.test(message) ||
       /rate limit/i.test(message) ||

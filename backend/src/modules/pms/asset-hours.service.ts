@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -234,7 +235,7 @@ export class AssetHoursService {
     } catch (error) {
       this.logger.warn(
         `currentHours influx query failed for asset ${assetId}: ${
-          error instanceof Error ? error.message : String(error)
+          formatError(error)
         }`,
       );
     }

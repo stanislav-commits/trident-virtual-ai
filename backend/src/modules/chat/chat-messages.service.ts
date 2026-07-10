@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import {
   BadRequestException,
   Injectable,
@@ -133,7 +134,7 @@ export class ChatMessagesService {
     } catch (error) {
       this.logger.error(
         `Failed to generate assistant reply for session ${sessionId}: ${
-          error instanceof Error ? error.message : String(error)
+          formatError(error)
         }`,
       );
       this.chatProgressBus.emit(sessionId, {

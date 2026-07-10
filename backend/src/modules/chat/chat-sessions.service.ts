@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import {
   BadRequestException,
   Injectable,
@@ -236,7 +237,7 @@ export class ChatSessionsService {
     } catch (error) {
       this.logger.warn(
         `Failed to refresh chat title for session ${input.sessionId}: ${
-          error instanceof Error ? error.message : String(error)
+          formatError(error)
         }`,
       );
     }

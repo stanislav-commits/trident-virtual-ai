@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -119,13 +120,10 @@ export class DocumentsParseStatusSyncService {
     } catch (error) {
       this.logger.warn(
         `Manual parser fallback could not be queued for document ` +
-          `${document.id}: ${this.formatError(error)}`,
+          `${document.id}: ${formatError(error)}`,
       );
       return false;
     }
   }
 
-  private formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 }

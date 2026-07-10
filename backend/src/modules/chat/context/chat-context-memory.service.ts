@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -80,7 +81,7 @@ export class ChatContextMemoryService {
     } catch (error) {
       this.logger.warn(
         `Failed to refresh chat context summary for session ${session.id}: ${
-          error instanceof Error ? error.message : String(error)
+          formatError(error)
         }`,
       );
       return memory;

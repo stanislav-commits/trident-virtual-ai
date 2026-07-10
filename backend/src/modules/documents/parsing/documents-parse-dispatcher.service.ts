@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -46,7 +47,7 @@ export class DocumentsParseDispatcherService {
         await this.dispatchPendingParsesOnce();
       } catch (error) {
         this.logger.warn(
-          `Document parse dispatch failed: ${this.formatError(error)}`,
+          `Document parse dispatch failed: ${formatError(error)}`,
         );
       }
     } while (this.dispatchAgain);
@@ -114,7 +115,7 @@ export class DocumentsParseDispatcherService {
       document.lastSyncedAt = new Date();
       await this.documentsRepository.save(document);
     } catch (error) {
-      const errorMessage = this.formatError(error);
+      const errorMessage = formatError(error);
 
       if (await this.tryQueueManualParserFallback(document, errorMessage)) {
         this.dispatchAgain = true;
@@ -137,9 +138,6 @@ export class DocumentsParseDispatcherService {
     }
   }
 
-  private formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 
   private async tryQueueManualParserFallback(
     document: DocumentEntity,
@@ -153,7 +151,7 @@ export class DocumentsParseDispatcherService {
     } catch (error) {
       this.logger.warn(
         `Manual parser fallback could not be queued for document ` +
-          `${document.id}: ${this.formatError(error)}`,
+          `${document.id}: ${formatError(error)}`,
       );
       return false;
     }

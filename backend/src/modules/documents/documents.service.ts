@@ -1,3 +1,4 @@
+import { formatError } from '../../common/utils/error.utils';
 import {
   BadGatewayException,
   BadRequestException,
@@ -417,7 +418,7 @@ export class DocumentsService {
           id,
           deleted: false,
           remoteDeleteStatus: 'failed',
-          error: this.formatError(error),
+          error: formatError(error),
         });
       }
     }
@@ -448,7 +449,7 @@ export class DocumentsService {
       } catch (error) {
         if (!this.isAcceptableRemoteDeleteMiss(error)) {
           throw new BadGatewayException(
-            `RAGFlow document delete failed; local document was not deleted. ${this.formatError(error)}`,
+            `RAGFlow document delete failed; local document was not deleted. ${formatError(error)}`,
           );
         }
 
@@ -467,7 +468,7 @@ export class DocumentsService {
   }
 
   private isAcceptableRemoteDeleteMiss(error: unknown): boolean {
-    const message = this.formatError(error).toLowerCase();
+    const message = formatError(error).toLowerCase();
 
     return [
       'does not have the document',
@@ -480,9 +481,6 @@ export class DocumentsService {
     ].some((pattern) => message.includes(pattern));
   }
 
-  private formatError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 
   private async resolveAccessibleShip(
     requestedShipId: string | undefined,

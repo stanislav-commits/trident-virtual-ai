@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import { DocumentRetrievalEvidenceQuality } from '../../documents/dto/document-retrieval-response.dto';
 import { DocumentDocClass } from '../../documents/enums/document-doc-class.enum';
 import { DocumentRetrievalQuestionType } from '../../documents/enums/document-retrieval-question-type.enum';
@@ -645,6 +646,4 @@ function isDocumentsWebFallbackDiagnostics(
   );
 }
 
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+

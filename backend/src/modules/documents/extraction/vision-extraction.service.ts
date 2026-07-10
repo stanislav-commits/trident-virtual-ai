@@ -1,3 +1,4 @@
+import { formatError } from '../../../common/utils/error.utils';
 import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -82,7 +83,7 @@ export class VisionExtractionService {
       .catch((error) => {
         this.logger.error(
           `Extraction job crashed for ${documentId}: ${
-            error instanceof Error ? error.message : String(error)
+            formatError(error)
           }`,
         );
       });
@@ -205,7 +206,7 @@ export class VisionExtractionService {
       } catch (error) {
         this.logger.warn(
           `Asset auto-match failed for ${document.originalFileName}: ${
-            error instanceof Error ? error.message : String(error)
+            formatError(error)
           }`,
         );
       }
