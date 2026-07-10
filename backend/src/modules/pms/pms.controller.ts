@@ -23,7 +23,11 @@ import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { PmsService, UpsertPmsTaskInput } from './pms.service';
 import { AssetHoursService, SetHoursConfigInput } from './asset-hours.service';
-import { PmsImportService, PmsImportDraft } from './pms-import.service';
+import {
+  PmsImportService,
+  PmsImportDraft,
+  PmsImportMode,
+} from './pms-import.service';
 import { CrewService } from '../crew/crew.service';
 
 interface UploadedImportFile {
@@ -104,8 +108,9 @@ export class PmsController {
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { doneAtHours?: number | null; doneOn?: string | null },
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.pmsService.complete(shipId, id, body);
+    return this.pmsService.complete(shipId, id, body, user);
   }
 
   @Get('assets/:assetId/hours')
@@ -146,18 +151,27 @@ export class PmsController {
   importPreview(
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @UploadedFile() file: UploadedImportFile | undefined,
-    @Body() body: { text?: string },
+    @Body() body: { text?: string; mode?: PmsImportMode },
   ) {
-    return this.pmsImportService.preview(shipId, file ?? null, body?.text);
+    return this.pmsImportService.preview(
+      shipId,
+      file ?? null,
+      body?.text,
+      body?.mode === 'history' ? 'history' : 'tasks',
+    );
   }
 
   @Post('import/commit')
   @Roles(UserRole.ADMIN)
   importCommit(
     @Param('shipId', ParseUUIDPipe) shipId: string,
-    @Body() body: { drafts: PmsImportDraft[] },
+    @Body() body: { drafts: PmsImportDraft[]; mode?: PmsImportMode },
   ) {
-    return this.pmsImportService.commit(shipId, body?.drafts ?? []);
+    return this.pmsImportService.commit(
+      shipId,
+      body?.drafts ?? [],
+      body?.mode === 'history' ? 'history' : 'tasks',
+    );
   }
 
   /** Suggest PMS tasks for an asset from its manual's extracted text. */

@@ -1,10 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { UserEntity } from '../users/entities/user.entity';
 import { PmsTaskEntity } from './entities/pms-task.entity';
 import { AssetHoursService } from './asset-hours.service';
+import { addInterval } from './date-interval.util';
+import { AuthenticatedUser } from '../../core/auth/auth.types';
+import {
+  POSITION_LABELS,
+  isAccessPosition,
+} from '../access-control/access-positions';
 
 export type PmsStatus = 'overdue' | 'due-soon' | 'ok';
 
@@ -34,10 +45,14 @@ export interface UpsertPmsTaskInput {
   assetIds?: string[];
   source?: string;
   completedAt?: string | null;
+  completedByName?: string | null;
+  completedByPosition?: string | null;
 }
 
 @Injectable()
 export class PmsService {
+  private readonly logger = new Logger(PmsService.name);
+
   constructor(
     @InjectRepository(PmsTaskEntity)
     private readonly taskRepository: Repository<PmsTaskEntity>,
@@ -112,15 +127,31 @@ export class PmsService {
   /** Bulk-insert tasks (used by the import flow). Returns the created count. */
   async createMany(shipId: string, inputs: UpsertPmsTaskInput[]): Promise<number> {
     let created = 0;
+    let skipped = 0;
     for (const input of inputs) {
       if (!input.task?.trim()) continue;
-      const entity = this.taskRepository.create({
-        shipId,
-        ...this.mapInput(input),
-        assets: await this.resolveAssets(shipId, input.assetIds),
-      });
-      await this.taskRepository.save(entity);
-      created++;
+      // One bad row (over-length field, bad asset id, …) must not abort the
+      // whole import — skip it and keep going, so the operator gets everything
+      // that IS valid instead of a 500 and a half-written batch.
+      try {
+        const entity = this.taskRepository.create({
+          shipId,
+          ...this.mapInput(input),
+          assets: await this.resolveAssets(shipId, input.assetIds),
+        });
+        await this.taskRepository.save(entity);
+        created++;
+      } catch (error) {
+        skipped++;
+        this.logger.warn(
+          `Skipped import task "${input.task}": ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    if (skipped) {
+      this.logger.warn(`Import: ${created} created, ${skipped} skipped.`);
     }
     return created;
   }
@@ -154,12 +185,25 @@ export class PmsService {
     shipId: string,
     id: string,
     input?: { doneAtHours?: number | null; doneOn?: string | null },
+    user?: AuthenticatedUser,
   ) {
     const task = await this.taskRepository.findOne({
       where: { id, shipId },
       relations: { assets: true },
     });
     if (!task) throw new NotFoundException('Task not found');
+
+    // Snapshot WHO completed it — the actual person (name) + their position at
+    // this moment. The responsible field is a position; history shows the person.
+    if (user) {
+      const account = await this.userRepository.findOne({
+        where: { id: user.id },
+      });
+      task.completedByName = user.name ?? account?.name ?? user.userId;
+      const pos = account?.accessPosition;
+      task.completedByPosition =
+        pos && isAccessPosition(pos) ? POSITION_LABELS[pos] : null;
+    }
 
     const doneOn = input?.doneOn ?? new Date().toISOString().slice(0, 10);
     task.lastDoneAt = doneOn;
@@ -191,7 +235,7 @@ export class PmsService {
         task.intervalValue != null &&
         task.intervalValue > 0
       ) {
-        task.dueDate = this.addInterval(
+        task.dueDate = addInterval(
           doneOn,
           task.intervalValue,
           task.intervalUnit,
@@ -228,23 +272,26 @@ export class PmsService {
     ) => {
       if (input[key] !== undefined) apply((input[key] ?? null) as never);
     };
+    // Cap string fields to their column length — the AI import can produce
+    // values longer than the schema allows (e.g. a group name in sfiGroup).
+    const cap = (v: unknown, n: number): string | null => {
+      const s = v == null ? null : String(v);
+      return s == null ? null : s.slice(0, n);
+    };
     set('task', (v) => (out.task = (v as string)?.trim() || existing!.task));
-    set('category', (v) => (out.category = (v as string) ?? 'Service'));
-    set('planning', (v) => (out.planning = (v as string) ?? 'planned'));
+    set('category', (v) => (out.category = cap(v, 24) ?? 'Service'));
+    set('planning', (v) => (out.planning = cap(v, 12) ?? 'planned'));
     set('description', (v) => (out.description = v as string | null));
-    set('sfiGroup', (v) => (out.sfiGroup = v as string | null));
+    set('sfiGroup', (v) => (out.sfiGroup = cap(v, 64)));
     set('assigneeUserId', (v) => (out.assigneeUserId = v as string | null));
-    set(
-      'responsibleRole',
-      (v) => (out.responsibleRole = (v as string | null) ?? null),
-    );
-    set('department', (v) => (out.department = (v as string | null) ?? null));
-    set('priority', (v) => (out.priority = (v as string) ?? 'medium'));
+    set('responsibleRole', (v) => (out.responsibleRole = cap(v, 80)));
+    set('department', (v) => (out.department = cap(v, 16)));
+    set('priority', (v) => (out.priority = cap(v, 12) ?? 'medium'));
     set('dueDate', (v) => (out.dueDate = v as string | null));
     set('startDate', (v) => (out.startDate = v as string | null));
     set('repeatDate', (v) => (out.repeatDate = Boolean(v)));
     set('intervalValue', (v) => (out.intervalValue = v as number | null));
-    set('intervalUnit', (v) => (out.intervalUnit = (v as string) ?? 'months'));
+    set('intervalUnit', (v) => (out.intervalUnit = cap(v, 8) ?? 'months'));
     set('intervalHours', (v) => (out.intervalHours = v as number | null));
     set(
       'startHours',
@@ -257,6 +304,8 @@ export class PmsService {
     set('dueHours', (v) => (out.dueHours = v != null ? String(v) : null));
     set('lastDoneAt', (v) => (out.lastDoneAt = v as string | null));
     set('source', (v) => (out.source = (v as string) ?? 'manual'));
+    set('completedByName', (v) => (out.completedByName = cap(v, 120)));
+    set('completedByPosition', (v) => (out.completedByPosition = cap(v, 64)));
     if (input.completedAt !== undefined) {
       out.completedAt = input.completedAt ? new Date(input.completedAt) : null;
     }
@@ -428,6 +477,8 @@ export class PmsService {
       status,
       due,
       completedAt: task.completedAt ? task.completedAt.toISOString() : null,
+      completedByName: task.completedByName ?? null,
+      completedByPosition: task.completedByPosition ?? null,
       assets: (task.assets ?? []).map((a) => ({
         id: a.id,
         name: a.displayName,
@@ -487,12 +538,4 @@ export class PmsService {
     return Math.round((d.getTime() - today.getTime()) / 86_400_000);
   }
 
-  private addInterval(iso: string, value: number, unit: string): string {
-    const d = new Date(`${iso}T00:00:00`);
-    if (unit === 'days') d.setDate(d.getDate() + value);
-    else if (unit === 'weeks') d.setDate(d.getDate() + value * 7);
-    else if (unit === 'months') d.setMonth(d.getMonth() + value);
-    else if (unit === 'years') d.setFullYear(d.getFullYear() + value);
-    return d.toISOString().slice(0, 10);
-  }
 }

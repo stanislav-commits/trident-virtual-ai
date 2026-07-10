@@ -37,7 +37,9 @@ export class PmsTaskEntity {
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 
-  @Column({ name: 'sfi_group', type: 'varchar', length: 10, nullable: true })
+  // Wide enough for imported group NAMES, not just short SFI codes — the AI
+  // maps a source "group name" column here and it overflowed varchar(10).
+  @Column({ name: 'sfi_group', type: 'varchar', length: 64, nullable: true })
   sfiGroup!: string | null;
 
   @Column({ name: 'assignee_user_id', type: 'uuid', nullable: true })
@@ -94,6 +96,15 @@ export class PmsTaskEntity {
 
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt!: Date | null;
+
+  // Who performed the completion — a SNAPSHOT of the name + position at the time
+  // (crew rotate; the responsible field is a position, but history records the
+  // actual person who did the work).
+  @Column({ name: 'completed_by_name', type: 'varchar', length: 120, nullable: true })
+  completedByName!: string | null;
+
+  @Column({ name: 'completed_by_position', type: 'varchar', length: 64, nullable: true })
+  completedByPosition!: string | null;
 
   @Column({ type: 'varchar', length: 20, default: 'manual' })
   source!: string;

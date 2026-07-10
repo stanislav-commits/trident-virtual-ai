@@ -271,11 +271,4 @@ from(bucket: "${selector.bucket}")
     // Direct counters: a generous window to catch the latest sample.
     return new Date(Date.now() - 90 * 24 * 3600 * 1000);
   }
-
-  async assertConfigExists(shipId: string, assetId: string): Promise<void> {
-    const cfg = await this.configRepository.findOne({
-      where: { assetId, shipId },
-    });
-    if (!cfg) throw new NotFoundException('Asset hours config not found');
-  }
 }

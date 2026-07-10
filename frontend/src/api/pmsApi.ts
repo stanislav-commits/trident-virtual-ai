@@ -1,4 +1,4 @@
-import { fetchWithAuth } from "./core";
+import { fetchWithAuth, ok } from "./core";
 
 export type PmsStatus = "overdue" | "due-soon" | "ok";
 
@@ -30,6 +30,8 @@ export interface PmsTaskDto {
   status: PmsStatus;
   due: string;
   completedAt: string | null;
+  completedByName: string | null;
+  completedByPosition: string | null;
   assets: { id: string; name: string }[];
 }
 
@@ -73,10 +75,14 @@ export interface PmsImportDraft {
   intervalHours?: number | null;
   dueDate?: string | null;
   lastDoneAt?: string | null;
+  completedAt?: string | null;
+  lastDoneHours?: number | null;
   assetHint?: string | null;
   assetMatch?: { id: string; name: string; matchType: string } | null;
   confidence?: "high" | "low";
 }
+
+export type PmsImportMode = "tasks" | "history";
 
 export interface PmsImportPreview {
   drafts: PmsImportDraft[];
@@ -89,9 +95,11 @@ export async function previewPmsImport(
   token: string,
   shipId: string,
   file: File,
+  mode: PmsImportMode = "tasks",
 ): Promise<PmsImportPreview> {
   const form = new FormData();
   form.append("file", file);
+  form.append("mode", mode);
   const r = await fetchWithAuth(`ships/${shipId}/pms/import/preview`, {
     token,
     method: "POST",
@@ -105,12 +113,13 @@ export async function commitPmsImport(
   token: string,
   shipId: string,
   drafts: PmsImportDraft[],
+  mode: PmsImportMode = "tasks",
 ): Promise<{ created: number }> {
   const r = await fetchWithAuth(`ships/${shipId}/pms/import/commit`, {
     token,
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ drafts }),
+    body: JSON.stringify({ drafts, mode }),
   });
   await ok(r, "Import tasks");
   return r.json();
@@ -131,13 +140,6 @@ export async function suggestPmsFromManual(
   });
   await ok(r, "Suggest PMS");
   return r.json();
-}
-
-async function ok(r: Response, what: string): Promise<void> {
-  if (!r.ok) {
-    const txt = await r.text();
-    throw new Error(`${what} failed (${r.status}): ${txt.slice(0, 200)}`);
-  }
 }
 
 export async function listPmsTasks(

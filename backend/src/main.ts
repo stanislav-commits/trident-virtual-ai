@@ -1,11 +1,21 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { AppLoggerService } from './core/logging/app-logger.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // Disable the default 100kb body parser and register our own with a larger
+  // limit — bulk endpoints (e.g. PMS import commit of hundreds of tasks) send
+  // JSON bodies well over the default and were rejected with 413. Multipart
+  // uploads go through multer and are unaffected.
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    bodyParser: false,
+  });
+  app.use(json({ limit: '15mb' }));
+  app.use(urlencoded({ extended: true, limit: '15mb' }));
   const logger = app.get(AppLoggerService);
   const configService = app.get(ConfigService);
   const port = configService.get<number>('app.port', 3000);

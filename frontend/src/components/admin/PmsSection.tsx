@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { PlusIcon, XIcon, RefreshIcon, TrashIcon, UploadIcon } from "./AdminPanelIcons";
 import { fetchSfiGroups, type SfiNode } from "../../api/sfiApi";
 import { listAssets, type AssetItem } from "../../api/assetsApi";
-import { getUsers, type UserListItem } from "../../api/usersApi";
+import { useAccessSchema } from "../../hooks/useAccessSchema";
 import {
   listPmsTasks,
   createPmsTask,
@@ -22,6 +22,7 @@ import {
   type UpsertPmsTaskInput,
   type PmsImportPreview,
   type PmsImportDraft,
+  type PmsImportMode,
 } from "../../api/pmsApi";
 import {
   listInventory,
@@ -117,15 +118,8 @@ const PRIORITY_LABEL: Record<PmsPriority, string> = {
 
 const INTERVAL_UNITS: IntervalUnit[] = ["days", "weeks", "months", "years"];
 
-// Department a task belongs to (rank-based visibility). "" = general/all.
-const DEPARTMENTS: { value: string; label: string }[] = [
-  { value: "", label: "General (all crew)" },
-  { value: "engine", label: "Engine" },
-  { value: "bridge", label: "Bridge / Deck" },
-  { value: "ratings", label: "Ratings" },
-];
-const deptLabel = (d?: string) =>
-  DEPARTMENTS.find((x) => x.value === (d ?? ""))?.label ?? d;
+// Departments come from the shared access taxonomy (useAccessSchema) — see the
+// component body. "" = general/all crew.
 
 /** Windows within which a task still counts as "due soon". */
 const HOURS_SOON_WINDOW = 20;
@@ -258,6 +252,7 @@ const EMPTY_FORM = {
   department: "",
   sfiGroup: "",
   assigneeId: "",
+  responsibleRole: "",
   dueDate: "",
   startDate: "",
   intervalValue: "",
@@ -279,6 +274,7 @@ function formFromTask(t: PmsTask): PmsForm {
     department: t.department ?? "",
     sfiGroup: t.sfiGroup ?? "",
     assigneeId: t.assigneeId ?? "",
+    responsibleRole: t.responsibleRole ?? "",
     dueDate: t.dueDate ?? "",
     startDate: t.startDate ?? "",
     intervalValue: t.intervalValue != null ? String(t.intervalValue) : "",
@@ -520,6 +516,19 @@ function TaskPartsPicker({
 
 export function PmsSection({ token }: PmsSectionProps) {
   const { selectedShipId } = useAdminShip();
+  const accessSchema = useAccessSchema();
+  const DEPARTMENTS = useMemo(
+    () => [
+      { value: "", label: "General (all crew)" },
+      ...(accessSchema?.departments.map((d) => ({
+        value: d.key,
+        label: d.label,
+      })) ?? []),
+    ],
+    [accessSchema],
+  );
+  const deptLabel = (d?: string) =>
+    DEPARTMENTS.find((x) => x.value === (d ?? ""))?.label ?? d;
   const [tasks, setTasks] = useState<PmsTask[]>([]);
   const [view, setView] = useState<"active" | "history">("active");
   const [statusFilter, setStatusFilter] = useState<PmsStatus | null>(null);
@@ -538,12 +547,13 @@ export function PmsSection({ token }: PmsSectionProps) {
   const [taskParts, setTaskPartsState] = useState<InventoryItem[]>([]);
   const [allParts, setAllParts] = useState<InventoryItem[]>([]);
   const [sfiGroups, setSfiGroups] = useState<SfiNode[]>([]);
-  const [users, setUsers] = useState<UserListItem[]>([]);
   const [importNote, setImportNote] = useState("");
   const [importPreview, setImportPreview] = useState<PmsImportPreview | null>(
     null,
   );
   const [importBusy, setImportBusy] = useState(false);
+  // Which tab the import was launched from — active → task list, history → log.
+  const [importMode, setImportMode] = useState<PmsImportMode>("tasks");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const shipId = selectedShipId;
@@ -554,9 +564,6 @@ export function PmsSection({ token }: PmsSectionProps) {
     fetchSfiGroups(token)
       .then((g) => alive && setSfiGroups(g))
       .catch(() => alive && setSfiGroups([]));
-    getUsers(token)
-      .then((u) => alive && setUsers(u))
-      .catch(() => alive && setUsers([]));
     return () => {
       alive = false;
     };
@@ -589,6 +596,7 @@ export function PmsSection({ token }: PmsSectionProps) {
     assets: LinkedAsset[];
     sfiGroup?: string;
     assigneeId?: string;
+    responsibleRole?: string;
     priority: PmsPriority;
     dueDate: string | null;
     startDate: string | null;
@@ -605,7 +613,8 @@ export function PmsSection({ token }: PmsSectionProps) {
     department: f.department ? f.department : null,
     description: f.description ?? null,
     sfiGroup: f.sfiGroup ?? null,
-    assigneeUserId: f.assigneeId ?? null,
+    assigneeUserId: null,
+    responsibleRole: f.responsibleRole ?? null,
     priority: f.priority,
     dueDate: f.dueDate,
     startDate: f.startDate,
@@ -627,13 +636,14 @@ export function PmsSection({ token }: PmsSectionProps) {
     const persons = new Set<string>();
     for (const t of tasks) {
       t.assets.forEach((a) => a.name && assets.add(a.name));
-      if (t.assigneeName) persons.add(t.assigneeName);
+      const who = view === "history" ? t.completedByName : t.responsibleRole;
+      if (who) persons.add(who);
     }
     return {
       assets: [...assets].sort((a, b) => a.localeCompare(b)),
       persons: [...persons].sort((a, b) => a.localeCompare(b)),
     };
-  }, [tasks]);
+  }, [tasks, view]);
 
   const visible = useMemo(() => {
     const base = view === "active" ? active : history;
@@ -645,11 +655,14 @@ export function PmsSection({ token }: PmsSectionProps) {
           (categoryFilter === "all" || t.category === categoryFilter) &&
           (assetFilter === "all" ||
             t.assets.some((a) => a.name === assetFilter)) &&
-          (personFilter === "all" || t.assigneeName === personFilter) &&
+          (personFilter === "all" ||
+            (view === "history" ? t.completedByName : t.responsibleRole) ===
+              personFilter) &&
           (dueFilter === "all" || dueHorizon(t) === dueFilter) &&
           (!q ||
             t.task.toLowerCase().includes(q) ||
-            (t.assigneeName ?? "").toLowerCase().includes(q) ||
+            (t.responsibleRole ?? "").toLowerCase().includes(q) ||
+            (t.completedByName ?? "").toLowerCase().includes(q) ||
             (t.sfiGroupName ?? "").toLowerCase().includes(q) ||
             t.assets.some((a) => a.name.toLowerCase().includes(q))),
       )
@@ -749,7 +762,6 @@ export function PmsSection({ token }: PmsSectionProps) {
 
     const planned = form.planning === "planned";
     const grp = sfiGroups.find((g) => g.code === form.sfiGroup);
-    const usr = users.find((u) => u.id === form.assigneeId);
 
     let dueDate: string | null = null;
     let repeatDate = false;
@@ -788,8 +800,7 @@ export function PmsSection({ token }: PmsSectionProps) {
       assets: [...assetDraft],
       sfiGroup: form.sfiGroup || undefined,
       sfiGroupName: grp?.name,
-      assigneeId: usr?.id,
-      assigneeName: usr ? usr.name ?? usr.userId : undefined,
+      responsibleRole: form.responsibleRole || undefined,
       priority: form.priority,
       dueDate,
       startDate,
@@ -856,14 +867,16 @@ export function PmsSection({ token }: PmsSectionProps) {
   // ── Import (AI-mapped: PDF / XLSX / CSV / text) ───────────────────────
   const handleImportFile = async (file: File) => {
     if (!token || !shipId) return;
+    const mode: PmsImportMode = view === "history" ? "history" : "tasks";
+    setImportMode(mode);
     setImportBusy(true);
     setImportNote(`Reading & mapping “${file.name}” with AI…`);
     try {
-      const preview = await previewPmsImport(token, shipId, file);
+      const preview = await previewPmsImport(token, shipId, file, mode);
       setImportPreview(preview);
       setImportNote(
         preview.drafts.length === 0
-          ? "No maintenance tasks could be found in that file."
+          ? "No records could be found in that file."
           : "",
       );
     } catch (e) {
@@ -878,10 +891,12 @@ export function PmsSection({ token }: PmsSectionProps) {
     if (!token || !shipId) return;
     setImportBusy(true);
     try {
-      const { created } = await commitPmsImport(token, shipId, drafts);
+      const { created } = await commitPmsImport(token, shipId, drafts, importMode);
       setImportPreview(null);
       setImportNote(
-        `Imported ${created} task${created === 1 ? "" : "s"}.`,
+        `Imported ${created} ${importMode === "history" ? "record" : "task"}${
+          created === 1 ? "" : "s"
+        }.`,
       );
       await refresh();
     } catch (e) {
@@ -913,9 +928,18 @@ export function PmsSection({ token }: PmsSectionProps) {
             className="pms__btn"
             disabled={importBusy}
             onClick={() => fileRef.current?.click()}
-            title="Import existing PMS — PDF, Excel, CSV or text. AI maps it to tasks."
+            title={
+              view === "history"
+                ? "Import a maintenance HISTORY file (performed records) — PDF, Excel, CSV or text. AI maps it to completed entries."
+                : "Import a task list — PDF, Excel, CSV or text. AI maps it to planned tasks."
+            }
           >
-            <UploadIcon /> {importBusy ? "Reading…" : "Import"}
+            <UploadIcon />{" "}
+            {importBusy
+              ? "Reading…"
+              : view === "history"
+                ? "Import history"
+                : "Import"}
           </button>
           <button
             type="button"
@@ -1001,7 +1025,7 @@ export function PmsSection({ token }: PmsSectionProps) {
               </th>
               <th>
                 <HeaderFilter
-                  label="Person"
+                  label={view === "history" ? "Done by" : "Responsible"}
                   value={personFilter}
                   active={personFilter !== "all"}
                   onChange={setPersonFilter}
@@ -1122,7 +1146,15 @@ export function PmsSection({ token }: PmsSectionProps) {
                     <span className="pms__person">—</span>
                   )}
                 </td>
-                <td className="pms__person">{t.assigneeName ?? "—"}</td>
+                <td className="pms__person">
+                  {view === "history"
+                    ? t.completedByName
+                      ? `${t.completedByName}${
+                          t.completedByPosition ? ` · ${t.completedByPosition}` : ""
+                        }`
+                      : (t.responsibleRole ?? "—")
+                    : (t.responsibleRole ?? "—")}
+                </td>
                 <td
                   className={
                     t.completedAt
@@ -1291,18 +1323,18 @@ export function PmsSection({ token }: PmsSectionProps) {
                   </div>
                   <div className="admin-panel__modal-field">
                     <label className="admin-panel__field-label">
-                      Person responsible
+                      Position responsible
                     </label>
                     <select
                       className="admin-panel__input admin-panel__input--full"
-                      value={form.assigneeId}
-                      onChange={set("assigneeId")}
+                      value={form.responsibleRole}
+                      onChange={set("responsibleRole")}
+                      title="A position, not a person — crew rotate, the position stays. Who actually completes it is recorded in History."
                     >
                       <option value="">— unassigned —</option>
-                      {users.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name ?? u.userId}
-                          {u.role === "admin" ? " (admin)" : ""}
+                      {(accessSchema?.positions ?? []).map((p) => (
+                        <option key={p.value} value={p.label}>
+                          {p.label}
                         </option>
                       ))}
                     </select>
@@ -1528,6 +1560,7 @@ export function PmsSection({ token }: PmsSectionProps) {
           <ImportPreviewModal
             preview={importPreview}
             busy={importBusy}
+            mode={importMode}
             onCancel={() => setImportPreview(null)}
             onConfirm={commitImport}
           />,
@@ -1555,14 +1588,30 @@ function intervalText(d: PmsImportDraft): string {
 export function ImportPreviewModal({
   preview,
   busy,
+  mode = "tasks",
   onCancel,
   onConfirm,
 }: {
   preview: PmsImportPreview;
   busy: boolean;
+  mode?: PmsImportMode;
   onCancel: () => void;
   onConfirm: (drafts: PmsImportDraft[]) => void;
 }) {
+  const isHistory = mode === "history";
+  // Departments come from the shared access schema (single source) — this modal
+  // is a module-level component, so it can't see the parent's DEPARTMENTS.
+  const accessSchema = useAccessSchema();
+  const DEPARTMENTS = useMemo(
+    () => [
+      { value: "", label: "General (all crew)" },
+      ...(accessSchema?.departments.map((d) => ({
+        value: d.key,
+        label: d.label,
+      })) ?? []),
+    ],
+    [accessSchema],
+  );
   const [rows, setRows] = useState<DraftRow[]>(() =>
     preview.drafts.map((d, i) => ({ ...d, _key: `d${i}`, _include: true })),
   );
@@ -1589,7 +1638,10 @@ export function ImportPreviewModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="admin-panel__modal-header">
-          <h3>Review import · {preview.counts.total} tasks found</h3>
+          <h3>
+            Review import · {preview.counts.total}{" "}
+            {isHistory ? "records" : "tasks"} found
+          </h3>
           <button
             type="button"
             className="admin-panel__icon-btn"
@@ -1619,7 +1671,7 @@ export function ImportPreviewModal({
                 <th></th>
                 <th>Task</th>
                 <th>Category</th>
-                <th>Interval</th>
+                <th>{isHistory ? "Completed" : "Interval"}</th>
                 <th>Who</th>
                 <th>Dept</th>
                 <th>Asset</th>
@@ -1667,7 +1719,13 @@ export function ImportPreviewModal({
                       ))}
                     </select>
                   </td>
-                  <td className="pms__import-muted">{intervalText(r)}</td>
+                  <td className="pms__import-muted">
+                    {isHistory
+                      ? [r.completedAt, r.lastDoneHours != null ? `${r.lastDoneHours} h` : null]
+                          .filter(Boolean)
+                          .join(" · ") || "—"
+                      : intervalText(r)}
+                  </td>
                   <td className="pms__import-muted">
                     {r.responsibleRole ?? "—"}
                   </td>
@@ -1723,7 +1781,11 @@ export function ImportPreviewModal({
             onClick={confirm}
             disabled={busy || includedCount === 0}
           >
-            {busy ? "Importing…" : `Import ${includedCount} task${includedCount === 1 ? "" : "s"}`}
+            {busy
+              ? "Importing…"
+              : `Import ${includedCount} ${isHistory ? "record" : "task"}${
+                  includedCount === 1 ? "" : "s"
+                }`}
           </button>
         </div>
       </div>
