@@ -37,11 +37,18 @@ export class AssetEntity {
   @Column({ name: 'sfi_group', type: 'varchar', length: 10, nullable: true })
   sfiGroup!: string | null;
 
+  @Column({ name: 'sfi_group_name', type: 'varchar', length: 255, nullable: true })
+  sfiGroupName!: string | null;
+
   @Column({ name: 'sfi_sub', type: 'varchar', length: 20, nullable: true })
   sfiSub!: string | null;
 
   @Column({ name: 'sfi_sub_name', type: 'varchar', length: 255, nullable: true })
   sfiSubName!: string | null;
+
+  /** Source drawing element id (stable per-item key from the register build). */
+  @Column({ name: 'drawing_code', type: 'varchar', length: 80, nullable: true })
+  drawingCode!: string | null;
 
   @Column({ name: 'parent_asset_id', type: 'varchar', length: 80, nullable: true })
   parentAssetId!: string | null;

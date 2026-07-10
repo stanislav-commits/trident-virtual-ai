@@ -11,13 +11,6 @@ interface AssetFormModalProps {
   onCreated: (assetIdInternal: string) => void;
 }
 
-const LIFECYCLE_OPTIONS = [
-  "in-service",
-  "specified",
-  "deprecated",
-  "cross-ref",
-] as const;
-
 const EMPTY = {
   assetIdInternal: "",
   displayName: "",
@@ -28,8 +21,6 @@ const EMPTY = {
   model: "",
   serialNo: "",
   location: "",
-  criticality: "",
-  lifecycleStatus: "in-service",
   notes: "",
 };
 
@@ -112,7 +103,6 @@ export function AssetFormModal({
     const payload: CreateAssetInput = {
       assetIdInternal: form.assetIdInternal.trim(),
       displayName: form.displayName.trim(),
-      lifecycleStatus: form.lifecycleStatus,
     };
     const optional: Array<keyof CreateAssetInput> = [
       "sfiGroup",
@@ -128,7 +118,6 @@ export function AssetFormModal({
       const v = (form[key as keyof typeof EMPTY] as string).trim();
       if (v) (payload as Record<string, unknown>)[key] = v;
     }
-    if (form.criticality) payload.criticality = Number(form.criticality);
 
     try {
       await createAsset(token, shipId, payload);
@@ -305,40 +294,6 @@ export function AssetFormModal({
                 onChange={set("location")}
                 disabled={submitting}
               />
-            </div>
-          </div>
-
-          <div className="admin-panel__modal-field-row">
-            <div className="admin-panel__modal-field">
-              <label className="admin-panel__field-label">Criticality</label>
-              <select
-                className="admin-panel__input admin-panel__input--full"
-                value={form.criticality}
-                onChange={set("criticality")}
-                disabled={submitting}
-              >
-                <option value="">—</option>
-                <option value="1">1 (highest)</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5 (lowest)</option>
-              </select>
-            </div>
-            <div className="admin-panel__modal-field">
-              <label className="admin-panel__field-label">Lifecycle status</label>
-              <select
-                className="admin-panel__input admin-panel__input--full"
-                value={form.lifecycleStatus}
-                onChange={set("lifecycleStatus")}
-                disabled={submitting}
-              >
-                {LIFECYCLE_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s.replace("-", " ")}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
 

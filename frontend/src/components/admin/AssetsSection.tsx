@@ -405,8 +405,13 @@ export function AssetsSection({ token }: AssetsSectionProps) {
 
   // ── Stats for current group ──
   const stats = useMemo(
-    () => ({ total: assetsInGroup.length }),
-    [assetsInGroup],
+    () => ({
+      // Count reflects the focused sub-group when one is selected.
+      total: selectedSub
+        ? assetsInGroup.filter((a) => (a.sfiSub ?? "—") === selectedSub).length
+        : assetsInGroup.length,
+    }),
+    [assetsInGroup, selectedSub],
   );
 
   if (!effectiveShipId) {
@@ -426,6 +431,14 @@ export function AssetsSection({ token }: AssetsSectionProps) {
     selectedGroup === GROUP_ALL
       ? "All systems"
       : `${selectedGroup} · ${sfiNames.get(selectedGroup) ?? sfiGroupName(selectedGroup)}`;
+
+  // When a sub-group is focused, show its code + name under the group title.
+  const currentSubLabel = (() => {
+    if (!selectedSub) return null;
+    const meta = subgroups.find((s) => s.code === selectedSub);
+    if (!meta) return null;
+    return `${meta.code} · ${meta.name}`;
+  })();
 
   return (
     <div className="assets-section">
@@ -759,13 +772,16 @@ export function AssetsSection({ token }: AssetsSectionProps) {
           <div className="assets-section__main-stats">
             <div className="assets-section__main-stats-title">
               {currentGroupLabel}
+              {currentSubLabel && (
+                <span className="assets-section__main-stats-subtitle">
+                  {currentSubLabel}
+                </span>
+              )}
             </div>
-            <div className="assets-section__main-stats-row">
-              <span className="assets-section__stat">
-                <span className="assets-section__stat-label">Assets</span>
-                <span className="assets-section__stat-value">{stats.total}</span>
-              </span>
-            </div>
+            <span className="assets-section__stat">
+              <span className="assets-section__stat-label">Assets</span>
+              <span className="assets-section__stat-value">{stats.total}</span>
+            </span>
           </div>
 
           <div className="assets-section__table-wrap">

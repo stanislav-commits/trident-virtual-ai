@@ -137,6 +137,10 @@ export function AssetDrawer({
   const [suggestBusy, setSuggestBusy] = useState(false);
   // The asset's linked manual (drives both "Suggest PMS" and "Suggest parts").
   const manualDoc = related?.documents.find((d) => d.docClass === "manual");
+  // Manuals tab lists knowledge-base docs only — certificates belong to the
+  // Certs tab (compliance), not here.
+  const manualDocs =
+    related?.documents.filter((d) => d.docClass !== "certificate") ?? [];
   const [parts, setParts] = useState<InventoryItem[]>([]);
   const [partsPreview, setPartsPreview] = useState<{
     drafts: InventoryDraft[];
@@ -428,42 +432,20 @@ export function AssetDrawer({
       */}
       {drawerTab === "overview" && (
       <div className="assets-section__drawer-section">
+        {/* Only the columns present in the final register format (14-col). */}
         <div className="assets-section__drawer-fields">
           <OverviewFieldRow label="SFI group" value={asset.sfiGroup} onSave={save("sfiGroup")} />
           <OverviewFieldRow label="SFI sub" value={asset.sfiSub} onSave={save("sfiSub")} />
-          <OverviewFieldRow label="Sub name" value={asset.sfiSubName} onSave={save("sfiSubName")} width="full" />
+          <OverviewFieldRow label="Group name" value={asset.sfiGroupName} onSave={save("sfiGroupName")} />
+          <OverviewFieldRow label="Sub name" value={asset.sfiSubName} onSave={save("sfiSubName")} />
           <OverviewFieldRow label="Brand" value={asset.brand} onSave={save("brand")} />
           <OverviewFieldRow label="Model" value={asset.model} onSave={save("model")} />
           <OverviewFieldRow label="Serial №" value={asset.serialNo} onSave={save("serialNo")} />
-          <OverviewFieldRow label="Criticality (1-5)" value={asset.criticality?.toString() ?? null} onSave={save("criticality")} />
-          <OverviewFieldRow label="Lifecycle" value={asset.lifecycleStatus} onSave={save("lifecycleStatus")} />
-          <OverviewFieldRow label="Commissioned" value={asset.commissionedDate} onSave={save("commissionedDate")} placeholder="YYYY-MM-DD" />
-          <OverviewFieldRow label="Location (text)" value={asset.location} onSave={save("location")} width="full" />
-          <OverviewFieldRow label="Parent asset" value={asset.parentAssetId} placeholder="—" />
           <OverviewFieldRow label="Served by" value={asset.servedByAssetId} placeholder="—" />
-          <OverviewFieldRow label="Located in" value={asset.locationAssetId} placeholder="—" />
-          <OverviewFieldRow label="RINA ref" value={asset.rinaRef} placeholder="—" />
-          <OverviewFieldRow label="Zone" value={asset.zone} onSave={save("zone")} placeholder="H/T/M/…" />
-          <OverviewFieldRow label="Deck role" value={asset.deckRole} onSave={save("deckRole")} placeholder="BRG/SUN/TT/…" />
-          <OverviewFieldRow label="Deck level" value={asset.deckLevel?.toString() ?? null} placeholder="int" />
-          <OverviewFieldRow label="Space" value={asset.spaceInstance} onSave={save("spaceInstance")} placeholder="GC-04-PS" />
-          <OverviewFieldRow label="Space label" value={asset.spaceLabel} onSave={save("spaceLabel")} width="full" />
-          <OverviewFieldRow label="Drawing ref" value={asset.drawingRef} onSave={save("drawingRef")} width="full" />
-          <OverviewFieldRow label="Inspection" value={asset.inspectionObligation} onSave={save("inspectionObligation")} width="full" />
+          <OverviewFieldRow label="Location" value={asset.location} onSave={save("location")} width="full" />
+          <OverviewFieldRow label="Drawing ref" value={asset.drawingRef} onSave={save("drawingRef")} />
+          <OverviewFieldRow label="Drawing code" value={asset.drawingCode} onSave={save("drawingCode")} />
           <OverviewFieldRow label="Notes" value={asset.notes} onSave={save("notes")} width="full" />
-          {asset.sourceSheet && (
-            <OverviewFieldRow label="Source sheet" value={asset.sourceSheet} width="full" />
-          )}
-          {asset.extras && Object.keys(asset.extras).length > 0 && (
-            <div className="assets-section__field assets-section__field--full">
-              <span className="assets-section__field-label">Extras</span>
-              <span className="assets-section__field-readonly assets-section__field-extras">
-                {Object.entries(asset.extras)
-                  .map(([k, v]) => `${k}=${String(v)}`)
-                  .join("  ·  ")}
-              </span>
-            </div>
-          )}
         </div>
       </div>
 
@@ -598,14 +580,14 @@ export function AssetDrawer({
             }}
           />
         )}
-        {!relatedLoading && related && related.documents.length === 0 && (
+        {!relatedLoading && related && manualDocs.length === 0 && (
           <div className="assets-section__placeholder">
             No documents linked or matched. Click + Link to pin one.
           </div>
         )}
         {!relatedLoading &&
           related &&
-          related.documents.map((d) => (
+          manualDocs.map((d) => (
             <div
               key={d.id}
               className="assets-section__doc-row assets-section__doc-row--clickable"

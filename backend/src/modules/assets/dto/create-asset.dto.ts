@@ -28,6 +28,11 @@ export class CreateAssetDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  sfiGroupName?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(20)
   sfiSub?: string;
 
@@ -35,6 +40,11 @@ export class CreateAssetDto {
   @IsString()
   @MaxLength(255)
   sfiSubName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  drawingCode?: string;
 
   @IsOptional()
   @IsString()

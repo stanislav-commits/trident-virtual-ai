@@ -28,6 +28,11 @@ export class UpdateAssetDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  sfiGroupName?: string | null;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(20)
   sfiSub?: string | null;
 
@@ -35,6 +40,11 @@ export class UpdateAssetDto {
   @IsString()
   @MaxLength(255)
   sfiSubName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  drawingCode?: string | null;
 
   @IsOptional()
   @IsString()

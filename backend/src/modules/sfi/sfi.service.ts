@@ -28,8 +28,23 @@ export class SfiService implements OnModuleInit {
         const r = tx.getRepository(SfiTaxonomyEntity);
         await r.clear();
         await r.insert(SFI_TAXONOMY.map((n) => ({ ...n })));
+        // Re-sync the register's stored SFI names to the (new) taxonomy by code,
+        // so existing assets don't keep stale sub-group names after a taxonomy
+        // update. Codes are untouched — only the display names follow the master.
+        await tx.query(
+          `UPDATE assets a SET sfi_group_name = t.name
+             FROM sfi_taxonomy t
+            WHERE t.code = a.sfi_group AND t.level = 1 AND a.sfi_group IS NOT NULL`,
+        );
+        await tx.query(
+          `UPDATE assets a SET sfi_sub_name = t.name
+             FROM sfi_taxonomy t
+            WHERE t.code = a.sfi_sub AND t.level = 2 AND a.sfi_sub IS NOT NULL`,
+        );
       });
-      this.logger.log(`Seeded SFI taxonomy: ${SFI_TAXONOMY.length} nodes`);
+      this.logger.log(
+        `Seeded SFI taxonomy: ${SFI_TAXONOMY.length} nodes + re-synced asset SFI names`,
+      );
     } catch (err) {
       this.logger.warn(`SFI taxonomy seed skipped: ${(err as Error).message}`);
     }

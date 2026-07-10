@@ -44,6 +44,7 @@ const COLUMN_ALIASES: Record<keyof CreateAssetDto, string[]> = {
   assetIdInternal:  ['asset_id_internal', 'asset id', 'asset_id', 'id', 'sfi_asset_id'],
   displayName:      ['display_name', 'name', 'asset name', 'description'],
   sfiGroup:         ['sfi_group', 'sfi group'],
+  sfiGroupName:     ['sfi_group_name', 'sfi group name'],
   sfiSub:           ['sfi_sub', 'sfi sub', 'sfi_sub_group', 'sfi sub group'],
   sfiSubName:       ['sfi_sub_name', 'sfi sub name', 'sub-group', 'sub_group', 'sub group', 'category'],
   parentAssetId:    ['parent_asset_id', 'parent'],
@@ -66,6 +67,7 @@ const COLUMN_ALIASES: Record<keyof CreateAssetDto, string[]> = {
   spaceLabel:           ['space_label', 'space label'],
   // Maintenance / drawings
   drawingRef:           ['drawing_ref', 'drawing', 'drawing ref'],
+  drawingCode:          ['drawing_code', 'drawing code'],
   inspectionObligation: ['inspection_obligation', 'inspection', 'inspection obligation'],
   // Provenance
   parentAutoPopulated:      ['parent_auto_populated', 'parent auto populated'],
@@ -92,10 +94,6 @@ const EXTRAS_COLUMNS = [
   'drug_schedule',
   'asset_full_locator', // we recompute this but keep the import-time value
   'zone_name',          // some templates carry the long label alongside the code
-  // Final SeaWolf X register format (14-col) columns not in the v14.6 schema:
-  // keep them so import doesn't silently drop them and export round-trips.
-  'sfi_group_name',     // redundant with sfi_group, but present in the final file
-  'drawing_code',       // source drawing element id (stable per-item key)
 ];
 
 // xlsx sheet we read for the bulk register. The Trident template puts a
@@ -398,8 +396,10 @@ export class AssetsService {
       assetIdInternal: input.assetIdInternal,
       displayName: input.displayName,
       sfiGroup: input.sfiGroup ?? null,
+      sfiGroupName: input.sfiGroupName ?? null,
       sfiSub: input.sfiSub ?? null,
       sfiSubName: input.sfiSubName ?? null,
+      drawingCode: input.drawingCode ?? null,
       parentAssetId: input.parentAssetId ?? null,
       servedByAssetId: input.servedByAssetId ?? null,
       locationAssetId: input.locationAssetId ?? null,
@@ -441,8 +441,10 @@ export class AssetsService {
 
     if (input.displayName !== undefined) asset.displayName = input.displayName;
     if (input.sfiGroup !== undefined) asset.sfiGroup = input.sfiGroup;
+    if (input.sfiGroupName !== undefined) asset.sfiGroupName = input.sfiGroupName;
     if (input.sfiSub !== undefined) asset.sfiSub = input.sfiSub;
     if (input.sfiSubName !== undefined) asset.sfiSubName = input.sfiSubName;
+    if (input.drawingCode !== undefined) asset.drawingCode = input.drawingCode;
     if (input.parentAssetId !== undefined) asset.parentAssetId = input.parentAssetId;
     if (input.servedByAssetId !== undefined) asset.servedByAssetId = input.servedByAssetId;
     if (input.locationAssetId !== undefined) asset.locationAssetId = input.locationAssetId;
@@ -526,8 +528,10 @@ export class AssetsService {
       ['asset_id_internal', (a) => a.assetIdInternal],
       ['display_name', (a) => a.displayName],
       ['sfi_group', (a) => a.sfiGroup],
+      ['sfi_group_name', (a) => a.sfiGroupName],
       ['sfi_sub', (a) => a.sfiSub],
       ['sfi_sub_name', (a) => a.sfiSubName],
+      ['drawing_code', (a) => a.drawingCode],
       ['parent_asset_id', (a) => a.parentAssetId],
       ['served_by_asset_id', (a) => a.servedByAssetId],
       ['location_asset_id', (a) => a.locationAssetId],
@@ -698,7 +702,6 @@ export class AssetsService {
 
     // Orphans = current assets that are NOT mentioned in the file.
     const orphans = existing.filter((a) => !incomingByCode.has(a.assetIdInternal));
-    const orphanCodes = new Set(orphans.map((o) => o.assetIdInternal));
 
     // Rename candidates = orphan + new-create with matching display_name
     // + brand + model (or weaker tiers). Conservative: don't propose if
@@ -768,8 +771,6 @@ export class AssetsService {
     const orphansFinal = orphansOut.filter(
       (o) => !renameOldCodes.has(o.assetIdInternal),
     );
-
-    void orphanCodes; // keep variable for clarity above
 
     // SFI validation against the loaded taxonomy — flag drafts whose
     // sfi_sub isn't a known catalog code (off-standard / typo) or is
