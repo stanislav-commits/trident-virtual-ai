@@ -68,7 +68,10 @@ export const ARCHETYPE_FIELDS: Record<string, ArchetypeField[]> = {
     { field: "last_endorsement_date", datatype: "date", required: false, hint: "survey/endorsement signature block", sotRole: "writes", sotTarget: "compliance", auth: false },
     { field: "survey_regime", datatype: "enum", required: false, hint: "\"Harmonized System of Survey\"", sotRole: "none", sotTarget: "none", auth: false },
     { field: "conditions_ref", datatype: "text", required: false, hint: "subject to / conditions / exemption no", sotRole: "none", sotTarget: "none", auth: false },
-    { field: "vessel_gt/imo/callsign/flag", datatype: "string", required: false, hint: "particulars printed on cert", sotRole: "validates", sotTarget: "vessel record", auth: false },
+    { field: "vessel_gt", datatype: "string", required: false, hint: "Gross Tonnage printed on cert", sotRole: "validates", sotTarget: "vessel record", auth: false },
+    { field: "vessel_imo", datatype: "string", required: false, hint: "IMO number printed on cert", sotRole: "validates", sotTarget: "vessel record", auth: false },
+    { field: "vessel_callsign", datatype: "string", required: false, hint: "Call sign printed on cert", sotRole: "validates", sotTarget: "vessel record", auth: false },
+    { field: "vessel_flag", datatype: "string", required: false, hint: "Flag / registry printed on cert", sotRole: "validates", sotTarget: "vessel record", auth: false },
   ],
   "EQUIP_SVC": [
     { field: "applies_to_asset_id", datatype: "fk", required: true, hint: "serial/maker/position on cert -> asset", sotRole: "validates", sotTarget: "asset_register", auth: false },
@@ -210,9 +213,6 @@ export function validityField(archetype: string | null): string | null {
   );
   return comp ? comp.field : null;
 }
-
-/** Archetypes that MUST have at least one asset link (hard-match on save). */
-export const HARD_MATCH_ARCHETYPES = new Set(['EQUIP_SVC', 'EQUIP_TYPE']);
 
 /**
  * Maps a type's drives_pms behaviour to the PMS task it should drive (D4).

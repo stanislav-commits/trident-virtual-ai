@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createComplianceDoc,
+  extractComplianceForType,
+  fetchComplianceDocFileUrl,
   instantiateCompliance,
   deleteComplianceDoc,
   fetchComplianceOverview,
@@ -9,24 +11,24 @@ import {
   removeComplianceDocLink,
   previewComplianceDocs,
   commitComplianceDocs,
+  openComplianceDocFile,
   updateComplianceDoc,
 } from "../../api/complianceApi";
 import type {
   ComplianceDocType,
   ComplianceOverview,
+  ComplianceRecord,
   ArchetypeSchema,
   IngestProposal,
   CommitProposal,
 } from "../../api/complianceApi";
 import { ComplianceIngestModal } from "./ComplianceIngestModal";
+import { ComplianceDocModal, type DocModalValues } from "./ComplianceDocModal";
 import { uploadDocument } from "../../api/documentsApi";
 import { listAssets } from "../../api/assetsApi";
 import { listCrew } from "../../api/crewApi";
 import { useAdminShip } from "../../context/AdminShipContext";
-import {
-  ComplianceTypeRow,
-  type ComplianceRecordFormState,
-} from "./ComplianceTypeRow";
+import { ComplianceTypeRow } from "./ComplianceTypeRow";
 
 /**
  * Compliance Docs (Shaun, 11 Jun 2026) — V2-mock layout: section
@@ -44,24 +46,26 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [hideNotRequired, setHideNotRequired] = useState(true);
-  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [schema, setSchema] = useState<ArchetypeSchema | null>(null);
-  const [form, setForm] = useState<ComplianceRecordFormState>({
-    certNo: "",
-    issuer: "",
-    issueDate: "",
-    expiryDate: "",
-    assetLabel: "",
-    fields: {},
-  });
   const [savingDoc, setSavingDoc] = useState(false);
+  // Single-document review / edit window.
+  const [docModal, setDocModal] = useState<{
+    type: ComplianceDocType;
+    mode: "create" | "edit";
+    docId?: string;
+    documentId: string | null;
+    previewUrl: string | null;
+    isImage: boolean;
+    initial: DocModalValues;
+    extractedText?: string;
+  } | null>(null);
   const [profile, setProfile] = useState({
     grossTonnage: "",
     operationType: "commercial",
     flagRegistry: "",
   });
   const [generating, setGenerating] = useState(false);
-  const [uploadingTypeId, setUploadingTypeId] = useState<string | null>(null);
+  const [addingTypeId, setAddingTypeId] = useState<string | null>(null);
   const [assetOptions, setAssetOptions] = useState<
     Array<{ id: string; label: string }>
   >([]);
@@ -111,7 +115,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
     if (!token || !shipId) return;
     setCommitting(true);
     try {
-      await commitComplianceDocs(token, shipId, proposals);
+      await commitComplianceDocs(token, shipId, proposals, review?.files ?? []);
       setReview(null);
       await reload();
     } catch (e) {
@@ -235,79 +239,142 @@ export function ComplianceSection({ token }: { token: string | null }) {
     visibleSections[0] ??
     null;
 
-  const startAddRecord = (type: ComplianceDocType) => {
-    setEditingTypeId(type.id);
-    setForm({
-      certNo: "",
-      issuer: "",
-      issueDate: "",
-      expiryDate: "",
-      assetLabel: "",
-      fields: {},
+  // Extraction values (unknown-typed) → the modal's string form values.
+  const toFormFields = (f: Record<string, unknown> | null | undefined) => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(f ?? {})) {
+      if (v == null) continue;
+      out[k] = typeof v === "boolean" ? (v ? "true" : "") : String(v);
+    }
+    return out;
+  };
+
+  const closeDocModal = () => {
+    setDocModal((m) => {
+      if (m?.previewUrl) URL.revokeObjectURL(m.previewUrl);
+      return null;
     });
   };
 
-  const submitRecord = async (type: ComplianceDocType) => {
-    if (!token || !shipId) return;
-    setSavingDoc(true);
-    try {
-      // The primary link target follows the type's cardinality (schema v9).
-      const linksCrew = type.linkCardinality === "person";
-      const matched = form.assetLabel
-        ? (linksCrew ? crewOptions : assetOptions).find(
-            (o) => o.label === form.assetLabel,
-          )
-        : null;
-      await createComplianceDoc(token, shipId, {
-        docTypeId: type.id,
-        certNo: form.certNo || null,
-        issuer: form.issuer || null,
-        issueDate: form.issueDate || null,
-        expiryDate: form.expiryDate || null,
-        assetId: linksCrew ? null : (matched?.id ?? null),
-        crewMemberId: linksCrew ? (matched?.id ?? null) : null,
-        fields: Object.keys(form.fields).length ? form.fields : null,
-      });
-      setEditingTypeId(null);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save record");
-    } finally {
-      setSavingDoc(false);
-    }
-  };
-
-  const startUpload = (type: ComplianceDocType) => {
+  // Single "Add document" flow: pick a file.
+  const startAddDocument = (type: ComplianceDocType) => {
     uploadTargetRef.current = type;
     fileInputRef.current?.click();
   };
 
+  // File chosen → store it, AI-extract fields for the known type, open the
+  // review modal pre-filled (nothing saved until the operator confirms).
   const handleFilePicked = async (file: File | null) => {
     const type = uploadTargetRef.current;
     if (!file || !type || !token || !shipId) return;
-    setUploadingTypeId(type.id);
+    setAddingTypeId(type.id);
     try {
-      // 1. Store the PDF through the normal documents pipeline so it lands
-      //    in RAGFlow (AI can read it) and the documents library.
       const doc = await uploadDocument(token, file, {
         shipId,
         docClass: "certificate",
         documentPurpose: `${type.sfiCode} ${type.name}`,
       });
-      // 2. Record it against this compliance type. Dates stay empty until
-      //    filled manually (AI extraction is the next milestone).
-      await createComplianceDoc(token, shipId, {
-        docTypeId: type.id,
-        certNo: file.name.replace(/\.[^.]+$/, ""),
+      const proposal = await extractComplianceForType(
+        token,
+        shipId,
+        type.id,
+        doc.id,
+      );
+      setDocModal({
+        type,
+        mode: "create",
         documentId: doc.id,
+        previewUrl: URL.createObjectURL(file),
+        isImage: file.type.startsWith("image/"),
+        extractedText: proposal.extractedText,
+        initial: {
+          certNo: proposal.certNo ?? "",
+          issuer: proposal.issuer ?? "",
+          issueDate: proposal.issueDate ?? "",
+          assetLabel: proposal.assetName ?? "",
+          fields: toFormFields(proposal.fields),
+        },
       });
-      await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
-      setUploadingTypeId(null);
+      setAddingTypeId(null);
       uploadTargetRef.current = null;
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Click a record → open its fields in the same modal (edit mode).
+  const startEditRecord = async (type: ComplianceDocType, rec: ComplianceRecord) => {
+    if (!token || !shipId) return;
+    setAddingTypeId(type.id);
+    try {
+      let previewUrl: string | null = null;
+      let isImage = false;
+      if (rec.hasFile) {
+        const f = await fetchComplianceDocFileUrl(token, shipId, rec.id);
+        previewUrl = f.url;
+        isImage = f.isImage;
+      }
+      setDocModal({
+        type,
+        mode: "edit",
+        docId: rec.id,
+        documentId: rec.documentId,
+        previewUrl,
+        isImage,
+        initial: {
+          certNo: rec.certNo ?? "",
+          issuer: rec.issuer ?? "",
+          issueDate: rec.issueDate ?? "",
+          assetLabel: rec.assetName ?? "",
+          fields: toFormFields(rec.fields),
+        },
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not open record");
+    } finally {
+      setAddingTypeId(null);
+    }
+  };
+
+  const saveDocModal = async (values: DocModalValues) => {
+    if (!token || !shipId || !docModal) return;
+    const { type, mode, docId, documentId } = docModal;
+    setSavingDoc(true);
+    try {
+      const linksCrew = type.linkCardinality === "person";
+      const matched = values.assetLabel
+        ? (linksCrew ? crewOptions : assetOptions).find(
+            (o) => o.label === values.assetLabel,
+          )
+        : null;
+      const fields = Object.fromEntries(
+        Object.entries(values.fields).filter(([, v]) => v !== ""),
+      );
+      const body = {
+        docTypeId: type.id,
+        certNo: values.certNo || null,
+        issuer: values.issuer || null,
+        issueDate: values.issueDate || null,
+        assetId: linksCrew ? null : (matched?.id ?? null),
+        crewMemberId: linksCrew ? (matched?.id ?? null) : null,
+        fields: Object.keys(fields).length ? fields : null,
+        documentId: documentId ?? undefined,
+        extractedText: docModal.extractedText,
+        verifyState: "confirmed",
+      };
+      if (mode === "edit" && docId) {
+        await updateComplianceDoc(token, shipId, docId, body);
+      } else {
+        await createComplianceDoc(token, shipId, body);
+      }
+      closeDocModal();
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save record");
+    } finally {
+      setSavingDoc(false);
     }
   };
 
@@ -321,15 +388,12 @@ export function ComplianceSection({ token }: { token: string | null }) {
     }
   };
 
-  const updateExpiry = async (docId: string, expiryDate: string) => {
+  const openFile = async (docId: string) => {
     if (!token || !shipId) return;
     try {
-      await updateComplianceDoc(token, shipId, docId, {
-        expiryDate: expiryDate || null,
-      });
-      await reload();
+      await openComplianceDocFile(token, shipId, docId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update record");
+      setError(e instanceof Error ? e.message : "Could not open the file");
     }
   };
 
@@ -431,6 +495,29 @@ export function ComplianceSection({ token }: { token: string | null }) {
           busy={committing}
           onCancel={() => setReview(null)}
           onConfirm={commitReview}
+        />
+      )}
+
+      {docModal && (
+        <ComplianceDocModal
+          typeName={docModal.type.name}
+          typeCode={docModal.type.sfiCode}
+          archetype={docModal.type.archetype}
+          archetypeFields={
+            (docModal.type.archetype &&
+              schema?.archetypes[docModal.type.archetype]) ||
+            []
+          }
+          linkCardinality={docModal.type.linkCardinality}
+          assetOptions={assetOptions}
+          crewOptions={crewOptions}
+          initial={docModal.initial}
+          previewUrl={docModal.previewUrl}
+          isImage={docModal.isImage}
+          mode={docModal.mode}
+          saving={savingDoc}
+          onSave={(values) => void saveDocModal(values)}
+          onCancel={closeDocModal}
         />
       )}
 
@@ -547,28 +634,18 @@ export function ComplianceSection({ token }: { token: string | null }) {
                   <ComplianceTypeRow
                     key={type.id}
                     type={type}
-                    editing={editingTypeId === type.id}
-                    form={form}
-                    onFormChange={(patch) =>
-                      setForm((f) => ({ ...f, ...patch }))
-                    }
-                    archetypeFields={
-                      (type.archetype && schema?.archetypes[type.archetype]) || []
-                    }
                     assetOptions={assetOptions}
                     crewOptions={crewOptions}
                     onAddLink={addLink}
                     onRemoveLink={removeLink}
-                    saving={savingDoc}
-                    uploading={uploadingTypeId === type.id}
-                    onStartUpload={() => startUpload(type)}
-                    onStartAdd={() => startAddRecord(type)}
-                    onSubmit={() => void submitRecord(type)}
-                    onCancelEdit={() => setEditingTypeId(null)}
+                    adding={addingTypeId === type.id}
+                    onAddDocument={() => startAddDocument(type)}
+                    onEditRecord={(docId) => {
+                      const rec = type.records.find((r) => r.id === docId);
+                      if (rec) void startEditRecord(type, rec);
+                    }}
                     onDeleteRecord={(docId) => void removeRecord(docId)}
-                    onUpdateExpiry={(docId, expiryDate) =>
-                      void updateExpiry(docId, expiryDate)
-                    }
+                    onOpenFile={(docId) => void openFile(docId)}
                   />
                 ))}
               </>

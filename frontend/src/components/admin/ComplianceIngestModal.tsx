@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { XIcon } from "./AdminPanelIcons";
 import { CascadingSelect, type CascadeGroup } from "./CascadingSelect";
+import { prettyLabel } from "./compliance/complianceLabels";
 import type {
   CommitProposal,
   IngestProposal,
@@ -27,16 +28,15 @@ interface Row {
   confidence?: number;
   message?: string;
   include: boolean;
-  fileUrl: string | null;
   isPdf: boolean;
   isImage: boolean;
+  extractedText?: string;
 }
 
-const prettyKey = (k: string) =>
-  k
-    .replace(/_id$/, "")
-    .replace(/[._]/g, " ")
-    .replace(/^./, (c) => c.toUpperCase());
+/** A field is a date if its key implies one or its value is an ISO date. */
+const isDateField = (key: string, value: string) =>
+  /(date|expiry|_from|_to|anniversary|cover_|term_|renewal)/i.test(key) ||
+  /^\d{4}-\d{2}-\d{2}/.test(value ?? "");
 
 /**
  * Batch upload review window. Left: the file list + the selected file's
@@ -100,14 +100,15 @@ export function ComplianceIngestModal({
         confidence: p.confidence,
         message: p.message,
         include: p.status === "matched",
-        fileUrl: urls[i] ?? null,
         isPdf: (file?.type ?? "").includes("pdf"),
         isImage: (file?.type ?? "").startsWith("image/"),
+        extractedText: p.extractedText,
       };
     }),
   );
   const [sel, setSel] = useState(0);
   const row = rows[sel];
+  const previewUrl = urls[sel] ?? null;
 
   const patch = (next: Partial<Row>) =>
     setRows((rs) => rs.map((r, idx) => (idx === sel ? { ...r, ...next } : r)));
@@ -121,6 +122,7 @@ export function ComplianceIngestModal({
       .filter((r) => r.include && r.typeId)
       .map((r) => ({
         typeId: r.typeId as string,
+        filename: r.filename,
         certNo: r.certNo || null,
         issuer: r.issuer || null,
         issueDate: r.issueDate || null,
@@ -128,6 +130,7 @@ export function ComplianceIngestModal({
         fields: Object.fromEntries(
           Object.entries(r.fields).filter(([, v]) => v !== ""),
         ),
+        extractedText: r.extractedText,
       }));
     onConfirm(out);
   };
@@ -224,31 +227,42 @@ export function ComplianceIngestModal({
                       onChange={(e) => patch({ assetLabel: e.target.value })}
                     />
                   </label>
-                  {Object.keys(row.fields).map((key) => (
-                    <label key={key} className="compliance__field">
-                      <span className="compliance__field-label">{prettyKey(key)}</span>
-                      <input
-                        value={row.fields[key]}
-                        onChange={(e) =>
-                          patch({ fields: { ...row.fields, [key]: e.target.value } })
-                        }
-                      />
-                    </label>
-                  ))}
+                  {Object.keys(row.fields)
+                    // doc_number / issuing_party / issue_date already have their
+                    // own base inputs above — don't render them again here.
+                    .filter(
+                      (key) =>
+                        !["doc_number", "issuing_party", "issue_date"].includes(key),
+                    )
+                    .map((key) => (
+                      <label key={key} className="compliance__field">
+                        <span className="compliance__field-label">{prettyLabel(key)}</span>
+                        <input
+                          type={isDateField(key, row.fields[key]) ? "date" : "text"}
+                          value={row.fields[key]}
+                          onChange={(e) =>
+                            patch({ fields: { ...row.fields, [key]: e.target.value } })
+                          }
+                        />
+                      </label>
+                    ))}
                 </div>
               </div>
             )}
           </div>
 
-          {/* RIGHT — large preview */}
+          {/* RIGHT — large preview. Read the URL from the live `urls` memo, NOT
+              from row state: the row keeps a stale blob URL that the cleanup
+              effect has already revoked (React StrictMode re-mount), which the
+              browser then reports as "moved / deleted". */}
           <div className="compliance__ingest-preview">
-            {row?.isPdf && row.fileUrl ? (
+            {previewUrl && row?.isPdf ? (
               <iframe
                 title={row.filename}
-                src={`${row.fileUrl}#toolbar=0&navpanes=0&view=FitH`}
+                src={`${previewUrl}#toolbar=0&navpanes=0&view=FitH`}
               />
-            ) : row?.isImage && row.fileUrl ? (
-              <img src={row.fileUrl} alt={row.filename} />
+            ) : previewUrl && row?.isImage ? (
+              <img src={previewUrl} alt={row.filename} />
             ) : (
               <div className="compliance__ingest-noprev">
                 No preview for {row?.filename}

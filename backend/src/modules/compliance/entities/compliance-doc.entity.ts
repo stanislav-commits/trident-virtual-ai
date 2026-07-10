@@ -73,6 +73,27 @@ export class ComplianceDocEntity {
   @JoinColumn({ name: 'document_id' })
   document!: DocumentEntity | null;
 
+  // ── Directly-stored original file (AI batch-ingest path, which does not go
+  //    through the documents/RAGFlow pipeline). Served for preview alongside
+  //    the documentId path. ──
+  @Column({ name: 'file_storage_key', type: 'varchar', length: 512, nullable: true })
+  fileStorageKey!: string | null;
+
+  @Column({ name: 'file_name', type: 'varchar', length: 300, nullable: true })
+  fileName!: string | null;
+
+  @Column({ name: 'file_mime', type: 'varchar', length: 120, nullable: true })
+  fileMime!: string | null;
+
+  /**
+   * Full text the AI transcribed from the document at upload (OCR included).
+   * Certificates are short (1–2 pages), so we keep the whole text on the record
+   * and feed it to the chat compliance responder for full-text questions —
+   * cheaper than RAGFlow chunking for such small documents.
+   */
+  @Column({ name: 'extracted_text', type: 'text', nullable: true })
+  extractedText!: string | null;
+
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes!: string | null;
 

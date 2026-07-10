@@ -9,12 +9,16 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Res,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
@@ -62,14 +66,85 @@ export class ComplianceController {
     return this.extractionService.preview(shipId, items);
   }
 
-  /** Persist the operator-reviewed proposals as confirmed records. */
+  /**
+   * Persist the operator-reviewed proposals as confirmed records. Sent as
+   * multipart so the original files ride along and get stored for preview
+   * (`proposals` is a JSON string field; each proposal's `filename` matches an
+   * uploaded file). Still accepts a plain JSON array for back-compat.
+   */
   @Post('ingest/commit')
   @Roles(UserRole.ADMIN)
+  @UseInterceptors(
+    FilesInterceptor('files', 30, { limits: { fileSize: 16 * 1024 * 1024 } }),
+  )
   ingestCommit(
     @Param('shipId', ParseUUIDPipe) shipId: string,
-    @Body() body: { proposals: CommitProposal[] },
+    @UploadedFiles() files: UploadedComplianceFile[] | undefined,
+    @Body() body: { proposals: CommitProposal[] | string },
   ) {
-    return this.extractionService.commit(shipId, body?.proposals ?? []);
+    const proposals: CommitProposal[] =
+      typeof body?.proposals === 'string'
+        ? JSON.parse(body.proposals)
+        : (body?.proposals ?? []);
+    const items =
+      files?.map((f) => ({
+        filename: f.originalname ?? 'document.pdf',
+        buffer: f.buffer,
+      })) ?? [];
+    return this.extractionService.commit(shipId, proposals, items);
+  }
+
+  /**
+   * "Add document" on a compliance row: the type is already chosen, so extract
+   * the archetype's fields from the already-uploaded document (skip category
+   * detection) and return a PROPOSAL for the operator to review + confirm.
+   * Nothing is saved here — the frontend persists via POST docs after review.
+   */
+  @Post('types/:typeId/extract')
+  @Roles(UserRole.ADMIN)
+  extractForType(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('typeId', ParseUUIDPipe) typeId: string,
+    @Body() body: { documentId: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.extractionService.extractForType(
+      shipId,
+      typeId,
+      body.documentId,
+      user,
+    );
+  }
+
+  /**
+   * One-off admin action: transcribe + store full text for all records that
+   * have a file but no text yet (so pre-existing certs become chat-answerable).
+   */
+  @Post('backfill-text')
+  @Roles(UserRole.ADMIN)
+  backfillText(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.extractionService.backfillTexts(shipId, user);
+  }
+
+  /** Stream a compliance record's original file inline (for preview/download). */
+  @Get('docs/:docId/file')
+  async getDocFile(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() response: Response,
+  ) {
+    const file = await this.complianceService.getDocFile(shipId, docId, user);
+    response.setHeader('Content-Type', file.contentType);
+    response.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(file.fileName)}"`,
+    );
+    response.setHeader('Content-Length', String(file.buffer.length));
+    response.send(file.buffer);
   }
 
   @Post('instantiate')

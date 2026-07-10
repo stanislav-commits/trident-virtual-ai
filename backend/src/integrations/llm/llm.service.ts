@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IntegrationStatusDto } from '../../common/dto/integration-status.dto';
 import {
+  createAnthropicPdfCompletion,
   createAnthropicToolCallCompletion,
   createAnthropicVisionCompletion,
 } from '../shared/anthropic-http';
@@ -130,6 +131,53 @@ export class LlmService {
     return Boolean(this.getAnthropicApiKey());
   }
 
+  /** Whether Claude (Anthropic) is available for direct JSON completions. */
+  isAnthropicConfigured(): boolean {
+    return Boolean(this.getAnthropicApiKey());
+  }
+
+  /**
+   * JSON completion via Claude directly (bypasses the OpenAI-compatible sub-LLM
+   * path). Used for high-volume mapping where Anthropic's throughput is far
+   * better than the sub-model endpoint. Returns parsed T, or null on failure.
+   */
+  async createAnthropicJsonCompletion<T = unknown>(input: {
+    systemPrompt: string;
+    userPrompt: string;
+    maxTokens?: number;
+    model?: string;
+  }): Promise<T | null> {
+    if (!this.getAnthropicApiKey()) return null;
+    try {
+      const result = await createAnthropicToolCallCompletion({
+        apiKey: this.getAnthropicApiKey(),
+        baseUrl: this.getAnthropicBaseUrl(),
+        model: input.model?.trim() || this.getModel(),
+        messages: [
+          {
+            role: 'system',
+            content: `${input.systemPrompt}\n\nReturn ONLY a single valid JSON object. No markdown fences, no commentary.`,
+          },
+          { role: 'user', content: input.userPrompt },
+        ],
+        tools: [],
+        maxTokens: input.maxTokens ?? 4000,
+      });
+      const text = result.content;
+      if (!text) return null;
+      // Tolerate stray fences / prose around the object.
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      const slice = start >= 0 && end > start ? text.slice(start, end + 1) : text;
+      return JSON.parse(slice) as T;
+    } catch (error) {
+      this.logger.warn(
+        `Anthropic JSON completion failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
   /**
    * Transcribe ALL readable text from a photo or scanned page using Claude
    * vision. For certificates/forms that have no embedded text. Returns plain
@@ -158,6 +206,36 @@ export class LlmService {
     } catch (error) {
       this.logger.warn(
         `Vision extraction failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Transcribe ALL readable text from a scanned PDF (no embedded text layer)
+   * by handing the whole PDF to Claude as a native document block — it reads
+   * every page including image-only scans. Returns plain text, or null if
+   * vision isn't configured / the call fails.
+   */
+  async extractTextFromPdf(pdfBuffer: Buffer): Promise<string | null> {
+    if (!this.isVisionConfigured()) return null;
+    try {
+      return await createAnthropicPdfCompletion({
+        apiKey: this.getAnthropicApiKey(),
+        baseUrl: this.getAnthropicBaseUrl(),
+        model: this.getModel(),
+        systemPrompt:
+          'You transcribe documents. Output ALL readable text from every ' +
+          'page as plain text, preserving labels, numbers, dates, names and ' +
+          'table structure line by line. Be exhaustive and literal. No commentary.',
+        prompt:
+          'Transcribe every field and value visible in this document.',
+        pdfBase64: pdfBuffer.toString('base64'),
+        maxTokens: 4000,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `PDF extraction failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       return null;
     }

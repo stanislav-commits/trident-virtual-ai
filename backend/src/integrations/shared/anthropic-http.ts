@@ -541,3 +541,61 @@ export async function createAnthropicVisionCompletion(input: {
   }
   return content.trim() || null;
 }
+
+/**
+ * Transcribe a PDF that has no embedded text layer (a scan) by sending it to
+ * Claude as a native `document` block — Claude rasterises and reads every page,
+ * OCR included. Used as the fallback when pdf-parse extracts nothing. Returns
+ * the assistant's plain-text transcription, or null.
+ */
+export async function createAnthropicPdfCompletion(input: {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  systemPrompt?: string;
+  prompt: string;
+  pdfBase64: string;
+  maxTokens?: number;
+}): Promise<string | null> {
+  const response = await fetch(buildMessagesUrl(input.baseUrl), {
+    method: 'POST',
+    headers: {
+      'x-api-key': input.apiKey,
+      'anthropic-version': ANTHROPIC_API_VERSION,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: input.model,
+      max_tokens: input.maxTokens ?? 3000,
+      ...(input.systemPrompt ? { system: input.systemPrompt } : {}),
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: input.pdfBase64,
+              },
+            },
+            { type: 'text', text: input.prompt },
+          ],
+        },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `Anthropic PDF request failed: ${response.status}`);
+  }
+  const payload = (await response.json()) as AnthropicResponse;
+  let content = '';
+  for (const block of payload.content) {
+    if (block.type === 'text' && typeof block.text === 'string') {
+      content += block.text;
+    }
+  }
+  return content.trim() || null;
+}

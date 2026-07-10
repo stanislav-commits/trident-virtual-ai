@@ -23,6 +23,7 @@ export interface ComplianceRecord {
   assetName: string | null;
   documentId: string | null;
   documentFileName: string | null;
+  hasFile?: boolean;
   notes: string | null;
   fields?: Record<string, unknown> | null;
   verifyState?: string;
@@ -114,6 +115,7 @@ export interface UpsertComplianceDocInput {
   fields?: Record<string, unknown> | null;
   verifyState?: string;
   crewMemberId?: string | null;
+  extractedText?: string | null;
 }
 
 export async function addComplianceDocLink(
@@ -162,16 +164,20 @@ export interface IngestProposal {
   assetName?: string | null;
   confidence?: number;
   message?: string;
+  extractedText?: string;
 }
 
 export interface CommitProposal {
   typeId: string;
+  /** Original upload filename — lets the server re-attach the file for preview. */
+  filename?: string | null;
   certNo?: string | null;
   issuer?: string | null;
   issueDate?: string | null;
   fields?: Record<string, unknown> | null;
   assetId?: string | null;
   crewMemberId?: string | null;
+  extractedText?: string | null;
 }
 
 export async function previewComplianceDocs(
@@ -193,18 +199,41 @@ export async function commitComplianceDocs(
   token: string,
   shipId: string,
   proposals: CommitProposal[],
+  files: File[] = [],
 ): Promise<{ created: number }> {
+  // Multipart so the original files are stored server-side for later preview;
+  // each proposal's `filename` matches an uploaded file by name.
+  const form = new FormData();
+  form.append("proposals", JSON.stringify(proposals));
+  files.forEach((f) => form.append("files", f));
   const response = await fetchWithAuth(
     `ships/${shipId}/compliance/ingest/commit`,
-    {
-      token,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ proposals }),
-    },
+    { token, method: "POST", body: form },
   );
   await ensureOk(response, "Save documents");
   return (await response.json()) as { created: number };
+}
+
+/**
+ * Fetch a compliance record's original file (authenticated) and open it in a
+ * new browser tab as a blob URL. Works for both pipeline-stored and directly-
+ * stored files.
+ */
+export async function openComplianceDocFile(
+  token: string,
+  shipId: string,
+  docId: string,
+): Promise<void> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/docs/${docId}/file`,
+    { token, method: "GET" },
+  );
+  await ensureOk(response, "Open file");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+  // Give the new tab time to load before revoking.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function fetchComplianceArchetypes(
@@ -231,6 +260,51 @@ export async function createComplianceDoc(
     body: JSON.stringify(input),
   });
   await ensureOk(response, "Create compliance doc");
+}
+
+/**
+ * "Add document" on a compliance row — the type is known, so the server reads
+ * the already-uploaded document and returns AI-extracted fields as a proposal
+ * (nothing saved). The operator reviews it in the modal and confirms to save.
+ */
+export async function extractComplianceForType(
+  token: string,
+  shipId: string,
+  typeId: string,
+  documentId: string,
+): Promise<IngestProposal> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/types/${typeId}/extract`,
+    {
+      token,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId }),
+    },
+  );
+  await ensureOk(response, "Extract document");
+  return (await response.json()) as IngestProposal;
+}
+
+/**
+ * Fetch a compliance record's original file (authenticated) as a blob object
+ * URL for inline preview. Caller must URL.revokeObjectURL when done.
+ */
+export async function fetchComplianceDocFileUrl(
+  token: string,
+  shipId: string,
+  docId: string,
+): Promise<{ url: string; isImage: boolean }> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/docs/${docId}/file`,
+    { token, method: "GET" },
+  );
+  await ensureOk(response, "Load file");
+  const blob = await response.blob();
+  return {
+    url: URL.createObjectURL(blob),
+    isImage: blob.type.startsWith("image/"),
+  };
 }
 
 export async function updateComplianceDoc(

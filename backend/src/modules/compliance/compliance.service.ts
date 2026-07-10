@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import {
   deriveFlagRegistry,
@@ -18,6 +18,9 @@ import { ComplianceDocTypeEntity } from './entities/compliance-doc-type.entity';
 import { ComplianceDocEntity } from './entities/compliance-doc.entity';
 import { DocAssetLinkEntity } from './entities/doc-asset-link.entity';
 import { PmsService } from '../pms/pms.service';
+import { DocumentsService } from '../documents/documents.service';
+import { DocumentsUploadStorageService } from '../documents/ingestion/documents-upload-storage.service';
+import { AuthenticatedUser } from '../../core/auth/auth.types';
 import {
   ARCHETYPE_FIELDS,
   BASE_FIELDS,
@@ -25,7 +28,6 @@ import {
   identityChecks,
   linkRoleForArchetype,
   requiredFields,
-  storedBlock,
   validityField,
 } from './compliance-archetypes';
 
@@ -46,6 +48,8 @@ export interface UpsertComplianceDocInput {
   fields?: Record<string, unknown> | null;
   verifyState?: string;
   extractedConfidence?: number | null;
+  /** Full AI-transcribed document text (for chat full-text answers). */
+  extractedText?: string | null;
   // primary link target (which one applies is driven by link_cardinality)
   crewMemberId?: string | null;
 }
@@ -64,7 +68,91 @@ export class ComplianceService {
     @InjectRepository(DocAssetLinkEntity)
     private readonly linkRepository: Repository<DocAssetLinkEntity>,
     private readonly pmsService: PmsService,
+    private readonly uploadStorage: DocumentsUploadStorageService,
+    private readonly documentsService: DocumentsService,
   ) {}
+
+  /**
+   * Load the stored full text for specific compliance records (chat full-text
+   * answers). Keyed by record id; only records that actually have text appear.
+   */
+  async getExtractedTexts(
+    shipId: string,
+    docIds: string[],
+  ): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (!docIds.length) return out;
+    const rows = await this.docRepository.find({
+      where: { shipId, id: In(docIds) },
+      select: ['id', 'extractedText'],
+    });
+    for (const r of rows) {
+      if (r.extractedText && r.extractedText.trim()) {
+        out.set(r.id, r.extractedText);
+      }
+    }
+    return out;
+  }
+
+  /** Records that have a file but no stored text yet (backfill candidates). */
+  async docsNeedingText(shipId: string): Promise<ComplianceDocEntity[]> {
+    return this.docRepository.find({
+      where: [
+        { shipId, extractedText: IsNull(), documentId: Not(IsNull()) },
+        { shipId, extractedText: IsNull(), fileStorageKey: Not(IsNull()) },
+      ],
+    });
+  }
+
+  /** Store the transcribed full text on a record (backfill / re-extract). */
+  async setDocText(shipId: string, docId: string, text: string): Promise<void> {
+    await this.docRepository.update(
+      { id: docId, shipId },
+      { extractedText: text },
+    );
+  }
+
+  /** Attach a directly-stored original file to a compliance record. */
+  async setDocFile(
+    shipId: string,
+    docId: string,
+    file: { storageKey: string; fileName: string; fileMime: string },
+  ): Promise<void> {
+    await this.docRepository.update(
+      { id: docId, shipId },
+      {
+        fileStorageKey: file.storageKey,
+        fileName: file.fileName,
+        fileMime: file.fileMime,
+      },
+    );
+  }
+
+  /**
+   * Fetch a compliance record's original file for preview/download. Prefers the
+   * documents-pipeline file (documentId) and falls back to the directly-stored
+   * file (AI batch-ingest path). Throws NotFound if the record has no file.
+   */
+  async getDocFile(
+    shipId: string,
+    docId: string,
+    user: AuthenticatedUser,
+  ): Promise<{ buffer: Buffer; contentType: string; fileName: string }> {
+    const doc = await this.docRepository.findOne({ where: { id: docId, shipId } });
+    if (!doc) throw new NotFoundException('Compliance record not found.');
+
+    if (doc.documentId) {
+      return this.documentsService.getFile(doc.documentId, user);
+    }
+    if (doc.fileStorageKey && (await this.uploadStorage.hasUpload(doc.fileStorageKey))) {
+      return {
+        buffer: await this.uploadStorage.readUpload(doc.fileStorageKey),
+        contentType: doc.fileMime || 'application/octet-stream',
+        fileName: doc.fileName || 'document',
+      };
+    }
+    throw new NotFoundException('This record has no attached file.');
+  }
 
   /**
    * Keep the PMS task driven by a compliance record in sync (D4). The
@@ -230,6 +318,57 @@ export class ComplianceService {
   }
 
   /**
+   * Flat list of certificates expiring (within EXPIRING_DAYS) or already
+   * expired — drives certificate-reminder alerts in the bell.
+   */
+  async expiringCertificates(shipId: string): Promise<
+    Array<{
+      docId: string;
+      title: string;
+      expiryDate: string | null;
+      expired: boolean;
+      assetId: string | null;
+      message: string | null;
+    }>
+  > {
+    const docs = await this.docRepository.find({
+      where: { shipId },
+      relations: { docType: true, asset: true },
+    });
+    const now = Date.now();
+    const out: Array<{
+      docId: string;
+      title: string;
+      expiryDate: string | null;
+      expired: boolean;
+      assetId: string | null;
+      message: string | null;
+    }> = [];
+    for (const d of docs) {
+      if (!d.expiryDate) continue;
+      const days = Math.ceil(
+        (new Date(d.expiryDate).getTime() - now) / 86_400_000,
+      );
+      if (days > EXPIRING_DAYS) continue; // comfortably valid
+      const expired = days < 0;
+      const name = d.docType?.name ?? 'Certificate';
+      const cert = d.certNo ? ` (${d.certNo})` : '';
+      const title = expired
+        ? `${name} expired ${d.expiryDate}${cert}`
+        : `${name} expires in ${days}d — ${d.expiryDate}${cert}`;
+      out.push({
+        docId: d.id,
+        title,
+        expiryDate: d.expiryDate,
+        expired,
+        assetId: d.assetId ?? null,
+        message: d.issuer ? `Issuer: ${d.issuer}` : null,
+      });
+    }
+    return out;
+  }
+
+  /**
    * The whole compliance picture for a ship, grouped by SFI section:
    * every doc type (rulebook) with its records and a derived status.
    * Gap analysis falls out for free — required types with no records
@@ -329,6 +468,7 @@ export class ComplianceService {
           assetName: doc.asset?.displayName ?? null,
           documentId: doc.documentId,
           documentFileName: doc.document?.originalFileName ?? null,
+          hasFile: Boolean(doc.documentId || doc.fileStorageKey),
           notes: doc.notes,
           fields: doc.fields ?? null,
           verifyState: doc.verifyState,
@@ -404,9 +544,13 @@ export class ComplianceService {
       throw new NotFoundException('Compliance doc type not found on this ship');
     }
     const fields = this.sanitizeFields(type.archetype, input.fields);
-    // Auto-extracted drafts skip required/hard-match — the operator fills
-    // any gaps and links assets when they confirm the record.
-    if (!opts?.draft) this.validateRequired(type.archetype, fields);
+    // Auto-extracted / freshly-uploaded drafts skip required + hard-match — the
+    // operator fills any gaps and links assets when they confirm the record.
+    // A bare "Upload PDF" attaches the file first (verifyState 'auto') and the
+    // dates/links are completed inline afterwards, so it must not hard-require
+    // fields it can't possibly have yet.
+    const draft = opts?.draft || input.verifyState === 'auto';
+    if (!draft) this.validateRequired(type.archetype, fields);
 
     // What a document links to is driven by its cardinality (schema v9):
     //   person → a crew member; vessel → nothing; else → an asset (hard-match).
@@ -415,7 +559,7 @@ export class ComplianceService {
       cardinality === 'single_asset' ||
       cardinality === 'per_unit' ||
       cardinality === 'sub_group';
-    if (!opts?.draft) {
+    if (!draft) {
       if (cardinality === 'person' && !input.crewMemberId) {
         throw new BadRequestException(
           'This document requires a linked crew member.',
@@ -444,6 +588,7 @@ export class ComplianceService {
         documentId: input.documentId ?? null,
         notes: input.notes ?? null,
         fields,
+        extractedText: input.extractedText ?? null,
         verifyState: input.verifyState === 'auto' ? 'auto' : 'confirmed',
         extractedConfidence:
           input.extractedConfidence != null
@@ -580,6 +725,10 @@ export class ComplianceService {
         input.documentId !== undefined ? input.documentId : doc.documentId,
       notes: input.notes !== undefined ? input.notes : doc.notes,
       fields: nextFields,
+      extractedText:
+        input.extractedText !== undefined
+          ? input.extractedText
+          : doc.extractedText,
       verifyState:
         input.verifyState !== undefined
           ? input.verifyState === 'auto'
@@ -610,16 +759,17 @@ export class ComplianceService {
 
   /** Keep only fields defined for the archetype; drop unknowns/empties. */
   private sanitizeFields(
-    archetype: string | null,
+    _archetype: string | null,
     input?: Record<string, unknown> | null,
   ): Record<string, unknown> | null {
     if (!input || typeof input !== 'object') return null;
-    const allowed = new Set(storedBlock(archetype).map((f) => f.field));
+    // Keep every non-empty captured value. We deliberately do NOT restrict to
+    // the archetype's field keys: AI extraction often uses its own key names
+    // (e.g. vessel_gt / vessel_imo instead of the compound vessel_gt/imo/...),
+    // and dropping them here silently loses data the operator just reviewed.
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(input)) {
-      if (allowed.has(k) && v !== null && v !== undefined && v !== '') {
-        out[k] = v;
-      }
+      if (v !== null && v !== undefined && v !== '') out[k] = v;
     }
     return Object.keys(out).length ? out : null;
   }
@@ -629,14 +779,13 @@ export class ComplianceService {
     archetype: string | null,
     fields: Record<string, unknown> | null,
   ): void {
-    const missing = requiredFields(archetype).filter(
-      (f) => fields?.[f] == null || fields[f] === '',
-    );
-    if (missing.length) {
-      throw new BadRequestException(
-        `Missing required ${archetype ?? 'document'} field(s): ${missing.join(', ')}`,
-      );
-    }
+    // Soft check only — intentionally does NOT throw. Real-world documents
+    // legitimately lack "required" fields (a Builder's Certificate / Registry
+    // has no expiry), and the admin reviews every record in the upload window
+    // before saving, so a missing field must not hard-block the save. The
+    // required markers stay as UI guidance; verify_state / status reflect
+    // completeness instead.
+    void requiredFields(archetype);
   }
 
   /** Value of the archetype's validity date field (→ canonical expiry_date). */

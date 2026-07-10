@@ -10,6 +10,8 @@ import { DocAssetLinkEntity } from './entities/doc-asset-link.entity';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { PmsModule } from '../pms/pms.module';
 import { IntegrationsModule } from '../../integrations/integrations.module';
+import { DocumentsModule } from '../documents/documents.module';
+import { DocumentsUploadStorageService } from '../documents/ingestion/documents-upload-storage.service';
 import { ComplianceExtractionService } from './compliance-extraction.service';
 
 @Module({
@@ -24,9 +26,14 @@ import { ComplianceExtractionService } from './compliance-extraction.service';
     ]),
     PmsModule,
     IntegrationsModule,
+    DocumentsModule,
   ],
   controllers: [ComplianceController],
-  providers: [ComplianceService, ComplianceExtractionService],
+  providers: [
+    ComplianceService,
+    ComplianceExtractionService,
+    DocumentsUploadStorageService,
+  ],
   exports: [ComplianceService],
 })
 export class ComplianceModule {}
