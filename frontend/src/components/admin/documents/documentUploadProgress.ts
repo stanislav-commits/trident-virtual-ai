@@ -90,3 +90,15 @@ export function hasKnownUploadProgress(
 export function shouldShowUploadProgressTrack(item: UploadQueueItem): boolean {
   return item.status === "uploading" || hasKnownUploadProgress(item);
 }
+
+/** Human-readable byte size (B / KB / MB / GB). */
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const exponent = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  );
+  const value = bytes / 1024 ** exponent;
+  return `${value.toFixed(exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+}

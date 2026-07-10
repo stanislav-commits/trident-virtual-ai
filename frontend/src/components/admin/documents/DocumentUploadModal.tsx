@@ -14,6 +14,7 @@ import {
   QUEUE_STATUS_BADGES,
   QUEUE_STATUS_LABELS,
   UPLOAD_CONCURRENCY_LIMIT,
+  formatFileSize,
   hasKnownUploadProgress,
   isQueueItemActive,
   isQueueItemUploadable,
@@ -59,21 +60,6 @@ function formatShipLabel(ship: ShipOption): string {
   return ship.organizationName
     ? `${ship.name} (${ship.organizationName})`
     : ship.name;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  const kb = bytes / 1024;
-
-  if (kb < 1024) {
-    return `${kb.toFixed(kb >= 100 ? 0 : 1)} KB`;
-  }
-
-  const mb = kb / 1024;
-  return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
 }
 
 function getFileKey(file: File): string {
