@@ -852,9 +852,9 @@ export class MetricsSemanticClusterService {
       .join(' ');
   }
 
-  private truncate(value: string | null, max: number): string {
-    if (value === null || value === undefined) return value as unknown as string;
-    return value.length <= max ? value : value.slice(0, max);
+  private truncate<T extends string | null>(value: T, max: number): T {
+    if (value === null) return value;
+    return (value.length <= max ? value : value.slice(0, max)) as T;
   }
 }
 

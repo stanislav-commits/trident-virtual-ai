@@ -24,6 +24,14 @@ interface OpenAiCompatibleChatCompletionResponse {
   }>;
 }
 
+/**
+ * gpt-5 family reasoning models (gpt-5, gpt-5.1, gpt-5-mini, …) need special
+ * handling for reasoning effort, token caps, and temperature.
+ */
+function isGpt5Family(model: string): boolean {
+  return /^gpt-5(?:[.-]|$)/i.test(model.trim());
+}
+
 export async function createOpenAiCompatibleChatCompletion(
   input: OpenAiCompatibleChatCompletionInput,
 ): Promise<string | null> {
@@ -45,7 +53,7 @@ export async function createOpenAiCompatibleChatCompletion(
       // reasoning — pin effort to minimal. The tool-call path below does
       // NOT do this: the main responder benefits from full reasoning and
       // runs with a 4000-token budget.
-      ...(/^gpt-5(?:[.-]|$)/i.test(input.model.trim())
+      ...(isGpt5Family(input.model)
         ? { reasoning_effort: 'minimal' }
         : {}),
       ...(input.responseFormat === 'json_object'
@@ -200,7 +208,7 @@ function buildTokenLimitParam(
   max_tokens?: number;
   max_completion_tokens?: number;
 } {
-  if (/^gpt-5(?:[.-]|$)/i.test(model.trim())) {
+  if (isGpt5Family(model)) {
     // gpt-5 family: max_completion_tokens covers HIDDEN REASONING too, and
     // even reasoning_effort=minimal sometimes spends a few dozen tokens.
     // A small cap (e.g. 24 for chat titles) then yields content="" with
@@ -225,8 +233,7 @@ function buildTemperatureParam(
   model: string,
   temperature: number,
 ): { temperature?: number } {
-  const m = model.trim();
-  if (/^gpt-5(?:[.-]|$)/i.test(m) || /^o[1-9]/i.test(m)) {
+  if (isGpt5Family(model) || /^o[1-9]/i.test(model.trim())) {
     return {};
   }
   return { temperature };

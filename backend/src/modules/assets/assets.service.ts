@@ -36,6 +36,7 @@ import {
   isValidDeckRoleCode,
   isValidZoneCode,
 } from './enums/asset-location-vocab';
+import { lowerTrim, normalizeHeaderKey } from './assets.normalization';
 
 // Map our DTO field → list of acceptable xlsx headers (case-insensitive,
 // whitespace-trimmed match). Names below match the real Trident Asset
@@ -707,8 +708,7 @@ export class AssetsService {
     // + brand + model (or weaker tiers). Conservative: don't propose if
     // displayName is missing on either side.
     const renames: ImportPreviewRename[] = [];
-    const norm = (s: string | null | undefined): string =>
-      (s ?? '').trim().toLowerCase();
+    const norm = lowerTrim;
     for (const o of orphans) {
       if (!o.displayName) continue;
       for (const c of create) {
@@ -948,7 +948,7 @@ export class AssetsService {
 
     const renames: Array<{ oldId: string; newCode: string }> = [];
     if (opts.mergeRenames) {
-      const norm = (s: string | null | undefined): string => (s ?? '').trim().toLowerCase();
+      const norm = lowerTrim;
       for (const o of orphansBefore) {
         if (!o.displayName) continue;
         for (const d of drafts) {
@@ -1268,8 +1268,7 @@ export class AssetsService {
   private buildHeaderResolver(
     sampleKeys: string[],
   ): Partial<Record<keyof CreateAssetDto, string>> {
-    const norm = (s: string) =>
-      s.trim().toLowerCase().replace(/\s+/g, ' ').replace(/_/g, ' ');
+    const norm = normalizeHeaderKey;
     const lookup: Record<string, string> = {};
     for (const k of sampleKeys) lookup[norm(k)] = k;
 
@@ -1360,8 +1359,7 @@ export class AssetsService {
     // Read EXTRAS_COLUMNS by their raw header (case-insensitive) and
     // pack everything non-null into a single object. Empty → undefined
     // so we don't store `{}` rows.
-    const norm = (s: string) =>
-      s.trim().toLowerCase().replace(/\s+/g, ' ').replace(/_/g, ' ');
+    const norm = normalizeHeaderKey;
     const rowKeysByNorm: Record<string, string> = {};
     for (const k of Object.keys(row)) rowKeysByNorm[norm(k)] = k;
     const extras: Record<string, unknown> = {};
