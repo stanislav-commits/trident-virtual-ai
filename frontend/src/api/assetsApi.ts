@@ -6,8 +6,10 @@ export type AssetItem = {
   assetIdInternal: string;
   displayName: string;
   sfiGroup: string | null;
+  sfiGroupName: string | null;
   sfiSub: string | null;
   sfiSubName: string | null;
+  drawingCode: string | null;
   parentAssetId: string | null;
   servedByAssetId: string | null;
   locationAssetId: string | null;

@@ -2643,6 +2643,7 @@
 .alarm-badge--sev { color: var(--sev); background: var(--sev-bg); }
 .alarm-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sev); }
 .alarm-badge--status { background: var(--chat-surface-3); color: var(--chat-text-muted); }
+.alarm-badge--cert { background: color-mix(in srgb, var(--accent-bright, #6ea8fe) 14%, transparent); color: var(--accent-bright, #6ea8fe); }
 .alarm-badge--acknowledged { background: color-mix(in srgb, var(--status-ok) 12%, transparent); color: var(--status-ok); }
 .alarm-card__title { margin: 10px 0 0; font-size: 14px; font-weight: 600; color: var(--chat-text); line-height: 1.3; }
 .alarm-card__source { margin: 3px 0 0; font-size: 12px; color: var(--chat-text-muted); }

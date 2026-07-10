@@ -38,6 +38,10 @@ export class ChatComplianceResponderService {
   private readonly logger = new Logger(ChatComplianceResponderService.name);
 
   private readonly maxItemsInContext = 80;
+  // How many directly-matched records get their full text loaded into context,
+  // and the per-document character cap (certs are 1–2 pages ≈ a few KB).
+  private readonly maxFullTextDocs = 5;
+  private readonly maxTextChars = 6000;
 
   constructor(
     private readonly complianceService: ComplianceService,
@@ -56,11 +60,25 @@ export class ChatComplianceResponderService {
     const ranked = this.rankForQuestion(items, question);
     const included = ranked.slice(0, this.maxItemsInContext);
 
+    // For records that directly match the question, pull their full stored text
+    // so the AI can answer body-level questions ("what does clause X say"). Only
+    // the top few matches — certificates are short, and this keeps context lean.
+    const nq = question.toLowerCase();
+    const matchedIds = included
+      .filter((item) => item.recordId && this.matchesQuestion(item, nq))
+      .slice(0, this.maxFullTextDocs)
+      .map((item) => item.recordId as string);
+    const texts =
+      matchedIds.length && shipId
+        ? await this.complianceService.getExtractedTexts(shipId, matchedIds)
+        : new Map<string, string>();
+
     const summary = await this.composeAnswer({
       question,
       responseLanguage: input.plan.responseLanguage,
       items: included,
       totalCount: items.length,
+      texts,
     });
 
     const expired = items.filter((item) => item.status === 'expired').length;
@@ -205,20 +223,8 @@ export class ChatComplianceResponderService {
   ): ComplianceItem[] {
     const normalizedQuestion = question.toLowerCase();
 
-    const relevance = (item: ComplianceItem): number => {
-      const haystack = [item.typeName, item.assetName, item.section]
-        .filter((value): value is string => Boolean(value))
-        .map((value) => value.toLowerCase());
-
-      return haystack.some(
-        (value) =>
-          value.length >= 4 &&
-          (normalizedQuestion.includes(value) ||
-            this.shareSignificantToken(normalizedQuestion, value)),
-      )
-        ? 0
-        : 1;
-    };
+    const relevance = (item: ComplianceItem): number =>
+      this.matchesQuestion(item, normalizedQuestion) ? 0 : 1;
 
     const statusRank: Record<string, number> = {
       expired: 0,
@@ -237,6 +243,19 @@ export class ChatComplianceResponderService {
 
       return this.compareExpiry(left.expiryDate, right.expiryDate);
     });
+  }
+
+  /** Does the record's type / equipment / section wording appear in the question? */
+  private matchesQuestion(item: ComplianceItem, normalizedQuestion: string): boolean {
+    const haystack = [item.typeName, item.assetName, item.section]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+    return haystack.some(
+      (value) =>
+        value.length >= 4 &&
+        (normalizedQuestion.includes(value) ||
+          this.shareSignificantToken(normalizedQuestion, value)),
+    );
   }
 
   private shareSignificantToken(question: string, value: string): boolean {
@@ -259,13 +278,19 @@ export class ChatComplianceResponderService {
     responseLanguage: string | null;
     items: ComplianceItem[];
     totalCount: number;
+    texts: Map<string, string>;
   }): Promise<string> {
-    const register = this.formatRegister(input.items, input.totalCount);
+    const register = this.formatRegister(
+      input.items,
+      input.totalCount,
+      input.texts,
+    );
 
     const systemPrompt = [
       'You are the compliance & document-control assistant for the Trident yacht platform.',
       "Answer the user's compliance question using ONLY the compliance register below.",
       "These records come from the vessel's structured Compliance Docs (doc-control) module — the source of truth for the status of ALL statutory and controlled documents (certificates, equipment servicing records, type approvals, crew certificates, insurance, required plans, record books, survey reports, agreements, legal docs), not manuals or uploaded document copies.",
+      'Some records include a "full text" block — the transcribed body of that document. Use it to answer detailed body-level questions, but never invent content that is not present.',
       'Status meaning: EXPIRED = past its expiry date; EXPIRING = expires within ~90 days; VALID = in date (or permanent); MISSING = a required document with no record on file.',
       'If no record in the register is relevant to the question, say so plainly — do NOT invent documents, dates, issuers, or numbers.',
       'Be concise and practical. Lead with expired/expiring/missing items when the user asks what needs attention. Quote expiry dates and document/certificate numbers when present.',
@@ -294,7 +319,11 @@ export class ChatComplianceResponderService {
     );
   }
 
-  private formatRegister(items: ComplianceItem[], totalCount: number): string {
+  private formatRegister(
+    items: ComplianceItem[],
+    totalCount: number,
+    texts: Map<string, string>,
+  ): string {
     if (!items.length) {
       return 'No compliance documents are registered for this vessel.';
     }
@@ -313,7 +342,12 @@ export class ChatComplianceResponderService {
       if (item.surveyWindow) parts.push(`survey window: ${item.surveyWindow}`);
       if (item.renewalCycle) parts.push(`renewal: ${item.renewalCycle}`);
 
-      return parts.join(' | ');
+      let line = parts.join(' | ');
+      const text = item.recordId ? texts.get(item.recordId) : null;
+      if (text) {
+        line += `\n    full text:\n${text.slice(0, this.maxTextChars)}`;
+      }
+      return line;
     });
 
     if (totalCount > items.length) {

@@ -146,6 +146,8 @@ function MetricDescriptionCell({
     );
   }
 
+  // Prefer the Claude profiler's aiDescription over the synced/Grafana one.
+  const shownDescription = metric.aiDescription ?? metric.description;
   return (
     <button
       type="button"
@@ -153,14 +155,14 @@ function MetricDescriptionCell({
       onClick={onStartEditing}
       disabled={disabled}
       title={
-        metric.description
-          ? `${metric.description} Click to edit.`
+        shownDescription
+          ? `${shownDescription} Click to edit.`
           : "Click to add description."
       }
     >
-      {metric.description ? (
+      {shownDescription ? (
         <span className="admin-panel__metric-description-text">
-          {metric.description}
+          {shownDescription}
         </span>
       ) : (
         <span className="admin-panel__metric-description-placeholder">

@@ -24,19 +24,20 @@ const CREW: Array<{
   department: string;
   rank: string;
   rankLevel: number;
+  position: string;
   loginId: string;
   password: string;
 }> = [
-  { name: 'John Carter', department: 'bridge', rank: 'Captain', rankLevel: 1, loginId: 'test-master', password: 'master123' },
-  { name: 'Erik Lund', department: 'engine', rank: 'Chief Engineer', rankLevel: 1, loginId: 'test-chiefeng', password: 'chiefeng123' },
-  { name: 'Diego Alvarez', department: 'engine', rank: 'Motorman', rankLevel: 4, loginId: 'test-motorman', password: 'motorman123' },
-  { name: 'Mia Rossi', department: 'ratings', rank: 'Chief Stewardess', rankLevel: 1, loginId: 'test-chiefstew', password: 'chiefstew123' },
+  { name: 'John Carter', department: 'deck', rank: 'Captain', rankLevel: 1, position: 'master', loginId: 'test-master', password: 'master123' },
+  { name: 'Erik Lund', department: 'engine', rank: 'Chief Engineer', rankLevel: 1, position: 'hod_engine', loginId: 'test-chiefeng', password: 'chiefeng123' },
+  { name: 'Diego Alvarez', department: 'engine', rank: 'Motorman', rankLevel: 4, position: 'engine', loginId: 'test-motorman', password: 'motorman123' },
+  { name: 'Mia Rossi', department: 'interior', rank: 'Chief Stewardess', rankLevel: 1, position: 'hod_interior', loginId: 'test-chiefstew', password: 'chiefstew123' },
 ];
 
 const TASKS: Array<{ task: string; department: string | null; dueDate: string }> = [
   { task: 'Main Engine Oil Change (Port)', department: 'engine', dueDate: '2026-07-20' },
   { task: 'Sea Water Pump Inspection', department: 'engine', dueDate: '2026-08-01' },
-  { task: 'Guest Cabin A/C Filter Clean', department: 'ratings', dueDate: '2026-07-15' },
+  { task: 'Guest Cabin A/C Filter Clean', department: 'interior', dueDate: '2026-07-15' },
   { task: 'Monthly Fire & Abandon Ship Drill', department: null, dueDate: '2026-07-10' },
 ];
 
@@ -80,8 +81,12 @@ async function run() {
           passwordHash: await hash(c.password, 10),
           role: UserRole.USER,
           shipId: ship.id,
+          accessPosition: c.position,
         }),
       );
+    } else if (user.accessPosition !== c.position) {
+      user.accessPosition = c.position;
+      await users.save(user);
     }
 
     let member = await crewRepo.findOne({

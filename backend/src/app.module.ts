@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './core/auth/auth.module';
 import configuration from './core/config/configuration';
 import { validateEnvironment } from './core/config/validate-environment';
@@ -33,6 +34,7 @@ import { AppController } from './app.controller';
       load: [configuration],
       validate: validateEnvironment,
     }),
+    ScheduleModule.forRoot(),
     LoggingModule,
     DatabaseModule,
     IntegrationsModule,

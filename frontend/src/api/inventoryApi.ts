@@ -1,4 +1,4 @@
-import { fetchWithAuth } from "./core";
+import { fetchWithAuth, ok } from "./core";
 
 export const INVENTORY_CATEGORIES = [
   "part",
@@ -72,13 +72,6 @@ export interface InventoryDraft {
   location?: string | null;
   notes?: string | null;
   assetIds?: string[] | null;
-}
-
-async function ok(r: Response, what: string): Promise<void> {
-  if (!r.ok) {
-    const txt = await r.text();
-    throw new Error(`${what} failed (${r.status}): ${txt.slice(0, 200)}`);
-  }
 }
 
 export async function listInventory(

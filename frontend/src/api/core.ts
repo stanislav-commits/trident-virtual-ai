@@ -14,6 +14,14 @@ export function getApiUrl(path: string): string {
  */
 export const SESSION_EXPIRED_EVENT = "trident:session-expired";
 
+/** Throw a readable error if a response is not ok. Shared by the API modules. */
+export async function ok(r: Response, what: string): Promise<void> {
+  if (!r.ok) {
+    const txt = await r.text();
+    throw new Error(`${what} failed (${r.status}): ${txt.slice(0, 200)}`);
+  }
+}
+
 export async function fetchWithAuth(
   path: string,
   options: RequestInit & { token: string },

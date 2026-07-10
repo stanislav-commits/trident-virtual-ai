@@ -4739,6 +4739,12 @@
   flex: 1;
   min-width: 150px;
 }
+/* Field that hugs its content (e.g. a segmented control) instead of stretching,
+   so it doesn't leave an empty gap that reads as a phantom extra field. */
+.admin-panel__field--fit {
+  flex: 0 0 auto;
+  min-width: 0;
+}
 
 .admin-panel__form-actions {
   display: flex;
@@ -7857,6 +7863,10 @@
   min-height: 0;
 }
 .assets-section__main-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--chat-border);
   background: var(--chat-surface);
@@ -7867,6 +7877,13 @@
   color: var(--chat-text);
   margin-bottom: 8px;
 }
+.assets-section__main-stats-subtitle {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--chat-text-muted);
+}
 .assets-section__main-stats-row {
   display: flex;
   gap: 24px;
@@ -7875,7 +7892,9 @@
 .assets-section__stat {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 1px;
+  flex-shrink: 0;
 }
 .assets-section__stat-label {
   font-size: 10.5px;
@@ -8502,15 +8521,10 @@
   background: transparent;
   transition: background 0.12s ease;
 }
-.access-matrix__cell--none {
+.access-matrix__cell--off {
   opacity: 0.45;
 }
-.access-matrix__cell--read {
-  background: rgba(59, 130, 246, 0.14);
-  color: #60a5fa;
-  border-color: rgba(59, 130, 246, 0.3);
-}
-.access-matrix__cell--write {
+.access-matrix__cell--on {
   background: rgba(16, 185, 129, 0.16);
   color: #34d399;
   border-color: rgba(16, 185, 129, 0.32);
@@ -8897,15 +8911,17 @@
 }
 
 .metrics-bound-filter {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   border: 1px solid var(--chat-border-strong);
   border-radius: 6px;
   overflow: hidden;
   background: var(--chat-surface-2);
 }
 .metrics-bound-filter__pill {
+  flex: 1;
   font-size: 12px;
-  padding: 6px 12px;
+  padding: 8px 12px;
   background: transparent;
   border: 0;
   border-right: 1px solid var(--chat-border-strong);
@@ -9555,7 +9571,16 @@
   display: flex; align-items: center; gap: 10px;
   margin: 4px 0 4px 62px; font-size: 12px;
 }
+.compliance__record--clickable {
+  cursor: pointer; border-radius: 6px; padding: 4px 8px; margin-left: 54px;
+  transition: background 0.12s ease;
+}
+.compliance__record--clickable:hover { background: var(--chat-hover, rgba(255,255,255,0.05)); }
 .compliance__record-main { color: var(--chat-text); }
+.compliance__ingest-code {
+  font-family: var(--font-mono, monospace); color: var(--chat-text-muted);
+  font-weight: 600;
+}
 .compliance__record-dates {
   color: var(--chat-text-muted); font-family: var(--font-mono, monospace);
   font-size: 11px; display: flex; align-items: center; gap: 4px;
@@ -9569,6 +9594,12 @@
   cursor: pointer; font-size: 14px; padding: 0 4px; border-radius: 4px;
 }
 .compliance__record-del:hover { color: var(--status-danger); background: var(--status-danger-bg); }
+.compliance__record-open {
+  background: transparent; border: 1px solid var(--chat-border);
+  color: var(--chat-text-muted); cursor: pointer; font-size: 11px;
+  font-weight: 600; padding: 2px 8px; border-radius: 5px; white-space: nowrap;
+}
+.compliance__record-open:hover { color: var(--chat-text); border-color: var(--chat-text-muted); }
 
 .compliance__generate {
   border: 1px dashed var(--chat-border-strong); border-radius: 12px;

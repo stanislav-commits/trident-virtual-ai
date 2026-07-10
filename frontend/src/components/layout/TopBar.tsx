@@ -112,7 +112,8 @@ export function TopBar() {
         )}
       </div>
       <div className="chat-topbar__right">
-        {canRead(myAccess, "alerts") && (
+        {(canRead(myAccess, "alerts") ||
+          canRead(myAccess, "alerts_certificates")) && (
         <button
           type="button"
           className="chat-topbar__pms-btn chat-topbar__bell-btn"
