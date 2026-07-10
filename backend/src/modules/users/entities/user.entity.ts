@@ -31,6 +31,15 @@ export class UserEntity {
   @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
   role!: UserRole;
 
+  /**
+   * RBAC access position for a `user`-role account — one of the access-matrix
+   * columns (master / hod_engine / engine / interior / guest / …). Drives the
+   * permission row and PMS department scope directly. Null for admins (full
+   * access) or legacy users (fall back to the crew-derived position).
+   */
+  @Column({ name: 'access_position', type: 'varchar', length: 32, nullable: true })
+  accessPosition!: string | null;
+
   @Column({ name: 'ship_id', type: 'uuid', nullable: true })
   shipId!: string | null;
 

@@ -49,6 +49,9 @@ export class UsersService {
       passwordHash,
       role: input.role,
       shipId: input.role === UserRole.ADMIN ? null : input.shipId ?? null,
+      // Admins have implicit full access; only user-role accounts carry a position.
+      accessPosition:
+        input.role === UserRole.USER ? input.accessPosition ?? null : null,
     });
 
     const saved = await this.usersRepository.save(entity);
@@ -189,6 +192,7 @@ export class UsersService {
       userId: user.userId,
       name: user.name,
       role: user.role,
+      accessPosition: user.accessPosition,
       shipId: user.shipId,
       createdAt: user.createdAt.toISOString(),
       ship: user.ship

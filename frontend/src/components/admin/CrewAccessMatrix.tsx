@@ -8,53 +8,12 @@ import {
   type PermissionLevel,
 } from "../../api/accessControlApi";
 
-const POSITION_LABELS: Record<string, string> = {
-  superintendent: "Superintendent",
-  master: "Master",
-  hod_engine: "HOD Engine",
-  hod_deck: "HOD Deck",
-  hod_interior: "HOD Interior",
-  hod_galley: "HOD Galley",
-  engine: "Engine",
-  deck: "Deck",
-  interior: "Interior",
-  galley: "Galley",
-  guest: "Guest",
-};
+// Labels come from the backend taxonomy (schema) — no hardcoded lists here.
 
-const CATEGORY_LABELS: Record<string, string> = {
-  kb_manuals: "Manuals",
-  kb_forms: "Forms & Checklists",
-  kb_plans: "Plans & Drawings",
-  publications: "Publications",
-  compliance_statutory: "Statutory Certs",
-  compliance_equipment: "Equipment Service",
-  compliance_personnel: "Personnel",
-  compliance_insurance: "Insurance",
-  compliance_legal: "Legal & Agreements",
-  compliance_records: "Records",
-  compliance_reports: "Reports",
-  asset_register: "Asset Register",
-  pms_tasks: "PMS / Tasks",
-  metrics: "Metrics",
-  alerts: "Alerts",
-};
-
-const humanize = (key: string, map: Record<string, string>) =>
-  map[key] ??
-  key.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
-
-const NEXT_LEVEL: Record<PermissionLevel, PermissionLevel> = {
-  none: "read",
-  read: "write",
-  write: "none",
-};
-
-const CELL_TEXT: Record<PermissionLevel, string> = {
-  none: "—",
-  read: "R",
-  write: "RW",
-};
+// The matrix is a plain read-access toggle: ON grants the AI read access to that
+// data for the position, OFF denies it. Crew can't write to the DB, so there's
+// no read/write distinction. Any non-"none" level counts as ON.
+const isOn = (level: PermissionLevel) => level !== "none";
 
 interface CrewAccessMatrixProps {
   token: string | null;
@@ -93,7 +52,7 @@ export function CrewAccessMatrix({ token, shipId }: CrewAccessMatrixProps) {
   const cycle = async (position: string, category: string) => {
     if (!token || !shipId || !matrix) return;
     const current = matrix[position]?.[category] ?? "none";
-    const next = NEXT_LEVEL[current];
+    const next: PermissionLevel = isOn(current) ? "none" : "read";
     const key = `${position}:${category}`;
     setSavingCell(key);
     setError("");
@@ -122,9 +81,8 @@ export function CrewAccessMatrix({ token, shipId }: CrewAccessMatrixProps) {
         <div>
           <h3 className="access-matrix__title">Access control</h3>
           <p className="access-matrix__sub">
-            What each position can see and edit on this vessel. Click a cell to
-            cycle <strong>none → read → read+write</strong>. Blank = platform
-            default.
+            Toggle whether the AI can read each kind of data for a position on
+            this vessel. Click a cell to switch it <strong>on / off</strong>.
           </p>
         </div>
         {loading && <span className="admin-panel__muted">Loading…</span>}
@@ -143,32 +101,33 @@ export function CrewAccessMatrix({ token, shipId }: CrewAccessMatrixProps) {
               <tr>
                 <th className="access-matrix__corner">Category \ Position</th>
                 {schema.positions.map((p) => (
-                  <th key={p} className="access-matrix__col">
-                    {humanize(p, POSITION_LABELS)}
+                  <th key={p.value} className="access-matrix__col">
+                    {p.label}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {schema.resourceCategories.map((cat) => (
-                <tr key={cat}>
-                  <th className="access-matrix__rowhead">
-                    {humanize(cat, CATEGORY_LABELS)}
-                  </th>
+                <tr key={cat.value}>
+                  <th className="access-matrix__rowhead">{cat.label}</th>
                   {schema.positions.map((pos) => {
                     const level: PermissionLevel =
-                      matrix[pos]?.[cat] ?? "none";
-                    const key = `${pos}:${cat}`;
+                      matrix[pos.value]?.[cat.value] ?? "none";
+                    const on = isOn(level);
+                    const key = `${pos.value}:${cat.value}`;
                     return (
-                      <td key={pos} className="access-matrix__cell-td">
+                      <td key={pos.value} className="access-matrix__cell-td">
                         <button
                           type="button"
-                          className={`access-matrix__cell access-matrix__cell--${level}`}
+                          role="switch"
+                          aria-checked={on}
+                          className={`access-matrix__cell access-matrix__cell--${on ? "on" : "off"}`}
                           disabled={savingCell === key}
-                          onClick={() => void cycle(pos, cat)}
-                          title={`${humanize(pos, POSITION_LABELS)} · ${humanize(cat, CATEGORY_LABELS)}: ${level}`}
+                          onClick={() => void cycle(pos.value, cat.value)}
+                          title={`${pos.label} · ${cat.label}: ${on ? "read access on" : "off"}`}
                         >
-                          {CELL_TEXT[level]}
+                          {on ? "✓" : "—"}
                         </button>
                       </td>
                     );

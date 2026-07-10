@@ -1,4 +1,4 @@
-import { fetchWithAuth } from "./core";
+import { fetchWithAuth, ok } from "./core";
 
 export type AlertSeverity = "critical" | "high" | "warning" | "info";
 export type AlertStatus = "firing" | "resolved";
@@ -9,6 +9,8 @@ export interface Alert {
   assetId: string | null;
   assetName: string | null;
   metricKey: string | null;
+  /** 'metric' (telemetry alarm) | 'certificate' (compliance-expiry reminder). */
+  source: string;
   ruleName: string;
   severity: AlertSeverity;
   status: AlertStatus;
@@ -31,13 +33,6 @@ export function severityColor(s: string): string {
   if (s === "high") return "var(--status-warn, #e0a800)";
   if (s === "warning") return "var(--status-warn, #e0a800)";
   return "var(--chat-text-muted)";
-}
-
-async function ok(r: Response, what: string): Promise<void> {
-  if (!r.ok) {
-    const txt = await r.text();
-    throw new Error(`${what} failed (${r.status}): ${txt.slice(0, 200)}`);
-  }
 }
 
 export async function listAlerts(

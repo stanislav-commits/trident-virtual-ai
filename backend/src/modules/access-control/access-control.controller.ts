@@ -7,10 +7,14 @@ import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import {
-  ACCESS_POSITIONS,
+  ASSIGNABLE_POSITIONS,
   AccessPosition,
+  DEPARTMENTS,
+  departmentForPosition,
+  MATRIX_CATEGORIES,
   PermissionLevel,
-  RESOURCE_CATEGORIES,
+  POSITION_LABELS,
+  RESOURCE_CATEGORY_LABELS,
   ResourceCategory,
 } from './access-positions';
 import { AccessControlService } from './access-control.service';
@@ -55,14 +59,26 @@ export class AccessControlController {
     };
   }
 
-  /** Grid metadata (columns + rows) so the UI can render the matrix generically. */
+  /**
+   * THE single taxonomy the whole admin UI renders from: access positions (with
+   * labels + their department), the canonical department list, and matrix
+   * categories (with labels). No UI should hardcode these lists.
+   */
   @Get('schema')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   schema() {
     return {
-      positions: ACCESS_POSITIONS,
-      resourceCategories: RESOURCE_CATEGORIES,
+      positions: ASSIGNABLE_POSITIONS.map((p) => ({
+        value: p,
+        label: POSITION_LABELS[p],
+        department: departmentForPosition(p),
+      })),
+      departments: DEPARTMENTS,
+      resourceCategories: MATRIX_CATEGORIES.map((c) => ({
+        value: c,
+        label: RESOURCE_CATEGORY_LABELS[c],
+      })),
       levels: Object.values(PermissionLevel),
     };
   }

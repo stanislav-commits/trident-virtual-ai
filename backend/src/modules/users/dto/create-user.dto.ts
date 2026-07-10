@@ -9,6 +9,11 @@ export class CreateUserDto {
   @IsString()
   shipId?: string;
 
+  /** Access-matrix position for a user-role account (master / hod_engine / …). */
+  @IsOptional()
+  @IsString()
+  accessPosition?: string;
+
   @IsOptional()
   @IsString()
   @MinLength(2)

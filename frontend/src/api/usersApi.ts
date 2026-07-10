@@ -5,6 +5,7 @@ export type UserListItem = {
   userId: string;
   name: string | null;
   role: "admin" | "user";
+  accessPosition: string | null;
   shipId: string | null;
   createdAt: string;
   ship: { id: string; name: string } | null;
@@ -31,6 +32,7 @@ export async function createUser(
   token: string,
   shipId?: string,
   name?: string,
+  accessPosition?: string,
 ): Promise<CreateUserResult> {
   const response = await fetchWithAuth("users", {
     token,
@@ -40,6 +42,7 @@ export async function createUser(
       role,
       shipId,
       name: name?.trim() || undefined,
+      accessPosition: role === "user" ? accessPosition : undefined,
     }),
   });
 

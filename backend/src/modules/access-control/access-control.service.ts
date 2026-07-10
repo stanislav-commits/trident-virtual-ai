@@ -2,11 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CrewMemberEntity } from '../crew/entities/crew-member.entity';
-import { seesAllDepartments } from '../crew/crew-ranks';
+import { UserEntity } from '../users/entities/user.entity';
 import { AccessMatrixCellEntity } from './entities/access-matrix-cell.entity';
 import {
   AccessPosition,
   DEFAULT_MATRIX,
+  departmentForPosition,
+  isAccessPosition,
   PermissionLevel,
   RESOURCE_CATEGORIES,
   ResourceCategory,
@@ -23,6 +25,8 @@ export class AccessControlService {
     private readonly cellRepo: Repository<AccessMatrixCellEntity>,
     @InjectRepository(CrewMemberEntity)
     private readonly crewRepo: Repository<CrewMemberEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
   ) {}
 
   /** The effective matrix for a ship = platform default with per-ship overrides applied. */
@@ -74,14 +78,25 @@ export class AccessControlService {
     }
   }
 
-  /** Resolve a logged-in user's position + permission row on a given ship. */
+  /**
+   * Resolve a logged-in user's position + permission row on a given ship. The
+   * position is taken directly from the user's `access_position` (assigned at
+   * user creation); falls back to the crew-derived position for legacy accounts
+   * that predate the field. Returns null when neither is available.
+   */
   async resolveForUser(
     userId: string,
     shipId: string,
   ): Promise<{ position: AccessPosition; permissions: PermissionRow } | null> {
-    const crew = await this.crewRepo.findOne({ where: { userId, shipId } });
-    if (!crew) return null;
-    const position = resolvePosition(crew);
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    let position: AccessPosition | null = null;
+    if (user && isAccessPosition(user.accessPosition)) {
+      position = user.accessPosition;
+    } else {
+      const crew = await this.crewRepo.findOne({ where: { userId, shipId } });
+      if (crew) position = resolvePosition(crew);
+    }
+    if (!position) return null;
     const matrix = await this.getMatrix(shipId);
     return { position, permissions: matrix[position] };
   }
@@ -106,28 +121,18 @@ export class AccessControlService {
   }
 
   /**
-   * PMS/department content scope for a crew-linked user. Returns the RAW crew
-   * department string to pass to PmsService.list (matches task.department), or
-   * `null` department when the member sees all departments (Captain / bridge
-   * head). Returns `null` overall when the user is NOT crew-linked (admins /
-   * legacy) → no department scoping.
+   * PMS/department content scope for a user. Department is derived from the
+   * user's access position (engine/deck/interior/galley), or `null` when the
+   * position sees all departments (Master / Superintendent / Guest). Returns
+   * `null` overall when the user has no resolvable position (admins / legacy).
    */
   async crewScopeForUser(
     userId: string,
     shipId: string,
   ): Promise<{ department: string | null } | null> {
-    const crew = await this.crewRepo.findOne({ where: { userId, shipId } });
-    if (!crew) return null;
-    if (
-      seesAllDepartments({
-        department: crew.department,
-        rank: crew.rank,
-        rankLevel: crew.rankLevel,
-      })
-    ) {
-      return { department: null };
-    }
-    return { department: crew.department };
+    const resolved = await this.resolveForUser(userId, shipId);
+    if (!resolved) return null;
+    return { department: departmentForPosition(resolved.position) };
   }
 
   /** Convenience: can this user at least READ a category on this ship? */

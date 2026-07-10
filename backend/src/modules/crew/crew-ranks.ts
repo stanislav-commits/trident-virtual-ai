@@ -17,13 +17,15 @@ export interface DepartmentDef {
 
 export const CREW_DEPARTMENTS: DepartmentDef[] = [
   {
-    key: 'bridge',
-    label: 'Bridge / Deck',
+    key: 'deck',
+    label: 'Deck',
     ranks: [
-      { rank: 'Captain', level: 1 },
+      { rank: 'Master', level: 1 },
       { rank: 'Chief Officer', level: 2 },
       { rank: '2nd Officer', level: 3 },
       { rank: '3rd Officer', level: 4 },
+      { rank: 'Bosun', level: 4 },
+      { rank: 'Deckhand', level: 5 },
     ],
   },
   {
@@ -33,16 +35,26 @@ export const CREW_DEPARTMENTS: DepartmentDef[] = [
       { rank: 'Chief Engineer', level: 1 },
       { rank: '2nd Engineer', level: 2 },
       { rank: '3rd Engineer', level: 3 },
-      { rank: '4th Engineer', level: 4 },
+      { rank: 'ETO', level: 3 },
+      { rank: 'Motorman', level: 5 },
     ],
   },
   {
-    key: 'ratings',
-    label: 'Ratings',
+    key: 'interior',
+    label: 'Interior',
     ranks: [
-      { rank: 'Stewardess', level: 3 },
-      { rank: 'Seaman', level: 4 },
-      { rank: 'Motorman', level: 4 },
+      { rank: 'Chief Stewardess', level: 1 },
+      { rank: 'Purser', level: 2 },
+      { rank: 'Stewardess', level: 4 },
+    ],
+  },
+  {
+    key: 'galley',
+    label: 'Galley',
+    ranks: [
+      { rank: 'Chef', level: 1 },
+      { rank: 'Sous Chef', level: 2 },
+      { rank: 'Cook', level: 3 },
     ],
   },
   { key: 'other', label: 'Other', ranks: [] },
@@ -74,11 +86,11 @@ export function departmentForRole(role: string | null | undefined): string | nul
   }
 
   // keyword heuristics (engineer before officer: "chief engineer" vs "chief officer")
-  if (/\beng/.test(v) || /motorman|oiler|wiper/.test(v)) return 'engine';
-  if (/captain|master|officer|\bmate\b|bridge|navigat|deck\s*officer/.test(v))
-    return 'bridge';
-  if (/steward|stew\b|interior|cook|chef|seaman|deckhand|bosun|rating|crew/.test(v))
-    return 'ratings';
+  if (/\beng/.test(v) || /motorman|oiler|wiper|eto/.test(v)) return 'engine';
+  if (/cook|chef|galley/.test(v)) return 'galley';
+  if (/steward|stew\b|interior|purser/.test(v)) return 'interior';
+  if (/captain|master|officer|\bmate\b|bridge|navigat|deck|seaman|deckhand|bosun/.test(v))
+    return 'deck';
   return null;
 }
 
@@ -93,6 +105,5 @@ export function seesAllDepartments(crew: {
   rankLevel: number;
 }): boolean {
   if (/captain|master/i.test(crew.rank)) return true;
-  if (crew.department === 'bridge' && crew.rankLevel <= 1) return true;
   return false;
 }

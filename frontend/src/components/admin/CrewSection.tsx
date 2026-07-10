@@ -24,7 +24,7 @@ interface CrewSectionProps {
 
 const EMPTY: UpsertCrewInput = {
   name: "",
-  department: "bridge",
+  department: "deck",
   rank: "",
   email: "",
   phone: "",

@@ -117,6 +117,9 @@ function AlarmCard({
               {status === "acknowledged" && <IconCheck />}
               {status === "active" ? "Active" : status === "acknowledged" ? "Acknowledged" : "Cleared"}
             </span>
+            {alarm.source === "certificate" && (
+              <span className="alarm-badge alarm-badge--cert">Certificate</span>
+            )}
           </div>
 
           <h3 className="alarm-card__title">{alarm.title}</h3>

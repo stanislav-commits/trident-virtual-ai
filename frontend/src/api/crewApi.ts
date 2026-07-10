@@ -1,4 +1,4 @@
-import { fetchWithAuth } from "./core";
+import { fetchWithAuth, ok } from "./core";
 
 export interface CrewMemberDto {
   id: string;
@@ -41,13 +41,6 @@ export interface DepartmentDef {
   key: string;
   label: string;
   ranks: RankDef[];
-}
-
-async function ok(r: Response, what: string): Promise<void> {
-  if (!r.ok) {
-    const txt = await r.text();
-    throw new Error(`${what} failed (${r.status}): ${txt.slice(0, 200)}`);
-  }
 }
 
 export async function fetchCrewCatalog(

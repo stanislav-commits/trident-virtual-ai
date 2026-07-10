@@ -241,15 +241,92 @@ export class AlertsService {
 
   // ── read / actions ──
 
-  async list(shipId: string, status?: string): Promise<AlertDto[]> {
+  async list(
+    shipId: string,
+    status?: string,
+    allowedSources?: string[],
+  ): Promise<AlertDto[]> {
+    // allowedSources gates by alert kind (metric alarms vs cert reminders) per
+    // the viewer's access matrix. undefined = no restriction (admin/unlinked).
+    if (allowedSources && allowedSources.length === 0) return [];
     const where: Record<string, unknown> = { shipId };
     if (status) where.status = status;
+    if (allowedSources && allowedSources.length < 2) {
+      where.source = In(allowedSources);
+    }
     const rows = await this.alertRepository.find({
       where,
       order: { startedAt: 'DESC' },
       take: 500,
     });
     return this.withAssetNames(rows);
+  }
+
+  /**
+   * Reconcile certificate-expiry reminder alerts for a ship against the current
+   * expiring/expired certificate set: fire (upsert) one per expiring cert and
+   * resolve any whose cert is no longer expiring (renewed / removed). Cert
+   * alerts share the bell with metric alarms but carry source='certificate'.
+   */
+  async reconcileCertificateAlerts(
+    shipId: string,
+    certs: Array<{
+      docId: string;
+      title: string;
+      expiryDate: string | null;
+      expired: boolean;
+      assetId: string | null;
+      message?: string | null;
+    }>,
+  ): Promise<void> {
+    const currentIds = new Set(certs.map((c) => c.docId));
+    const active = await this.alertRepository.find({
+      where: { shipId, source: 'certificate', status: 'firing' },
+    });
+    for (const a of active) {
+      if (!a.complianceDocId || !currentIds.has(a.complianceDocId)) {
+        a.status = 'resolved';
+        a.resolvedAt = new Date();
+        await this.alertRepository.save(a);
+      }
+    }
+    for (const c of certs) {
+      const fingerprint = `cert:${c.docId}`;
+      const severity = c.expired ? 'critical' : 'warning';
+      const existing = await this.alertRepository.findOne({
+        where: { fingerprint, status: 'firing' },
+      });
+      if (existing) {
+        existing.severity = severity;
+        existing.title = c.title.slice(0, 300);
+        existing.message = c.message ?? existing.message;
+        existing.assetId = c.assetId ?? existing.assetId;
+        existing.lastSeenAt = new Date();
+        await this.alertRepository.save(existing);
+        continue;
+      }
+      await this.alertRepository.save(
+        this.alertRepository.create({
+          shipId,
+          assetId: c.assetId,
+          source: 'certificate',
+          complianceDocId: c.docId,
+          metricKey: null,
+          ruleName: c.title.slice(0, 255),
+          severity,
+          status: 'firing',
+          value: null,
+          title: c.title.slice(0, 300),
+          message: c.message ?? null,
+          department: null,
+          labels: { kind: 'certificate', expiryDate: c.expiryDate ?? '' },
+          fingerprint,
+          startedAt: new Date(),
+          resolvedAt: null,
+          lastSeenAt: new Date(),
+        }),
+      );
+    }
   }
 
   async listForAsset(shipId: string, assetId: string): Promise<AlertDto[]> {

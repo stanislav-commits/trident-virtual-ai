@@ -2,9 +2,25 @@ import { fetchWithAuth } from "./core";
 
 export type PermissionLevel = "none" | "read" | "write";
 
+export interface AccessPositionMeta {
+  value: string;
+  label: string;
+  department: string | null;
+}
+export interface DepartmentMeta {
+  key: string;
+  label: string;
+}
+export interface ResourceCategoryMeta {
+  value: string;
+  label: string;
+}
+
+/** THE single taxonomy the admin UI renders from (positions, departments, categories). */
 export interface AccessSchema {
-  positions: string[];
-  resourceCategories: string[];
+  positions: AccessPositionMeta[];
+  departments: DepartmentMeta[];
+  resourceCategories: ResourceCategoryMeta[];
   levels: PermissionLevel[];
 }
 

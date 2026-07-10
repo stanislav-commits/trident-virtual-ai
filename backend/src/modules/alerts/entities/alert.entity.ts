@@ -35,6 +35,14 @@ export class AlertEntity {
   @Column({ name: 'metric_key', type: 'varchar', length: 512, nullable: true })
   metricKey!: string | null;
 
+  /** 'metric' (Grafana telemetry) | 'certificate' (compliance-expiry reminder). */
+  @Column({ type: 'varchar', length: 16, default: 'metric' })
+  source!: string;
+
+  /** For certificate alerts: the compliance_doc row this reminder tracks. */
+  @Column({ name: 'compliance_doc_id', type: 'uuid', nullable: true })
+  complianceDocId!: string | null;
+
   /** Grafana alert rule name (labels.alertname). */
   @Column({ name: 'rule_name', type: 'varchar', length: 255 })
   ruleName!: string;

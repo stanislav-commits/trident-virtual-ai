@@ -5,8 +5,11 @@ import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { AlertsService } from './alerts.service';
+import { AlertsSchedulerService } from './alerts-scheduler.service';
 import { AlertsController, AlertsWebhookController } from './alerts.controller';
 import { PmsModule } from '../pms/pms.module';
+import { ComplianceModule } from '../compliance/compliance.module';
+import { AccessControlModule } from '../access-control/access-control.module';
 
 @Module({
   imports: [
@@ -17,9 +20,11 @@ import { PmsModule } from '../pms/pms.module';
       ShipEntity,
     ]),
     PmsModule,
+    ComplianceModule,
+    AccessControlModule,
   ],
   controllers: [AlertsWebhookController, AlertsController],
-  providers: [AlertsService],
+  providers: [AlertsService, AlertsSchedulerService],
   exports: [AlertsService],
 })
 export class AlertsModule {}

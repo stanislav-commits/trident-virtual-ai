@@ -8,6 +8,7 @@ import {
   type UserListItem,
 } from "../../api/usersApi";
 import { getShips } from "../../api/shipsApi";
+import { useAccessSchema, positionLabel } from "../../hooks/useAccessSchema";
 import { UsersIcon, CopyIcon, XIcon, PlusIcon } from "./AdminPanelIcons";
 
 function EditableName({
@@ -116,6 +117,7 @@ export function UsersSection({
   onLoadUsers,
   onError,
 }: UsersSectionProps) {
+  const accessSchema = useAccessSchema();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createRole, setCreateRole] = useState<"user" | "admin">("user");
   const [createName, setCreateName] = useState("");
@@ -129,6 +131,7 @@ export function UsersSection({
   const [selectedShipId, setSelectedShipId] = useState<string | undefined>(
     undefined,
   );
+  const [createPosition, setCreatePosition] = useState<string>("master");
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [resetResult, setResetResult] = useState<ResetResult | null>(null);
@@ -139,6 +142,7 @@ export function UsersSection({
   const openCreateModal = () => {
     setCreateName("");
     setCreateRole("user");
+    setCreatePosition("master");
     setSelectedShipId(ships.length === 1 ? ships[0].id : undefined);
     onError("");
     setShowCreateModal(true);
@@ -157,7 +161,13 @@ export function UsersSection({
     setCreated(null);
     try {
       const shipArg = createRole === "user" ? selectedShipId : undefined;
-      const result = await createUser(createRole, token, shipArg, createName);
+      const result = await createUser(
+        createRole,
+        token,
+        shipArg,
+        createName,
+        createRole === "user" ? createPosition : undefined,
+      );
       setCreated({ userId: result.userId, password: result.password });
       setCreateName("");
       setShowCreateModal(false);
@@ -249,7 +259,9 @@ export function UsersSection({
         </td>
         <td className="admin-panel__td">
           <span className={`admin-panel__badge admin-panel__badge--${u.role}`}>
-            {u.role}
+            {u.role === "user"
+              ? positionLabel(accessSchema, u.accessPosition)
+              : u.role}
           </span>
         </td>
         <td className="admin-panel__td">
@@ -490,6 +502,29 @@ export function UsersSection({
                           ))}
                         </select>
                       )}
+                    </div>
+                  )}
+                  {createRole === "user" && (
+                    <div className="admin-panel__modal-field">
+                      <label
+                        className="admin-panel__field-label"
+                        htmlFor="mu-position"
+                      >
+                        Access position
+                      </label>
+                      <select
+                        id="mu-position"
+                        className="admin-panel__select admin-panel__input--full"
+                        value={createPosition}
+                        onChange={(e) => setCreatePosition(e.target.value)}
+                        disabled={creating}
+                      >
+                        {(accessSchema?.positions ?? []).map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
                 </div>
