@@ -92,6 +92,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
           name: t.name,
           sectionCode: s.sectionCode,
           sectionName: s.sectionName,
+          archetype: t.archetype,
         })),
       ),
     [overview],
@@ -491,6 +492,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
           proposals={review.proposals}
           files={review.files}
           types={allTypes}
+          schema={schema}
           assetOptions={assetOptions}
           busy={committing}
           onCancel={() => setReview(null)}

@@ -2,8 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { XIcon } from "./AdminPanelIcons";
 import { CascadingSelect, type CascadeGroup } from "./CascadingSelect";
-import { prettyLabel } from "./compliance/complianceLabels";
+import {
+  prettyLabel,
+  inputTypeFor,
+  foldToSchema,
+} from "./compliance/complianceLabels";
 import type {
+  ArchetypeField,
+  ArchetypeSchema,
   CommitProposal,
   IngestProposal,
 } from "../../api/complianceApi";
@@ -14,6 +20,42 @@ interface TypeOption {
   name: string;
   sectionCode: string;
   sectionName: string;
+  archetype: string | null;
+}
+
+/** doc_number / issuing_party / issue_date have dedicated base inputs. */
+const BASE_FIELD_KEYS = ["doc_number", "issuing_party", "issue_date"];
+
+/**
+ * Archetype field block for a type — this is what makes the form follow the
+ * type picker instead of freezing on whatever field keys the AI proposal
+ * happened to carry.
+ */
+function archetypeFieldsFor(
+  schema: ArchetypeSchema | null,
+  typeById: Map<string, TypeOption>,
+  typeId: string | null,
+): ArchetypeField[] {
+  const archetype = typeId ? typeById.get(typeId)?.archetype : null;
+  if (!archetype || !schema) return [];
+  return (schema.archetypes[archetype] ?? []).filter(
+    (f) => f.datatype !== "fk" && !BASE_FIELD_KEYS.includes(f.field),
+  );
+}
+
+/**
+ * Fold raw extracted/edited values onto the given type's schema keys
+ * (compound keys gathered from their parts). Done once per type change, not
+ * per render, so clearing a folded field stays cleared.
+ */
+function foldForType(
+  schema: ArchetypeSchema | null,
+  typeById: Map<string, TypeOption>,
+  typeId: string | null,
+  fields: Record<string, string>,
+): Record<string, string> {
+  const keys = archetypeFieldsFor(schema, typeById, typeId).map((f) => f.field);
+  return keys.length ? { ...fields, ...foldToSchema(keys, fields) } : fields;
 }
 
 interface Row {
@@ -48,6 +90,7 @@ export function ComplianceIngestModal({
   proposals,
   files,
   types,
+  schema,
   assetOptions,
   busy,
   onCancel,
@@ -56,6 +99,7 @@ export function ComplianceIngestModal({
   proposals: IngestProposal[];
   files: File[];
   types: TypeOption[];
+  schema: ArchetypeSchema | null;
   assetOptions: Array<{ id: string; label: string }>;
   busy: boolean;
   onCancel: () => void;
@@ -82,6 +126,8 @@ export function ComplianceIngestModal({
     return [...bySection.values()];
   }, [types]);
 
+  const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+
   const [rows, setRows] = useState<Row[]>(() =>
     proposals.map((p, i) => {
       const file = files[i];
@@ -95,7 +141,7 @@ export function ComplianceIngestModal({
         certNo: p.certNo ?? "",
         issuer: p.issuer ?? "",
         issueDate: p.issueDate ?? "",
-        fields,
+        fields: foldForType(schema, typeById, p.typeId ?? null, fields),
         assetLabel: assetOptions.find((a) => a.id === p.assetId)?.label ?? "",
         confidence: p.confidence,
         message: p.message,
@@ -110,12 +156,38 @@ export function ComplianceIngestModal({
   const row = rows[sel];
   const previewUrl = urls[sel] ?? null;
 
+  // The schema is fetched independently of the modal — if it resolves after
+  // mount, re-fold the rows so pre-matched proposals get their extracted
+  // values onto the archetype keys. Folding is idempotent (exact keys win),
+  // so running again on an already-folded row is a no-op.
+  useEffect(() => {
+    if (!schema) return;
+    setRows((rs) =>
+      rs.map((r) => ({
+        ...r,
+        fields: foldForType(schema, typeById, r.typeId, r.fields),
+      })),
+    );
+  }, [schema, typeById]);
+
   const patch = (next: Partial<Row>) =>
     setRows((rs) => rs.map((r, idx) => (idx === sel ? { ...r, ...next } : r)));
   const setInclude = (i: number, v: boolean) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, include: v } : r)));
 
   const includedCount = rows.filter((r) => r.include && r.typeId).length;
+
+  const schemaFieldsFor = (typeId: string | null): ArchetypeField[] =>
+    archetypeFieldsFor(schema, typeById, typeId);
+
+  /** Non-empty fields to save: the schema's keys when known, else all raw. */
+  const pickFields = (r: Row): Record<string, string> => {
+    const schemaKeys = schemaFieldsFor(r.typeId).map((f) => f.field);
+    const entries = schemaKeys.length
+      ? schemaKeys.map((k) => [k, r.fields[k] ?? ""] as const)
+      : Object.entries(r.fields);
+    return Object.fromEntries(entries.filter(([, v]) => v !== ""));
+  };
 
   const confirm = () => {
     const out: CommitProposal[] = rows
@@ -127,9 +199,9 @@ export function ComplianceIngestModal({
         issuer: r.issuer || null,
         issueDate: r.issueDate || null,
         assetId: assetOptions.find((a) => a.label === r.assetLabel)?.id ?? null,
-        fields: Object.fromEntries(
-          Object.entries(r.fields).filter(([, v]) => v !== ""),
-        ),
+        // Save the confirmed type's schema fields, not whatever keys the AI
+        // proposal carried (they belong to the originally guessed type).
+        fields: pickFields(r),
         extractedText: r.extractedText,
       }));
     onConfirm(out);
@@ -191,7 +263,14 @@ export function ComplianceIngestModal({
                     value={row.typeId}
                     groups={typeGroups}
                     placeholder="Choose category → document"
-                    onChange={(id) => patch({ typeId: id })}
+                    onChange={(id) =>
+                      // Re-fold the extracted values onto the new type's
+                      // archetype fields so the form follows the picker.
+                      patch({
+                        typeId: id,
+                        fields: foldForType(schema, typeById, id, row.fields),
+                      })
+                    }
                   />
                 </label>
 
@@ -227,25 +306,68 @@ export function ComplianceIngestModal({
                       onChange={(e) => patch({ assetLabel: e.target.value })}
                     />
                   </label>
-                  {Object.keys(row.fields)
-                    // doc_number / issuing_party / issue_date already have their
-                    // own base inputs above — don't render them again here.
-                    .filter(
-                      (key) =>
-                        !["doc_number", "issuing_party", "issue_date"].includes(key),
-                    )
-                    .map((key) => (
-                      <label key={key} className="compliance__field">
-                        <span className="compliance__field-label">{prettyLabel(key)}</span>
-                        <input
-                          type={isDateField(key, row.fields[key]) ? "date" : "text"}
-                          value={row.fields[key]}
-                          onChange={(e) =>
-                            patch({ fields: { ...row.fields, [key]: e.target.value } })
-                          }
-                        />
-                      </label>
-                    ))}
+                  {schemaFieldsFor(row.typeId).length > 0
+                    ? // Schema-driven: the selected type's archetype decides the
+                      // field set; extracted values were folded onto it when the
+                      // type was chosen.
+                      schemaFieldsFor(row.typeId).map((f) => (
+                        <label
+                          key={f.field}
+                          className="compliance__field"
+                          title={f.hint}
+                        >
+                          <span className="compliance__field-label">
+                            {prettyLabel(f.field)}
+                            {f.required && <span className="compliance__req">*</span>}
+                          </span>
+                          {f.datatype === "bool" ? (
+                            <input
+                              type="checkbox"
+                              checked={row.fields[f.field] === "true"}
+                              onChange={(e) =>
+                                patch({
+                                  fields: {
+                                    ...row.fields,
+                                    [f.field]: e.target.checked ? "true" : "",
+                                  },
+                                })
+                              }
+                            />
+                          ) : (
+                            <input
+                              type={inputTypeFor(f.datatype)}
+                              value={row.fields[f.field] ?? ""}
+                              onChange={(e) =>
+                                patch({
+                                  fields: { ...row.fields, [f.field]: e.target.value },
+                                })
+                              }
+                            />
+                          )}
+                        </label>
+                      ))
+                    : // No archetype schema for this type — fall back to the raw
+                      // proposal field keys.
+                      Object.keys(row.fields)
+                        // doc_number / issuing_party / issue_date already have
+                        // their own base inputs above — don't render them again.
+                        .filter((key) => !BASE_FIELD_KEYS.includes(key))
+                        .map((key) => (
+                          <label key={key} className="compliance__field">
+                            <span className="compliance__field-label">
+                              {prettyLabel(key)}
+                            </span>
+                            <input
+                              type={isDateField(key, row.fields[key]) ? "date" : "text"}
+                              value={row.fields[key]}
+                              onChange={(e) =>
+                                patch({
+                                  fields: { ...row.fields, [key]: e.target.value },
+                                })
+                              }
+                            />
+                          </label>
+                        ))}
                 </div>
               </div>
             )}

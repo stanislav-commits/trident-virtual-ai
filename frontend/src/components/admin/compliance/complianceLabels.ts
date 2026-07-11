@@ -21,6 +21,50 @@ export function prettyLabel(field: string): string {
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
+/**
+ * Map extracted / saved values onto the schema's field keys. The AI often keys
+ * a compound schema field (e.g. `vessel_gt/imo/callsign/flag`) by its parts
+ * (`vessel_gt`, `vessel_imo`), so gather those into the compound key instead of
+ * losing them. Simple keys match exactly.
+ */
+export function foldToSchema(
+  fieldKeys: string[],
+  raw: Record<string, string>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const used = new Set<string>();
+  for (const k of fieldKeys) {
+    if (raw[k] != null && raw[k] !== "") {
+      out[k] = raw[k];
+      used.add(k);
+    }
+  }
+  for (const k of fieldKeys) {
+    if (!k.includes("/") || out[k]) continue;
+    const parts = k.split("/");
+    const first = parts[0];
+    const us = first.lastIndexOf("_");
+    const prefix = us >= 0 ? first.slice(0, us + 1) : "";
+    const comps = [first.slice(prefix.length), ...parts.slice(1)];
+    const cand = new Set<string>();
+    for (const c of comps) {
+      cand.add(c);
+      if (prefix) cand.add(prefix + c);
+    }
+    const pieces: string[] = [];
+    for (const [rk, rv] of Object.entries(raw)) {
+      if (used.has(rk) || rv == null || rv === "") continue;
+      if (cand.has(rk)) {
+        const label = prefix && rk.startsWith(prefix) ? rk.slice(prefix.length) : rk;
+        pieces.push(`${label.toUpperCase()}: ${rv}`);
+        used.add(rk);
+      }
+    }
+    if (pieces.length) out[k] = pieces.join(", ");
+  }
+  return out;
+}
+
 /** HTML input type for an archetype field datatype. */
 export function inputTypeFor(datatype: string): string {
   return datatype === "date"
