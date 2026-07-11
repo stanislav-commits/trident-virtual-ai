@@ -93,6 +93,7 @@ export function ComplianceIngestModal({
   schema,
   assetOptions,
   busy,
+  error,
   onCancel,
   onConfirm,
 }: {
@@ -102,6 +103,8 @@ export function ComplianceIngestModal({
   schema: ArchetypeSchema | null;
   assetOptions: Array<{ id: string; label: string }>;
   busy: boolean;
+  /** Commit failure — rendered inside the modal (a page banner would be hidden behind the overlay). */
+  error?: string | null;
   onCancel: () => void;
   onConfirm: (proposals: CommitProposal[]) => void;
 }) {
@@ -392,6 +395,12 @@ export function ComplianceIngestModal({
             )}
           </div>
         </div>
+
+        {error && (
+          <div className="admin-panel__error" role="alert">
+            {error}
+          </div>
+        )}
 
         <div className="admin-panel__modal-actions">
           <button

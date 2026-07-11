@@ -87,7 +87,19 @@ export interface ComplianceOverview {
 async function ensureOk(response: Response, what: string): Promise<void> {
   if (!response.ok) {
     const txt = await response.text();
-    throw new Error(`${what} failed (${response.status}): ${txt.slice(0, 200)}`);
+    // Nest errors are JSON like {"message": "..."} — surface the human text,
+    // not the raw payload (these strings show up in modals).
+    let detail = txt;
+    try {
+      const parsed: unknown = JSON.parse(txt);
+      if (parsed && typeof parsed === "object" && "message" in parsed) {
+        const m = (parsed as { message: unknown }).message;
+        detail = Array.isArray(m) ? m.join("; ") : String(m);
+      }
+    } catch {
+      // not JSON — keep the raw text
+    }
+    throw new Error(`${what} failed: ${detail.slice(0, 200)}`);
   }
 }
 

@@ -77,6 +77,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const batchInputRef = useRef<HTMLInputElement>(null);
   const [ingesting, setIngesting] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [commitError, setCommitError] = useState<string | null>(null);
   const [review, setReview] = useState<{
     proposals: IngestProposal[];
     files: File[];
@@ -115,12 +116,17 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const commitReview = async (proposals: CommitProposal[]) => {
     if (!token || !shipId) return;
     setCommitting(true);
+    setCommitError(null);
     try {
       await commitComplianceDocs(token, shipId, proposals, review?.files ?? []);
       setReview(null);
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save the documents");
+      // Shown INSIDE the review modal — a page-level banner would be hidden
+      // behind the overlay.
+      setCommitError(
+        e instanceof Error ? e.message : "Could not save the documents",
+      );
     } finally {
       setCommitting(false);
     }
@@ -495,7 +501,11 @@ export function ComplianceSection({ token }: { token: string | null }) {
           schema={schema}
           assetOptions={assetOptions}
           busy={committing}
-          onCancel={() => setReview(null)}
+          error={commitError}
+          onCancel={() => {
+            setReview(null);
+            setCommitError(null);
+          }}
           onConfirm={commitReview}
         />
       )}
