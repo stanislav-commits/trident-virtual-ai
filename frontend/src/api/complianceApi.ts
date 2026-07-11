@@ -360,6 +360,8 @@ export interface AssetComplianceRecord {
   status: ComplianceStatus;
   documentId: string | null;
   documentFileName: string | null;
+  /** Pipeline-stored or directly-stored file exists — "Open" is available. */
+  hasFile: boolean;
 }
 
 export async function fetchAssetComplianceDocs(

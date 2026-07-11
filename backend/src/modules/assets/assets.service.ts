@@ -267,7 +267,35 @@ export class AssetsService {
     }
 
     // Order: explicit first (human-curated > AI guess), then auto-matched.
-    const documents = [...explicit, ...autoMatched];
+    // PLANS live in their own list: they are file pointers (never parsed),
+    // shown on the Overview — the Manuals tab is manuals/procedures only.
+    const isPlan = (d: DocumentEntity) => d.docClass === 'plan';
+    const nonPlan = [...explicit, ...autoMatched].filter((d) => !isPlan(d));
+
+    // Drawings: explicit plan links + auto-match by the register's drawing
+    // code/ref against the drawing filename (drawings are named by code).
+    const drawingDocs: DocumentEntity[] = [...explicit, ...autoMatched].filter(isPlan);
+    const drawingIds = new Set(drawingDocs.map((d) => d.id));
+    for (const code of [asset.drawingCode, asset.drawingRef]) {
+      const token = code?.trim();
+      if (!token) continue;
+      const matches = await this.documentRepository
+        .createQueryBuilder('d')
+        .where('d.ship_id = :shipId', { shipId })
+        .andWhere('d.doc_class = :plan', { plan: 'plan' })
+        .andWhere('d.original_file_name ILIKE :code', { code: `%${token}%` })
+        .orderBy('d.created_at', 'DESC')
+        .limit(10)
+        .getMany();
+      for (const m of matches) {
+        if (!drawingIds.has(m.id) && !excludedIds.has(m.id)) {
+          drawingIds.add(m.id);
+          drawingDocs.push(m);
+        }
+      }
+    }
+
+    const documents = nonPlan;
 
     return {
       asset,
@@ -290,6 +318,17 @@ export class AssetsService {
         };
       }),
       documents: documents.map((d) => ({
+        id: d.id,
+        originalFileName: d.originalFileName,
+        manufacturer: d.manufacturer,
+        model: d.model,
+        equipmentName: d.equipmentName,
+        docClass: d.docClass,
+        parseStatus: d.parseStatus,
+        createdAt: d.createdAt,
+        linkSource: explicitIds.has(d.id) ? 'explicit' as const : 'auto' as const,
+      })),
+      drawings: drawingDocs.map((d) => ({
         id: d.id,
         originalFileName: d.originalFileName,
         manufacturer: d.manufacturer,

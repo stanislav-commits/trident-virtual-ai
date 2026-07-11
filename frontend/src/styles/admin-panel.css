@@ -8278,6 +8278,9 @@
   font-size: 10.5px;
   color: var(--chat-text-muted);
 }
+/* Drawings block at the bottom of the drawer Overview. */
+.assets-section__drawings { margin-top: 16px; }
+
 .assets-section__drawer-section-head {
   font-size: 10.5px;
   font-weight: 700;

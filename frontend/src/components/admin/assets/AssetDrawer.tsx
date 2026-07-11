@@ -13,7 +13,10 @@ import {
   type RelatedAssetResult,
   type UpdateAssetInput,
 } from "../../../api/assetsApi";
-import type { AssetComplianceRecord } from "../../../api/complianceApi";
+import {
+  openComplianceDocFile,
+  type AssetComplianceRecord,
+} from "../../../api/complianceApi";
 import { formatDateDMY } from "../compliance/complianceLabels";
 import { fetchSfiGroups, fetchSfiSubs, type SfiNode } from "../../../api/sfiApi";
 import {
@@ -245,9 +248,12 @@ export function AssetDrawer({
   // The asset's linked manual (drives both "Suggest PMS" and "Suggest parts").
   const manualDoc = related?.documents.find((d) => d.docClass === "manual");
   // Manuals tab lists knowledge-base docs only — certificates belong to the
-  // Certs tab (compliance), not here.
+  // Certs tab (compliance) and drawings to the Overview block, not here.
   const manualDocs =
-    related?.documents.filter((d) => d.docClass !== "certificate") ?? [];
+    related?.documents.filter(
+      (d) => d.docClass !== "certificate" && d.docClass !== "plan",
+    ) ?? [];
+  const drawings = related?.drawings ?? [];
   const [parts, setParts] = useState<InventoryItem[]>([]);
   const [partsPreview, setPartsPreview] = useState<{
     drafts: InventoryDraft[];
@@ -555,6 +561,44 @@ export function AssetDrawer({
           <OverviewFieldRow label="Drawing code" value={asset.drawingCode} onSave={save("drawingCode")} />
           <OverviewFieldRow label="Notes" value={asset.notes} onSave={save("notes")} width="full" />
         </div>
+
+        {/* Drawings — file pointers (never parsed): explicit links + register
+            drawing-code matches. Click to open the original. */}
+        {drawings.length > 0 && (
+          <div className="assets-section__drawings">
+            <div className="assets-section__drawer-section-head">Drawings</div>
+            {drawings.map((d) => (
+              <div
+                key={d.id}
+                className="assets-section__doc-row assets-section__doc-row--clickable"
+              >
+                <button
+                  type="button"
+                  className="assets-section__doc-row-main"
+                  onClick={() => void handleOpenDocument(d.id, d.originalFileName)}
+                  title="Click to open the drawing"
+                >
+                  <span className="assets-section__doc-name">
+                    📐 {d.originalFileName}
+                    {d.linkSource === "explicit" && (
+                      <span
+                        className="assets-section__doc-badge"
+                        title="Explicitly linked by admin"
+                      >
+                        pinned
+                      </span>
+                    )}
+                  </span>
+                  <span className="assets-section__doc-meta">
+                    {d.linkSource === "explicit"
+                      ? "linked"
+                      : `matched by drawing ref ${asset.drawingCode ?? asset.drawingRef ?? ""}`}
+                  </span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       )}
@@ -764,6 +808,18 @@ export function AssetDrawer({
               {formatDateDMY(rec.issueDate) ?? "?"} →{" "}
               {formatDateDMY(rec.expiryDate) ?? "—"}
             </span>
+            {rec.hasFile && (
+              <button
+                type="button"
+                className="compliance__record-open"
+                onClick={() => {
+                  if (token) void openComplianceDocFile(token, shipId, rec.id);
+                }}
+                title="Open / preview file"
+              >
+                Open
+              </button>
+            )}
           </div>
         ))}
       </div>

@@ -35,4 +35,6 @@ export interface RelatedAssetResult {
   asset: AssetEntity;
   metrics: RelatedAssetMetric[];
   documents: RelatedAssetDocument[];
+  /** Vessel plans/drawings: explicit links + drawing-code filename matches. */
+  drawings: RelatedAssetDocument[];
 }

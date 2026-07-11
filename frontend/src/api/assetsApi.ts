@@ -87,6 +87,8 @@ export type RelatedAssetResult = {
   asset: AssetItem;
   metrics: RelatedAssetMetric[];
   documents: RelatedAssetDocument[];
+  /** Vessel plans/drawings: explicit links + drawing-code filename matches. */
+  drawings: RelatedAssetDocument[];
 };
 
 export type AssetImportResult = {

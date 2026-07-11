@@ -529,6 +529,8 @@ export class ComplianceService {
       status: this.recordStatus(doc),
       documentId: doc.documentId,
       documentFileName: doc.document?.originalFileName ?? null,
+      // Same rule as the overview: pipeline-stored OR directly-stored file.
+      hasFile: Boolean(doc.documentId || doc.fileStorageKey),
     }));
   }
 
