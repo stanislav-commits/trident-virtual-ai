@@ -298,25 +298,29 @@ export function DocumentUploadModal({
 
             <div className="admin-panel__documents-upload-required">
               <div className="admin-panel__modal-field-row">
-                <div className="admin-panel__modal-field">
-                  <label className="admin-panel__field-label" htmlFor="upload-ship">
-                    Ship
-                  </label>
-                  <select
-                    id="upload-ship"
-                    className="admin-panel__select admin-panel__input--full"
-                    value={shipId}
-                    disabled={submitting}
-                    onChange={(event) => setShipId(event.target.value)}
-                  >
-                    <option value="">Select ship</option>
-                    {ships.map((ship) => (
-                      <option key={ship.id} value={ship.id}>
-                        {formatShipLabel(ship)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* The vessel comes from the page's active-vessel context —
+                    only ask when it genuinely can't be resolved. */}
+                {!initialShip && (
+                  <div className="admin-panel__modal-field">
+                    <label className="admin-panel__field-label" htmlFor="upload-ship">
+                      Ship
+                    </label>
+                    <select
+                      id="upload-ship"
+                      className="admin-panel__select admin-panel__input--full"
+                      value={shipId}
+                      disabled={submitting}
+                      onChange={(event) => setShipId(event.target.value)}
+                    >
+                      <option value="">Select ship</option>
+                      {ships.map((ship) => (
+                        <option key={ship.id} value={ship.id}>
+                          {formatShipLabel(ship)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="admin-panel__modal-field">
                   <label className="admin-panel__field-label" htmlFor="upload-class">

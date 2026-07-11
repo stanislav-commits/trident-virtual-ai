@@ -76,6 +76,18 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const uploadTargetRef = useRef<ComplianceDocType | null>(null);
   const batchInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
+  // Any click outside the wrap closes the files/folder menu.
+  useEffect(() => {
+    if (!uploadMenuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".compliance__upload-wrap")) {
+        setUploadMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [uploadMenuOpen]);
   const [ingesting, setIngesting] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
@@ -511,24 +523,42 @@ export function ComplianceSection({ token }: { token: string | null }) {
             />
             Hide not required
           </label>
-          <button
-            type="button"
-            className="compliance__action-btn"
-            onClick={() => folderInputRef.current?.click()}
-            disabled={ingesting}
-            title="Pick a folder — every PDF/image inside (subfolders included) goes into one review batch."
-          >
-            {ingesting ? "Reading…" : "Upload folder"}
-          </button>
-          <button
-            type="button"
-            className="compliance__action-btn compliance__action-btn--primary"
-            onClick={() => batchInputRef.current?.click()}
-            disabled={ingesting}
-            title="Upload several certificates — AI reads, classifies and fills them for you to review before saving."
-          >
-            {ingesting ? "Reading…" : "Batch upload"}
-          </button>
+          <div className="compliance__upload-wrap">
+            <button
+              type="button"
+              className="compliance__action-btn compliance__action-btn--primary"
+              onClick={() => setUploadMenuOpen((v) => !v)}
+              disabled={ingesting}
+              title="Upload several certificates — AI reads, classifies and fills them for you to review before saving."
+            >
+              {ingesting ? "Reading…" : "Batch upload"}
+            </button>
+            {uploadMenuOpen && (
+              // One button, two pickers: a native dialog can't offer files AND
+              // folders at once, so the button opens this two-item menu.
+              <div className="compliance__upload-menu">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploadMenuOpen(false);
+                    batchInputRef.current?.click();
+                  }}
+                >
+                  Select files…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploadMenuOpen(false);
+                    folderInputRef.current?.click();
+                  }}
+                  title="Every PDF/image inside the folder (subfolders included) goes into one review batch."
+                >
+                  Select folder…
+                </button>
+              </div>
+            )}
+          </div>
           <input
             ref={batchInputRef}
             type="file"
