@@ -2648,6 +2648,13 @@
   flex-wrap: nowrap;
 }
 
+/* Right-pinned action cells (Users tables and friends). */
+.admin-panel__actions--right {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+.admin-panel__th--right { text-align: right; }
+
 .admin-panel__td--manual-name {
   min-width: 0;
 }

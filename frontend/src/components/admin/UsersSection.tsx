@@ -9,7 +9,13 @@ import {
 } from "../../api/usersApi";
 import { getShips } from "../../api/shipsApi";
 import { useAccessSchema, positionLabel } from "../../hooks/useAccessSchema";
-import { UsersIcon, CopyIcon, XIcon, PlusIcon } from "./AdminPanelIcons";
+import {
+  UsersIcon,
+  CopyIcon,
+  XIcon,
+  PlusIcon,
+  TrashIcon,
+} from "./AdminPanelIcons";
 
 function EditableName({
   userId,
@@ -265,7 +271,7 @@ export function UsersSection({
           </span>
         </td>
         <td className="admin-panel__td">
-          <div className="admin-panel__actions">
+          <div className="admin-panel__actions admin-panel__actions--right">
             <button
               type="button"
               className="admin-panel__btn admin-panel__btn--ghost"
@@ -276,11 +282,13 @@ export function UsersSection({
             </button>
             <button
               type="button"
-              className="admin-panel__btn admin-panel__btn--danger"
+              className="admin-panel__icon-btn admin-panel__icon-btn--danger"
+              title="Delete user"
+              aria-label="Delete user"
               onClick={() => handleDeleteClick(u.id, u.userId)}
               disabled={deletingId === u.id}
             >
-              {deletingId === u.id ? "…" : "Delete"}
+              {deletingId === u.id ? "…" : <TrashIcon />}
             </button>
           </div>
         </td>
@@ -314,7 +322,9 @@ export function UsersSection({
                 <th className="admin-panel__th">User ID</th>
                 <th className="admin-panel__th">Name</th>
                 <th className="admin-panel__th">Role</th>
-                <th className="admin-panel__th">Actions</th>
+                <th className="admin-panel__th admin-panel__th--right">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>{renderUserRows(list)}</tbody>
