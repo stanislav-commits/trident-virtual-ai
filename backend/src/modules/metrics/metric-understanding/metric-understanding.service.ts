@@ -13,7 +13,6 @@ import {
 } from '../../../integrations/influx/influx.service';
 import { LlmService } from '../../../integrations/llm/llm.service';
 import { AssetEntity } from '../../assets/entities/asset.entity';
-import { AssetLifecycleStatus } from '../../assets/enums/asset-lifecycle-status.enum';
 import { ShipEntity } from '../../ships/entities/ship.entity';
 import {
   MetricAiKind,
@@ -271,7 +270,7 @@ export class MetricUnderstandingService {
     const fingerprint = this.computeFingerprint(samples);
 
     const assets = await this.assetRepository.find({
-      where: { shipId: metric.shipId, lifecycleStatus: AssetLifecycleStatus.IN_SERVICE },
+      where: { shipId: metric.shipId },
     });
     const shortlist = buildAssetShortlist(selector.measurement, selector.field, assets);
 

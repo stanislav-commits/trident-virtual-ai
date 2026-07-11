@@ -6,14 +6,11 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { AssetLifecycleStatus } from '../enums/asset-lifecycle-status.enum';
-
 @Entity('assets')
 @Index('IDX_assets_ship_id', ['shipId'])
 @Index('IDX_assets_asset_id_internal', ['shipId', 'assetIdInternal'])
 @Index('IDX_assets_sfi_group', ['shipId', 'sfiGroup'])
 @Index('IDX_assets_sfi_sub', ['shipId', 'sfiSub'])
-@Index('IDX_assets_lifecycle', ['shipId', 'lifecycleStatus'])
 @Index('IDX_assets_parent', ['shipId', 'parentAssetId'])
 @Index('IDX_assets_zone', ['shipId', 'zone'])
 @Index('IDX_assets_deck_role', ['shipId', 'deckRole'])
@@ -70,14 +67,6 @@ export class AssetEntity {
 
   @Column({ type: 'smallint', nullable: true })
   criticality!: number | null;
-
-  @Column({
-    name: 'lifecycle_status',
-    type: 'varchar',
-    length: 20,
-    default: AssetLifecycleStatus.IN_SERVICE,
-  })
-  lifecycleStatus!: AssetLifecycleStatus;
 
   @Column({ name: 'commissioned_date', type: 'date', nullable: true })
   commissionedDate!: string | null;

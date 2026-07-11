@@ -1,13 +1,11 @@
 import { Transform } from 'class-transformer';
 import {
-  IsEnum,
   IsInt,
   IsOptional,
   IsString,
   Max,
   Min,
 } from 'class-validator';
-import { AssetLifecycleStatus } from '../enums/asset-lifecycle-status.enum';
 
 export class QueryAssetsDto {
   // Free-text search across asset_id_internal / display_name / brand / model
@@ -15,10 +13,6 @@ export class QueryAssetsDto {
   @IsOptional()
   @IsString()
   search?: string;
-
-  @IsOptional()
-  @IsEnum(AssetLifecycleStatus)
-  lifecycleStatus?: AssetLifecycleStatus;
 
   // Filter by SFI top-level group, e.g. "3.0" returns all engines + props.
   @IsOptional()

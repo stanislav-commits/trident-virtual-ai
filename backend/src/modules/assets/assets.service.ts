@@ -31,7 +31,6 @@ import type {
   ImportPreviewSfiWarning,
 } from './dto/import-preview.dto';
 import type { CommitImportDto } from './dto/commit-import.dto';
-import { AssetLifecycleStatus } from './enums/asset-lifecycle-status.enum';
 import {
   isValidDeckRoleCode,
   isValidZoneCode,
@@ -55,7 +54,6 @@ const COLUMN_ALIASES: Record<keyof CreateAssetDto, string[]> = {
   model:            ['model', 'type'],
   serialNo:         ['serial_no', 'serial', 'serial number', 'sn', 's/n'],
   criticality:      ['criticality', 'criticality_class'],
-  lifecycleStatus:  ['lifecycle_status', 'status', 'lifecycle'],
   commissionedDate: ['commissioned_date', 'install date', 'installation date', 'installed', 'commissioned'],
   location:         ['location', 'compartment'],
   rinaRef:          ['rina_ref', 'class', 'class society', 'classification society'],
@@ -131,10 +129,6 @@ export class AssetsService {
     const qb = this.assetRepository
       .createQueryBuilder('a')
       .where('a.ship_id = :shipId', { shipId });
-
-    if (query.lifecycleStatus) {
-      qb.andWhere('a.lifecycle_status = :ls', { ls: query.lifecycleStatus });
-    }
 
     if (query.sfiGroup) {
       qb.andWhere('a.sfi_group = :sfiGroup', { sfiGroup: query.sfiGroup });
@@ -490,7 +484,6 @@ export class AssetsService {
       model: input.model ?? null,
       serialNo: input.serialNo ?? null,
       criticality: input.criticality ?? null,
-      lifecycleStatus: input.lifecycleStatus ?? AssetLifecycleStatus.IN_SERVICE,
       commissionedDate: input.commissionedDate ?? null,
       location: input.location ?? null,
       rinaRef: input.rinaRef ?? null,
@@ -535,7 +528,6 @@ export class AssetsService {
     if (input.model !== undefined) asset.model = input.model;
     if (input.serialNo !== undefined) asset.serialNo = input.serialNo;
     if (input.criticality !== undefined) asset.criticality = input.criticality;
-    if (input.lifecycleStatus !== undefined) asset.lifecycleStatus = input.lifecycleStatus;
     if (input.commissionedDate !== undefined) asset.commissionedDate = input.commissionedDate;
     if (input.location !== undefined) asset.location = input.location;
     if (input.rinaRef !== undefined) asset.rinaRef = input.rinaRef;
@@ -622,7 +614,6 @@ export class AssetsService {
       ['model', (a) => a.model],
       ['serial_no', (a) => a.serialNo],
       ['criticality', (a) => a.criticality],
-      ['lifecycle_status', (a) => a.lifecycleStatus],
       ['commissioned_date', (a) => a.commissionedDate],
       ['location', (a) => a.location],
       ['rina_ref', (a) => a.rinaRef],
@@ -914,7 +905,6 @@ export class AssetsService {
       ['brand', 'brand'],
       ['model', 'model'],
       ['serialNo', 'serialNo'],
-      ['lifecycleStatus', 'lifecycleStatus'],
       ['location', 'location'],
       ['rinaRef', 'rinaRef'],
       ['notes', 'notes'],
@@ -1141,7 +1131,6 @@ export class AssetsService {
       model: draft.model ?? existing.model,
       serialNo: draft.serialNo ?? existing.serialNo,
       criticality: draft.criticality ?? existing.criticality,
-      lifecycleStatus: draft.lifecycleStatus ?? existing.lifecycleStatus,
       commissionedDate: draft.commissionedDate ?? existing.commissionedDate,
       location: draft.location ?? existing.location,
       rinaRef: draft.rinaRef ?? existing.rinaRef,
@@ -1179,7 +1168,6 @@ export class AssetsService {
       model: draft.model,
       serialNo: draft.serialNo,
       criticality: draft.criticality,
-      lifecycleStatus: draft.lifecycleStatus ?? AssetLifecycleStatus.IN_SERVICE,
       commissionedDate: draft.commissionedDate,
       location: draft.location,
       rinaRef: draft.rinaRef,
@@ -1378,15 +1366,6 @@ export class AssetsService {
       return s.length > 0 ? s : undefined;
     };
 
-    const rawStatus = get('lifecycleStatus')?.toLowerCase();
-    const lifecycleStatus =
-      rawStatus &&
-      Object.values(AssetLifecycleStatus).includes(
-        rawStatus as AssetLifecycleStatus,
-      )
-        ? (rawStatus as AssetLifecycleStatus)
-        : undefined;
-
     const rawCriticality = get('criticality');
     let criticality: number | undefined;
     if (rawCriticality !== undefined) {
@@ -1494,7 +1473,6 @@ export class AssetsService {
       model: get('model'),
       serialNo: get('serialNo'),
       criticality,
-      lifecycleStatus,
       commissionedDate,
       location: get('location'),
       rinaRef: get('rinaRef'),

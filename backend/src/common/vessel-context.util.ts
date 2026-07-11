@@ -36,7 +36,6 @@ export async function buildVesselContextString(
   const critical = await assetRepository
     .createQueryBuilder('a')
     .where('a.ship_id = :shipId', { shipId })
-    .andWhere(`a.lifecycle_status = 'in-service'`)
     .andWhere('a.brand IS NOT NULL OR a.model IS NOT NULL')
     .orderBy('a.criticality', 'DESC', 'NULLS LAST')
     .addOrderBy('a.sfi_group', 'ASC')

@@ -17,7 +17,6 @@ export type AssetItem = {
   model: string | null;
   serialNo: string | null;
   criticality: number | null;
-  lifecycleStatus: string;
   commissionedDate: string | null;
   location: string | null;
   rinaRef: string | null;
@@ -53,7 +52,6 @@ export type AssetListQuery = {
   sfiGroup?: string;
   sfiSub?: string;
   assetIdPrefix?: string;
-  lifecycleStatus?: string;
   limit?: number;
   offset?: number;
 };
@@ -105,8 +103,6 @@ function buildQueryString(query: AssetListQuery): string {
   if (query.sfiGroup) params.append("sfiGroup", query.sfiGroup);
   if (query.sfiSub) params.append("sfiSub", query.sfiSub);
   if (query.assetIdPrefix) params.append("assetIdPrefix", query.assetIdPrefix);
-  if (query.lifecycleStatus)
-    params.append("lifecycleStatus", query.lifecycleStatus);
   if (query.limit !== undefined) params.append("limit", String(query.limit));
   if (query.offset !== undefined) params.append("offset", String(query.offset));
   const s = params.toString();
@@ -268,7 +264,6 @@ export type UpdateAssetInput = Partial<{
   location: string | null;
   notes: string | null;
   criticality: number | null;
-  lifecycleStatus: string;
   sfiGroup: string | null;
   sfiGroupName: string | null;
   sfiSub: string | null;
@@ -373,7 +368,6 @@ export type CreateAssetInput = {
   serialNo?: string;
   location?: string;
   criticality?: number;
-  lifecycleStatus?: string;
   notes?: string;
 };
 

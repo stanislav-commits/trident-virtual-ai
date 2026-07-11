@@ -471,16 +471,6 @@ export function AssetDrawer({
             <span className="assets-section__drawer-code">
               {asset.assetIdInternal}
             </span>
-            <span
-              className={`assets-section__drawer-status assets-section__drawer-status--${
-                asset.lifecycleStatus === "in-service" ? "ok" : "off"
-              }`}
-            >
-              ●{" "}
-              {asset.lifecycleStatus === "in-service"
-                ? "OPERATIONAL"
-                : (asset.lifecycleStatus ?? "—").toUpperCase()}
-            </span>
           </div>
           <div className="assets-section__drawer-name">{asset.displayName}</div>
           <div className="assets-section__drawer-meta">

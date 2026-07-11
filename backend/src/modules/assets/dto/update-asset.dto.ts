@@ -1,6 +1,5 @@
 import {
   IsDateString,
-  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -8,7 +7,6 @@ import {
   Max,
   Min,
 } from 'class-validator';
-import { AssetLifecycleStatus } from '../enums/asset-lifecycle-status.enum';
 
 export class UpdateAssetDto {
   @IsOptional()
@@ -81,10 +79,6 @@ export class UpdateAssetDto {
   @Min(1)
   @Max(5)
   criticality?: number | null;
-
-  @IsOptional()
-  @IsEnum(AssetLifecycleStatus)
-  lifecycleStatus?: AssetLifecycleStatus;
 
   @IsOptional()
   @IsDateString()

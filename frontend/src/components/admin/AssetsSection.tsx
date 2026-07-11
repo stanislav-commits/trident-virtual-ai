@@ -47,8 +47,8 @@ const GROUP_ALL = "__all__";
  *   │  LEFT SIDEBAR       │  MAIN AREA                              │
  *   │  ╴ search input     │  ┌─ stats header ─────────────────┐    │
  *   │  ╴ FOCUSED HIERARCHY│  │ 02 Machinery · 40 assets       │    │
- *   │    sub-group tree   │  │ in-service 30 · deprecated 1   │    │
- *   │  ╴ LOADED ASSETS    │  └────────────────────────────────┘    │
+ *   │    sub-group tree   │  └────────────────────────────────┘    │
+ *   │  ╴ LOADED ASSETS    │                                        │
  *   │    flat list        │  ┌─ table (SFI/Name/Mfr/Status…) ─┐    │
  *   │                     │  └────────────────────────────────┘    │
  *   └────────────────────┴─────────────────────────────────────────┘
@@ -161,8 +161,6 @@ export function AssetsSection({ token }: AssetsSectionProps) {
         code: string;
         name: string;
         count: number;
-        inService: number;
-        deprecated: number;
       }
     >();
     const source = searchActive ? searchMatches : assets;
@@ -172,12 +170,8 @@ export function AssetsSection({ token }: AssetsSectionProps) {
         code: key,
         name: sfiNames.get(key) ?? sfiGroupName(key),
         count: 0,
-        inService: 0,
-        deprecated: 0,
       };
       existing.count += 1;
-      if (a.lifecycleStatus === "in-service") existing.inService += 1;
-      if (a.lifecycleStatus === "deprecated") existing.deprecated += 1;
       map.set(key, existing);
     }
     return Array.from(map.values()).sort((a, b) => {

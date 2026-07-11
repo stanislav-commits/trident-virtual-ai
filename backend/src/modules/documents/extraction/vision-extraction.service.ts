@@ -367,7 +367,6 @@ export class VisionExtractionService {
           }),
         )
         // Retired equipment must not collect new manuals.
-        .andWhere("a.lifecycle_status NOT ILIKE '%deprecat%'")
         .andWhere("a.display_name NOT ILIKE '[DEPRECATED]%'")
         .limit(12)
         .getMany();

@@ -570,7 +570,6 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
         properties: {
           query: { type: 'string', description: 'Free-text function/system to find.' },
           top_n: { type: 'integer', description: 'How many top matches to return. Default 20, max 100.' },
-          in_service_only: { type: 'boolean', description: 'If true (default), exclude decommissioned assets.' },
         },
         required: ['query'],
       },
@@ -604,7 +603,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'aggregate_asset_facts',
       description:
-        'Same as lookup_asset_fact but across MANY assets matching a filter. Loads up to 200 assets, extracts one attribute from each, then applies sum/avg/count/min/max/list. Default lifecycle = in-service. Returns aggregated result + per-asset breakdown. Use for "total fuel capacity", "total HVAC rated power", "min commissioning date in the fleet", etc.',
+        'Same as lookup_asset_fact but across MANY assets matching a filter. Loads up to 200 assets, extracts one attribute from each, then applies sum/avg/count/min/max/list. Returns aggregated result + per-asset breakdown. Use for "total fuel capacity", "total HVAC rated power", "min commissioning date in the fleet", etc.',
       parameters: {
         type: 'object',
         properties: {
@@ -615,7 +614,6 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
               sfi_sub_prefix: { type: 'string', description: 'SFI sub prefix, e.g. "2.8" matches all fuel tanks.' },
               keyword: { type: 'string', description: 'Substring match against display_name/model/notes/sfi_sub_name.' },
               brand: { type: 'string', description: 'Brand contains (ILIKE).' },
-              lifecycle_status: { type: 'string', enum: ['in-service', 'specified', 'deprecated', 'cross-ref'], description: 'Override default in-service filter.' },
             },
           },
           attribute: {

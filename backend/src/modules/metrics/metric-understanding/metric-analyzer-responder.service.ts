@@ -1841,8 +1841,7 @@ export class MetricAnalyzerResponderService {
     const t0 = Date.now();
     const query = String(args.query ?? '').trim();
     const topN = typeof args.top_n === 'number' ? Math.max(1, Math.min(100, args.top_n)) : 20;
-    const inServiceOnly = args.in_service_only !== false;
-    const callArgs = { query, top_n: topN, in_service_only: inServiceOnly };
+    const callArgs = { query, top_n: topN };
 
     if (!query) {
       return {
@@ -1857,9 +1856,7 @@ export class MetricAnalyzerResponderService {
       };
     }
 
-    const where: Record<string, unknown> = { shipId };
-    if (inServiceOnly) where.lifecycleStatus = 'in-service';
-    const assets = await this.assetRepository.find({ where });
+    const assets = await this.assetRepository.find({ where: { shipId } });
 
     const { hits: top, totalMatches } = scoreAssetsByQuery(assets, query, {
       topN, includeLocation: true,
@@ -1886,7 +1883,6 @@ export class MetricAnalyzerResponderService {
           model: s.asset.model,
           location: s.asset.location,
           criticality: s.asset.criticality,
-          lifecycle_status: s.asset.lifecycleStatus,
           match_score: Math.round(s.score * 10) / 10,
           matched_tokens: s.matched,
         })),
@@ -1964,7 +1960,6 @@ export class MetricAnalyzerResponderService {
       serial_no: asset.serialNo,
       location: asset.location,
       criticality: asset.criticality,
-      lifecycle_status: asset.lifecycleStatus,
       commissioned_date: asset.commissionedDate,
       rina_ref: asset.rinaRef,
       notes: asset.notes,
@@ -2054,7 +2049,6 @@ export class MetricAnalyzerResponderService {
       sfi_sub_prefix?: string;
       keyword?: string;
       brand?: string;
-      lifecycle_status?: string;
     };
     const attribute = String(args.attribute ?? '').trim();
     const op = String(args.op ?? 'sum').trim();
@@ -2104,14 +2098,6 @@ export class MetricAnalyzerResponderService {
     }
     if (filter.brand) {
       qb.andWhere('a.brand ILIKE :brand', { brand: `%${filter.brand}%` });
-    }
-    if (filter.lifecycle_status) {
-      qb.andWhere('a.lifecycle_status = :ls', {
-        ls: filter.lifecycle_status,
-      });
-    } else {
-      // Default to in-service so we don't sum deprecated tanks.
-      qb.andWhere(`a.lifecycle_status = 'in-service'`);
     }
     if (filter.keyword) {
       const like = `%${filter.keyword}%`;
@@ -3004,7 +2990,7 @@ export class MetricAnalyzerResponderService {
               .getMany();
     } else {
       const candidates = await this.assetRepository.find({
-        where: { shipId, lifecycleStatus: 'in-service' as never },
+        where: { shipId },
       });
       const { hits } = scoreAssetsByQuery(candidates, assetQuery!, {
         topN: 5, includeLocation: false,
@@ -5456,10 +5442,10 @@ export class MetricAnalyzerResponderService {
         })
         .getMany();
     } else if (assetQuery) {
-      // Free-text resolution: tokenize the query, score every in-service asset,
-      // take the top N (default 10) by overlap.
+      // Free-text resolution: tokenize the query, score every asset, take
+      // the top N (default 10) by overlap.
       const candidates = await this.assetRepository.find({
-        where: { shipId, lifecycleStatus: 'in-service' as never },
+        where: { shipId },
       });
       const { hits } = scoreAssetsByQuery(candidates, assetQuery, {
         topN: 10, includeLocation: true,
@@ -5894,7 +5880,6 @@ export class MetricAnalyzerResponderService {
           serial_no: asset.serialNo,
           location: asset.location,
           criticality: asset.criticality,
-          lifecycle_status: asset.lifecycleStatus,
           commissioned_date: asset.commissionedDate,
           parent_asset_id: asset.parentAssetId,
           rina_ref: asset.rinaRef,
@@ -6016,7 +6001,7 @@ export class MetricAnalyzerResponderService {
       };
     }
     const assets = await this.assetRepository.find({
-      where: { shipId, sfiSub, lifecycleStatus: 'in-service' as never },
+      where: { shipId, sfiSub },
       order: { assetIdInternal: 'ASC' },
       take: 100,
     });
@@ -6088,8 +6073,7 @@ export class MetricAnalyzerResponderService {
 
     const qb = this.assetRepository
       .createQueryBuilder('a')
-      .where('a.ship_id = :shipId', { shipId })
-      .andWhere("a.lifecycle_status = 'in-service'");
+      .where('a.ship_id = :shipId', { shipId });
     if (zone) qb.andWhere('a.zone = :zone', { zone });
     if (deckRole) qb.andWhere('a.deck_role = :deckRole', { deckRole });
     if (deckLevel !== null) qb.andWhere('a.deck_level = :deckLevel', { deckLevel });
@@ -6332,7 +6316,6 @@ export class MetricAnalyzerResponderService {
       depth,
       criticality: a.criticality,
       zone: a.zone,
-      lifecycle_status: a.lifecycleStatus,
       served_by: a.servedByAssetId,
       emergency_feed:
         typeof (a.extras as Record<string, unknown> | null)?.[
