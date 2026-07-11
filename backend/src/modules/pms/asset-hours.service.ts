@@ -1,7 +1,7 @@
 import { formatError } from '../../common/utils/error.utils';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { InfluxService } from '../../integrations/influx/influx.service';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';

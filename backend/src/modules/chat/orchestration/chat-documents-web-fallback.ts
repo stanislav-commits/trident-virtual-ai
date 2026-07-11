@@ -408,24 +408,6 @@ function buildWebFallbackSection(
   return diagnostics.reason;
 }
 
-function buildDocumentInsufficientSentence(
-  diagnostics: DocumentsWebFallbackDiagnostics,
-): string {
-  if (diagnostics.documentEvidenceQuality === 'weak') {
-    return 'The uploaded ship documents contained only weak or ambiguous evidence for this request.';
-  }
-
-  if (diagnostics.documentEvidenceQuality === 'none') {
-    return 'I could not find enough information in the uploaded ship documents for this request.';
-  }
-
-  if (diagnostics.documentGroundingStatus === 'insufficient') {
-    return 'The uploaded ship documents did not support a sufficiently grounded answer for this request.';
-  }
-
-  return 'The uploaded ship documents did not provide enough evidence for this request.';
-}
-
 function getFallbackTrigger(input: {
   explicitWebFallback: boolean;
   freshnessRequired: boolean;

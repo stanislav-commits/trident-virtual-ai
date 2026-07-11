@@ -158,7 +158,6 @@ export class ChatMetricsResponderService {
     // the value is aggregated; surface the window explicitly so the LLM
     // composing the chat reply doesn't pass it off as a current reading.
     const timestampSuffix = this.buildTimestampSuffix(execution);
-    const unitSuffix = execution.result.unit ? ` ${execution.result.unit}` : '';
 
     if (
       execution.result.value &&

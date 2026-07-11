@@ -12,7 +12,7 @@ async function run() {
   const password = 'admin12345';
   const passwordHash = await hash(password, 10);
 
-  let admin = await users.findOne({ where: { userId } });
+  const admin = await users.findOne({ where: { userId } });
   if (admin) {
     admin.passwordHash = passwordHash;
     await users.save(admin);

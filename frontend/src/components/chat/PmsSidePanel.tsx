@@ -224,7 +224,9 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
       ok = 0;
     for (const t of tasks) {
       const h = horizonOf(t, now);
-      h === "overdue" ? overdue++ : h === "week" ? due++ : ok++;
+      if (h === "overdue") overdue++;
+      else if (h === "week") due++;
+      else ok++;
     }
     return { overdue, due, ok };
   }, [tasks, now]);

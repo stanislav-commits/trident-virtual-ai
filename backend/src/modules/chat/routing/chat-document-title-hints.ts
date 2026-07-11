@@ -1,13 +1,13 @@
 const DOCUMENT_EXTENSION_PATTERN =
   /\.(?:pdf|docx?|xlsx?|pptx?)(?=$|[^\p{L}\p{N}])/iu;
 const FILENAME_WITH_EXTENSION_PATTERN =
-  /[\p{L}\p{N}][\p{L}\p{N} _.\/()&+'-]{0,180}\.(?:pdf|docx?|xlsx?|pptx?)(?=$|[^\p{L}\p{N}])/giu;
+  /[\p{L}\p{N}][\p{L}\p{N} _./()&+'-]{0,180}\.(?:pdf|docx?|xlsx?|pptx?)(?=$|[^\p{L}\p{N}])/giu;
 const QUOTED_TITLE_PATTERN =
   /["`\u201c\u201d\u2018\u2019]([^"`\u201c\u201d\u2018\u2019]{3,180})["`\u201c\u201d\u2018\u2019]/gu;
 const HAS_UNICODE_LETTER_OR_NUMBER = /[\p{L}\p{N}]/u;
 const STARTS_WITH_UPPERCASE_LETTER = /^\p{Lu}/u;
-const HAS_STRUCTURAL_TITLE_MARKER = /[\p{N}._\/()&+'-]/u;
-const ACRONYM_LIKE_TOKEN = /^[\p{Lu}\p{N}._\/()&+'-]{2,}$/u;
+const HAS_STRUCTURAL_TITLE_MARKER = /[\p{N}._/()&+'-]/u;
+const ACRONYM_LIKE_TOKEN = /^[\p{Lu}\p{N}._/()&+'-]{2,}$/u;
 
 export function extractDocumentTitleHint(question: string): string | null {
   const normalizedQuestion = question.trim();

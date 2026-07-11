@@ -2310,8 +2310,8 @@ export class MetricAnalyzerResponderService {
       | 'above'
       | 'well_above'
       | 'no_typical'
-      | 'no_current' = 'normal';
-    let interpretation = '';
+      | 'no_current';
+    let interpretation: string;
     let zLike: number | null = null;
     if (current === null) {
       percentileBucket = 'no_current';
@@ -2736,7 +2736,7 @@ export class MetricAnalyzerResponderService {
           toolCallId: tc.id,
           payload: {
             ok: false,
-            error: `Bucket "${m[1]}" is not in this ship\'s catalog. Allowed: ${Array.from(allowedBuckets).map((b) => `"${b}"`).join(', ')}`,
+            error: `Bucket "${m[1]}" is not in this ship's catalog. Allowed: ${Array.from(allowedBuckets).map((b) => `"${b}"`).join(', ')}`,
           },
           otherCall: {
             iteration, tool: 'run_flux_query', args: callArgs, ok: false,
@@ -2881,7 +2881,7 @@ export class MetricAnalyzerResponderService {
 
     let predictedTimestamp: string | null = null;
     let daysFromNow: number | null = null;
-    let interpretation = '';
+    let interpretation: string;
     // Treat anything below 1e-15 / ms as "essentially flat" — protects against
     // float underflow producing year-7000 timestamps.
     const SLOPE_EPSILON = 1e-15;
@@ -3551,7 +3551,7 @@ export class MetricAnalyzerResponderService {
           .filter(Boolean)
           .join(' ')
           .toLowerCase();
-        let score = 0;
+        let score: number;
         if (!query) {
           score = 1; // no query → return everything (cap applies)
         } else if (hay.includes(query)) {
@@ -4830,7 +4830,7 @@ export class MetricAnalyzerResponderService {
     const question = queryParts.join(' ');
 
     const datasetName = this.ragService.buildShipDatasetName(shipId);
-    let datasetId: string | null = null;
+    let datasetId: string | null;
     try {
       const dataset = await this.ragService.findAccessibleDatasetByExactName(datasetName);
       datasetId = dataset?.id ?? null;
@@ -4862,7 +4862,7 @@ export class MetricAnalyzerResponderService {
       };
     }
 
-    let chunks: Array<Record<string, unknown>> = [];
+    let chunks: Array<Record<string, unknown>>;
     try {
       const res = await this.ragService.retrieveChunks({
         question,
@@ -5273,7 +5273,7 @@ export class MetricAnalyzerResponderService {
     // gensets are mutually exclusive sources).
     const totalGensetPower = gensetVals.reduce<number>((s, v) => s + (v ?? 0), 0);
 
-    let state: 'underway' | 'at_anchor' | 'alongside_on_shore' | 'idle' = 'idle';
+    let state: 'underway' | 'at_anchor' | 'alongside_on_shore';
     const reasons: string[] = [];
     if (sogNum > 0.5 || Math.abs(propPower) > 5) {
       state = 'underway';
@@ -5388,7 +5388,7 @@ export class MetricAnalyzerResponderService {
   ): AnalyzedCatalogItem | null {
     const byField = catalogIndex.get(measurement);
     if (!byField) return null;
-    let item = byField.get(field);
+    const item = byField.get(field);
     if (item) return item;
     for (const [f, candidate] of byField) {
       if (f.startsWith(`${field} `) || f.startsWith(`${field}(`)) return candidate;

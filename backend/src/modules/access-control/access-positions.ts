@@ -160,12 +160,6 @@ const COMPLIANCE_OPEN: ResourceCategory[] = [
   ResourceCategory.COMPLIANCE_RECORDS,
   ResourceCategory.COMPLIANCE_REPORTS,
 ];
-const COMPLIANCE_SENSITIVE: ResourceCategory[] = [
-  ResourceCategory.COMPLIANCE_PERSONNEL,
-  ResourceCategory.COMPLIANCE_INSURANCE,
-  ResourceCategory.COMPLIANCE_LEGAL,
-];
-
 function rowOf(
   fn: (c: ResourceCategory) => PermissionLevel,
 ): Record<ResourceCategory, PermissionLevel> {
@@ -176,7 +170,6 @@ function rowOf(
 
 const isOperational = (c: ResourceCategory) => OPERATIONAL.includes(c);
 const isComplianceOpen = (c: ResourceCategory) => COMPLIANCE_OPEN.includes(c);
-const isSensitive = (c: ResourceCategory) => COMPLIANCE_SENSITIVE.includes(c);
 
 /**
  * Platform default matrix. Per-ship rows in access_matrix_cell override a cell;

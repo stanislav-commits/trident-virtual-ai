@@ -23,4 +23,4 @@ export interface ChatTurnAskResult {
   contextReferences?: unknown[];
 }
 
-export interface ChatTurnResponderOutput extends ChatTurnAskResult {}
+export type ChatTurnResponderOutput = ChatTurnAskResult;

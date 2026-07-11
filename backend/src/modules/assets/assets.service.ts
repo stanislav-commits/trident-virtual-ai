@@ -11,7 +11,7 @@ import { DocumentEntity } from '../documents/entities/document.entity';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { CreateAssetDto } from './dto/create-asset.dto';
-import { ImportResultDto, ImportRowError } from './dto/import-result.dto';
+import { ImportResultDto } from './dto/import-result.dto';
 import { QueryAssetsDto } from './dto/query-assets.dto';
 import { RelatedAssetResult } from './dto/related-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';

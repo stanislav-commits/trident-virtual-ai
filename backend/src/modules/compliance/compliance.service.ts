@@ -777,7 +777,7 @@ export class ComplianceService {
   /** Throw if a required archetype field is missing. */
   private validateRequired(
     archetype: string | null,
-    fields: Record<string, unknown> | null,
+    _fields: Record<string, unknown> | null,
   ): void {
     // Soft check only — intentionally does NOT throw. Real-world documents
     // legitimately lack "required" fields (a Builder's Certificate / Registry

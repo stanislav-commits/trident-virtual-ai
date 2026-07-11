@@ -393,7 +393,7 @@ function convertMessagesToAnthropic(messages: ChatMessage[]): AnthropicMessage[]
       }
       if (m.tool_calls && m.tool_calls.length > 0) {
         for (const tc of m.tool_calls) {
-          let parsedInput: Record<string, unknown> = {};
+          let parsedInput: Record<string, unknown>;
           try {
             parsedInput = JSON.parse(tc.function.arguments || '{}');
           } catch {
