@@ -106,14 +106,6 @@ export function ComplianceTypeRow({
         >
           <span className="compliance__chevron">{open ? "▾" : "▸"}</span>
           <span className="compliance__type-name">{type.name}</span>
-          {type.applicability === "C" && (
-            <span
-              className="compliance__cond"
-              title="Conditional — required only under certain conditions (flag, operating area, canal transits, type of service)"
-            >
-              C
-            </span>
-          )}
         </button>
         {type.archetype && (
           <span

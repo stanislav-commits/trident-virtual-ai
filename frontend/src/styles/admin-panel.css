@@ -9243,10 +9243,6 @@
 .compliance__chevron {
   flex-shrink: 0; font-size: 10px; color: var(--chat-text-muted); width: 10px;
 }
-.compliance__cond {
-  margin-left: 6px; font-size: 9px; font-weight: 700; color: var(--status-warn);
-  border: 1px solid var(--status-warn-border); border-radius: 4px; padding: 0 4px;
-}
 .compliance__rec-count {
   flex-shrink: 0; font-size: 10px; font-weight: 700; min-width: 18px; text-align: center;
   color: var(--chat-text-muted); background: var(--chat-surface-3, var(--chat-surface-2));
