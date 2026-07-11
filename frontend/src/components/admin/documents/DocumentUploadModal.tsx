@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import type {
   DocumentDocClass,
-  DocumentTimeScope,
   UploadDocumentInput,
 } from "../../../api/documentsApi";
 import { uploadDocument } from "../../../api/documentsApi";
 import type { ShipSummaryItem } from "../../../api/shipsApi";
-import { listAssets } from "../../../api/assetsApi";
 import { UploadIcon, XIcon } from "../AdminPanelIcons";
 import { DOCUMENT_CLASS_OPTIONS } from "./documentOptions";
 import {
@@ -33,26 +31,6 @@ interface DocumentUploadModalProps {
   onUploaded: () => Promise<void> | void;
 }
 
-interface UploadMetadataForm {
-  language: string;
-  equipmentOrSystem: string;
-  manufacturer: string;
-  model: string;
-  revision: string;
-  timeScope: "" | DocumentTimeScope;
-  contentFocus: string;
-}
-
-const EMPTY_METADATA: UploadMetadataForm = {
-  language: "",
-  equipmentOrSystem: "",
-  manufacturer: "",
-  model: "",
-  revision: "",
-  timeScope: "",
-  contentFocus: "",
-};
-
 const DOCUMENT_UPLOAD_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.md,.txt";
 const DOCUMENT_UPLOAD_FORMATS_LABEL = "PDF, DOC/DOCX, XLS/XLSX, MD, TXT";
 
@@ -69,12 +47,6 @@ function getFileKey(file: File): string {
 function createQueueId(file: File): string {
   return `${getFileKey(file)}:${crypto.randomUUID()}`;
 }
-
-function normalizeOptionalText(value: string): string | undefined {
-  const normalized = value.trim();
-  return normalized || undefined;
-}
-
 
 function formatParseStatus(value: string): string {
   return value.replace(/_/g, " ");
@@ -99,12 +71,10 @@ export function DocumentUploadModal({
     DOCUMENT_CLASS_OPTIONS.find((option) => option.value === "manual")?.value ??
       DOCUMENT_CLASS_OPTIONS[0].value,
   );
-  const [metadata, setMetadata] = useState<UploadMetadataForm>(EMPTY_METADATA);
   const [queue, setQueue] = useState<UploadQueueItem[]>([]);
   const [submitError, setSubmitError] = useState("");
   const [completionMessage, setCompletionMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [showMetadata, setShowMetadata] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const totalSize = useMemo(
@@ -164,44 +134,11 @@ export function DocumentUploadModal({
     );
   };
 
-  // Asset-register-driven naming: pick an asset and the document title +
-  // manufacturer/model come from the register (source of truth).
-  const [assetOptions, setAssetOptions] = useState<
-    Array<{ id: string; label: string }>
-  >([]);
-  const [assetLabel, setAssetLabel] = useState("");
-  useEffect(() => {
-    if (!token || !shipId) {
-      setAssetOptions([]);
-      return;
-    }
-    void listAssets(token, shipId, { limit: 2000 })
-      .then((r) =>
-        setAssetOptions(
-          r.items.map((a) => ({
-            id: a.id,
-            label: `${a.assetIdInternal} — ${a.displayName}`,
-          })),
-        ),
-      )
-      .catch(() => setAssetOptions([]));
-  }, [token, shipId]);
-
-  const updateMetadata = (key: keyof UploadMetadataForm, value: string) => {
-    setMetadata((current) => ({ ...current, [key]: value }));
-  };
-
+  // No manual metadata: the extractor identifies manufacturer/model from the
+  // document and auto-matches it to the asset register after parsing.
   const buildUploadInput = (): UploadDocumentInput => ({
     shipId,
     docClass,
-    assetId: assetOptions.find((a) => a.label === assetLabel)?.id,
-    language: normalizeOptionalText(metadata.language),
-    equipmentOrSystem: normalizeOptionalText(metadata.equipmentOrSystem),
-    manufacturer: normalizeOptionalText(metadata.manufacturer),
-    model: normalizeOptionalText(metadata.model),
-    revision: normalizeOptionalText(metadata.revision),
-    timeScope: metadata.timeScope || undefined,
-    contentFocus: normalizeOptionalText(metadata.contentFocus),
   });
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -224,14 +161,7 @@ export function DocumentUploadModal({
       return;
     }
 
-    let uploadInput: UploadDocumentInput;
-
-    try {
-      uploadInput = buildUploadInput();
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Invalid metadata.");
-      return;
-    }
+    const uploadInput = buildUploadInput();
 
     setSubmitting(true);
     setSubmitError("");
@@ -569,160 +499,6 @@ export function DocumentUploadModal({
               )}
             </div>
 
-            <div className="admin-panel__documents-upload-advanced">
-              <button
-                type="button"
-                className="admin-panel__documents-upload-advanced-toggle"
-                onClick={() => setShowMetadata((current) => !current)}
-                disabled={submitting}
-              >
-                <span>Optional metadata</span>
-                <span>{showMetadata ? "Hide" : "Show"}</span>
-              </button>
-
-              {showMetadata && (
-                <div className="admin-panel__documents-upload-metadata-grid">
-                  <div className="admin-panel__modal-field">
-                    <label
-                      className="admin-panel__field-label"
-                      htmlFor="upload-language"
-                    >
-                      Language
-                    </label>
-                    <input
-                      id="upload-language"
-                      className="admin-panel__input admin-panel__input--full"
-                      value={metadata.language}
-                      disabled={submitting}
-                      onChange={(event) =>
-                        updateMetadata("language", event.target.value)
-                      }
-                      placeholder="en"
-                    />
-                  </div>
-                  <div className="admin-panel__modal-field">
-                    <label
-                      className="admin-panel__field-label"
-                      htmlFor="upload-system"
-                    >
-                      Equipment/system
-                    </label>
-                    <input
-                      id="upload-system"
-                      className="admin-panel__input admin-panel__input--full"
-                      value={metadata.equipmentOrSystem}
-                      disabled={submitting}
-                      onChange={(event) =>
-                        updateMetadata("equipmentOrSystem", event.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="admin-panel__field">
-                    <label
-                      className="admin-panel__field-label"
-                      htmlFor="upload-asset"
-                    >
-                      Asset (naming from register)
-                    </label>
-                    <input
-                      id="upload-asset"
-                      className="admin-panel__input"
-                      list="upload-asset-options"
-                      placeholder="Type to search the asset register…"
-                      value={assetLabel}
-                      onChange={(e) => setAssetLabel(e.target.value)}
-                    />
-                    <datalist id="upload-asset-options">
-                      {assetOptions.map((a) => (
-                        <option key={a.id} value={a.label} />
-                      ))}
-                    </datalist>
-                  </div>
-                  <div className="admin-panel__modal-field">
-                    <label
-                      className="admin-panel__field-label"
-                      htmlFor="upload-manufacturer"
-                    >
-                      Manufacturer
-                    </label>
-                    <input
-                      id="upload-manufacturer"
-                      className="admin-panel__input admin-panel__input--full"
-                      value={metadata.manufacturer}
-                      disabled={submitting}
-                      onChange={(event) =>
-                        updateMetadata("manufacturer", event.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="admin-panel__modal-field">
-                    <label className="admin-panel__field-label" htmlFor="upload-model">
-                      Model
-                    </label>
-                    <input
-                      id="upload-model"
-                      className="admin-panel__input admin-panel__input--full"
-                      value={metadata.model}
-                      disabled={submitting}
-                      onChange={(event) =>
-                        updateMetadata("model", event.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="admin-panel__modal-field">
-                    <label
-                      className="admin-panel__field-label"
-                      htmlFor="upload-revision"
-                    >
-                      Revision
-                    </label>
-                    <input
-                      id="upload-revision"
-                      className="admin-panel__input admin-panel__input--full"
-                      value={metadata.revision}
-                      disabled={submitting}
-                      onChange={(event) =>
-                        updateMetadata("revision", event.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="admin-panel__modal-field">
-                    <label className="admin-panel__field-label" htmlFor="upload-scope">
-                      Time scope
-                    </label>
-                    <select
-                      id="upload-scope"
-                      className="admin-panel__select admin-panel__input--full"
-                      value={metadata.timeScope}
-                      disabled={submitting}
-                      onChange={(event) =>
-                        updateMetadata("timeScope", event.target.value)
-                      }
-                    >
-                      <option value="">Default current</option>
-                      <option value="current">Current</option>
-                      <option value="past">Past</option>
-                      <option value="future">Future</option>
-                    </select>
-                  </div>
-                  <div className="admin-panel__modal-field">
-                    <label className="admin-panel__field-label" htmlFor="upload-focus">
-                      Content focus
-                    </label>
-                    <input
-                      id="upload-focus"
-                      className="admin-panel__input admin-panel__input--full"
-                      value={metadata.contentFocus}
-                      disabled={submitting}
-                      onChange={(event) =>
-                        updateMetadata("contentFocus", event.target.value)
-                      }
-                      placeholder="maintenance"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           <div className="admin-panel__modal-footer">

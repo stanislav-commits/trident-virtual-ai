@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AlertEntity } from './entities/alert.entity';
+import { AlertAssetBindingEntity } from './entities/alert-asset-binding.entity';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
@@ -15,6 +16,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
   imports: [
     TypeOrmModule.forFeature([
       AlertEntity,
+      AlertAssetBindingEntity,
       ShipMetricCatalogEntity,
       AssetEntity,
       ShipEntity,

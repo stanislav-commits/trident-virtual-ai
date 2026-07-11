@@ -950,44 +950,6 @@
   text-transform: capitalize;
 }
 
-.admin-panel__documents-upload-advanced {
-  border-radius: 12px;
-  border: 1px solid var(--chat-border);
-  background: var(--chat-surface);
-}
-
-.admin-panel__documents-upload-advanced-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border: none;
-  background: transparent;
-  color: var(--chat-text-muted);
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.admin-panel__documents-upload-advanced-toggle:hover:not(:disabled) {
-  color: var(--chat-text);
-}
-
-.admin-panel__documents-upload-advanced-toggle:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.admin-panel__documents-upload-metadata-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 0 14px 14px;
-}
-
 .admin-panel__document-progress {
   position: relative;
   display: block;
@@ -7374,10 +7336,6 @@
   .admin-panel__table--documents .admin-panel__th:nth-child(2),
   .admin-panel__table--documents .admin-panel__td:nth-child(2) {
     display: table-cell;
-  }
-
-  .admin-panel__documents-upload-metadata-grid {
-    grid-template-columns: 1fr;
   }
 
   .admin-panel__documents-reparse-metadata-grid {

@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AlertEntity } from './entities/alert.entity';
+import { AlertAssetBindingEntity } from './entities/alert-asset-binding.entity';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
@@ -42,6 +43,8 @@ export class AlertsService {
   constructor(
     @InjectRepository(AlertEntity)
     private readonly alertRepository: Repository<AlertEntity>,
+    @InjectRepository(AlertAssetBindingEntity)
+    private readonly bindingRepository: Repository<AlertAssetBindingEntity>,
     @InjectRepository(ShipMetricCatalogEntity)
     private readonly catalogRepository: Repository<ShipMetricCatalogEntity>,
     @InjectRepository(AssetEntity)
@@ -151,8 +154,30 @@ export class AlertsService {
     }
   }
 
-  /** ship_metric_catalog: key (`bucket::measurement::field`) -> ship + asset. */
+  /**
+   * Resolve ship + asset for an incoming alert: catalog first, then the
+   * hand-curated alertname→asset bindings as a last resort (the hand-made
+   * Grafana rules carry no metric_key/asset_id labels — see
+   * AlertAssetBindingEntity).
+   */
   private async resolve(
+    metricKey: string | null,
+    labels: Record<string, string>,
+  ): Promise<{ shipId: string | null; assetId: string | null }> {
+    const resolved = await this.resolveFromCatalog(metricKey, labels);
+    if (!resolved.assetId && resolved.shipId && labels.alertname) {
+      const binding = await this.bindingRepository.findOne({
+        where: { shipId: resolved.shipId, ruleName: labels.alertname },
+      });
+      if (binding) {
+        return { shipId: resolved.shipId, assetId: binding.assetId };
+      }
+    }
+    return resolved;
+  }
+
+  /** ship_metric_catalog: key (`bucket::measurement::field`) -> ship + asset. */
+  private async resolveFromCatalog(
     metricKey: string | null,
     labels: Record<string, string>,
   ): Promise<{ shipId: string | null; assetId: string | null }> {
