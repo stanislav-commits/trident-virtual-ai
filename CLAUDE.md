@@ -32,6 +32,11 @@ CI (`.github/workflows/ci.yml` + `checks` job in `deploy.yml`) runs typecheck + 
 - `frontend/src/api/` — one `<domain>Api.ts` per module + `core.ts` (`fetchWithAuth`, `getApiUrl`). `client.ts` is the legacy grab-bag — put new endpoints in per-domain files.
 - Alerts flow: Grafana Cloud (`tridentvirtual.grafana.net`, stack `stacks-1327514`) evaluates Influx and POSTs to `/api/alerts/grafana` (Bearer `GRAFANA_WEBHOOK_SECRET`). Rules use per-rule contact points (simplified routing); the Trident webhook is an extra integration inside each IRM receiver. Resolution: `metric_key` label → `ship_metric_catalog`, else `ship_id` label, else single-vessel fallback. Critical severity auto-creates an unplanned PMS task.
 
+## Working agreement
+
+- Run `/code-review` on the diff before every commit (bugs); `/simplify` optional for cleanups.
+- A PostToolUse hook (`.claude/settings.json`) runs tsc + eslint on the touched package after every Edit/Write to backend/frontend source — fix failures immediately, don't defer.
+
 ## Gotchas / conventions
 
 - **Secrets:** grep `.env` files by exact var name only (`grep '^VAR_NAME='`) — never dump them; never print secret values into chat/logs.

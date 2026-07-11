@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r \".tool_input.file_path // empty\"); case \"$f\" in */backend/src/*.ts) d=\"${f%%/backend/src/*}/backend\"; tsccmd=\"npx tsc --noEmit -p tsconfig.json\" ;; */frontend/src/*.ts|*/frontend/src/*.tsx) d=\"${f%%/frontend/src/*}/frontend\"; tsccmd=\"npx tsc -b\" ;; *) exit 0 ;; esac; cd \"$d\" || exit 0; out=$($tsccmd 2>&1) || { echo \"typecheck failed:\" >&2; echo \"$out\" >&2; exit 2; }; out=$(npx eslint \"$f\" 2>&1) || { echo \"eslint failed:\" >&2; echo \"$out\" >&2; exit 2; }",
+            "timeout": 180,
+            "statusMessage": "tsc + eslint on touched package"
+          }
+        ]
+      }
+    ]
+  }
+}
