@@ -7,6 +7,7 @@ import { AssetEntity } from '../assets/entities/asset.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { AlertsService } from './alerts.service';
 import { AlertsSchedulerService } from './alerts-scheduler.service';
+import { GrafanaRulesService } from './grafana-rules.service';
 import { AlertsController, AlertsWebhookController } from './alerts.controller';
 import { PmsModule } from '../pms/pms.module';
 import { ComplianceModule } from '../compliance/compliance.module';
@@ -26,7 +27,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
     AccessControlModule,
   ],
   controllers: [AlertsWebhookController, AlertsController],
-  providers: [AlertsService, AlertsSchedulerService],
+  providers: [AlertsService, AlertsSchedulerService, GrafanaRulesService],
   exports: [AlertsService],
 })
 export class AlertsModule {}

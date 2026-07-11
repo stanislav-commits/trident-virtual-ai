@@ -9,8 +9,27 @@ import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { PmsService } from '../pms/pms.service';
+import { GrafanaRulesService } from './grafana-rules.service';
 
 export type AlertDto = AlertEntity & { assetName: string | null };
+
+/** One row of the admin Rules panel (rule + binding + firing stats). */
+export interface AlertRuleDto {
+  ruleName: string;
+  folder: string | null;
+  group: string | null;
+  /** From the rule's severity label; null when the rule carries none. */
+  severity: string | null;
+  paused: boolean;
+  /** false = rule fired historically but is gone/renamed in Grafana. */
+  inGrafana: boolean;
+  state: 'firing' | 'ok';
+  lastFiredAt: Date | null;
+  episodes: number;
+  assetId: string | null;
+  assetName: string | null;
+  bindingNote: string | null;
+}
 
 /** Grafana unified-alerting webhook payload (the bits we use). */
 export interface GrafanaAlert {
@@ -53,6 +72,7 @@ export class AlertsService {
     private readonly shipRepository: Repository<ShipEntity>,
     private readonly pmsService: PmsService,
     private readonly configService: ConfigService,
+    private readonly grafanaRulesService: GrafanaRulesService,
   ) {}
 
   /** Ingest one Grafana webhook batch; returns how many alerts were applied. */
@@ -272,12 +292,14 @@ export class AlertsService {
     shipId: string,
     status?: string,
     allowedSources?: string[],
+    ruleName?: string,
   ): Promise<AlertDto[]> {
     // allowedSources gates by alert kind (metric alarms vs cert reminders) per
     // the viewer's access matrix. undefined = no restriction (admin/unlinked).
     if (allowedSources && allowedSources.length === 0) return [];
     const where: Record<string, unknown> = { shipId };
     if (status) where.status = status;
+    if (ruleName) where.ruleName = ruleName; // firing history of one rule
     if (allowedSources && allowedSources.length < 2) {
       where.source = In(allowedSources);
     }
@@ -374,6 +396,123 @@ export class AlertsService {
       take: 200,
     });
     return this.withAssetNames(rows);
+  }
+
+  /**
+   * Admin Rules panel: every alert rule with its binding + firing stats.
+   * Grafana's provisioning API is the source of truth for the rule LIST
+   * (when a SA token is configured); rules that ever fired into the webhook
+   * are merged in regardless, so the panel still works without the token.
+   */
+  async listRules(shipId: string): Promise<AlertRuleDto[]> {
+    const [grafanaRules, observed, bindings] = await Promise.all([
+      this.grafanaRulesService.listRules(),
+      this.alertRepository
+        .createQueryBuilder('a')
+        .select('a.rule_name', 'ruleName')
+        .addSelect('MAX(a.started_at)', 'lastFiredAt')
+        .addSelect('COUNT(*)', 'episodes')
+        .addSelect(
+          `BOOL_OR(a.status = 'firing')`,
+          'firingNow',
+        )
+        .where('a.ship_id = :shipId AND a.source = :source', {
+          shipId,
+          source: 'metric',
+        })
+        .groupBy('a.rule_name')
+        .getRawMany<{
+          ruleName: string;
+          lastFiredAt: Date;
+          episodes: string;
+          firingNow: boolean;
+        }>(),
+      this.bindingRepository.find({ where: { shipId } }),
+    ]);
+
+    const statsByRule = new Map(observed.map((o) => [o.ruleName, o]));
+    const bindingByRule = new Map(bindings.map((b) => [b.ruleName, b]));
+    const assetIds = [...new Set(bindings.map((b) => b.assetId))];
+    const assets = assetIds.length
+      ? await this.assetRepository.find({
+          where: { id: In(assetIds) },
+          select: ['id', 'displayName'],
+        })
+      : [];
+    const assetNameById = new Map(assets.map((a) => [a.id, a.displayName]));
+
+    const toDto = (
+      ruleName: string,
+      grafana?: { folder: string; group: string; labels: Record<string, string>; paused: boolean },
+    ): AlertRuleDto => {
+      const stats = statsByRule.get(ruleName);
+      const binding = bindingByRule.get(ruleName);
+      const sevLabel = grafana?.labels.severity ?? grafana?.labels.Severity;
+      return {
+        ruleName,
+        folder: grafana?.folder ?? null,
+        group: grafana?.group ?? null,
+        severity: sevLabel ? this.normSeverity(sevLabel) : null,
+        paused: grafana?.paused ?? false,
+        inGrafana: Boolean(grafana),
+        state: stats?.firingNow ? 'firing' : 'ok',
+        lastFiredAt: stats?.lastFiredAt ?? null,
+        episodes: stats ? Number(stats.episodes) : 0,
+        assetId: binding?.assetId ?? null,
+        assetName: binding
+          ? (assetNameById.get(binding.assetId) ?? null)
+          : null,
+        bindingNote: binding?.note ?? null,
+      };
+    };
+
+    const out: AlertRuleDto[] = [];
+    const seen = new Set<string>();
+    for (const r of grafanaRules ?? []) {
+      if (seen.has(r.ruleName)) continue; // duplicate titles collapse into one row
+      seen.add(r.ruleName);
+      out.push(toDto(r.ruleName, r));
+    }
+    for (const o of observed) {
+      if (seen.has(o.ruleName)) continue;
+      seen.add(o.ruleName);
+      out.push(toDto(o.ruleName)); // fired but (re)moved/renamed in Grafana
+    }
+    return out.sort((a, b) => a.ruleName.localeCompare(b.ruleName));
+  }
+
+  /**
+   * Manually bind (or unbind, assetId=null) a rule to a register asset. The
+   * whole firing history of the rule is re-pointed too, so the asset's Alerts
+   * tab and past episodes stay consistent with the new binding.
+   */
+  async setRuleBinding(
+    shipId: string,
+    ruleName: string,
+    assetId: string | null,
+  ): Promise<{ ruleName: string; assetId: string | null; rebound: number }> {
+    const name = ruleName.trim();
+    if (!name) throw new NotFoundException('Rule name is required');
+
+    if (assetId) {
+      const asset = await this.assetRepository.findOne({
+        where: { id: assetId, shipId },
+        select: ['id'],
+      });
+      if (!asset) throw new NotFoundException('Asset not found on this ship');
+      await this.bindingRepository.upsert(
+        { shipId, ruleName: name, assetId, note: 'manual (admin panel)' },
+        ['shipId', 'ruleName'],
+      );
+    } else {
+      await this.bindingRepository.delete({ shipId, ruleName: name });
+    }
+
+    const result = await this.alertRepository.update(
+      { shipId, ruleName: name },
+      { assetId },
+    );
+    return { ruleName: name, assetId, rebound: result.affected ?? 0 };
   }
 
   private async withAssetNames(rows: AlertEntity[]): Promise<AlertDto[]> {

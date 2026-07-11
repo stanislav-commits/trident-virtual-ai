@@ -81,9 +81,31 @@ export class AlertsController {
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Query('status') status?: string,
+    @Query('ruleName') ruleName?: string,
   ) {
     const allowedSources = await this.allowedAlertSources(user, shipId);
-    return this.alertsService.list(shipId, status, allowedSources);
+    return this.alertsService.list(shipId, status, allowedSources, ruleName);
+  }
+
+  /** Admin Rules panel: all Grafana rules + binding + firing stats. */
+  @Get('rules')
+  @Roles(UserRole.ADMIN)
+  listRules(@Param('shipId', ParseUUIDPipe) shipId: string) {
+    return this.alertsService.listRules(shipId);
+  }
+
+  /** Bind (assetId) or unbind (assetId: null) a rule to a register asset. */
+  @Post('rules/binding')
+  @Roles(UserRole.ADMIN)
+  setRuleBinding(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Body() body: { ruleName: string; assetId: string | null },
+  ) {
+    return this.alertsService.setRuleBinding(
+      shipId,
+      body.ruleName ?? '',
+      body.assetId ?? null,
+    );
   }
 
   /**

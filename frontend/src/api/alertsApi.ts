@@ -39,10 +39,57 @@ export async function listAlerts(
   token: string,
   shipId: string,
   status?: AlertStatus,
+  ruleName?: string,
 ): Promise<Alert[]> {
-  const q = status ? `?status=${status}` : "";
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (ruleName) params.set("ruleName", ruleName);
+  const qs = params.toString();
+  const q = qs ? `?${qs}` : "";
   const r = await fetchWithAuth(`ships/${shipId}/alerts${q}`, { token });
   await ok(r, "Load alerts");
+  return r.json();
+}
+
+/** One row of the admin Rules panel (rule + binding + firing stats). */
+export interface AlertRule {
+  ruleName: string;
+  folder: string | null;
+  group: string | null;
+  severity: AlertSeverity | null;
+  paused: boolean;
+  /** false = rule fired historically but is gone/renamed in Grafana. */
+  inGrafana: boolean;
+  state: "firing" | "ok";
+  lastFiredAt: string | null;
+  episodes: number;
+  assetId: string | null;
+  assetName: string | null;
+  bindingNote: string | null;
+}
+
+export async function listAlertRules(
+  token: string,
+  shipId: string,
+): Promise<AlertRule[]> {
+  const r = await fetchWithAuth(`ships/${shipId}/alerts/rules`, { token });
+  await ok(r, "Load alert rules");
+  return r.json();
+}
+
+export async function setAlertRuleBinding(
+  token: string,
+  shipId: string,
+  ruleName: string,
+  assetId: string | null,
+): Promise<{ ruleName: string; assetId: string | null; rebound: number }> {
+  const r = await fetchWithAuth(`ships/${shipId}/alerts/rules/binding`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ruleName, assetId }),
+  });
+  await ok(r, "Save rule binding");
   return r.json();
 }
 

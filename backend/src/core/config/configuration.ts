@@ -173,6 +173,14 @@ export default function configuration() {
       grafanaAlerts: {
         webhookSecret: process.env.GRAFANA_WEBHOOK_SECRET ?? '',
         autoTaskSeverity: process.env.ALERT_AUTO_TASK_SEVERITY ?? 'critical',
+        // Read-only rule-list sync for the admin Rules panel (see
+        // GrafanaRulesService). SA token needs alerting read.
+        apiUrl:
+          process.env.GRAFANA_API_URL ?? 'https://tridentvirtual.grafana.net',
+        saToken:
+          process.env.GRAFANA_ALERTS_SA_TOKEN ??
+          process.env.GRAFANA_SA_TOKEN ??
+          '',
       },
       visionExtractor: {
       dir: process.env.VISION_EXTRACTOR_DIR ?? '',
