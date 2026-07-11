@@ -75,6 +75,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<ComplianceDocType | null>(null);
   const batchInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [ingesting, setIngesting] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
@@ -99,9 +100,28 @@ export function ComplianceSection({ token }: { token: string | null }) {
     [overview],
   );
 
+  /** The ingest/preview endpoint accepts at most this many files per call. */
+  const BATCH_LIMIT = 30;
+  /** What the AI reader can ingest — everything else in a folder is skipped. */
+  const isSupportedDoc = (f: File) =>
+    !f.name.startsWith(".") && /\.(pdf|png|jpe?g|webp|tiff?|bmp)$/i.test(f.name);
+
   const onBatchUpload = async (fileList: FileList | null) => {
     if (!token || !shipId || !fileList?.length) return;
-    const files = Array.from(fileList);
+    // Folder picks arrive recursively and full of junk (.DS_Store, sidecars)
+    // — keep only what the reader supports.
+    const files = Array.from(fileList).filter(isSupportedDoc);
+    if (files.length === 0) {
+      setError("No PDFs or images found in the selection.");
+      return;
+    }
+    if (files.length > BATCH_LIMIT) {
+      setError(
+        `${files.length} supported files selected — the batch limit is ${BATCH_LIMIT} per upload. Split the folder and upload in parts.`,
+      );
+      return;
+    }
+    setError(null);
     setIngesting(true);
     try {
       const { proposals } = await previewComplianceDocs(token, shipId, files);
@@ -493,6 +513,15 @@ export function ComplianceSection({ token }: { token: string | null }) {
           </label>
           <button
             type="button"
+            className="compliance__action-btn"
+            onClick={() => folderInputRef.current?.click()}
+            disabled={ingesting}
+            title="Pick a folder — every PDF/image inside (subfolders included) goes into one review batch."
+          >
+            {ingesting ? "Reading…" : "Upload folder"}
+          </button>
+          <button
+            type="button"
             className="compliance__action-btn compliance__action-btn--primary"
             onClick={() => batchInputRef.current?.click()}
             disabled={ingesting}
@@ -506,6 +535,18 @@ export function ComplianceSection({ token }: { token: string | null }) {
             accept=".pdf,application/pdf,image/*"
             multiple
             style={{ display: "none" }}
+            onChange={(e) => {
+              void onBatchUpload(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <input
+            ref={folderInputRef}
+            type="file"
+            style={{ display: "none" }}
+            // Non-standard but universal (Chrome/Edge/Safari/Firefox):
+            // directory picker; files arrive recursively.
+            {...({ webkitdirectory: "" } as Record<string, string>)}
             onChange={(e) => {
               void onBatchUpload(e.target.files);
               e.target.value = "";
