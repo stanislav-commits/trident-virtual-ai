@@ -297,22 +297,28 @@ export function AssetsSection({ token }: AssetsSectionProps) {
   // Inline-edit save handler for a single field on a single asset. Returns
   // a closure so each cell only re-renders when ITS asset changes.
   const [savingAssetId, setSavingAssetId] = useState<string | null>(null);
+  // Multi-field variant — the drawer's SFI cascade saves code+name together.
+  const patchAsset = useCallback(
+    async (assetId: string, patch: UpdateAssetInput) => {
+      if (!token || !effectiveShipId) return;
+      setSavingAssetId(assetId);
+      try {
+        await updateAsset(token, effectiveShipId, assetId, patch);
+        await reload();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Update failed");
+        throw e;
+      } finally {
+        setSavingAssetId(null);
+      }
+    },
+    [token, effectiveShipId, reload, setError],
+  );
   const makeFieldSaver = useCallback(
     (assetId: string, field: keyof UpdateAssetInput) =>
-      async (next: string | null) => {
-        if (!token || !effectiveShipId) return;
-        setSavingAssetId(assetId);
-        try {
-          await updateAsset(token, effectiveShipId, assetId, { [field]: next });
-          await reload();
-        } catch (e) {
-          setError(e instanceof Error ? e.message : "Update failed");
-          throw e;
-        } finally {
-          setSavingAssetId(null);
-        }
-      },
-    [token, effectiveShipId, reload, setError],
+      (next: string | null) =>
+        patchAsset(assetId, { [field]: next }),
+    [patchAsset],
   );
 
   // ── Import flow (preview → confirm → commit) ──
@@ -883,6 +889,7 @@ export function AssetsSection({ token }: AssetsSectionProps) {
             onRefreshRelated={refreshRelated}
             onError={setError}
             makeFieldSaver={makeFieldSaver}
+            onPatch={patchAsset}
           />
         )}
       </div>

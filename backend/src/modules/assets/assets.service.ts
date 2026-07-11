@@ -381,6 +381,49 @@ export class AssetsService {
     });
   }
 
+  /**
+   * Next free asset id for a sub-group: `<PREFIX>.<sub>.<NN>` where PREFIX is
+   * the ship's register prefix (taken from its existing ids, e.g. SWX) and NN
+   * is one past the highest sequence already used under that sub. Drives the
+   * auto-filled ID in the "Add asset" modal — the operator picks group→sub
+   * and gets a ready id.
+   */
+  async nextAssetId(
+    shipId: string,
+    sfiSub: string,
+  ): Promise<{ assetIdInternal: string | null; prefix: string | null }> {
+    const sub = sfiSub.trim();
+    if (!sub) return { assetIdInternal: null, prefix: null };
+
+    // Register prefix = the token before the first dot, majority-voted over
+    // the ship's existing ids (SWX.1.10.01 → SWX).
+    const rows: Array<{ id: string }> = await this.assetRepository
+      .createQueryBuilder('a')
+      .select('a.asset_id_internal', 'id')
+      .where('a.ship_id = :shipId', { shipId })
+      .getRawMany();
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      const m = /^([A-Za-z][A-Za-z0-9]*)\./.exec(r.id);
+      if (m) counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+    }
+    const prefix =
+      [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    if (!prefix) return { assetIdInternal: null, prefix: null };
+
+    // Highest existing sequence under `<PREFIX>.<sub>.` (suffixes like -PS
+    // after the number are fine — we only parse the leading digits).
+    const head = `${prefix}.${sub}.`;
+    let max = 0;
+    for (const r of rows) {
+      if (!r.id.startsWith(head)) continue;
+      const m = /^(\d+)/.exec(r.id.slice(head.length));
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    const seq = String(max + 1).padStart(2, '0');
+    return { assetIdInternal: `${head}${seq}`, prefix };
+  }
+
   async create(shipId: string, input: CreateAssetDto): Promise<AssetEntity> {
     await this.assertShipExists(shipId);
     const existing = await this.assetRepository.findOne({

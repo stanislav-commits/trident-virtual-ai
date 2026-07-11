@@ -363,6 +363,7 @@ export type CreateAssetInput = {
   assetIdInternal: string;
   displayName: string;
   sfiGroup?: string;
+  sfiGroupName?: string;
   sfiSub?: string;
   sfiSubName?: string;
   brand?: string;
@@ -373,6 +374,23 @@ export type CreateAssetInput = {
   lifecycleStatus?: string;
   notes?: string;
 };
+
+/** Next free `<PREFIX>.<sub>.<NN>` id for the ship+sub (Add-asset autofill). */
+export async function fetchNextAssetId(
+  token: string,
+  shipId: string,
+  sfiSub: string,
+): Promise<{ assetIdInternal: string | null; prefix: string | null }> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/assets/next-id?sfiSub=${encodeURIComponent(sfiSub)}`,
+    { token },
+  );
+  if (!response.ok) return { assetIdInternal: null, prefix: null };
+  return (await response.json()) as {
+    assetIdInternal: string | null;
+    prefix: string | null;
+  };
+}
 
 /** Create a single asset on a ship. 409 if assetIdInternal already exists. */
 export async function createAsset(

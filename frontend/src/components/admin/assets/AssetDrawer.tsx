@@ -15,6 +15,7 @@ import {
 } from "../../../api/assetsApi";
 import type { AssetComplianceRecord } from "../../../api/complianceApi";
 import { formatDateDMY } from "../compliance/complianceLabels";
+import { fetchSfiGroups, fetchSfiSubs, type SfiNode } from "../../../api/sfiApi";
 import {
   fetchDocumentFile,
   fetchExtractedMarkdown,
@@ -58,6 +59,108 @@ type DrawerTab = "overview" | "metrics" | "manuals" | "pms" | "certs" | "parts" 
  * focus is lost mid-edit (the known "can't type more than one character"
  * bug in this codebase).
  */
+/**
+ * SFI group / sub-group selectors driven by the taxonomy catalog. Picking a
+ * group saves code+name and clears the sub pair; picking a sub saves its
+ * code+name. The names themselves are never hand-edited.
+ */
+function SfiCascadeRows({
+  token,
+  asset,
+  onPatch,
+}: {
+  token: string | null;
+  asset: AssetItem;
+  onPatch: (assetId: string, patch: UpdateAssetInput) => Promise<void>;
+}) {
+  const [groups, setGroups] = useState<SfiNode[]>([]);
+  const [subs, setSubs] = useState<SfiNode[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    void fetchSfiGroups(token)
+      .then(setGroups)
+      .catch(() => setGroups([]));
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || !asset.sfiGroup) {
+      setSubs([]);
+      return;
+    }
+    void fetchSfiSubs(token, asset.sfiGroup)
+      .then(setSubs)
+      .catch(() => setSubs([]));
+  }, [token, asset.sfiGroup]);
+
+  const pickGroup = async (code: string) => {
+    const group = groups.find((g) => g.code === code);
+    setBusy(true);
+    try {
+      await onPatch(asset.id, {
+        sfiGroup: code || null,
+        sfiGroupName: group?.name ?? null,
+        // group change invalidates the previous sub pair
+        sfiSub: null,
+        sfiSubName: null,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickSub = async (code: string) => {
+    const sub = subs.find((s) => s.code === code);
+    setBusy(true);
+    try {
+      await onPatch(asset.id, {
+        sfiSub: code || null,
+        sfiSubName: sub?.name ?? null,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="assets-section__field assets-section__field--half">
+        <span className="assets-section__field-label">SFI group</span>
+        <select
+          className="assets-section__field-select"
+          value={asset.sfiGroup ?? ""}
+          disabled={busy}
+          onChange={(e) => void pickGroup(e.target.value)}
+        >
+          <option value="">—</option>
+          {groups.map((g) => (
+            <option key={g.code} value={g.code}>
+              {g.code} — {g.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="assets-section__field assets-section__field--half">
+        <span className="assets-section__field-label">SFI sub</span>
+        <select
+          className="assets-section__field-select"
+          value={asset.sfiSub ?? ""}
+          disabled={busy || !asset.sfiGroup}
+          onChange={(e) => void pickSub(e.target.value)}
+        >
+          <option value="">{asset.sfiGroup ? "—" : "Select group first"}</option>
+          {subs.map((s) => (
+            <option key={s.code} value={s.code}>
+              {s.code} — {s.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </>
+  );
+}
+
 function OverviewFieldRow({
   label,
   value,
@@ -112,6 +215,8 @@ export interface AssetDrawerProps {
     assetId: string,
     field: keyof UpdateAssetInput,
   ) => (next: string | null) => Promise<void>;
+  /** Multi-field save — the SFI cascade writes code + name together. */
+  onPatch: (assetId: string, patch: UpdateAssetInput) => Promise<void>;
 }
 
 /**
@@ -130,6 +235,7 @@ export function AssetDrawer({
   onRefreshRelated,
   onError,
   makeFieldSaver,
+  onPatch,
 }: AssetDrawerProps) {
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
   const [suggestPreview, setSuggestPreview] = useState<PmsImportPreview | null>(
@@ -435,10 +541,11 @@ export function AssetDrawer({
       <div className="assets-section__drawer-section">
         {/* Only the columns present in the final register format (14-col). */}
         <div className="assets-section__drawer-fields">
-          <OverviewFieldRow label="SFI group" value={asset.sfiGroup} onSave={save("sfiGroup")} />
-          <OverviewFieldRow label="SFI sub" value={asset.sfiSub} onSave={save("sfiSub")} />
-          <OverviewFieldRow label="Group name" value={asset.sfiGroupName} onSave={save("sfiGroupName")} />
-          <OverviewFieldRow label="Sub name" value={asset.sfiSubName} onSave={save("sfiSubName")} />
+          {/* SFI comes from the taxonomy: pick group → sub; the names are
+              static catalog values saved alongside the codes. */}
+          <SfiCascadeRows token={token} asset={asset} onPatch={onPatch} />
+          <OverviewFieldRow label="Group name" value={asset.sfiGroupName} />
+          <OverviewFieldRow label="Sub name" value={asset.sfiSubName} />
           <OverviewFieldRow label="Brand" value={asset.brand} onSave={save("brand")} />
           <OverviewFieldRow label="Model" value={asset.model} onSave={save("model")} />
           <OverviewFieldRow label="Serial №" value={asset.serialNo} onSave={save("serialNo")} />

@@ -1,6 +1,10 @@
 import { createPortal } from "react-dom";
 import { useEffect, useState, type FormEvent } from "react";
-import { createAsset, type CreateAssetInput } from "../../../api/assetsApi";
+import {
+  createAsset,
+  fetchNextAssetId,
+  type CreateAssetInput,
+} from "../../../api/assetsApi";
 import { fetchSfiGroups, fetchSfiSubs, type SfiNode } from "../../../api/sfiApi";
 import { AssetsIcon, XIcon } from "../AdminPanelIcons";
 
@@ -15,6 +19,7 @@ const EMPTY = {
   assetIdInternal: "",
   displayName: "",
   sfiGroup: "",
+  sfiGroupName: "",
   sfiSub: "",
   sfiSubName: "",
   brand: "",
@@ -61,11 +66,22 @@ export function AssetFormModal({
     };
   }, [token]);
 
+  // Tracks whether the ID field still holds our auto-generated value — a
+  // hand-edited ID is never overwritten by a later sub-group change.
+  const [autoId, setAutoId] = useState(true);
+
   const onGroupChange = async (
     e: React.ChangeEvent<HTMLSelectElement>,
   ): Promise<void> => {
     const code = e.target.value;
-    setForm((f) => ({ ...f, sfiGroup: code, sfiSub: "", sfiSubName: "" }));
+    const group = groups.find((g) => g.code === code);
+    setForm((f) => ({
+      ...f,
+      sfiGroup: code,
+      sfiGroupName: group?.name ?? "",
+      sfiSub: "",
+      sfiSubName: "",
+    }));
     setSubs([]);
     if (!code) return;
     setSubsLoading(true);
@@ -78,10 +94,20 @@ export function AssetFormModal({
     }
   };
 
-  const onSubChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+  const onSubChange = async (
+    e: React.ChangeEvent<HTMLSelectElement>,
+  ): Promise<void> => {
     const code = e.target.value;
     const sub = subs.find((s) => s.code === code);
     setForm((f) => ({ ...f, sfiSub: code, sfiSubName: sub?.name ?? "" }));
+    if (!code || !autoId) return;
+    // Auto-fill the next free id under this sub (still editable).
+    const next = await fetchNextAssetId(token, shipId, code);
+    if (next.assetIdInternal) {
+      setForm((f) =>
+        f.sfiSub === code ? { ...f, assetIdInternal: next.assetIdInternal! } : f,
+      );
+    }
   };
 
   const set =
@@ -106,6 +132,7 @@ export function AssetFormModal({
     };
     const optional: Array<keyof CreateAssetInput> = [
       "sfiGroup",
+      "sfiGroupName",
       "sfiSub",
       "sfiSubName",
       "brand",
@@ -170,8 +197,11 @@ export function AssetFormModal({
                 type="text"
                 className="admin-panel__input admin-panel__input--full"
                 value={form.assetIdInternal}
-                onChange={set("assetIdInternal")}
-                placeholder="e.g. SWX.3.2.1.01-PS"
+                onChange={(e) => {
+                  setAutoId(false); // hand-edited — stop auto-overwriting
+                  set("assetIdInternal")(e);
+                }}
+                placeholder="pick group → sub to auto-fill"
                 required
                 disabled={submitting}
                 autoFocus
@@ -217,7 +247,7 @@ export function AssetFormModal({
               <select
                 className="admin-panel__input admin-panel__input--full"
                 value={form.sfiSub}
-                onChange={onSubChange}
+                onChange={(e) => void onSubChange(e)}
                 disabled={submitting || !form.sfiGroup || subsLoading}
               >
                 <option value="">

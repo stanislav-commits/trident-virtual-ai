@@ -65,6 +65,16 @@ export class AssetsController {
     return new StreamableFile(buffer);
   }
 
+  // NOTE: must be declared BEFORE @Get(':assetId') — see export-xlsx above.
+  @Get('next-id')
+  @Roles(UserRole.ADMIN)
+  nextId(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Query('sfiSub') sfiSub: string,
+  ) {
+    return this.assetsService.nextAssetId(shipId, sfiSub ?? '');
+  }
+
   @Get(':assetId')
   getOne(
     @Param('shipId', ParseUUIDPipe) shipId: string,
