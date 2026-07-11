@@ -217,7 +217,7 @@ export function AlertsSection({ token }: AlertsSectionProps) {
         </button>
       </div>
 
-      <div className="inv__toolbar">
+      <div className="inv__toolbar alerts__toolbar">
         {tab === "alerts" ? (
           <>
             <div className="pms__segmented" role="group">
