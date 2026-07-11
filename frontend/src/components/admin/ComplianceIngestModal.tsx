@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { XIcon } from "./AdminPanelIcons";
 import { CascadingSelect, type CascadeGroup } from "./CascadingSelect";
 import {
   prettyLabel,
@@ -211,18 +210,14 @@ export function ComplianceIngestModal({
   };
 
   return createPortal(
-    <div className="admin-panel__modal-overlay" onClick={onCancel}>
-      <div
-        className="admin-panel__modal compliance__ingest-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    // No overlay-click / X close: the operator may have half-filled fields,
+    // and a stray click outside must not throw them away. Cancel only.
+    <div className="admin-panel__modal-overlay">
+      <div className="admin-panel__modal compliance__ingest-modal">
         <div className="admin-panel__modal-header">
           <h3>
             Review {proposals.length} document{proposals.length === 1 ? "" : "s"}
           </h3>
-          <button type="button" className="admin-panel__icon-btn" onClick={onCancel}>
-            <XIcon />
-          </button>
         </div>
 
         <div className="compliance__ingest-body">
