@@ -14,6 +14,7 @@ import {
   type UpdateAssetInput,
 } from "../../../api/assetsApi";
 import type { AssetComplianceRecord } from "../../../api/complianceApi";
+import { formatDateDMY } from "../compliance/complianceLabels";
 import {
   fetchDocumentFile,
   fetchExtractedMarkdown,
@@ -653,7 +654,8 @@ export function AssetDrawer({
               {rec.certNo ? ` · ${rec.certNo}` : ""}
             </span>
             <span className="compliance__record-dates">
-              {rec.issueDate ?? "?"} → {rec.expiryDate ?? "—"}
+              {formatDateDMY(rec.issueDate) ?? "?"} →{" "}
+              {formatDateDMY(rec.expiryDate) ?? "—"}
             </span>
           </div>
         ))}

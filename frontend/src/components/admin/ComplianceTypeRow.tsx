@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ComplianceDocType } from "../../api/complianceApi";
 import { StatusBadge } from "./StatusBadge";
-import { prettyLabel } from "./compliance/complianceLabels";
+import { prettyLabel, formatDateDMY } from "./compliance/complianceLabels";
 
 interface ComplianceTypeRowProps {
   type: ComplianceDocType;
@@ -186,7 +186,8 @@ export function ComplianceTypeRow({
                       )}
                     </span>
                     <span className="compliance__record-dates">
-                      {rec.issueDate ?? "?"} → {rec.expiryDate ?? "—"}
+                      {formatDateDMY(rec.issueDate) ?? "?"} →{" "}
+                      {formatDateDMY(rec.expiryDate) ?? "—"}
                     </span>
                     {rec.hasFile && (
                       <button

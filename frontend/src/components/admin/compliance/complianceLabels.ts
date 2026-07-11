@@ -65,6 +65,13 @@ export function foldToSchema(
   return out;
 }
 
+/** ISO (yyyy-mm-dd…) → display dd/mm/yyyy; non-dates pass through. */
+export function formatDateDMY(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 /** HTML input type for an archetype field datatype. */
 export function inputTypeFor(datatype: string): string {
   return datatype === "date"
