@@ -1,8 +1,9 @@
-name: Deploy to Droplet
+name: CI
 
 on:
+  pull_request:
   push:
-    branches: ["main"]
+    branches-ignore: ["main"]
 
 jobs:
   checks:
@@ -34,20 +35,3 @@ jobs:
       - name: Frontend build
         working-directory: frontend
         run: npm run build
-
-  deploy:
-    needs: checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: SSH deploy
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            git fetch origin --prune
-            git reset --hard origin/main
-            chmod +x ./scripts/deploy.sh
-            bash ./scripts/deploy.sh
