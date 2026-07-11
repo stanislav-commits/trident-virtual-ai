@@ -208,7 +208,53 @@ export function AlertsSection({ token }: AlertsSectionProps) {
               : `${ruleCounts.total} rules · ${ruleCounts.bound} bound to assets · ${ruleCounts.firing} firing`}
           </p>
         </div>
-        <div className="pms__segmented" role="group">
+        <button
+          type="button"
+          className="pms__btn"
+          onClick={() => void (tab === "alerts" ? refresh() : refreshRules())}
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="inv__toolbar">
+        {tab === "alerts" ? (
+          <>
+            <div className="pms__segmented" role="group">
+              {(["firing", "resolved", "all"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`pms__seg${view === v ? " pms__seg--on" : ""}`}
+                  onClick={() => setView(v)}
+                >
+                  {v[0].toUpperCase() + v.slice(1)}
+                </button>
+              ))}
+            </div>
+            <select
+              className="pms__cat-filter"
+              value={sevFilter}
+              onChange={(e) => setSevFilter(e.target.value)}
+            >
+              <option value="all">All severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="warning">Warning</option>
+              <option value="info">Info</option>
+            </select>
+          </>
+        ) : (
+          <input
+            className="pms__cat-filter"
+            placeholder="Filter rules / folders / assets…"
+            value={ruleFilter}
+            onChange={(e) => setRuleFilter(e.target.value)}
+          />
+        )}
+
+        {/* Alerts | Rules switcher — same row as the toolbar controls. */}
+        <div className="pms__segmented alerts__tabs" role="group">
           {(["alerts", "rules"] as const).map((t) => (
             <button
               key={t}
@@ -220,53 +266,7 @@ export function AlertsSection({ token }: AlertsSectionProps) {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className="pms__btn"
-          onClick={() => void (tab === "alerts" ? refresh() : refreshRules())}
-        >
-          Refresh
-        </button>
       </div>
-
-      {tab === "alerts" && (
-        <div className="inv__toolbar">
-          <div className="pms__segmented" role="group">
-            {(["firing", "resolved", "all"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                className={`pms__seg${view === v ? " pms__seg--on" : ""}`}
-                onClick={() => setView(v)}
-              >
-                {v[0].toUpperCase() + v.slice(1)}
-              </button>
-            ))}
-          </div>
-          <select
-            className="pms__cat-filter"
-            value={sevFilter}
-            onChange={(e) => setSevFilter(e.target.value)}
-          >
-            <option value="all">All severities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="warning">Warning</option>
-            <option value="info">Info</option>
-          </select>
-        </div>
-      )}
-
-      {tab === "rules" && (
-        <div className="inv__toolbar">
-          <input
-            className="pms__cat-filter"
-            placeholder="Filter rules / folders / assets…"
-            value={ruleFilter}
-            onChange={(e) => setRuleFilter(e.target.value)}
-          />
-        </div>
-      )}
 
       {note && <div className="pms__import-note">{note}</div>}
 

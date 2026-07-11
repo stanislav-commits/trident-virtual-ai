@@ -10384,6 +10384,10 @@
 .inv__sub { margin: 2px 0 0; font-size: 13px; color: var(--chat-text-muted); }
 .inv__empty { color: var(--chat-text-muted); font-size: 14px; padding: 20px 0; }
 .inv__toolbar { display: flex; gap: 10px; }
+/* Alerts | Rules switcher lives in the toolbar row: right-aligned, equal-width
+   segments (flex:1 alone shrinks to content since the box is content-sized). */
+.alerts__tabs { margin-left: auto; }
+.alerts__tabs .pms__seg { min-width: 82px; text-align: center; }
 .inv__table-wrap { overflow-x: auto; border: 1px solid var(--chat-border); border-radius: 10px; }
 .inv__table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .inv__table thead th {
