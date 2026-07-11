@@ -100,7 +100,8 @@ export class AlertsService {
       labels.metricKey ||
       this.deriveMetricKey(labels);
     const { shipId, assetId } = await this.resolve(metricKey, labels);
-    const severity = this.normSeverity(labels.severity);
+    // Hand-made Grafana rules label severity as either `severity` or `Severity`.
+    const severity = this.normSeverity(labels.severity ?? labels.Severity);
     const value = this.firstValue(a);
     const title =
       a.annotations?.summary?.trim() ||
@@ -383,7 +384,7 @@ export class AlertsService {
 
   private normSeverity(raw?: string): string {
     const v = (raw ?? '').toLowerCase().trim();
-    if (v === 'critical' || v === 'crit') return 'critical';
+    if (v === 'critical' || v === 'crit' || v === 'emergency') return 'critical';
     if (v === 'high' || v === 'error' || v === 'major') return 'high';
     if (v === 'info' || v === 'information') return 'info';
     if (v === 'warning' || v === 'warn' || v === 'minor') return 'warning';
