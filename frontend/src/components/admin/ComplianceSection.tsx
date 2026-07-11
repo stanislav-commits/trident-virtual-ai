@@ -246,6 +246,27 @@ export function ComplianceSection({ token }: { token: string | null }) {
     visibleSections[0] ??
     null;
 
+  // Global type search (name or code) across every section; results are
+  // grouped per section in the main panel while the query is non-empty.
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLowerCase();
+  const searchResults = useMemo(() => {
+    if (!query) return null;
+    return visibleSections
+      .map((s) => ({
+        section: s,
+        types: (hideNotRequired
+          ? s.types.filter((t) => t.status !== null)
+          : s.types
+        ).filter(
+          (t) =>
+            t.name.toLowerCase().includes(query) ||
+            t.sfiCode.toLowerCase().includes(query),
+        ),
+      }))
+      .filter((g) => g.types.length > 0);
+  }, [visibleSections, query, hideNotRequired]);
+
   // Extraction values (unknown-typed) → the modal's string form values.
   const toFormFields = (f: Record<string, unknown> | null | undefined) => {
     const out: Record<string, string> = {};
@@ -592,6 +613,16 @@ export function ComplianceSection({ token }: { token: string | null }) {
       )}
 
       {overview && overview.sections.length > 0 && (
+        <input
+          className="compliance__search"
+          type="search"
+          placeholder="Search document types — name or code…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      )}
+
+      {overview && overview.sections.length > 0 && (
         <div className="compliance__layout">
           <nav className="compliance__rail">
             {visibleSections.map((section) => {
@@ -607,7 +638,10 @@ export function ComplianceSection({ token }: { token: string | null }) {
                   className={`compliance__rail-item${
                     isActive ? " compliance__rail-item--active" : ""
                   }`}
-                  onClick={() => setActiveSection(section.sectionCode)}
+                  onClick={() => {
+                    setActiveSection(section.sectionCode);
+                    setSearch(""); // rail click leaves search mode
+                  }}
                 >
                   <span className="compliance__rail-name">
                     {section.sectionName}
@@ -634,34 +668,58 @@ export function ComplianceSection({ token }: { token: string | null }) {
           </nav>
 
           <div className="compliance__main">
-            {current && (
-              <>
-                <div className="compliance__main-head">
-                  {current.sectionCode} {current.sectionName}
-                </div>
-                {(hideNotRequired
-                  ? current.types.filter((t) => t.status !== null)
-                  : current.types
-                ).map((type) => (
-                  <ComplianceTypeRow
-                    key={type.id}
-                    type={type}
-                    assetOptions={assetOptions}
-                    crewOptions={crewOptions}
-                    onAddLink={addLink}
-                    onRemoveLink={removeLink}
-                    adding={addingTypeId === type.id}
-                    onAddDocument={() => startAddDocument(type)}
-                    onEditRecord={(docId) => {
-                      const rec = type.records.find((r) => r.id === docId);
-                      if (rec) void startEditRecord(type, rec);
-                    }}
-                    onDeleteRecord={(docId) => void removeRecord(docId)}
-                    onOpenFile={(docId) => void openFile(docId)}
-                  />
-                ))}
-              </>
-            )}
+            {(() => {
+              const renderTypeRow = (type: ComplianceDocType) => (
+                <ComplianceTypeRow
+                  key={type.id}
+                  type={type}
+                  assetOptions={assetOptions}
+                  crewOptions={crewOptions}
+                  onAddLink={addLink}
+                  onRemoveLink={removeLink}
+                  adding={addingTypeId === type.id}
+                  onAddDocument={() => startAddDocument(type)}
+                  onEditRecord={(docId) => {
+                    const rec = type.records.find((r) => r.id === docId);
+                    if (rec) void startEditRecord(type, rec);
+                  }}
+                  onDeleteRecord={(docId) => void removeRecord(docId)}
+                  onOpenFile={(docId) => void openFile(docId)}
+                />
+              );
+
+              if (searchResults) {
+                if (searchResults.length === 0) {
+                  return (
+                    <div className="compliance__placeholder">
+                      Nothing matches “{search.trim()}”.
+                    </div>
+                  );
+                }
+                // Search mode: matches from every section, grouped.
+                return searchResults.map(({ section, types }) => (
+                  <div key={section.sectionCode}>
+                    <div className="compliance__main-head">
+                      {section.sectionCode} {section.sectionName}
+                    </div>
+                    {types.map(renderTypeRow)}
+                  </div>
+                ));
+              }
+
+              if (!current) return null;
+              return (
+                <>
+                  <div className="compliance__main-head">
+                    {current.sectionCode} {current.sectionName}
+                  </div>
+                  {(hideNotRequired
+                    ? current.types.filter((t) => t.status !== null)
+                    : current.types
+                  ).map(renderTypeRow)}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

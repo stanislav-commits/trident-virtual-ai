@@ -9111,6 +9111,12 @@
   padding: 12px 16px; margin-bottom: 10px; font-size: 0.875rem;
 }
 .compliance__placeholder { color: var(--chat-text-muted); font-size: 13px; padding: 18px 0; }
+.compliance__search {
+  width: 320px; margin: 0 0 12px; font-size: 13px; padding: 7px 10px;
+  border: 1px solid var(--chat-border); border-radius: 6px;
+  background: var(--chat-surface); color: var(--chat-text);
+}
+.compliance__search::placeholder { color: var(--chat-text-muted); }
 .compliance__layout {
   display: flex; gap: 14px; align-items: flex-start;
 }
