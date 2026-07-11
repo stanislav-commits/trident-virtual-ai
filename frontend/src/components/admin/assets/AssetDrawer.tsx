@@ -585,6 +585,20 @@ export function AssetDrawer({
                       : `matched by drawing ref ${asset.drawingCode ?? asset.drawingRef ?? ""}`}
                   </span>
                 </button>
+                <button
+                  type="button"
+                  className="assets-section__metric-unbind"
+                  onClick={() => void handleUnlinkManual(d.id)}
+                  disabled={unlinkingDocId === d.id}
+                  aria-label={`Detach ${d.originalFileName}`}
+                  title={
+                    d.linkSource === "explicit"
+                      ? "Remove this drawing link"
+                      : "Wrong match — hide this drawing for this asset permanently"
+                  }
+                >
+                  {unlinkingDocId === d.id ? "…" : "×"}
+                </button>
               </div>
             ))}
           </div>
