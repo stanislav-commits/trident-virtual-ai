@@ -11,6 +11,7 @@ import { LlmService } from '../../../integrations/llm/llm.service';
 import { AssetEntity } from '../../assets/entities/asset.entity';
 import { AssetDocumentLinkEntity } from '../../assets/entities/asset-document-link.entity';
 import { DocumentEntity } from '../entities/document.entity';
+import { DocumentDocClass } from '../enums/document-doc-class.enum';
 import { DocumentsUploadStorageService } from '../ingestion/documents-upload-storage.service';
 import { DocumentsRemoteIngestionDispatcherService } from '../ingestion/documents-remote-ingestion-dispatcher.service';
 
@@ -18,6 +19,20 @@ const execFileAsync = promisify(execFile);
 
 /** 45 min: vision runs gpt-4o per page; big manuals take a while. */
 const EXTRACTION_TIMEOUT_MS = 45 * 60 * 1000;
+
+/**
+ * Vision extraction is for equipment manuals (and fleet publications): scans,
+ * diagrams, mixed layouts, register naming. PLANS are a pure file store, and
+ * PROCEDURES/FORMS are clean text/table PDFs that RAGFlow's own parser
+ * handles — running gpt-4o per page on them is wasted quota.
+ */
+export function isVisionEligible(docClass: string): boolean {
+  return (
+    docClass !== DocumentDocClass.PLAN &&
+    docClass !== DocumentDocClass.PROCEDURE &&
+    docClass !== DocumentDocClass.FORM
+  );
+}
 
 export type ExtractionStatus =
   | 'none'
@@ -60,11 +75,29 @@ export class VisionExtractionService implements OnApplicationBootstrap {
     if (!this.isEnabled()) return;
     const stranded = await this.documentsRepository.find({
       where: { extractionStatus: In(['pending', 'running']) },
-      select: ['id', 'extractionStatus'],
+      select: ['id', 'extractionStatus', 'docClass'],
       order: { createdAt: 'ASC' },
     });
     if (stranded.length === 0) return;
-    const interrupted = stranded.filter(
+
+    // Docs whose class is no longer vision-eligible (e.g. procedures queued
+    // before the rule changed) leave the queue: status 'none' hands them to
+    // the remote-ingestion dispatcher, which uploads the original PDF.
+    const outgrown = stranded.filter((d) => !isVisionEligible(d.docClass));
+    if (outgrown.length > 0) {
+      await this.documentsRepository.update(
+        { id: In(outgrown.map((d) => d.id)) },
+        { extractionStatus: 'none' },
+      );
+      this.logger.log(
+        `Released ${outgrown.length} queued doc(s) from vision to direct RAGFlow ingestion`,
+      );
+      void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
+    }
+
+    const eligible = stranded.filter((d) => isVisionEligible(d.docClass));
+    if (eligible.length === 0) return;
+    const interrupted = eligible.filter(
       (d) => d.extractionStatus === 'running',
     );
     if (interrupted.length > 0) {
@@ -74,9 +107,9 @@ export class VisionExtractionService implements OnApplicationBootstrap {
       );
     }
     this.logger.log(
-      `Re-queueing ${stranded.length} extraction(s) after restart (${interrupted.length} interrupted mid-run)`,
+      `Re-queueing ${eligible.length} extraction(s) after restart (${interrupted.length} interrupted mid-run)`,
     );
-    for (const doc of stranded) {
+    for (const doc of eligible) {
       this.queue(doc.id);
     }
   }

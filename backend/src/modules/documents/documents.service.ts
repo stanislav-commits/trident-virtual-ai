@@ -31,7 +31,10 @@ import { DocumentParseStatus } from './enums/document-parse-status.enum';
 import { toDocumentResponse } from './mapping/documents.mapper';
 import { DocumentsIngestionService } from './ingestion/documents-ingestion.service';
 import { DocumentsUploadStorageService } from './ingestion/documents-upload-storage.service';
-import { VisionExtractionService } from './extraction/vision-extraction.service';
+import {
+  VisionExtractionService,
+  isVisionEligible,
+} from './extraction/vision-extraction.service';
 import { DocumentDocClass } from './enums/document-doc-class.enum';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { AssetDocumentLinkEntity } from '../assets/entities/asset-document-link.entity';
@@ -124,11 +127,13 @@ export class DocumentsService {
 
     // Text-bearing docs run through the local vision extractor BEFORE RAGFlow
     // sees them: the dispatcher skips pending/running extractions, and once the
-    // markdown is attached it uploads the MD instead of the PDF. PLANS are a
-    // pure file store (drawings — no useful text extraction), so they skip it.
+    // markdown is attached it uploads the MD instead of the PDF. Vision is for
+    // MANUALS (scans, diagrams, register naming): plans are a pure file store,
+    // and procedures/forms are clean text PDFs that RAGFlow's own parser
+    // handles — they go straight to remote ingestion.
     if (
       this.visionExtraction.isEnabled() &&
-      input.docClass !== DocumentDocClass.PLAN
+      isVisionEligible(input.docClass)
     ) {
       await this.documentsRepository.update(document.id, {
         extractionStatus: 'pending',
