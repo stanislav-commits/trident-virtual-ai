@@ -24,6 +24,7 @@ interface DocumentsTableProps {
   onTogglePageSelection: () => void;
   onToggleDocumentSelection: (documentId: string) => void;
   onViewDocument: (document: DocumentListItem) => void;
+  onRequestEdit: (document: DocumentListItem) => void;
   onRequestDelete: (document: DocumentListItem) => void;
   onRequestReparse: (document: DocumentListItem) => void;
   openingDocumentId: string | null;
@@ -264,6 +265,7 @@ export function DocumentsTable({
   onTogglePageSelection,
   onToggleDocumentSelection,
   onViewDocument,
+  onRequestEdit,
   onRequestDelete,
   onRequestReparse,
   openingDocumentId,
@@ -459,6 +461,7 @@ export function DocumentsTable({
                     document={document}
                     isDeleting={isDeleting}
                     isReparsing={isReparsing}
+                    onRequestEdit={onRequestEdit}
                     onRequestDelete={onRequestDelete}
                     onRequestReparse={onRequestReparse}
                   />

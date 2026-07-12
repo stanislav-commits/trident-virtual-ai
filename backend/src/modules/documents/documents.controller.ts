@@ -163,6 +163,25 @@ export class DocumentsController {
     return this.documentsService.getById(id, user);
   }
 
+  /** Rename (KB edit modal). Also renames the RAGFlow doc, best-effort. */
+  @Patch(':id/name')
+  rename(
+    @Param('id') id: string,
+    @Body() body: { name?: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentsService.rename(id, body.name ?? '', user);
+  }
+
+  /** Assets this document is pinned/auto-matched to (KB edit modal). */
+  @Get(':id/asset-links')
+  listAssetLinks(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentsService.listAssetLinks(id, user);
+  }
+
   @Patch(':id/classification')
   updateClassification(
     @Param('id') id: string,

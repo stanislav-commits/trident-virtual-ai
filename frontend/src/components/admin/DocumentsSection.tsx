@@ -18,6 +18,7 @@ import { useDocumentsAdminData } from "../../hooks/admin/useDocumentsAdminData";
 import { Toast } from "../layout/Toast";
 import { UploadIcon } from "./AdminPanelIcons";
 import { DocumentDeleteDialog } from "./documents/DocumentDeleteDialog";
+import { DocumentEditModal } from "./documents/DocumentEditModal";
 import { DocumentReparseDialog } from "./documents/DocumentReparseDialog";
 import { DocumentUploadModal } from "./documents/DocumentUploadModal";
 import { DocumentsTable } from "./documents/DocumentsTable";
@@ -110,6 +111,7 @@ export function DocumentsSection() {
   const [reparseTarget, setReparseTarget] = useState<DocumentListItem | null>(
     null,
   );
+  const [editTarget, setEditTarget] = useState<DocumentListItem | null>(null);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<DocumentFeedback | null>(null);
   const statusSyncCursorRef = useRef(0);
@@ -592,6 +594,7 @@ export function DocumentsSection() {
             onTogglePageSelection={handleTogglePageSelection}
             onToggleDocumentSelection={handleToggleDocumentSelection}
             onViewDocument={openDocumentInNewTab}
+            onRequestEdit={setEditTarget}
             onRequestDelete={requestSingleDelete}
             onRequestReparse={requestReparse}
             openingDocumentId={openingDocumentId}
@@ -602,6 +605,15 @@ export function DocumentsSection() {
       )}
         </div>
       </div>
+
+      {editTarget && (
+        <DocumentEditModal
+          token={token}
+          document={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={refreshDocuments}
+        />
+      )}
 
       {showUploadModal && (
         <DocumentUploadModal

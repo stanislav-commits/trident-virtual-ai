@@ -109,6 +109,21 @@ export class RagflowClient {
     return document;
   }
 
+  /** Rename the remote document (display name in the RAGFlow dataset). */
+  async renameRemoteDocument(
+    datasetId: string,
+    documentId: string,
+    name: string,
+  ): Promise<void> {
+    await this.requestJson<unknown>(
+      `/datasets/${datasetId}/documents/${documentId}`,
+      {
+        method: 'PUT',
+        body: { name },
+      },
+    );
+  }
+
   async updateRemoteDocumentConfig(
     datasetId: string,
     documentId: string,

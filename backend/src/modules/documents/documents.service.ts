@@ -3,6 +3,7 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -57,8 +58,25 @@ export interface DocumentFilePayload {
   fileName: string;
 }
 
+/** Asset side of a document link, as the KB edit modal needs it. */
+export interface DocumentAssetLinkItem {
+  id: string;
+  assetIdInternal: string;
+  displayName: string;
+}
+
+function toAssetLinkItem(asset: AssetEntity): DocumentAssetLinkItem {
+  return {
+    id: asset.id,
+    assetIdInternal: asset.assetIdInternal,
+    displayName: asset.displayName,
+  };
+}
+
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     @InjectRepository(DocumentEntity)
     private readonly documentsRepository: Repository<DocumentEntity>,
@@ -252,6 +270,116 @@ export class DocumentsService {
     user: AuthenticatedUser,
   ): Promise<DocumentResponseDto> {
     return toDocumentResponse(await this.findAccessibleDocument(id, user));
+  }
+
+  /**
+   * Rename a document. The display name lives in original_file_name (UI,
+   * files-route lookup, citations) and, when the doc is in RAGFlow, on the
+   * remote document too — the remote rename is best-effort: a RAGFlow hiccup
+   * must not block fixing a local name.
+   */
+  async rename(
+    id: string,
+    rawName: string,
+    user: AuthenticatedUser,
+  ): Promise<DocumentResponseDto> {
+    const document = await this.findAccessibleDocument(id, user);
+    const name = rawName.trim();
+    if (!name) throw new BadRequestException('Name must not be empty');
+    if (name.length > 300) {
+      throw new BadRequestException('Name must be 300 characters or fewer');
+    }
+
+    document.originalFileName = name;
+    await this.documentsRepository.save(document);
+
+    if (document.ragflowDatasetId && document.ragflowDocumentId) {
+      try {
+        await this.ragService.renameRemoteDocument(
+          document.ragflowDatasetId,
+          document.ragflowDocumentId,
+          name,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `RAGFlow rename failed for ${id} (local name updated): ${formatError(error)}`,
+        );
+      }
+    }
+    return toDocumentResponse(document);
+  }
+
+  /**
+   * Which assets this document is connected to — the document-side mirror of
+   * the asset drawer. `pinned` = explicit admin links; `auto` = the same
+   * matching the asset drawer computes (manuals: brand/model against the
+   * doc's extracted metadata; plans: register drawing codes against the
+   * filename), minus anything explicitly excluded.
+   */
+  async listAssetLinks(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<{
+    pinned: DocumentAssetLinkItem[];
+    auto: DocumentAssetLinkItem[];
+  }> {
+    const document = await this.findAccessibleDocument(id, user);
+
+    const links = await this.assetDocLinkRepository.find({
+      where: { documentId: document.id },
+      relations: { asset: true },
+    });
+    const pinned = links
+      .filter((l) => l.linkType !== 'excluded' && l.asset)
+      .map((l) => toAssetLinkItem(l.asset!));
+    const excludedIds = new Set(
+      links.filter((l) => l.linkType === 'excluded').map((l) => l.assetId),
+    );
+    const takenIds = new Set([...excludedIds, ...pinned.map((a) => a.id)]);
+
+    let autoAssets: AssetEntity[] = [];
+    if (document.docClass === DocumentDocClass.MANUAL && document.manufacturer) {
+      // Reverse of the asset-drawer match: asset brand substring of the
+      // doc's manufacturer/equipment name; model agrees when both sides
+      // carry one.
+      autoAssets = await this.assetsRepository
+        .createQueryBuilder('a')
+        .where('a.ship_id = :shipId', { shipId: document.shipId })
+        .andWhere(`a.brand IS NOT NULL AND a.brand != ''`)
+        .andWhere(
+          `(:mfr ILIKE '%' || a.brand || '%' OR :equip ILIKE '%' || a.brand || '%')`,
+          {
+            mfr: document.manufacturer ?? '',
+            equip: document.equipmentName ?? '',
+          },
+        )
+        .andWhere(
+          `(a.model IS NULL OR :model = '' OR :model ILIKE '%' || a.model || '%')`,
+          { model: document.model ?? '' },
+        )
+        .orderBy('a.asset_id_internal', 'ASC')
+        .limit(50)
+        .getMany();
+    } else if (document.docClass === DocumentDocClass.PLAN) {
+      autoAssets = await this.assetsRepository
+        .createQueryBuilder('a')
+        .where('a.ship_id = :shipId', { shipId: document.shipId })
+        .andWhere(
+          `((a.drawing_code IS NOT NULL AND a.drawing_code != '' AND :fname ILIKE '%' || a.drawing_code || '%')
+            OR (a.drawing_ref IS NOT NULL AND a.drawing_ref != '' AND :fname ILIKE '%' || a.drawing_ref || '%'))`,
+          { fname: document.originalFileName },
+        )
+        .orderBy('a.asset_id_internal', 'ASC')
+        .limit(50)
+        .getMany();
+    }
+
+    return {
+      pinned,
+      auto: autoAssets
+        .filter((a) => !takenIds.has(a.id))
+        .map(toAssetLinkItem),
+    };
   }
 
   async updateClassification(

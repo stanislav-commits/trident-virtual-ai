@@ -541,6 +541,45 @@ export async function syncDocumentStatus(
   return response.json();
 }
 
+/** Rename a KB document (also renames the RAGFlow doc server-side). */
+export async function renameDocument(
+  token: string,
+  documentId: string,
+  name: string,
+): Promise<DocumentListItem> {
+  const response = await fetchWithAuth(`documents/${documentId}/name`, {
+    token,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Rename failed");
+  }
+  return response.json();
+}
+
+export interface DocumentAssetLink {
+  id: string;
+  assetIdInternal: string;
+  displayName: string;
+}
+
+/** Assets this document is pinned/auto-matched to (KB edit modal). */
+export async function fetchDocumentAssetLinks(
+  token: string,
+  documentId: string,
+): Promise<{ pinned: DocumentAssetLink[]; auto: DocumentAssetLink[] }> {
+  const response = await fetchWithAuth(`documents/${documentId}/asset-links`, {
+    token,
+  });
+  if (!response.ok) {
+    throw new Error("Failed to load asset links");
+  }
+  return response.json();
+}
+
 export async function reparseDocument(
   token: string,
   documentId: string,

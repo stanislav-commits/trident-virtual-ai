@@ -78,6 +78,14 @@ export class RagService {
     return this.ragflowClient.uploadDocumentToDataset(datasetId, file);
   }
 
+  renameRemoteDocument(
+    datasetId: string,
+    documentId: string,
+    name: string,
+  ): Promise<void> {
+    return this.ragflowClient.renameRemoteDocument(datasetId, documentId, name);
+  }
+
   updateRemoteDocumentConfig(
     datasetId: string,
     documentId: string,

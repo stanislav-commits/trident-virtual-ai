@@ -1,11 +1,12 @@
 import type { DocumentListItem } from "../../../api/documentsApi";
-import { RefreshIcon, TrashIcon } from "../AdminPanelIcons";
+import { EditIcon, RefreshIcon, TrashIcon } from "../AdminPanelIcons";
 import { getDocumentReparseAction } from "./documentReparseActions";
 
 interface DocumentRowActionsProps {
   document: DocumentListItem;
   isDeleting: boolean;
   isReparsing: boolean;
+  onRequestEdit: (document: DocumentListItem) => void;
   onRequestDelete: (document: DocumentListItem) => void;
   onRequestReparse: (document: DocumentListItem) => void;
 }
@@ -14,6 +15,7 @@ export function DocumentRowActions({
   document: targetDocument,
   isDeleting,
   isReparsing,
+  onRequestEdit,
   onRequestDelete,
   onRequestReparse,
 }: DocumentRowActionsProps) {
@@ -22,6 +24,16 @@ export function DocumentRowActions({
 
   return (
     <div className="admin-panel__document-actions">
+      <button
+        type="button"
+        className="admin-panel__document-reparse-action"
+        disabled={actionsDisabled}
+        aria-label={`Edit ${targetDocument.originalFileName}`}
+        title="Rename / edit asset links"
+        onClick={() => onRequestEdit(targetDocument)}
+      >
+        <EditIcon />
+      </button>
       {reparseAction && (
         <button
           type="button"
