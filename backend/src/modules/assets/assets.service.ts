@@ -233,6 +233,10 @@ export class AssetsService {
       const qb = this.documentRepository
         .createQueryBuilder('d')
         .where('d.ship_id = :shipId', { shipId })
+        // Only equipment manuals auto-match to assets — procedures/forms are
+        // general knowledge-base documents (never asset-bound), plans have
+        // their own drawing-code matching below.
+        .andWhere("d.doc_class = 'manual'")
         .andWhere(
           new Brackets((b) =>
             b

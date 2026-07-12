@@ -16,7 +16,7 @@ import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
 import { useDocumentsAdminData } from "../../hooks/admin/useDocumentsAdminData";
 import { Toast } from "../layout/Toast";
-import { DocumentsIcon, UploadIcon } from "./AdminPanelIcons";
+import { UploadIcon } from "./AdminPanelIcons";
 import { DocumentDeleteDialog } from "./documents/DocumentDeleteDialog";
 import { DocumentReparseDialog } from "./documents/DocumentReparseDialog";
 import { DocumentUploadModal } from "./documents/DocumentUploadModal";
@@ -36,8 +36,8 @@ const KB_SECTION_GROUPS: Array<{ label: string; values: string[] }> = [
   { label: "SMS Manual", values: ["procedure", "form"] },
   { label: "Technical", values: ["manual", "plan"] },
 ];
-const DOCUMENT_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
-const DEFAULT_PAGE_SIZE = DOCUMENT_PAGE_SIZE_OPTIONS[0];
+// Fixed page size — the Rows picker is gone by design.
+const DOCUMENT_PAGE_SIZE = 100;
 const ACTIVE_PARSE_STATUSES: DocumentParseStatus[] = [
   "uploaded",
   "pending_config",
@@ -96,7 +96,6 @@ export function DocumentsSection() {
   const [nameSearchInput, setNameSearchInput] = useState("");
   const [nameSearch, setNameSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(
     () => new Set(),
@@ -123,7 +122,7 @@ export function DocumentsSection() {
       parseStatusFilter === ALL_FILTER ? undefined : parseStatusFilter,
     name: nameSearch || undefined,
     page,
-    pageSize,
+    pageSize: DOCUMENT_PAGE_SIZE,
     enabled: Boolean(token),
   });
 
@@ -132,7 +131,7 @@ export function DocumentsSection() {
   const refreshDocuments = documentsData.refreshDocuments;
   const pagination = documentsPage?.pagination;
   const activePage = pagination?.page ?? page;
-  const activePageSize = pagination?.pageSize ?? pageSize;
+  const activePageSize = pagination?.pageSize ?? DOCUMENT_PAGE_SIZE;
   const totalDocuments = pagination?.total ?? 0;
   const totalPages = pagination?.totalPages ?? 1;
   const visibleFrom =
@@ -419,7 +418,7 @@ export function DocumentsSection() {
 
   useEffect(() => {
     clearSelectedDocuments();
-  }, [shipFilter, activeSection, parseStatusFilter, nameSearch, page, pageSize]);
+  }, [shipFilter, activeSection, parseStatusFilter, nameSearch, page]);
 
   useEffect(() => {
     const trimmed = nameSearchInput.trim();
@@ -516,16 +515,10 @@ export function DocumentsSection() {
           <div className="admin-panel__spinner" />
           <span className="admin-panel__muted">Loading documents...</span>
         </div>
-      ) : documents.length === 0 ? (
-        <div className="admin-panel__state-box">
-          <DocumentsIcon />
-          <span className="admin-panel__muted">
-            {totalDocuments === 0
-              ? "No documents match the current filters."
-              : "No documents on this page."}
-          </span>
-        </div>
       ) : (
+        // Always render the table card — the parse-status filter lives in the
+        // table header, so hiding the table on zero matches locked the user
+        // out of resetting the filter.
         <div className="admin-panel__card admin-panel__documents-card">
           <div className="admin-panel__metrics-toolbar-strip">
             <div className="admin-panel__metrics-toolbar-left">
@@ -544,25 +537,6 @@ export function DocumentsSection() {
             </div>
 
             <div className="admin-panel__metrics-pager">
-              <div className="admin-panel__metrics-pager-size">
-                <span className="admin-panel__metrics-pager-label">Rows</span>
-                <select
-                  className="admin-panel__select admin-panel__select--compact"
-                  value={String(pageSize)}
-                  disabled={documentsData.loading}
-                  onChange={(event) => {
-                    setPageSize(Number(event.target.value));
-                    resetToFirstPage();
-                  }}
-                >
-                  {DOCUMENT_PAGE_SIZE_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               <div className="admin-panel__metrics-pager-nav">
                 <button
                   type="button"

@@ -42,6 +42,9 @@ export function LinkManualPicker({
     const handle = setTimeout(() => {
       void listDocuments(token, {
         shipId,
+        // Only manuals bind to assets — procedures/forms are general
+        // knowledge-base docs, plans link via drawing codes.
+        docClass: "manual",
         name: query.trim() || undefined,
         pageSize: 60,
         page: 1,

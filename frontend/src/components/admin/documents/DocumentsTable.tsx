@@ -316,6 +316,16 @@ export function DocumentsTable({
           </tr>
         </thead>
         <tbody>
+          {/* Keep the table (and the status filter in its header) rendered
+              even with zero matches — otherwise picking a status that has no
+              documents made the filter itself disappear. */}
+          {documents.length === 0 && (
+            <tr>
+              <td colSpan={4} className="admin-panel__td inv__empty-cell">
+                No documents match the current filters.
+              </td>
+            </tr>
+          )}
           {documents.map((document) => {
             const isSelected = selectedDocumentIds.has(document.id);
             const isDeleting = deletingDocumentIds.has(document.id);

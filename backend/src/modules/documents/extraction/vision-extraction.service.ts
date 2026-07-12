@@ -3,10 +3,10 @@ import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { LlmService } from '../../../integrations/llm/llm.service';
 import { AssetEntity } from '../../assets/entities/asset.entity';
 import { AssetDocumentLinkEntity } from '../../assets/entities/asset-document-link.entity';
@@ -43,10 +43,43 @@ export type ExtractionStatus =
  *   (register, cost tracker) that is not designed for concurrent runs.
  */
 @Injectable()
-export class VisionExtractionService {
+export class VisionExtractionService implements OnApplicationBootstrap {
   private readonly logger = new Logger(VisionExtractionService.name);
   /** Serializes extraction jobs. */
   private queueTail: Promise<void> = Promise.resolve();
+
+  /**
+   * The queue is in-memory, so a restart mid-extraction used to strand the
+   * whole backlog: the interrupted doc stayed 'running' forever and every
+   * 'pending' doc lost its queue slot (this stalled 151 docs on prod after
+   * a deploy). On boot, re-queue the survivors: 'running' docs are reset to
+   * 'pending' (their extractor run died with the process) and everything
+   * pending re-enters the queue in upload order.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    if (!this.isEnabled()) return;
+    const stranded = await this.documentsRepository.find({
+      where: { extractionStatus: In(['pending', 'running']) },
+      select: ['id', 'extractionStatus'],
+      order: { createdAt: 'ASC' },
+    });
+    if (stranded.length === 0) return;
+    const interrupted = stranded.filter(
+      (d) => d.extractionStatus === 'running',
+    );
+    if (interrupted.length > 0) {
+      await this.documentsRepository.update(
+        { id: In(interrupted.map((d) => d.id)) },
+        { extractionStatus: 'pending' },
+      );
+    }
+    this.logger.log(
+      `Re-queueing ${stranded.length} extraction(s) after restart (${interrupted.length} interrupted mid-run)`,
+    );
+    for (const doc of stranded) {
+      this.queue(doc.id);
+    }
+  }
 
   constructor(
     private readonly configService: ConfigService,
@@ -200,9 +233,12 @@ export class VisionExtractionService {
       // equipment from the extract and match it against the asset
       // register — rename + link on a confident match, mark [UNLINKED]
       // otherwise. Runs BEFORE the RAGFlow handoff so the remote document
-      // gets the final name.
+      // gets the final name. MANUALS ONLY: procedures/forms are general
+      // knowledge-base documents that never bind to an asset.
       try {
-        await this.matchDocumentToAssets(document, mdContent.toString('utf8'));
+        if (document.docClass === 'manual') {
+          await this.matchDocumentToAssets(document, mdContent.toString('utf8'));
+        }
       } catch (error) {
         this.logger.warn(
           `Asset auto-match failed for ${document.originalFileName}: ${
