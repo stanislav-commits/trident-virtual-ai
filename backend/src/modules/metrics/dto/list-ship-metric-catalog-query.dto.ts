@@ -1,4 +1,12 @@
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsBooleanString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export type MetricCatalogBoundFilter = 'all' | 'bound' | 'unbound';
 
@@ -20,6 +28,12 @@ export class ListShipMetricCatalogQueryDto {
   @IsOptional()
   @IsIn(['all', 'bound', 'unbound'])
   bound?: MetricCatalogBoundFilter;
+
+  // "true" → only enabled metrics (the bind picker uses this so disabled
+  // channels never get bound to an asset). Query params arrive as strings.
+  @IsOptional()
+  @IsBooleanString()
+  enabledOnly?: string;
 
   @IsOptional()
   @IsInt()

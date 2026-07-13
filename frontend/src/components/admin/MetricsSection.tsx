@@ -47,8 +47,8 @@ const syncDateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 const ALL_BUCKETS_FILTER = "all";
-const METRICS_PAGE_SIZE_OPTIONS = [25, 50, 100];
-const DEFAULT_PAGE_SIZE = METRICS_PAGE_SIZE_OPTIONS[0];
+// Fixed page size — the Rows picker is gone by design.
+const METRICS_PAGE_SIZE = 100;
 
 /** Strip the first segment (bucket prefix) before the first `::`. */
 function formatKeyShort(fullKey: string): string {
@@ -198,7 +198,6 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     "all",
   );
   const [catalogSearch, setCatalogSearch] = useState("");
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [currentPage, setCurrentPage] = useState(1);
   // Which metric is currently showing the asset-bind picker (one at a time).
   const [bindingMetricId, setBindingMetricId] = useState<string | null>(null);
@@ -236,7 +235,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
       selectedBucketFilter === ALL_BUCKETS_FILTER ? null : selectedBucketFilter,
     bound: boundFilter,
     page: currentPage,
-    pageSize,
+    pageSize: METRICS_PAGE_SIZE,
     enabled: Boolean(token && effectiveSelectedShipId && isCatalogView),
   });
 
@@ -350,7 +349,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
   const totalFilteredMetrics = catalogPage?.filteredMetrics ?? 0;
   const totalPages = catalogPage?.totalPages ?? 1;
   const safeCurrentPage = catalogPage?.page ?? currentPage;
-  const activePageSize = catalogPage?.pageSize ?? pageSize;
+  const activePageSize = catalogPage?.pageSize ?? METRICS_PAGE_SIZE;
   const pageStartIndex =
     totalFilteredMetrics === 0 ? 0 : (safeCurrentPage - 1) * activePageSize;
   const visibleFrom = totalFilteredMetrics === 0 ? 0 : pageStartIndex + 1;
@@ -642,24 +641,6 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                 </div>
 
                 <div className="admin-panel__metrics-pager">
-                  <div className="admin-panel__metrics-pager-size">
-                    <span className="admin-panel__metrics-pager-label">Rows</span>
-                    <select
-                      className="admin-panel__select admin-panel__select--compact"
-                      value={String(pageSize)}
-                      onChange={(event) => {
-                        setPageSize(Number(event.target.value));
-                        setCurrentPage(1);
-                      }}
-                      disabled={catalogLoading || catalogSyncing}
-                    >
-                      {METRICS_PAGE_SIZE_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   <div className="admin-panel__metrics-pager-nav">
                     <button
                       type="button"

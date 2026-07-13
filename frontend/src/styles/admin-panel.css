@@ -1753,11 +1753,22 @@
 }
 
 .admin-panel__documents-table-wrap {
-  overflow: visible;
+  /* Only the document list scrolls, not the whole page (all KB sections
+     render through this table). */
+  overflow: auto;
+  max-height: calc(100vh - 320px);
   border: 1px solid var(--chat-border);
   border-radius: 14px;
   background: var(--overlay-nano);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+}
+/* Keep the KB column headers (incl. the status filter) visible while
+   scrolling. */
+.admin-panel__documents-table-wrap .admin-panel__table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--chat-surface-2, var(--chat-surface));
 }
 
 .admin-panel__table--documents {
@@ -5475,8 +5486,17 @@
 }
 
 .admin-panel__metrics-group-table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  /* Only the metric list scrolls, not the whole page — the toolbar/pager
+     sit above this wrap and stay put. */
+  max-height: calc(100vh - 320px);
   border-radius: 14px;
+}
+/* Keep column headers visible while the list scrolls. */
+.admin-panel__metrics-group-table-wrap .admin-panel__table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .admin-panel__metrics-group-table-wrap .admin-panel__table {
@@ -8742,6 +8762,38 @@
   color: var(--status-danger);
   border-radius: 4px;
 }
+.bind-picker__suggest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  font-size: 12px;
+}
+.bind-picker__suggest-copy { flex: 1; color: var(--chat-text); }
+.bind-picker__suggest-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: none;
+  background: var(--accent-bright, #3b82f6);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bind-picker__suggest-btn:disabled { opacity: 0.6; cursor: default; }
+.bind-picker__suggest-dismiss {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--chat-text-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+
 .bind-picker__list {
   max-height: 260px;
   overflow-y: auto;

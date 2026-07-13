@@ -535,12 +535,14 @@ export async function searchShipMetrics(
   search: string,
   page: number = 1,
   pageSize: number = 50,
+  enabledOnly: boolean = false,
 ): Promise<CatalogPage> {
   const params = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   });
   if (search.trim()) params.append("search", search.trim());
+  if (enabledOnly) params.append("enabledOnly", "true");
   const response = await fetchWithAuth(
     `metrics/ships/${shipId}/catalog/items?${params.toString()}`,
     { token },
@@ -549,6 +551,18 @@ export async function searchShipMetrics(
     throw new Error(`Failed to search metrics (${response.status})`);
   }
   return (await response.json()) as CatalogPage;
+}
+
+/** Other metrics from the same device (same-measurement siblings). */
+export async function fetchSimilarMetrics(
+  token: string,
+  metricId: string,
+): Promise<CatalogMetricListItem[]> {
+  const response = await fetchWithAuth(`metrics/catalog/${metricId}/similar`, {
+    token,
+  });
+  if (!response.ok) return [];
+  return (await response.json()) as CatalogMetricListItem[];
 }
 
 /** Service rule (PMS) attached to an asset — see backend service-rule.entity. */

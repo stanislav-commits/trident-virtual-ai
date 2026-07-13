@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  fetchSimilarMetrics,
   searchShipMetrics,
   updateMetricBinding,
   type CatalogMetricListItem,
@@ -39,13 +40,18 @@ export function BindMetricPicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  // After binding one metric, suggest its still-free same-device siblings so
+  // the whole device can be bound in one click.
+  const [suggested, setSuggested] = useState<CatalogMetricListItem[]>([]);
+  const [bindingAll, setBindingAll] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     setLoading(true);
     setError("");
     const handle = setTimeout(() => {
-      void searchShipMetrics(token, shipId, query, 1, 80)
+      // enabledOnly: disabled channels must never be bound to an asset.
+      void searchShipMetrics(token, shipId, query, 1, 100, true)
         .then((r) => setItems(r.items))
         .catch((e) =>
           setError(e instanceof Error ? e.message : "Search failed"),
@@ -61,10 +67,33 @@ export function BindMetricPicker({
     try {
       await updateMetricBinding(token, metric.id, currentAssetId);
       onBound();
+      // Offer the rest of the same device (free siblings only).
+      const siblings = await fetchSimilarMetrics(token, metric.id);
+      setSuggested(
+        siblings.filter(
+          (s) => !s.boundAssetId && !alreadyBoundIds.has(s.id),
+        ),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bind failed");
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const handleBindAllSuggested = async () => {
+    if (!token || suggested.length === 0) return;
+    setBindingAll(true);
+    try {
+      for (const s of suggested) {
+        await updateMetricBinding(token, s.id, currentAssetId);
+      }
+      onBound();
+      setSuggested([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bind failed");
+    } finally {
+      setBindingAll(false);
     }
   };
 
@@ -90,6 +119,30 @@ export function BindMetricPicker({
         onChange={(e) => setQuery(e.target.value)}
       />
       {error && <div className="bind-picker__error">{error}</div>}
+      {suggested.length > 0 && (
+        <div className="bind-picker__suggest">
+          <span className="bind-picker__suggest-copy">
+            {suggested.length} more metric{suggested.length === 1 ? "" : "s"} from
+            the same device are free.
+          </span>
+          <button
+            type="button"
+            className="bind-picker__suggest-btn"
+            disabled={bindingAll}
+            onClick={() => void handleBindAllSuggested()}
+          >
+            {bindingAll ? "Binding…" : `Bind all ${suggested.length} here`}
+          </button>
+          <button
+            type="button"
+            className="bind-picker__suggest-dismiss"
+            onClick={() => setSuggested([])}
+            aria-label="Dismiss suggestion"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {loading && <div className="bind-picker__placeholder">Loading…</div>}
       {!loading && items.length === 0 && (
         <div className="bind-picker__placeholder">
@@ -97,7 +150,7 @@ export function BindMetricPicker({
         </div>
       )}
       <div className="bind-picker__list">
-        {items.slice(0, 50).map((m) => {
+        {items.map((m) => {
           const isThis = m.boundAssetId === currentAssetId;
           const isOther =
             m.boundAssetId !== null && m.boundAssetId !== currentAssetId;

@@ -347,8 +347,17 @@ export class MetricUnderstandingService {
 
     metric.aiDescription = analysis.description ?? null;
     metric.aiKind = (analysis.kind as MetricAiKind) ?? null;
-    metric.aiUnit = analysis.unit ?? null;
-    metric.aiUnitConfidence = numOrNull(analysis.unit_confidence);
+    // Never overwrite a human-corrected unit — an operator edit stamps
+    // aiUnitConfidence = exactly 1 (mirrors the scaleSource='manual' guard
+    // below). Without this, re-analyze silently reverted the fix and the AI
+    // answered with the wrong unit again. The AI confidence is capped just
+    // below 1 so a confident AI (unit_confidence 1.0) is never mistaken for
+    // a human lock and can still be re-corrected on a later analyze.
+    if (metric.aiUnitConfidence !== 1) {
+      metric.aiUnit = analysis.unit ?? null;
+      const aiConf = numOrNull(analysis.unit_confidence);
+      metric.aiUnitConfidence = aiConf != null ? Math.min(aiConf, 0.99) : null;
+    }
     metric.boundAssetId = boundAssetId;
     metric.aiBoundConfidence = numOrNull(analysis.bound_asset_confidence);
     metric.aiTypicalP5 = numOrNull(fingerprint.p5);

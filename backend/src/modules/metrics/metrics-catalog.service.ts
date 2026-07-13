@@ -307,6 +307,7 @@ export class MetricsCatalogService {
     const ship = await this.findRequiredShip(shipId);
     const bucketFilter = this.normalizeBucketFilter(query.bucket);
     const searchQuery = query.search?.trim() ?? '';
+    const enabledOnly = query.enabledOnly === 'true';
     const pageSize = query.pageSize ?? 25;
     const requestedPage = query.page ?? 1;
 
@@ -320,6 +321,7 @@ export class MetricsCatalogService {
         bucket: bucketFilter,
         search: searchQuery,
         bound: query.bound,
+        enabledOnly,
       },
     ).getCount();
     const bucketOptionsPromise = this.shipMetricCatalogRepository
@@ -353,6 +355,7 @@ export class MetricsCatalogService {
         bucket: bucketFilter,
         search: searchQuery,
         bound: query.bound,
+        enabledOnly,
       },
     )
       // Pull the bound asset alongside so the UI can show "→ Port Genset
@@ -385,6 +388,40 @@ export class MetricsCatalogService {
       })),
       items: entries.map((entry) => this.serializeEntry(entry)),
     };
+  }
+
+  /**
+   * Other metrics from the SAME device as `metricId` — same ship + bucket +
+   * measurement (the key's middle segment IS the device/system boundary).
+   * Powers the "bind the rest of this device too" suggestion after a bind.
+   * Enabled only, excludes the metric itself; returns each with its current
+   * binding so the UI can offer only the free ones.
+   */
+  async findSimilarMetrics(
+    metricId: string,
+  ): Promise<ShipMetricCatalogItemDto[]> {
+    const metric = await this.shipMetricCatalogRepository.findOne({
+      where: { id: metricId },
+    });
+    if (!metric) {
+      throw new NotFoundException('Ship metric catalog entry not found');
+    }
+    const measurement = metric.key.split('::')[1] ?? '';
+    if (!measurement) return [];
+
+    const rows = await this.shipMetricCatalogRepository
+      .createQueryBuilder('entry')
+      .leftJoinAndSelect('entry.boundAsset', 'boundAsset')
+      .where('entry.shipId = :shipId', { shipId: metric.shipId })
+      .andWhere('entry.bucket = :bucket', { bucket: metric.bucket })
+      .andWhere("split_part(entry.key, '::', 2) = :measurement", { measurement })
+      .andWhere('entry.id != :id', { id: metric.id })
+      .andWhere('entry.is_enabled = true')
+      .orderBy('entry.field', 'ASC')
+      .limit(100)
+      .getMany();
+
+    return rows.map((entry) => this.serializeEntry(entry));
   }
 
   async updateMetricDescription(
@@ -453,9 +490,14 @@ export class MetricsCatalogService {
       bucket: string | null;
       search: string;
       bound?: 'all' | 'bound' | 'unbound';
+      enabledOnly?: boolean;
     },
   ): SelectQueryBuilder<ShipMetricCatalogEntity> {
     queryBuilder.where('entry.shipId = :shipId', { shipId });
+
+    if (filters.enabledOnly) {
+      queryBuilder.andWhere('entry.is_enabled = true');
+    }
 
     if (filters.bucket) {
       queryBuilder.andWhere('entry.bucket = :bucket', {

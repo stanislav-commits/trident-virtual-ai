@@ -120,6 +120,14 @@ export class MetricsController {
     return this.metricsCatalogService.toggleShipMetrics(shipId, body);
   }
 
+  /** Other metrics from the same device (same-measurement siblings). */
+  @Get('catalog/:metricId/similar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  findSimilarMetrics(@Param('metricId') metricId: string) {
+    return this.metricsCatalogService.findSimilarMetrics(metricId);
+  }
+
   @Patch('catalog/:metricId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
