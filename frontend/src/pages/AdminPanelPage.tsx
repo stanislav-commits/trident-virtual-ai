@@ -35,6 +35,7 @@ import { useUsersAdminData } from "../hooks/admin/useUsersAdminData";
 import { Toast } from "../components/layout/Toast";
 import {
   appRoutes,
+  defaultAdminSection,
   isAdminSectionRoute,
   type AdminSectionRoute,
 } from "../utils/routes";
@@ -59,7 +60,7 @@ export function AdminPanelPage() {
   const { section } = useParams<{ section: string }>();
   const activeSection: AdminSectionRoute = isAdminSectionRoute(section)
     ? section
-    : "users";
+    : defaultAdminSection;
 
   // Navigation state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -86,7 +87,7 @@ export function AdminPanelPage() {
 
   useEffect(() => {
     if (!isAdminSectionRoute(section)) {
-      navigate(appRoutes.adminSection("users"), { replace: true });
+      navigate(appRoutes.adminSection(defaultAdminSection), { replace: true });
     }
   }, [navigate, section]);
 

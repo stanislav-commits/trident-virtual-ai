@@ -188,13 +188,13 @@ export class DocumentsIngestionService {
         document.parseStatus = DocumentParseStatus.PENDING_CONFIG;
         document.parseProgressPercent = null;
         document.lastSyncedAt = new Date();
-        if (!useExtract) {
-          document.storageKey = `ragflow://${ragflowDatasetId}/${remoteDocument.id}`;
-        }
+        // The durable original ALWAYS stays where it is (Spaces / local
+        // spool) — it is what /documents/:id/file serves and what any future
+        // re-processing reads. We used to repoint storageKey to ragflow://
+        // and delete the stored copy when ingesting the original PDF; that
+        // silently LOST the only original once the doc was ever removed from
+        // RAGFlow (bit us on prod: FR051/Hatteland + 4 certificates).
         await this.documentsRepository.save(document);
-        if (!useExtract) {
-          await this.deleteLocalUpload(localStorageKey, document.id);
-        }
       }
 
       if (!document.ragflowDocumentId) {

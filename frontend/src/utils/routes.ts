@@ -1,5 +1,8 @@
 export type AdminSectionRoute = "users" | "ships" | "assets" | "documents" | "metrics" | "compliance" | "maintenance" | "crew" | "inventory" | "alerts" | "publications";
 
+/** Landing section for the admin panel (entering from chat or bare /admin). */
+export const defaultAdminSection: AdminSectionRoute = "assets";
+
 export const appRoutes = {
   root: "/",
   login: "/login",

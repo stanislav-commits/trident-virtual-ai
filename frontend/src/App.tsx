@@ -14,7 +14,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { DatasetPage } from "./pages/DatasetPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
-import { appRoutes } from "./utils/routes";
+import { appRoutes, defaultAdminSection } from "./utils/routes";
 
 function RootRedirect() {
   const { isAuthenticated } = useAuth();
@@ -97,7 +97,7 @@ function AppContent() {
         <Route element={<RequireAdmin />}>
           <Route
             path={appRoutes.admin}
-            element={<Navigate to={appRoutes.adminSection("users")} replace />}
+            element={<Navigate to={appRoutes.adminSection(defaultAdminSection)} replace />}
           />
           <Route
             path={appRoutes.adminSectionPattern}

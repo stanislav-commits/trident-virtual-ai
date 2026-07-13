@@ -136,12 +136,15 @@ function ExtractionChip({
 }) {
   const status = document.extractionStatus ?? "none";
   if (status === "none") return null;
+  // Reuse the parse-status pill palette — the previous --success/--danger
+  // classes were never defined in CSS, so "MD failed" rendered colorless
+  // and was nearly invisible next to the green "Parsed" pill.
   const cls =
     status === "done"
-      ? "admin-panel__badge admin-panel__badge--success"
+      ? "admin-panel__badge admin-panel__badge--manual-done"
       : status === "failed"
-        ? "admin-panel__badge admin-panel__badge--danger"
-        : "admin-panel__badge";
+        ? "admin-panel__badge admin-panel__badge--manual-fail"
+        : "admin-panel__badge admin-panel__badge--manual-pending";
 
   const onClick = async () => {
     if (!token) return;
@@ -166,7 +169,7 @@ function ExtractionChip({
         status === "done"
           ? "Vision extract attached — click to view the markdown (admin only)"
           : status === "failed"
-            ? `Extraction failed — click to re-run`
+            ? "Vision extraction failed — the document is still searchable via the original PDF. Click to re-run extraction."
             : `Vision extraction: ${status}`
       }
       onClick={() => void onClick()}

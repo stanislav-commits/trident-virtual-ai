@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
-import { appRoutes } from "../../utils/routes";
+import { appRoutes, defaultAdminSection } from "../../utils/routes";
 import { listAlerts } from "../../api/alertsApi";
 import { canRead } from "../../api/accessControlApi";
 import { useMyAccess } from "../../hooks/useMyAccess";
@@ -62,7 +62,7 @@ export function TopBar() {
 
   const handleAdminPanel = () => {
     setDropdownOpen(false);
-    navigate(appRoutes.adminSection("users"));
+    navigate(appRoutes.adminSection(defaultAdminSection));
   };
 
   const profileLabel = getUserAvatarLabel(user);

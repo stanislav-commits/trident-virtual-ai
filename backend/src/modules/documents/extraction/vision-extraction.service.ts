@@ -137,6 +137,17 @@ export class VisionExtractionService implements OnApplicationBootstrap {
     );
   }
 
+  /** Max PDF size vision will attempt; 0 disables the guard. */
+  private getMaxFileBytes(): number {
+    const mb = Number(
+      this.configService.get<number>(
+        'integrations.visionExtractor.maxFileMb',
+        20,
+      ),
+    );
+    return Number.isFinite(mb) && mb > 0 ? mb * 1024 * 1024 : 0;
+  }
+
   /**
    * Queue extraction for a document. The caller must have set
    * extractionStatus='pending' on the entity already (that is what gates
@@ -174,6 +185,24 @@ export class VisionExtractionService implements OnApplicationBootstrap {
         document,
         'Original upload is no longer available in storage',
       );
+      return;
+    }
+
+    // OOM guard: the extractor's Discovery phase holds a per-page layout
+    // model in memory and on big graphics-heavy PDFs it eats >3.4 GB —
+    // the kernel OOM killer then takes the whole pm2 cgroup down WITH the
+    // backend (happened on prod with a 36 MB and a 24.7 MB manual).
+    // Oversized files skip vision and go to RAGFlow as the original PDF,
+    // where the manual chunker handles them natively.
+    const maxBytes = this.getMaxFileBytes();
+    if (maxBytes > 0 && (document.fileSizeBytes ?? 0) > maxBytes) {
+      this.logger.warn(
+        `Vision skipped for ${document.originalFileName}: ${Math.round((document.fileSizeBytes ?? 0) / 1024 / 1024)} MB exceeds the ${Math.round(maxBytes / 1024 / 1024)} MB extractor limit — ingesting the original PDF directly`,
+      );
+      document.extractionStatus = 'none';
+      document.extractionError = null;
+      await this.documentsRepository.save(document);
+      void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
       return;
     }
 

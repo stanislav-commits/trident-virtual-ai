@@ -184,6 +184,8 @@ export default function configuration() {
       },
       visionExtractor: {
       dir: process.env.VISION_EXTRACTOR_DIR ?? '',
+      // PDFs above this size skip vision (extractor OOM guard); 0 disables.
+      maxFileMb: Number(process.env.VISION_EXTRACTOR_MAX_FILE_MB ?? 20),
     },
     windy: {
         // Windy Point Forecast API — used by the `get_marine_forecast`
