@@ -537,15 +537,19 @@ export function AssetDrawer({
       <div className="assets-section__drawer-section">
         {/* Only the columns present in the final register format (14-col). */}
         <div className="assets-section__drawer-fields">
-          {/* SFI comes from the taxonomy: pick group → sub; the names are
-              static catalog values saved alongside the codes. */}
+          {/* SFI comes from the taxonomy: pick group → sub. The dropdown
+              labels already carry the group/sub NAME, so no separate
+              name rows here. */}
           <SfiCascadeRows token={token} asset={asset} onPatch={onPatch} />
-          <OverviewFieldRow label="Group name" value={asset.sfiGroupName} />
-          <OverviewFieldRow label="Sub name" value={asset.sfiSubName} />
           <OverviewFieldRow label="Brand" value={asset.brand} onSave={save("brand")} />
           <OverviewFieldRow label="Model" value={asset.model} onSave={save("model")} />
           <OverviewFieldRow label="Serial №" value={asset.serialNo} onSave={save("serialNo")} />
-          <OverviewFieldRow label="Served by" value={asset.servedByAssetId} placeholder="—" />
+          <OverviewFieldRow
+            label="Served by"
+            value={asset.servedByAssetId}
+            onSave={save("servedByAssetId")}
+            placeholder="asset ID, e.g. SWX.2.11.02"
+          />
           <OverviewFieldRow label="Location" value={asset.location} onSave={save("location")} width="full" />
           <OverviewFieldRow label="Drawing ref" value={asset.drawingRef} onSave={save("drawingRef")} />
           <OverviewFieldRow label="Drawing code" value={asset.drawingCode} onSave={save("drawingCode")} />

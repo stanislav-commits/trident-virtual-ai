@@ -190,39 +190,7 @@ export function AssetFormModal({
         </div>
 
         <form onSubmit={submit} className="admin-panel__modal-form">
-          <div className="admin-panel__modal-field-row">
-            <div className="admin-panel__modal-field">
-              <label className="admin-panel__field-label">Asset ID *</label>
-              <input
-                type="text"
-                className="admin-panel__input admin-panel__input--full"
-                value={form.assetIdInternal}
-                onChange={(e) => {
-                  setAutoId(false); // hand-edited — stop auto-overwriting
-                  set("assetIdInternal")(e);
-                }}
-                placeholder="pick group → sub to auto-fill"
-                required
-                disabled={submitting}
-                autoFocus
-                autoComplete="off"
-              />
-            </div>
-            <div className="admin-panel__modal-field">
-              <label className="admin-panel__field-label">Display name *</label>
-              <input
-                type="text"
-                className="admin-panel__input admin-panel__input--full"
-                value={form.displayName}
-                onChange={set("displayName")}
-                placeholder="e.g. Port Alternator"
-                required
-                disabled={submitting}
-                autoComplete="off"
-              />
-            </div>
-          </div>
-
+          {/* SFI first: pick group → sub, and the Asset ID auto-fills. */}
           <div className="admin-panel__modal-field-row">
             <div className="admin-panel__modal-field">
               <label className="admin-panel__field-label">SFI group</label>
@@ -263,6 +231,39 @@ export function AssetFormModal({
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="admin-panel__modal-field-row">
+            <div className="admin-panel__modal-field">
+              <label className="admin-panel__field-label">Asset ID *</label>
+              <input
+                type="text"
+                className="admin-panel__input admin-panel__input--full"
+                value={form.assetIdInternal}
+                onChange={(e) => {
+                  setAutoId(false); // hand-edited — stop auto-overwriting
+                  set("assetIdInternal")(e);
+                }}
+                placeholder="pick group → sub to auto-fill"
+                required
+                disabled={submitting}
+                autoComplete="off"
+              />
+            </div>
+            <div className="admin-panel__modal-field">
+              <label className="admin-panel__field-label">Display name *</label>
+              <input
+                type="text"
+                className="admin-panel__input admin-panel__input--full"
+                value={form.displayName}
+                onChange={set("displayName")}
+                placeholder="e.g. Port Alternator"
+                required
+                disabled={submitting}
+                autoFocus
+                autoComplete="off"
+              />
             </div>
           </div>
 

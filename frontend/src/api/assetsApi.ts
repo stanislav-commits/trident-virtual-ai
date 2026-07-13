@@ -261,6 +261,7 @@ export type UpdateAssetInput = Partial<{
   brand: string | null;
   model: string | null;
   serialNo: string | null;
+  servedByAssetId: string | null;
   location: string | null;
   notes: string | null;
   criticality: number | null;

@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import * as XLSX from 'xlsx';
+import * as XLSXStyle from 'xlsx-js-style';
 import { DocumentEntity } from '../documents/entities/document.entity';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
@@ -99,6 +100,65 @@ const EXTRAS_COLUMNS = [
 // banner in row 1 and the actual header row in row 2 — sheet_to_json with
 // `range: 1` skips the banner.
 const REGISTER_SHEET_NAME = 'Asset Register';
+
+// SFI top-level group → export row fill (a light tint of the app's group
+// colour, kept pale so the black text stays readable). Renumbered -1 scheme,
+// mirrors frontend sfi-colors.ts.
+const GROUP_ROW_FILL: Record<string, string> = {
+  '1': 'DCE9F7',
+  '2': 'D8F0E0',
+  '3': 'F6E1D0',
+  '4': 'ECDCF4',
+  '5': 'F4EAD1',
+  '6': 'CCF0F7',
+  '7': 'F7D2DA',
+  '8': 'E1E1FF',
+  '9': 'CCF6F1',
+  '10': 'FADCEF',
+  '11': 'F6E4D0',
+  '12': 'FFE0F0',
+  '13': 'E4F4D5',
+  '14': 'FBEAE0',
+  '15': 'DCEDF8',
+  '16': 'E7ECF3',
+  '17': 'E6EBF3',
+  '18': 'E3EAF2',
+  '19': 'E0E8F1',
+  '20': 'DDE5EF',
+};
+
+/** ExcelJS/xlsx-js-style solid fill for an SFI group, or null (no tint). */
+function groupRowFill(group: string | null): { fgColor: { rgb: string } } | null {
+  if (!group) return null;
+  const key = String(group).trim().split('.')[0].replace(/^0/, '');
+  const rgb = GROUP_ROW_FILL[key];
+  return rgb ? { fgColor: { rgb } } : null;
+}
+
+/**
+ * Natural compare of dotted asset IDs so groups/subs sort numerically:
+ * SWX.2.11.01 < SWX.10.1.01 (a plain string sort put "10" before "2").
+ * Splits each id into number / non-number tokens and compares in order.
+ */
+function naturalCompareIds(a: string, b: string): number {
+  const tok = (s: string) =>
+    (s.match(/\d+|\D+/g) ?? []).map((t) => (/^\d+$/.test(t) ? Number(t) : t));
+  const ta = tok(a);
+  const tb = tok(b);
+  for (let i = 0; i < Math.max(ta.length, tb.length); i++) {
+    const x = ta[i];
+    const y = tb[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    if (typeof x === 'number' && typeof y === 'number') {
+      if (x !== y) return x - y;
+    } else {
+      const cmp = String(x).localeCompare(String(y));
+      if (cmp !== 0) return cmp;
+    }
+  }
+  return 0;
+}
 
 @Injectable()
 export class AssetsService {
@@ -598,11 +658,18 @@ export class AssetsService {
     if (!ship) {
       throw new NotFoundException(`Ship ${shipId} not found`);
     }
-    const assets = await this.assetRepository.find({
-      where: { shipId },
-      order: { assetIdInternal: 'ASC' },
-    });
+    const assets = await this.assetRepository.find({ where: { shipId } });
+    // Natural numeric order by SFI group → sub → sequence, so the sheet reads
+    // 1, 2 … 20 (a plain string sort put "SWX.10" before "SWX.2" and
+    // "sub 10" before "sub 2" — that is the "table starts at 10" bug).
+    assets.sort((a, b) =>
+      naturalCompareIds(a.assetIdInternal, b.assetIdInternal),
+    );
 
+    // Register standard columns only. Dropped: criticality,
+    // commissioned_date, location_asset_id, rina_ref and the v14.6 location
+    // fields (zone/deck_role/deck_level/space_*) and inspection_obligation —
+    // all retired / empty and never part of the agreed register format.
     const COLUMNS: Array<[string, (a: AssetEntity) => unknown]> = [
       ['asset_id_internal', (a) => a.assetIdInternal],
       ['display_name', (a) => a.displayName],
@@ -610,31 +677,27 @@ export class AssetsService {
       ['sfi_group_name', (a) => a.sfiGroupName],
       ['sfi_sub', (a) => a.sfiSub],
       ['sfi_sub_name', (a) => a.sfiSubName],
-      ['drawing_code', (a) => a.drawingCode],
       ['parent_asset_id', (a) => a.parentAssetId],
       ['served_by_asset_id', (a) => a.servedByAssetId],
-      ['location_asset_id', (a) => a.locationAssetId],
       ['brand', (a) => a.brand],
       ['model', (a) => a.model],
       ['serial_no', (a) => a.serialNo],
-      ['criticality', (a) => a.criticality],
-      ['commissioned_date', (a) => a.commissionedDate],
       ['location', (a) => a.location],
-      ['rina_ref', (a) => a.rinaRef],
-      ['zone', (a) => a.zone],
-      ['deck_role', (a) => a.deckRole],
-      ['deck_level', (a) => a.deckLevel],
-      ['space_instance', (a) => a.spaceInstance],
-      ['space_label', (a) => a.spaceLabel],
       ['drawing_ref', (a) => a.drawingRef],
-      ['inspection_obligation', (a) => a.inspectionObligation],
+      ['drawing_code', (a) => a.drawingCode],
       ['notes', (a) => a.notes],
     ];
 
+    // Spill custom (non-canonical) attrs, but never re-emit a key that is
+    // already a standard column — some imports stashed canonical names
+    // (drawing_code, sfi_group_name…) into extras, which duplicated columns.
+    const canonical = new Set(COLUMNS.map(([h]) => h));
     const extrasKeys = new Set<string>();
     for (const a of assets) {
       if (a.extras) {
-        for (const k of Object.keys(a.extras)) extrasKeys.add(k);
+        for (const k of Object.keys(a.extras)) {
+          if (!canonical.has(k)) extrasKeys.add(k);
+        }
       }
     }
     const extrasCols = Array.from(extrasKeys).sort();
@@ -652,10 +715,30 @@ export class AssetsService {
       aoa.push(row);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, REGISTER_SHEET_NAME);
-    const buffer = XLSX.write(wb, {
+    const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
+    const colCount = header.length;
+
+    // Header row (row index 1) — bold. Data rows tinted by SFI group so the
+    // register reads at a glance, matching the app's group colours.
+    for (let c = 0; c < colCount; c++) {
+      const headerCell = ws[XLSXStyle.utils.encode_cell({ r: 1, c })];
+      if (headerCell) headerCell.s = { font: { bold: true } };
+    }
+    assets.forEach((a, i) => {
+      const fill = groupRowFill(a.sfiGroup);
+      if (!fill) return;
+      const r = i + 2; // banner + header offset
+      for (let c = 0; c < colCount; c++) {
+        const cell = ws[XLSXStyle.utils.encode_cell({ r, c })];
+        if (cell) cell.s = { ...(cell.s ?? {}), fill };
+      }
+    });
+    // Column widths for readability.
+    ws['!cols'] = header.map((h) => ({ wch: Math.max(12, h.length + 2) }));
+
+    const wb = XLSXStyle.utils.book_new();
+    XLSXStyle.utils.book_append_sheet(wb, ws, REGISTER_SHEET_NAME);
+    const buffer = XLSXStyle.write(wb, {
       type: 'buffer',
       bookType: 'xlsx',
     }) as Buffer;
