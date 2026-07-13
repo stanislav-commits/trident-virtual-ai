@@ -9142,6 +9142,19 @@
 .documents-edit__attach-row { margin-top: 10px; }
 .documents-edit__name-row .admin-panel__btn,
 .documents-edit__attach-row .admin-panel__btn { flex-shrink: 0; }
+/* Connected-assets list scrolls so a doc linked to many assets never pushes
+   the Attach box / actions off-screen. */
+.documents-edit__asset-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--chat-border);
+  border-radius: 8px;
+}
+/* The edit modal itself must never exceed the viewport. */
+.admin-panel__modal--wide {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
 
 /* One-button batch upload: files/folder picker menu. */
 .compliance__upload-wrap { position: relative; }

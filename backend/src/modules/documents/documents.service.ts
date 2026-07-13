@@ -310,11 +310,16 @@ export class DocumentsService {
   }
 
   /**
-   * Which assets this document is connected to — the document-side mirror of
-   * the asset drawer. `pinned` = explicit admin links; `auto` = the same
-   * matching the asset drawer computes (manuals: brand/model against the
-   * doc's extracted metadata; plans: register drawing codes against the
-   * filename), minus anything explicitly excluded.
+   * Which assets this document is connected to (KB edit modal). Returns the
+   * REAL pinned links — the ones the operator (or the extractor's strict
+   * brand+model match at upload) created and can control. For PLANS we also
+   * surface the precise drawing-code matches (filename contains the asset's
+   * drawing code) as suggestions, since drawings are named by code.
+   *
+   * Deliberately NO live brand-only auto-match for manuals: it returned
+   * dozens of wrong assets (every FURUNO device for a FURUNO manual) that
+   * couldn't be seen or fixed and made the "Unlinked" chip contradict the
+   * modal.
    */
   async listAssetLinks(
     id: string,
@@ -338,29 +343,7 @@ export class DocumentsService {
     const takenIds = new Set([...excludedIds, ...pinned.map((a) => a.id)]);
 
     let autoAssets: AssetEntity[] = [];
-    if (document.docClass === DocumentDocClass.MANUAL && document.manufacturer) {
-      // Reverse of the asset-drawer match: asset brand substring of the
-      // doc's manufacturer/equipment name; model agrees when both sides
-      // carry one.
-      autoAssets = await this.assetsRepository
-        .createQueryBuilder('a')
-        .where('a.ship_id = :shipId', { shipId: document.shipId })
-        .andWhere(`a.brand IS NOT NULL AND a.brand != ''`)
-        .andWhere(
-          `(:mfr ILIKE '%' || a.brand || '%' OR :equip ILIKE '%' || a.brand || '%')`,
-          {
-            mfr: document.manufacturer ?? '',
-            equip: document.equipmentName ?? '',
-          },
-        )
-        .andWhere(
-          `(a.model IS NULL OR :model = '' OR :model ILIKE '%' || a.model || '%')`,
-          { model: document.model ?? '' },
-        )
-        .orderBy('a.asset_id_internal', 'ASC')
-        .limit(50)
-        .getMany();
-    } else if (document.docClass === DocumentDocClass.PLAN) {
+    if (document.docClass === DocumentDocClass.PLAN) {
       autoAssets = await this.assetsRepository
         .createQueryBuilder('a')
         .where('a.ship_id = :shipId', { shipId: document.shipId })

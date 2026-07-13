@@ -129,8 +129,10 @@ export function DocumentEditModal({
       <span className="assets-section__doc-row-main">
         <span className="assets-section__doc-name">
           {a.assetIdInternal} — {a.displayName}
-          {kind === "pinned" && (
-            <span className="assets-section__doc-badge">pinned</span>
+          {kind === "auto" && (
+            <span className="assets-section__doc-badge">
+              suggested · drawing code
+            </span>
           )}
         </span>
       </span>
@@ -199,11 +201,15 @@ export function DocumentEditModal({
               )}
               {links && links.pinned.length === 0 && links.auto.length === 0 && (
                 <div className="admin-panel__muted">
-                  No assets connected yet.
+                  Not linked to any asset. Search below to attach one.
                 </div>
               )}
-              {links?.pinned.map((a) => renderRow(a, "pinned"))}
-              {links?.auto.map((a) => renderRow(a, "auto"))}
+              {(links?.pinned.length || links?.auto.length) ? (
+                <div className="documents-edit__asset-list">
+                  {links?.pinned.map((a) => renderRow(a, "pinned"))}
+                  {links?.auto.map((a) => renderRow(a, "auto"))}
+                </div>
+              ) : null}
 
               <div className="documents-edit__attach-row">
                 <input

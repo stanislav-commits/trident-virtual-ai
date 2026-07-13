@@ -283,56 +283,22 @@ export class AssetsService {
         .map((l) => l.documentId),
     );
 
-    // (b) Auto-matched by brand/model fuzzy. Skip docs already in explicit
-    // and docs the admin explicitly excluded from auto-matching.
+    // No live brand/model auto-match here: it produced dozens of wrong hits
+    // (a FURUNO manual matched every FURUNO asset; a Gianneschi boiler manual
+    // every Gianneschi tank) that the operator couldn't see or control.
+    // Manuals are linked to assets ONCE at upload by the extractor's strict
+    // brand+model match (real pinned links), and thereafter only explicitly.
     const explicitIds = new Set(explicit.map((d) => d.id));
-    let autoMatched: DocumentEntity[] = [];
-    if (asset.brand) {
-      // ILIKE needs % wildcards for substring match — without them, "MASE"
-      // wouldn't catch "MASE Generators Marine" or "MASE Inc".
-      const qb = this.documentRepository
-        .createQueryBuilder('d')
-        .where('d.ship_id = :shipId', { shipId })
-        // Only equipment manuals auto-match to assets — procedures/forms are
-        // general knowledge-base documents (never asset-bound), plans have
-        // their own drawing-code matching below.
-        .andWhere("d.doc_class = 'manual'")
-        .andWhere(
-          new Brackets((b) =>
-            b
-              .where('d.manufacturer ILIKE :brand', {
-                brand: `%${asset.brand}%`,
-              })
-              .orWhere('d.equipment_name ILIKE :brand', {
-                brand: `%${asset.brand}%`,
-              }),
-          ),
-        );
 
-      if (asset.model) {
-        qb.andWhere(
-          new Brackets((b) =>
-            b
-              .where('d.model ILIKE :model', { model: `%${asset.model}%` })
-              .orWhere('d.model IS NULL'),
-          ),
-        );
-      }
-      const rows = await qb.orderBy('d.created_at', 'DESC').limit(50).getMany();
-      autoMatched = rows.filter(
-        (d) => !explicitIds.has(d.id) && !excludedIds.has(d.id),
-      );
-    }
-
-    // Order: explicit first (human-curated > AI guess), then auto-matched.
     // PLANS live in their own list: they are file pointers (never parsed),
     // shown on the Overview — the Manuals tab is manuals/procedures only.
     const isPlan = (d: DocumentEntity) => d.docClass === 'plan';
-    const nonPlan = [...explicit, ...autoMatched].filter((d) => !isPlan(d));
+    const nonPlan = explicit.filter((d) => !isPlan(d));
 
     // Drawings: explicit plan links + auto-match by the register's drawing
-    // code/ref against the drawing filename (drawings are named by code).
-    const drawingDocs: DocumentEntity[] = [...explicit, ...autoMatched].filter(isPlan);
+    // code/ref against the drawing filename (drawings are named by code —
+    // a precise match the operator asked to keep).
+    const drawingDocs: DocumentEntity[] = explicit.filter(isPlan);
     const drawingIds = new Set(drawingDocs.map((d) => d.id));
     for (const code of [asset.drawingCode, asset.drawingRef]) {
       const token = code?.trim();
