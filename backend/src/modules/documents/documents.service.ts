@@ -141,6 +141,12 @@ export class DocumentsService {
         linkType: 'pinned',
         createdByUserId: user.id,
       });
+    } else if (document.docClass === DocumentDocClass.PLAN) {
+      // Drawings are named by code — auto-link them ONCE here, as REAL
+      // pinned links (like the extractor does for manuals by brand+model).
+      // After this it's all explicit/controllable; there is no live phantom
+      // match anywhere (which used to link uncontrollable asset lists).
+      await this.autoLinkPlanByDrawingCode(document, user.id);
     }
 
     // Text-bearing docs run through the local vision extractor BEFORE RAGFlow
@@ -310,59 +316,67 @@ export class DocumentsService {
   }
 
   /**
-   * Which assets this document is connected to (KB edit modal). Returns the
-   * REAL pinned links — the ones the operator (or the extractor's strict
-   * brand+model match at upload) created and can control. For PLANS we also
-   * surface the precise drawing-code matches (filename contains the asset's
-   * drawing code) as suggestions, since drawings are named by code.
-   *
-   * Deliberately NO live brand-only auto-match for manuals: it returned
-   * dozens of wrong assets (every FURUNO device for a FURUNO manual) that
-   * couldn't be seen or fixed and made the "Unlinked" chip contradict the
-   * modal.
+   * Which assets a document is connected to (KB edit modal). Returns ONLY the
+   * REAL pinned links — created by the operator or, at upload, by the strict
+   * one-time auto-link (manuals: brand+model; plans: drawing code). No live
+   * phantom match anywhere: the old brand-only / drawing-code substring
+   * matches returned dozens of uncontrollable assets and made the "Unlinked"
+   * chip contradict the modal.
    */
   async listAssetLinks(
     id: string,
     user: AuthenticatedUser,
-  ): Promise<{
-    pinned: DocumentAssetLinkItem[];
-    auto: DocumentAssetLinkItem[];
-  }> {
+  ): Promise<{ pinned: DocumentAssetLinkItem[] }> {
     const document = await this.findAccessibleDocument(id, user);
-
     const links = await this.assetDocLinkRepository.find({
-      where: { documentId: document.id },
+      where: { documentId: document.id, linkType: 'pinned' },
       relations: { asset: true },
     });
-    const pinned = links
-      .filter((l) => l.linkType !== 'excluded' && l.asset)
-      .map((l) => toAssetLinkItem(l.asset!));
-    const excludedIds = new Set(
-      links.filter((l) => l.linkType === 'excluded').map((l) => l.assetId),
-    );
-    const takenIds = new Set([...excludedIds, ...pinned.map((a) => a.id)]);
-
-    let autoAssets: AssetEntity[] = [];
-    if (document.docClass === DocumentDocClass.PLAN) {
-      autoAssets = await this.assetsRepository
-        .createQueryBuilder('a')
-        .where('a.ship_id = :shipId', { shipId: document.shipId })
-        .andWhere(
-          `((a.drawing_code IS NOT NULL AND a.drawing_code != '' AND :fname ILIKE '%' || a.drawing_code || '%')
-            OR (a.drawing_ref IS NOT NULL AND a.drawing_ref != '' AND :fname ILIKE '%' || a.drawing_ref || '%'))`,
-          { fname: document.originalFileName },
-        )
-        .orderBy('a.asset_id_internal', 'ASC')
-        .limit(50)
-        .getMany();
-    }
-
     return {
-      pinned,
-      auto: autoAssets
-        .filter((a) => !takenIds.has(a.id))
-        .map(toAssetLinkItem),
+      pinned: links
+        .filter((l) => l.asset)
+        .map((l) => toAssetLinkItem(l.asset!)),
     };
+  }
+
+  /**
+   * One-time drawing-code auto-link for a plan: pin every asset whose
+   * drawing code/ref appears in the plan's filename (a GA drawing legitimately
+   * covers many assets). Idempotent (composite PK), skips assets the operator
+   * already excluded. Returns how many links were created.
+   */
+  async autoLinkPlanByDrawingCode(
+    document: { id: string; shipId: string; originalFileName: string },
+    userId: string | null,
+  ): Promise<number> {
+    const excluded = await this.assetDocLinkRepository.find({
+      where: { documentId: document.id, linkType: 'excluded' },
+      select: { assetId: true },
+    });
+    const excludedIds = new Set(excluded.map((l) => l.assetId));
+
+    const matches = await this.assetsRepository
+      .createQueryBuilder('a')
+      .where('a.ship_id = :shipId', { shipId: document.shipId })
+      .andWhere(
+        `((a.drawing_code IS NOT NULL AND a.drawing_code != '' AND :fname ILIKE '%' || a.drawing_code || '%')
+          OR (a.drawing_ref IS NOT NULL AND a.drawing_ref != '' AND :fname ILIKE '%' || a.drawing_ref || '%'))`,
+        { fname: document.originalFileName },
+      )
+      .getMany();
+
+    const toLink = matches.filter((a) => !excludedIds.has(a.id));
+    if (toLink.length) {
+      await this.assetDocLinkRepository.save(
+        toLink.map((a) => ({
+          assetId: a.id,
+          documentId: document.id,
+          linkType: 'pinned' as const,
+          createdByUserId: userId,
+        })),
+      );
+    }
+    return toLink.length;
   }
 
   async updateClassification(

@@ -12,6 +12,7 @@ import {
   getDocumentParseProfileLabel,
   getDocumentParseStatusLabel,
   getDocumentRoleLabel,
+  isAssetLinkableClass,
 } from "./documentOptions";
 
 interface DocumentsTableProps {
@@ -430,14 +431,15 @@ export function DocumentsTable({
                         {document.originalFileName.replace(/^\[UNLINKED\]\s*/i, "")}
                       </span>
                     </button>
-                    {!document.linkedAssets?.length && (
-                      <span
-                        className="admin-panel__doc-unlinked"
-                        title="Not linked to any asset yet — link it from an asset's Manuals tab"
-                      >
-                        Unlinked
-                      </span>
-                    )}
+                    {isAssetLinkableClass(document.docClass) &&
+                      !document.linkedAssets?.length && (
+                        <span
+                          className="admin-panel__doc-unlinked"
+                          title="Not linked to any asset yet — open the edit (pencil) to attach one"
+                        >
+                          Unlinked
+                        </span>
+                      )}
                     <div className="admin-panel__document-file-meta">
                       {fileMetaItems.map((item) => (
                         <span key={item.label} title={item.title}>

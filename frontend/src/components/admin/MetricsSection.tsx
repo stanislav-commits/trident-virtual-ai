@@ -147,8 +147,11 @@ function MetricDescriptionCell({
     );
   }
 
-  // Prefer the Claude profiler's aiDescription over the synced/Grafana one.
-  const shownDescription = metric.aiDescription ?? metric.description;
+  // Show the SAME text the editor edits and saves (the `description`
+  // column), falling back to the AI description only when there is no edited
+  // one yet — otherwise the row showed aiDescription while the editor edited
+  // description, so an edit looked like it did nothing.
+  const shownDescription = metric.description ?? metric.aiDescription;
   return (
     <button
       type="button"
@@ -261,7 +264,8 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     setCatalogError("");
     setDescriptionEditError(null);
     setActiveEditingMetric(metric.id);
-    setDraftDescription(metric.description ?? "");
+    // Seed from the SAME value the row shows (see shownDescription).
+    setDraftDescription(metric.description ?? metric.aiDescription ?? "");
   };
 
   const handleCancelEditing = useCallback(() => {

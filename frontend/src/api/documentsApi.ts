@@ -570,7 +570,7 @@ export interface DocumentAssetLink {
 export async function fetchDocumentAssetLinks(
   token: string,
   documentId: string,
-): Promise<{ pinned: DocumentAssetLink[]; auto: DocumentAssetLink[] }> {
+): Promise<{ pinned: DocumentAssetLink[] }> {
   const response = await fetchWithAuth(`documents/${documentId}/asset-links`, {
     token,
   });

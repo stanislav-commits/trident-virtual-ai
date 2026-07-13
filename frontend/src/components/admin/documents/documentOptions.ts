@@ -97,3 +97,12 @@ export function getDocumentRoleLabel(documentRole: DocumentRole): string {
       ?.label ?? documentRole
   );
 }
+
+/** Classes that can be linked to assets (manuals, vessel plans/drawings).
+ * Procedures/forms/publications are general knowledge — never asset-bound,
+ * so they must not show an "Unlinked" chip. */
+const ASSET_LINKABLE_CLASSES: DocumentDocClass[] = ["manual", "plan"];
+
+export function isAssetLinkableClass(docClass: DocumentDocClass): boolean {
+  return ASSET_LINKABLE_CLASSES.includes(docClass);
+}

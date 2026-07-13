@@ -37,7 +37,6 @@ export function DocumentEditModal({
   const showAssets = doc.docClass === "manual" || doc.docClass === "plan";
   const [links, setLinks] = useState<{
     pinned: DocumentAssetLink[];
-    auto: DocumentAssetLink[];
   } | null>(null);
   const [linksBusyId, setLinksBusyId] = useState<string | null>(null);
   const [assetOptions, setAssetOptions] = useState<
@@ -124,16 +123,11 @@ export function DocumentEditModal({
     }
   };
 
-  const renderRow = (a: DocumentAssetLink, kind: "pinned" | "auto") => (
+  const renderRow = (a: DocumentAssetLink) => (
     <div key={a.id} className="assets-section__doc-row">
       <span className="assets-section__doc-row-main">
         <span className="assets-section__doc-name">
           {a.assetIdInternal} — {a.displayName}
-          {kind === "auto" && (
-            <span className="assets-section__doc-badge">
-              suggested · drawing code
-            </span>
-          )}
         </span>
       </span>
       <button
@@ -141,11 +135,7 @@ export function DocumentEditModal({
         className="assets-section__metric-unbind"
         disabled={linksBusyId === a.id}
         onClick={() => void detach(a.id)}
-        title={
-          kind === "pinned"
-            ? "Remove this link"
-            : "Wrong match — hide this asset for this document permanently"
-        }
+        title="Remove this link"
         aria-label={`Detach ${a.displayName}`}
       >
         {linksBusyId === a.id ? "…" : "×"}
@@ -199,15 +189,14 @@ export function DocumentEditModal({
               {!links && (
                 <div className="admin-panel__muted">Loading…</div>
               )}
-              {links && links.pinned.length === 0 && links.auto.length === 0 && (
+              {links && links.pinned.length === 0 && (
                 <div className="admin-panel__muted">
                   Not linked to any asset. Search below to attach one.
                 </div>
               )}
-              {(links?.pinned.length || links?.auto.length) ? (
+              {links?.pinned.length ? (
                 <div className="documents-edit__asset-list">
-                  {links?.pinned.map((a) => renderRow(a, "pinned"))}
-                  {links?.auto.map((a) => renderRow(a, "auto"))}
+                  {links.pinned.map((a) => renderRow(a))}
                 </div>
               ) : null}
 

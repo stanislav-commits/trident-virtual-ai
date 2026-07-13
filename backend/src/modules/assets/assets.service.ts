@@ -231,6 +231,14 @@ export class AssetsService {
     qb.skip(offset).take(limit);
 
     const [items, total] = await qb.getManyAndCount();
+    // The SQL sort is lexical ("SWX.10" < "SWX.2", "sub 10" < "sub 2"), so
+    // the register read as group 10 → 2. Re-sort numerically. Safe because
+    // the admin loads the whole register in one page (limit 2000 ≥ fleet);
+    // if true offset pagination is ever enabled for >2000-asset vessels,
+    // move this into SQL so page boundaries stay correct.
+    items.sort((a, b) =>
+      naturalCompareIds(a.assetIdInternal, b.assetIdInternal),
+    );
     return { items, total, limit, offset };
   }
 
@@ -277,11 +285,6 @@ export class AssetsService {
       .filter((l) => l.linkType !== 'excluded')
       .map((l) => l.document)
       .filter((d): d is DocumentEntity => Boolean(d));
-    const excludedIds = new Set(
-      explicitLinks
-        .filter((l) => l.linkType === 'excluded')
-        .map((l) => l.documentId),
-    );
 
     // No live brand/model auto-match here: it produced dozens of wrong hits
     // (a FURUNO manual matched every FURUNO asset; a Gianneschi boiler manual
@@ -295,29 +298,10 @@ export class AssetsService {
     const isPlan = (d: DocumentEntity) => d.docClass === 'plan';
     const nonPlan = explicit.filter((d) => !isPlan(d));
 
-    // Drawings: explicit plan links + auto-match by the register's drawing
-    // code/ref against the drawing filename (drawings are named by code —
-    // a precise match the operator asked to keep).
+    // Drawings: explicit plan links only. Plans are drawing-code auto-linked
+    // ONCE at upload as real pinned links (see autoLinkPlanByDrawingCode), so
+    // there is no live phantom match here — what shows is real and editable.
     const drawingDocs: DocumentEntity[] = explicit.filter(isPlan);
-    const drawingIds = new Set(drawingDocs.map((d) => d.id));
-    for (const code of [asset.drawingCode, asset.drawingRef]) {
-      const token = code?.trim();
-      if (!token) continue;
-      const matches = await this.documentRepository
-        .createQueryBuilder('d')
-        .where('d.ship_id = :shipId', { shipId })
-        .andWhere('d.doc_class = :plan', { plan: 'plan' })
-        .andWhere('d.original_file_name ILIKE :code', { code: `%${token}%` })
-        .orderBy('d.created_at', 'DESC')
-        .limit(10)
-        .getMany();
-      for (const m of matches) {
-        if (!drawingIds.has(m.id) && !excludedIds.has(m.id)) {
-          drawingIds.add(m.id);
-          drawingDocs.push(m);
-        }
-      }
-    }
 
     const documents = nonPlan;
 
