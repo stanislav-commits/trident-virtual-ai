@@ -340,10 +340,12 @@ export class DocumentsService {
   }
 
   /**
-   * One-time drawing-code auto-link for a plan: pin every asset whose
-   * drawing code/ref appears in the plan's filename (a GA drawing legitimately
-   * covers many assets). Idempotent (composite PK), skips assets the operator
-   * already excluded. Returns how many links were created.
+   * One-time drawing-ref auto-link for a plan: pin every asset whose DRAWING
+   * NUMBER (drawing_ref, e.g. "510650a") appears in the plan's filename (a GA
+   * / arrangement drawing legitimately covers many assets). Matches ONLY on
+   * drawing_ref — drawing_code holds equipment codes (EL-06, UL, GEN) that
+   * spuriously substring-match filenames. Idempotent (composite PK), skips
+   * assets the operator already excluded. Returns how many links were created.
    */
   async autoLinkPlanByDrawingCode(
     document: { id: string; shipId: string; originalFileName: string },
@@ -359,8 +361,8 @@ export class DocumentsService {
       .createQueryBuilder('a')
       .where('a.ship_id = :shipId', { shipId: document.shipId })
       .andWhere(
-        `((a.drawing_code IS NOT NULL AND a.drawing_code != '' AND :fname ILIKE '%' || a.drawing_code || '%')
-          OR (a.drawing_ref IS NOT NULL AND a.drawing_ref != '' AND :fname ILIKE '%' || a.drawing_ref || '%'))`,
+        `a.drawing_ref IS NOT NULL AND a.drawing_ref != ''
+          AND :fname ILIKE '%' || a.drawing_ref || '%'`,
         { fname: document.originalFileName },
       )
       .getMany();
