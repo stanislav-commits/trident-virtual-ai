@@ -171,6 +171,14 @@ export class VisionExtractionService implements OnApplicationBootstrap {
       where: { id: documentId },
     });
     if (!document) return;
+    // A doc can reach the queue twice (defer timer + bootstrap re-queue,
+    // rerun clicks) — only 'pending'/'running' actually need work.
+    if (
+      document.extractionStatus !== 'pending' &&
+      document.extractionStatus !== 'running'
+    ) {
+      return;
+    }
 
     const extractorDir = this.getExtractorDir();
     if (!extractorDir) {
@@ -189,20 +197,23 @@ export class VisionExtractionService implements OnApplicationBootstrap {
     }
 
     // OOM guard: the extractor's Discovery phase holds a per-page layout
-    // model in memory and on big graphics-heavy PDFs it eats >3.4 GB —
-    // the kernel OOM killer then takes the whole pm2 cgroup down WITH the
+    // model in memory and on big graphics-heavy PDFs it eats >3.4 GB — the
+    // kernel OOM killer then takes the whole pm2 cgroup down WITH the
     // backend (happened on prod with a 36 MB and a 24.7 MB manual).
-    // Oversized files skip vision and go to RAGFlow as the original PDF,
-    // where the manual chunker handles them natively.
+    // Oversized files still get vision, but (a) they YIELD the queue until
+    // every smaller document has been extracted, and (b) they run SLICED —
+    // the PDF is split into fixed-size page ranges, each range is extracted
+    // on its own (bounding the extractor's memory), and the markdowns are
+    // stitched back together with corrected page anchors.
     const maxBytes = this.getMaxFileBytes();
-    if (maxBytes > 0 && (document.fileSizeBytes ?? 0) > maxBytes) {
-      this.logger.warn(
-        `Vision skipped for ${document.originalFileName}: ${Math.round((document.fileSizeBytes ?? 0) / 1024 / 1024)} MB exceeds the ${Math.round(maxBytes / 1024 / 1024)} MB extractor limit — ingesting the original PDF directly`,
+    const oversized = maxBytes > 0 && (document.fileSizeBytes ?? 0) > maxBytes;
+    if (oversized && (await this.smallerExtractionPending(document.id, maxBytes))) {
+      this.logger.log(
+        `Oversized ${document.originalFileName} waits for smaller extractions to finish`,
       );
-      document.extractionStatus = 'none';
-      document.extractionError = null;
-      await this.documentsRepository.save(document);
-      void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
+      // Re-check once a minute; the doc stays 'pending' so a restart's
+      // bootstrap re-queue keeps covering it too.
+      setTimeout(() => this.queue(document.id), 60_000);
       return;
     }
 
@@ -216,6 +227,9 @@ export class VisionExtractionService implements OnApplicationBootstrap {
     // storage (readUpload streams it here only for the extractor run), so this
     // temp is the only on-disk copy and must not persist.
     let stagedInputPath: string | null = null;
+    const stagedPartPaths: string[] = [];
+    const extractionStartedAt = Date.now();
+    let producedTitle: string;
     try {
       const buffer = await this.uploadStorage.readUpload(document.storageKey!);
 
@@ -226,59 +240,65 @@ export class VisionExtractionService implements OnApplicationBootstrap {
       stagedInputPath = path.join(extractorDir, '01-input', safeName);
       await fs.writeFile(stagedInputPath, buffer);
 
-      // 2. Run the pipeline for this one file.
-      const startedAt = Date.now();
       const python = path.join(extractorDir, '.venv', 'bin', 'python');
-      const fileFilter = safeName.replace(/\.pdf$/i, '');
-      await execFileAsync(
-        python,
-        ['-m', 'trident', 'run', '--vision', '--no-skip-existing', '--file', fileFilter],
-        {
-          cwd: extractorDir,
-          timeout: EXTRACTION_TIMEOUT_MS,
-          maxBuffer: 32 * 1024 * 1024,
-        },
-      );
+      let mdContent: Buffer;
 
-      // 3. Discover the produced markdown by mtime.
-      const mdDir = path.join(extractorDir, '02-work', 'vision-rebuild', 'md');
-      const entries = await fs.readdir(mdDir);
-      let newest: { file: string; mtime: number } | null = null;
-      for (const entry of entries) {
-        if (!entry.endsWith('.md')) continue;
-        const stat = await fs.stat(path.join(mdDir, entry));
-        if (stat.mtimeMs >= startedAt - 2_000) {
-          if (!newest || stat.mtimeMs > newest.mtime) {
-            newest = { file: entry, mtime: stat.mtimeMs };
+      if (!oversized) {
+        // 2a. Normal file — one extractor pass.
+        const pass = await this.runExtractorPass(
+          extractorDir,
+          python,
+          safeName.replace(/\.pdf$/i, ''),
+        );
+        producedTitle = pass.enrichedStem;
+        mdContent = Buffer.from(
+          pass.paginated
+            ? `# ${pass.enrichedStem}\n\n${pass.paginated}`
+            : pass.raw,
+          'utf8',
+        );
+      } else {
+        // 2b. Oversized — split into fixed page ranges (pypdf, inside the
+        // extractor's venv), run one pass per part so the extractor's
+        // memory is bounded by the slice, then stitch the markdowns with
+        // page anchors shifted to the ORIGINAL page numbers.
+        const split = await this.splitPdf(
+          python,
+          stagedInputPath,
+          path.join(extractorDir, '01-input'),
+          safeName.replace(/\.pdf$/i, ''),
+        );
+        this.logger.log(
+          `Sliced extraction for ${document.originalFileName}: ${split.total} pages in ${split.parts.length} part(s)`,
+        );
+        const sections: string[] = [];
+        let enrichedStem: string | null = null;
+        let pageOffset = 0;
+        let lastMdMtime = 0;
+        for (const part of split.parts) {
+          stagedPartPaths.push(path.join(extractorDir, '01-input', part.name));
+          const pass = await this.runExtractorPass(
+            extractorDir,
+            python,
+            part.name.replace(/\.pdf$/i, ''),
+            lastMdMtime + 1,
+          );
+          lastMdMtime = pass.newestMtime;
+          if (!enrichedStem) {
+            // Part 1 carries the cover → the register-enriched name; strip
+            // the slice suffix we appended.
+            enrichedStem = pass.enrichedStem.replace(/\.part\d+$/i, '');
           }
+          const text = pass.paginated ?? pass.raw;
+          sections.push(this.offsetPageAnchors(text, pageOffset));
+          pageOffset += part.pages;
         }
-      }
-      if (!newest) {
-        throw new Error(
-          'Extractor finished but produced no markdown (check 05-logs in the extractor project)',
+        producedTitle = enrichedStem ?? safeName.replace(/\.pdf$/i, '');
+        mdContent = Buffer.from(
+          `# ${producedTitle}\n\n${sections.join('\n\n')}`,
+          'utf8',
         );
       }
-
-      // Prefer rebuilding the markdown from the per-page result JSON so
-      // every page carries an explicit "[Manual page N]" anchor — the AI
-      // can then cite exact pages of the ORIGINAL PDF even though it only
-      // reads the extract. Falls back to the assembled md when the JSON
-      // is not found.
-      // The extractor's enriched title (md filename stem) carries the
-      // brand/model — keep it as the H1 of the paginated rebuild: the
-      // identification LLM and retrieval both need it up top (page 1 of
-      // many manuals is packaging/safety with no brand mention).
-      const enrichedTitle = newest.file.replace(/\.md$/i, '');
-      const paginated = await this.buildPaginatedMarkdown(
-        extractorDir,
-        startedAt,
-      );
-      const mdContent = Buffer.from(
-        paginated
-          ? `# ${enrichedTitle}\n\n${paginated}`
-          : await fs.readFile(path.join(mdDir, newest.file), 'utf8'),
-        'utf8',
-      );
 
       // 4. Attach the markdown to the document in the local spool.
       const mdKey = await this.uploadStorage.saveExtractedMarkdown(
@@ -314,8 +334,8 @@ export class VisionExtractionService implements OnApplicationBootstrap {
       // recovery interval).
       void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
       this.logger.log(
-        `Vision extraction done: ${document.originalFileName} → ${newest.file} (${Math.round(
-          (Date.now() - startedAt) / 1000,
+        `Vision extraction done: ${document.originalFileName} → ${producedTitle} (${Math.round(
+          (Date.now() - extractionStartedAt) / 1000,
         )}s)`,
       );
     } catch (error) {
@@ -324,13 +344,150 @@ export class VisionExtractionService implements OnApplicationBootstrap {
         error instanceof Error ? error.message.slice(0, 1000) : String(error),
       );
     } finally {
-      // Always remove the staged temp PDF — the original is in storage
-      // (spool or Spaces) and RAGFlow gets the markdown. Never let 01-input
-      // accumulate, even on a failed/aborted run.
+      // Always remove the staged temp PDF (and any slice parts) — the
+      // original is in storage (spool or Spaces) and RAGFlow gets the
+      // markdown. Never let 01-input accumulate, even on a failed run.
       if (stagedInputPath) {
         await fs.rm(stagedInputPath, { force: true }).catch(() => undefined);
       }
+      for (const partPath of stagedPartPaths) {
+        await fs.rm(partPath, { force: true }).catch(() => undefined);
+      }
     }
+  }
+
+  /** One extractor run over a single staged file + markdown discovery. */
+  private async runExtractorPass(
+    extractorDir: string,
+    python: string,
+    fileFilter: string,
+    afterMs = 0,
+  ): Promise<{
+    enrichedStem: string;
+    paginated: string | null;
+    raw: string;
+    newestMtime: number;
+  }> {
+    const startedAt = Date.now();
+    // Discovery floor: normally startedAt minus a small clock-granularity
+    // grace. Sliced runs pass the previous part's md mtime so a part that
+    // produced NO output can never silently re-discover its predecessor's
+    // file through the grace window (it must throw instead).
+    const floorMs = Math.max(startedAt - 2_000, afterMs);
+    await execFileAsync(
+      python,
+      ['-m', 'trident', 'run', '--vision', '--no-skip-existing', '--file', fileFilter],
+      {
+        cwd: extractorDir,
+        timeout: EXTRACTION_TIMEOUT_MS,
+        maxBuffer: 32 * 1024 * 1024,
+      },
+    );
+
+    // Discover the produced markdown by mtime — the stem may be an ENRICHED
+    // name (register matcher renames), so any .md written after the run
+    // started is ours.
+    const mdDir = path.join(extractorDir, '02-work', 'vision-rebuild', 'md');
+    const entries = await fs.readdir(mdDir);
+    let newest: { file: string; mtime: number } | null = null;
+    for (const entry of entries) {
+      if (!entry.endsWith('.md')) continue;
+      const stat = await fs.stat(path.join(mdDir, entry));
+      if (stat.mtimeMs >= floorMs) {
+        if (!newest || stat.mtimeMs > newest.mtime) {
+          newest = { file: entry, mtime: stat.mtimeMs };
+        }
+      }
+    }
+    if (!newest) {
+      throw new Error(
+        'Extractor finished but produced no markdown (check 05-logs in the extractor project)',
+      );
+    }
+
+    // Prefer rebuilding the markdown from the per-page result JSON so every
+    // page carries an explicit "[Manual page N]" anchor — the AI can then
+    // cite exact pages of the ORIGINAL PDF even though it only reads the
+    // extract. Falls back to the assembled md when the JSON is not found.
+    return {
+      enrichedStem: newest.file.replace(/\.md$/i, ''),
+      paginated: await this.buildPaginatedMarkdown(extractorDir, floorMs),
+      raw: await fs.readFile(path.join(mdDir, newest.file), 'utf8'),
+      newestMtime: newest.mtime,
+    };
+  }
+
+  /**
+   * Split a staged PDF into fixed page ranges using pypdf from the
+   * extractor's own venv. Slice size bounds the extractor's per-run memory
+   * (its Discovery phase holds a per-page layout model for the whole file).
+   */
+  private async splitPdf(
+    python: string,
+    sourcePath: string,
+    outDir: string,
+    stem: string,
+  ): Promise<{ total: number; parts: Array<{ name: string; pages: number }> }> {
+    const script = [
+      'import sys, json, math',
+      'from pypdf import PdfReader, PdfWriter',
+      'src, outdir, stem, per = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])',
+      'r = PdfReader(src)',
+      'n = len(r.pages)',
+      'parts = []',
+      'for i in range(math.ceil(n / per)):',
+      '    w = PdfWriter()',
+      '    for p in r.pages[i * per:(i + 1) * per]:',
+      '        w.add_page(p)',
+      "    name = f'{stem}.part{i + 1:02d}.pdf'",
+      "    with open(f'{outdir}/{name}', 'wb') as f:",
+      '        w.write(f)',
+      "    parts.append({'name': name, 'pages': min(per, n - i * per)})",
+      "print(json.dumps({'total': n, 'parts': parts}))",
+    ].join('\n');
+    const { stdout } = await execFileAsync(
+      python,
+      ['-c', script, sourcePath, outDir, stem, String(this.getSlicePages())],
+      { timeout: 5 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 },
+    );
+    return JSON.parse(stdout.trim()) as {
+      total: number;
+      parts: Array<{ name: string; pages: number }>;
+    };
+  }
+
+  /** Shift "[Manual page N]" anchors of a slice to the original numbering. */
+  private offsetPageAnchors(text: string, offset: number): string {
+    if (offset === 0) return text;
+    return text.replace(
+      /\[Manual page (\d+)\]/g,
+      (_match, page: string) => `[Manual page ${Number(page) + offset}]`,
+    );
+  }
+
+  /** Any smaller document still waiting for extraction? (big files yield) */
+  private async smallerExtractionPending(
+    excludeDocumentId: string,
+    maxBytes: number,
+  ): Promise<boolean> {
+    const count = await this.documentsRepository
+      .createQueryBuilder('d')
+      .where('d.id != :excludeDocumentId', { excludeDocumentId })
+      .andWhere(`d.extraction_status = 'pending'`)
+      .andWhere('d.file_size_bytes <= :maxBytes', { maxBytes })
+      .getCount();
+    return count > 0;
+  }
+
+  /** Pages per slice for oversized files. */
+  private getSlicePages(): number {
+    const pages = Number(
+      this.configService.get<number>(
+        'integrations.visionExtractor.slicePages',
+        40,
+      ),
+    );
+    return Number.isFinite(pages) && pages > 0 ? Math.floor(pages) : 40;
   }
 
   /**
@@ -341,7 +498,7 @@ export class VisionExtractionService implements OnApplicationBootstrap {
    */
   private async buildPaginatedMarkdown(
     extractorDir: string,
-    startedAtMs: number,
+    floorMs: number,
   ): Promise<string | null> {
     try {
       const stateDir = path.join(extractorDir, '02-work', 'vision-rebuild');
@@ -350,7 +507,7 @@ export class VisionExtractionService implements OnApplicationBootstrap {
       for (const entry of entries) {
         if (!entry.endsWith('.json')) continue;
         const stat = await fs.stat(path.join(stateDir, entry));
-        if (stat.mtimeMs >= startedAtMs - 2_000) {
+        if (stat.mtimeMs >= floorMs) {
           if (!newest || stat.mtimeMs > newest.mtime) {
             newest = { file: entry, mtime: stat.mtimeMs };
           }

@@ -184,8 +184,12 @@ export default function configuration() {
       },
       visionExtractor: {
       dir: process.env.VISION_EXTRACTOR_DIR ?? '',
-      // PDFs above this size skip vision (extractor OOM guard); 0 disables.
+      // PDFs above this size are "oversized": they yield the extraction
+      // queue to smaller files and then run SLICED (see VisionExtraction-
+      // Service). 0 disables the special handling entirely.
       maxFileMb: Number(process.env.VISION_EXTRACTOR_MAX_FILE_MB ?? 20),
+      // Pages per slice for oversized files — bounds extractor memory.
+      slicePages: Number(process.env.VISION_EXTRACTOR_SLICE_PAGES ?? 40),
     },
     windy: {
         // Windy Point Forecast API — used by the `get_marine_forecast`
