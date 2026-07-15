@@ -96,6 +96,9 @@ export function DocumentEditModal({
     try {
       await unlinkAssetDocument(token, doc.shipId, assetId, doc.id);
       await refreshLinks();
+      // Also refresh the parent table so its Linked/Unlinked chip updates live
+      // instead of only after a page reload.
+      await onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Detach failed");
     } finally {
@@ -116,6 +119,9 @@ export function DocumentEditModal({
       await linkAssetDocument(token, doc.shipId, match.id, doc.id);
       setAttachDraft("");
       await refreshLinks();
+      // Also refresh the parent table so its Linked/Unlinked chip updates live
+      // instead of only after a page reload.
+      await onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Attach failed");
     } finally {
