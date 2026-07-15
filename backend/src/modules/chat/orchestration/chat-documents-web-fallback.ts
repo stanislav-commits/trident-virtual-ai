@@ -7,7 +7,10 @@ import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum
 import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
 import { ChatTurnAskResult } from '../responders/interfaces/chat-turn-responder.types';
 import { buildDocumentFallbackWebQuery } from './chat-document-web-query';
-import { composeFlowingSourceProse } from './chat-source-aware-answer-formatting';
+import {
+  composeFlowingSourceProse,
+  OPEN_SOURCE_WEB_LEAD_IN,
+} from './chat-source-aware-answer-formatting';
 
 export type DocumentsWebFallbackCondition =
   | 'if_documents_insufficient'
@@ -386,6 +389,14 @@ function composeDocumentsWebFallbackSummary(
   return composeFlowingSourceProse(
     [{ summary: documentSummary, repeatedLeadingText: documentResult.question }],
     [{ summary: buildWebFallbackSection(diagnostics, webResult) }],
+    // Label the section as open sources only when a web answer actually ran —
+    // a 'failed' fallback carries a "couldn't reach public sources" notice, not
+    // open-source content, so it must not get the "here's what open sources
+    // say" header.
+    {
+      webLeadIn:
+        diagnostics.action === 'executed' ? OPEN_SOURCE_WEB_LEAD_IN : undefined,
+    },
   );
 }
 

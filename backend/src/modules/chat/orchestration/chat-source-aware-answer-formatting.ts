@@ -5,6 +5,15 @@ interface SourceAwareSectionEntry {
   repeatedLeadingText?: string | null;
 }
 
+// Explicit demarcation for web-derived content in a flowing answer. Callers
+// that render a document→web fallback pass this as options.webLeadIn so a
+// surviving web section is clearly labelled as open/public information rather
+// than reading as if it came from the vessel's own documents. When it is
+// supplied, the web model's own mandated "This is from public sources…" caveat
+// is stripped first so the two do not stack into a double disclaimer.
+export const OPEN_SOURCE_WEB_LEAD_IN =
+  "**Open / public web sources** (not from your ship's documents):";
+
 /**
  * Flowing-prose alternative to two sequential `formatSourceAwareSection`
  * calls. Produces ONE clean answer with no `## Ship documents` /
@@ -18,6 +27,7 @@ interface SourceAwareSectionEntry {
 export function composeFlowingSourceProse(
   documentSummaries: SourceAwareSectionEntry[],
   webSummaries: SourceAwareSectionEntry[],
+  options: { webLeadIn?: string } = {},
 ): string {
   const docs = documentSummaries
     .map((entry) =>
@@ -34,9 +44,42 @@ export function composeFlowingSourceProse(
       ),
     )
     .map(softenWebProse)
+    // When we add our own upfront label, drop the web model's mandated
+    // "This is from public sources…" caveat so they don't stack.
+    .map((s) => (options.webLeadIn ? stripPublicSourcesCaveat(s) : s))
     .filter(Boolean);
 
-  return dedupeSummaries([...docs, ...webs]).join('\n\n').trim();
+  // Dedupe docs and webs, dropping any web section identical to a doc section,
+  // THEN attach the label — so a web entry lost to dedup never leaves the label
+  // dangling with no content beneath it.
+  const dedupedDocs = dedupeSummaries(docs);
+  const docKeys = new Set(dedupedDocs.map(dedupeKey));
+  const dedupedWebs = dedupeSummaries(webs).filter(
+    (web) => !docKeys.has(dedupeKey(web)),
+  );
+
+  const parts = [...dedupedDocs];
+
+  if (dedupedWebs.length && options.webLeadIn) {
+    parts.push(options.webLeadIn);
+  }
+
+  parts.push(...dedupedWebs);
+
+  return parts.join('\n\n').trim();
+}
+
+// Remove the web-search model's prompt-mandated "This is from public sources,
+// not the vessel's own manual or PMS." limitation sentence so it does not
+// duplicate the OPEN_SOURCE_WEB_LEAD_IN label prepended above it. Matches the
+// whole sentence from the fixed lead-in to its terminator, so paraphrases of the
+// tail ("manuals", "PMS or manual", extra clauses) are still fully removed.
+function stripPublicSourcesCaveat(value: string): string {
+  return value
+    .replace(/\s*\bthis is from public sources[^.\n]*\.?/giu, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
 }
 
 /**
@@ -156,11 +199,15 @@ function stripRedundantSectionHeading(summary: string, title: string): string {
   return summary.replace(headingPattern, '').trim();
 }
 
+function dedupeKey(summary: string): string {
+  return summary.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+}
+
 function dedupeSummaries(summaries: string[]): string[] {
   const seen = new Set<string>();
 
   return summaries.filter((summary) => {
-    const key = summary.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+    const key = dedupeKey(summary);
 
     if (seen.has(key)) {
       return false;
