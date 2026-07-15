@@ -48,7 +48,7 @@ import {
 } from './ingestion/documents-profile.helpers';
 import {
   buildEffectiveParserConfig,
-  getParsingProfileForDocClass,
+  getParsingProfileForDocument,
 } from './parsing/document-parsing-profiles';
 import { DocumentsRetrievalService } from './retrieval/documents-retrieval.service';
 
@@ -391,7 +391,9 @@ export class DocumentsService {
 
     if (input.docClass) {
       document.docClass = input.docClass;
-      const profile = getParsingProfileForDocClass(input.docClass);
+      // Honour vision-extracted markdown — otherwise reclassifying an extracted
+      // manual overwrites its DB config with the coarse 'manual' page chunker.
+      const profile = getParsingProfileForDocument(document);
       applyParsingProfile(document, profile);
       document.parserConfigJson = buildEffectiveParserConfig(profile);
     }

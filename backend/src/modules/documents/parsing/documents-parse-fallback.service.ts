@@ -14,7 +14,7 @@ import {
   buildEffectiveParserConfig,
   DocumentFallbackParsingProfileDefinition,
   getManualStableFallbackProfile,
-  getParsingProfileForDocClass,
+  getParsingProfileForDocument,
 } from './document-parsing-profiles';
 
 type FallbackStatus = 'queued' | 'succeeded' | 'failed';
@@ -173,7 +173,7 @@ export class DocumentsParseFallbackService {
   private getCurrentParserConfig(document: DocumentEntity): Record<string, unknown> {
     return (
       this.asRecord(document.parserConfigJson) ??
-      buildEffectiveParserConfig(getParsingProfileForDocClass(document.docClass))
+      buildEffectiveParserConfig(getParsingProfileForDocument(document))
     );
   }
 

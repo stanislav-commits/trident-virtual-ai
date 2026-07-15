@@ -3,7 +3,7 @@ import { DocumentRole } from '../enums/document-role.enum';
 import { DocumentTimeScope } from '../enums/document-time-scope.enum';
 import {
   DocumentParsingProfileDefinition,
-  getParsingProfileForDocClass,
+  getParsingProfileForDocument,
 } from '../parsing/document-parsing-profiles';
 
 export interface DocumentMetadataInput {
@@ -123,7 +123,7 @@ export function buildDocumentMetadataFromEntity(
 }
 
 export function refreshDocumentProfile(document: DocumentEntity): void {
-  applyParsingProfile(document, getParsingProfileForDocClass(document.docClass));
+  applyParsingProfile(document, getParsingProfileForDocument(document));
 }
 
 function dropEmptyMetadata(metadata: Record<string, unknown>): Record<string, unknown> {

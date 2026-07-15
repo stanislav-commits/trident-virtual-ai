@@ -38,7 +38,7 @@ import {
 import {
   buildEffectiveParserConfig,
   getParsingProfileForDocClass,
-  getParsingProfileForExtractedMarkdown,
+  getParsingProfileForDocument,
 } from '../parsing/document-parsing-profiles';
 import {
   REPARSE_SOURCE_UNAVAILABLE_MESSAGE,
@@ -201,9 +201,7 @@ export class DocumentsIngestionService {
         throw new Error('RAGFlow did not return a document ID.');
       }
 
-      const profile = document.extractedMdKey
-        ? getParsingProfileForExtractedMarkdown()
-        : getParsingProfileForDocClass(document.docClass);
+      const profile = getParsingProfileForDocument(document);
       await this.ragService.updateRemoteDocumentConfig(
         ragflowDatasetId,
         document.ragflowDocumentId,
@@ -342,7 +340,10 @@ export class DocumentsIngestionService {
         freshDocument.ragflowDocumentId,
         {
           metadata: freshDocument.metadataJson ?? {},
-          parsingProfile: getParsingProfileForDocClass(freshDocument.docClass),
+          // Honour vision-extracted markdown — a plain doc-class profile here
+          // reverts extracted manuals to the coarse 'manual' page chunker and
+          // buries per-procedure content (regressed genset fuel-filter answers).
+          parsingProfile: getParsingProfileForDocument(freshDocument),
         },
       );
 
@@ -488,7 +489,7 @@ export class DocumentsIngestionService {
 
 
   private applyCurrentParsingProfile(document: DocumentEntity): void {
-    const profile = getParsingProfileForDocClass(document.docClass);
+    const profile = getParsingProfileForDocument(document);
     applyParsingProfile(document, profile);
     document.parserConfigJson = buildEffectiveParserConfig(profile);
     document.metadataJson = buildDocumentMetadataFromEntity(document);

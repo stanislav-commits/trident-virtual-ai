@@ -158,6 +158,14 @@ const DOC_CLASS_PROFILE_MAP: Record<DocumentDocClass, DocumentParseProfile> = {
  * Vision-extracted markdown: RAGFlow's 'manual' chunker only accepts
  * pdf/docx, so extracts parse with the naive text chunker. Keyword/
  * question enrichment mirrors MANUAL_LONG since the content IS a manual.
+ *
+ * chunkSize is deliberately small (≈one manual section): a large budget packs
+ * several `### ` sections into one chunk, so a distinct procedure ("fuel filter
+ * replacement") gets buried inside a chunk dominated by an adjacent section
+ * ("drive belt") and no longer ranks for its own query. 256 keeps each
+ * procedure retrievable on its own — verified on the MASE genset manual where a
+ * 1024-token chunk buried the fuel-filter steps (top sim 0.27) and 256 surfaced
+ * them as their own top chunk (0.42).
  */
 const EXTRACTED_MARKDOWN_PROFILE: DocumentParsingProfileDefinition = {
   parseProfile: DocumentParseProfile.MANUAL_LONG,
@@ -166,7 +174,7 @@ const EXTRACTED_MARKDOWN_PROFILE: DocumentParsingProfileDefinition = {
   ...BASE_PROFILE_FLAGS,
   autoKeywords: 4,
   autoQuestions: 1,
-  chunkSize: 1024,
+  chunkSize: 256,
   delimiter: '\n',
   overlapPercent: 0,
   imageTableContextWindow: 0,
@@ -174,6 +182,21 @@ const EXTRACTED_MARKDOWN_PROFILE: DocumentParsingProfileDefinition = {
 
 export function getParsingProfileForExtractedMarkdown(): DocumentParsingProfileDefinition {
   return EXTRACTED_MARKDOWN_PROFILE;
+}
+
+/**
+ * Pick the parsing profile for a document, honouring vision-extracted markdown.
+ * A manual/form whose PDF has been extracted to markdown must chunk with the
+ * markdown (naive, section-sized) profile, NOT the doc-class 'manual' chunker —
+ * otherwise reparses silently revert it to coarse page-level chunks.
+ */
+export function getParsingProfileForDocument(document: {
+  docClass: DocumentDocClass;
+  extractedMdKey: string | null;
+}): DocumentParsingProfileDefinition {
+  return document.extractedMdKey
+    ? getParsingProfileForExtractedMarkdown()
+    : getParsingProfileForDocClass(document.docClass);
 }
 
 export function getParsingProfileForDocClass(
