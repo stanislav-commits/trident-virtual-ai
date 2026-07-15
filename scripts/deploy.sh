@@ -34,7 +34,13 @@ require_file "$BACKEND_DIR/.env"
 require_file "$FRONTEND_DIR/.env.production"
 
 log "Cleaning previous build artifacts"
-rm -rf "$BACKEND_DIR/dist" "$FRONTEND_DIR/dist"
+# A prior manual deploy run as root leaves dist owned by root, which the
+# unprivileged deploy user cannot rm — that silently aborts the automated
+# deploy before it rebuilds. Fall back to `sudo git clean` (git is NOPASSWD
+# for the deploy user; rm is not) to remove the gitignored artifacts
+# regardless of owner.
+rm -rf "$BACKEND_DIR/dist" "$FRONTEND_DIR/dist" 2>/dev/null || \
+  sudo git -C "$REPO_DIR" clean -qfdx -- backend/dist frontend/dist
 
 log "Installing backend dependencies"
 npm --prefix "$BACKEND_DIR" ci
