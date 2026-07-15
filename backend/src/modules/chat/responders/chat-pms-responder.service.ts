@@ -222,6 +222,7 @@ export class ChatPmsResponderService {
       userPrompt,
       temperature: 0,
       maxTokens: 700,
+      useMainModel: true,
     });
 
     return (

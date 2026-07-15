@@ -17,6 +17,12 @@ interface ChatTextCompletionInput {
   userPrompt: string;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * True for user-facing ANSWER synthesis → runs on the main model (Claude).
+   * Omit for planning/classification/title/summary tasks, which stay on the
+   * cheap sub-model.
+   */
+  useMainModel?: boolean;
 }
 
 @Injectable()
@@ -29,6 +35,7 @@ export class ChatLlmService {
       userPrompt: input.userPrompt,
       temperature: input.temperature,
       maxTokens: input.maxTokens,
+      preferMainModel: input.useMainModel,
     });
   }
 
@@ -43,6 +50,7 @@ export class ChatLlmService {
       userPrompt,
       temperature: 0.6,
       maxTokens: 700,
+      useMainModel: true,
     });
 
     if (reply) {
@@ -69,6 +77,7 @@ export class ChatLlmService {
       ].join('\n'),
       temperature: 0.2,
       maxTokens: 180,
+      useMainModel: true,
     });
 
     if (reply) {
@@ -111,6 +120,7 @@ export class ChatLlmService {
       // Bumped from 900 — long structured answers (voyages, alarms lists,
       // multi-engine breakdowns) routinely exceed that and get truncated.
       maxTokens: 4000,
+      useMainModel: true,
     });
 
     if (reply) {

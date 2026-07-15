@@ -123,6 +123,7 @@ export class ChatFilesResponderService {
       userPrompt,
       temperature: 0,
       maxTokens: 300,
+      useMainModel: true,
     });
 
     return reply?.trim() || `I found: ${input.candidates[0].fileName}.`;

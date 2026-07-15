@@ -17,6 +17,9 @@ export interface DocumentAnswerCompletionRequest {
   userPrompt: string;
   temperature: number;
   maxTokens: number;
+  // Answer synthesis runs on the main model (Claude); the citation-repair
+  // retry inherits this via `...input.request`.
+  useMainModel?: boolean;
 }
 
 export interface DocumentAnswerLlm {

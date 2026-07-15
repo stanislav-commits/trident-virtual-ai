@@ -311,6 +311,7 @@ export class ChatComplianceResponderService {
       userPrompt,
       temperature: 0,
       maxTokens: 700,
+      useMainModel: true,
     });
 
     return (

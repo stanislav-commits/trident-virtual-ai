@@ -30,6 +30,13 @@ interface LlmChatCompletionInput {
   temperature?: number;
   maxTokens?: number;
   model?: string;
+  /**
+   * Route this completion to the MAIN model (native Claude when LLM_MODEL is a
+   * claude-* alias) instead of the cheap OpenAI sub-model. Set for user-facing
+   * ANSWER synthesis; leave unset for planning/classification/title/summary
+   * tasks that should stay on the fast, cheap sub-model.
+   */
+  preferMainModel?: boolean;
 }
 
 interface LlmJsonChatCompletionInput extends LlmChatCompletionInput {
@@ -66,6 +73,16 @@ export class LlmService {
   async createChatCompletion(
     input: LlmChatCompletionInput,
   ): Promise<string | null> {
+    // User-facing answer synthesis runs on the MAIN model (native Claude when
+    // LLM_MODEL is claude-*). On any failure we degrade to the cheap sub-model
+    // below rather than returning nothing.
+    if (input.preferMainModel) {
+      const mainAnswer = await this.createMainModelTextCompletion(input);
+      if (mainAnswer !== null) {
+        return mainAnswer;
+      }
+    }
+
     if (!this.isConfigured()) {
       return null;
     }
@@ -89,6 +106,66 @@ export class LlmService {
       );
       return null;
     }
+  }
+
+  /**
+   * Text completion on the MAIN model for user-facing answer synthesis. When
+   * LLM_MODEL is a claude-* alias this runs on NATIVE Anthropic (the tool-call
+   * transport with no tools, so `content` is the plain answer) — so answers are
+   * actually written by Claude, not the OpenAI sub-model that createChatCompletion
+   * otherwise downgrades to. Returns null on any failure so the caller falls
+   * back to the sub-model.
+   */
+  private async createMainModelTextCompletion(
+    input: LlmChatCompletionInput,
+  ): Promise<string | null> {
+    const model = input.model?.trim() || this.getModel();
+
+    if (!isAnthropicModel(model)) {
+      // Non-claude main model: OpenAI-compatible with the MAIN model (no downgrade).
+      if (!this.isConfigured()) {
+        return null;
+      }
+
+      try {
+        return await createOpenAiCompatibleChatCompletion({
+          apiKey: this.getApiKey(),
+          baseUrl: this.getBaseUrl(),
+          model,
+          systemPrompt: input.systemPrompt,
+          userPrompt: input.userPrompt,
+          temperature: input.temperature,
+          maxTokens: input.maxTokens,
+        });
+      } catch (error) {
+        this.logger.warn(`Main-model answer failed: ${formatError(error)}`);
+        return null;
+      }
+    }
+
+    if (!this.getAnthropicApiKey()) {
+      return null;
+    }
+
+    const result = await this.createToolCallChatCompletionDetailed({
+      messages: [
+        { role: 'system', content: input.systemPrompt },
+        { role: 'user', content: input.userPrompt },
+      ],
+      tools: [],
+      temperature: input.temperature,
+      maxTokens: input.maxTokens,
+      model,
+    });
+
+    if (result.ok) {
+      return result.result.content ?? null;
+    }
+
+    this.logger.warn(
+      `Main-model (Claude) answer failed [${result.kind}], falling back to sub-model: ${result.error}`,
+    );
+    return null;
   }
 
   /**

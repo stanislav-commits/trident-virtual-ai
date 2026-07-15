@@ -458,6 +458,7 @@ export class ChatDocumentsResponderService {
         userPrompt + (assetContext ? `\n${assetContext.promptBlock}` : ''),
       temperature: 0.1,
       maxTokens: 900,
+      useMainModel: true,
     };
     const reply = await this.chatLlmService.completeText(request);
 
@@ -529,6 +530,7 @@ export class ChatDocumentsResponderService {
         }) + (assetContext ? `\n${assetContext.promptBlock}` : ''),
       temperature: 0.1,
       maxTokens: retrieval.evidenceQuality === 'strong' ? 650 : 420,
+      useMainModel: true,
     };
     const reply = await this.chatLlmService.completeText(request);
 
