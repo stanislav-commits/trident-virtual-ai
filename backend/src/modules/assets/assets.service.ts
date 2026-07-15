@@ -241,10 +241,14 @@ export class AssetsService {
     if (assetIds.length) {
       const mc: Array<{ asset_id: string; cnt: number }> =
         await this.assetRepository.manager.query(
+          // link_type='excluded' rows are suppressed auto-matches (the manual
+          // does NOT apply to this asset) — the drawer skips them, so coverage
+          // must too, else an unlinked manual leaves a phantom yellow accent.
           `SELECT ad.asset_id, COUNT(*)::int AS cnt
              FROM asset_documents ad
              JOIN documents d ON d.id = ad.document_id
             WHERE d.doc_class = 'manual' AND ad.asset_id = ANY($1)
+              AND ad.link_type IS DISTINCT FROM 'excluded'
             GROUP BY ad.asset_id`,
           [assetIds],
         );
