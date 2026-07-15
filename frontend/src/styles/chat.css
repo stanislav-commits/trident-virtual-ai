@@ -479,6 +479,7 @@
 
 /* ── TopBar ── */
 .chat-topbar {
+  position: relative; /* containing block for the absolutely-centred title */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -714,11 +715,15 @@
     transform var(--transition-slow);
 }
 
-/* Active chat session title, centred in the top bar (level with the active
-   vessel selector and notifications), not above the conversation. */
+/* Active chat session title, truly centred in the top bar (level with the
+   active vessel selector and notifications). Absolutely positioned so the
+   flex-grow of the left/right groups can't push it off-centre. */
 .chat-topbar__title {
-  flex: 1 1 auto;
-  min-width: 0;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 42%;
   text-align: center;
   font-size: 0.95rem;
   font-weight: 600;
@@ -727,7 +732,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 0 12px;
+  pointer-events: none;
 }
 
 .chat-main__workspace--with-panel .chat-main__conversation {

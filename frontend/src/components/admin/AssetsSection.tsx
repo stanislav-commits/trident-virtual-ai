@@ -88,6 +88,11 @@ export function AssetsSection({ token }: AssetsSectionProps) {
   const [selectedSub, setSelectedSub] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Coverage filter for the register: all | fully-incomplete (no manual & no
+  // metric) | missing-manual | missing-metric.
+  const [coverageFilter, setCoverageFilter] = useState<
+    "all" | "none" | "no-manual" | "no-metric"
+  >("all");
   const searchInputRef = useRef<HTMLInputElement>(null);
   // Cmd/Ctrl+K focuses the sidebar search from anywhere in the section.
   useEffect(() => {
@@ -230,6 +235,15 @@ export function AssetsSection({ token }: AssetsSectionProps) {
     if (selectedSub) {
       xs = xs.filter((a) => (a.sfiSub ?? "—") === selectedSub);
     }
+    if (coverageFilter !== "all") {
+      xs = xs.filter((a) => {
+        const hasManual = (a.manualCount ?? 0) > 0;
+        const hasMetric = (a.metricCount ?? 0) > 0;
+        if (coverageFilter === "none") return !hasManual && !hasMetric;
+        if (coverageFilter === "no-manual") return !hasManual;
+        return !hasMetric;
+      });
+    }
     // When searching across the whole vessel, sort by group→sub→id so the
     // table reads in canonical hierarchy order rather than the load order.
     if (searchActive) {
@@ -241,7 +255,7 @@ export function AssetsSection({ token }: AssetsSectionProps) {
       });
     }
     return xs;
-  }, [assetsInGroup, selectedSub, searchActive]);
+  }, [assetsInGroup, selectedSub, searchActive, coverageFilter]);
 
   // Reset subgroup when group changes
   useEffect(() => {
@@ -778,6 +792,25 @@ export function AssetsSection({ token }: AssetsSectionProps) {
                 </span>
               )}
             </div>
+            <select
+              className="admin-panel__th-filter assets-section__cov-filter"
+              value={coverageFilter}
+              onChange={(event) =>
+                setCoverageFilter(
+                  event.target.value as
+                    | "all"
+                    | "none"
+                    | "no-manual"
+                    | "no-metric",
+                )
+              }
+              aria-label="Filter assets by coverage"
+            >
+              <option value="all">Coverage: all</option>
+              <option value="none">Fully incomplete</option>
+              <option value="no-manual">Missing manual</option>
+              <option value="no-metric">Missing metrics</option>
+            </select>
             <span className="assets-section__stat">
               <span className="assets-section__stat-label">Assets</span>
               <span className="assets-section__stat-value">{stats.total}</span>
@@ -803,12 +836,28 @@ export function AssetsSection({ token }: AssetsSectionProps) {
                     .replace(/^0/, "");
                   const color = sfiColorForGroup(groupKey);
                   const active = a.id === selectedAssetId;
+                  const hasManual = (a.manualCount ?? 0) > 0;
+                  const hasMetric = (a.metricCount ?? 0) > 0;
+                  // Coverage: green = manual + metrics, yellow = one of them,
+                  // grey = neither.
+                  const coverage =
+                    hasManual && hasMetric
+                      ? "full"
+                      : hasManual || hasMetric
+                        ? "partial"
+                        : "none";
                   return (
                     <tr
                       key={a.id}
                       className={
-                        active ? "assets-section__row--active" : undefined
+                        [
+                          active ? "assets-section__row--active" : "",
+                          `assets-section__row--cov-${coverage}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || undefined
                       }
+                      title={`Manual: ${a.manualCount ?? 0} · Metrics: ${a.metricCount ?? 0}`}
                       onClick={() => setSelectedAssetId(a.id)}
                     >
                       <td className="assets-section__cell-mono">

@@ -7966,6 +7966,22 @@
   flex-shrink: 0;
 }
 
+/* Coverage left accent: green = manual + metrics, yellow = one, grey = none */
+.assets-section__row--cov-full td:first-child {
+  box-shadow: inset 3px 0 0 #22c55e;
+}
+.assets-section__row--cov-partial td:first-child {
+  box-shadow: inset 3px 0 0 #eab308;
+}
+.assets-section__row--cov-none td:first-child {
+  box-shadow: inset 3px 0 0 #6b7280;
+}
+/* Coverage filter dropdown — pushed to the right, beside the assets counter */
+.assets-section__main-stats .assets-section__cov-filter {
+  margin-left: auto;
+  margin-right: 16px;
+}
+
 .assets-section__pill {
   font-size: 10.5px;
   padding: 2px 8px;

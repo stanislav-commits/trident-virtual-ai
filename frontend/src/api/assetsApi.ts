@@ -27,6 +27,9 @@ export type AssetItem = {
   deckLevel: number | null;
   spaceInstance: string | null;
   spaceLabel: string | null;
+  // Coverage counts (present on list responses): linked manuals + bound metrics
+  manualCount?: number;
+  metricCount?: number;
   // Maintenance
   drawingRef: string | null;
   inspectionObligation: string | null;

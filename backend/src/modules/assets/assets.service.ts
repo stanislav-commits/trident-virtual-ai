@@ -231,6 +231,35 @@ export class AssetsService {
     qb.skip(offset).take(limit);
 
     const [items, total] = await qb.getManyAndCount();
+
+    // Coverage counts so the register can show which assets have a manual
+    // and/or bound telemetry (manuals via the asset_documents junction,
+    // metrics via ship_metric_catalog.bound_asset_id).
+    const assetIds = items.map((a) => a.id);
+    const manualCounts = new Map<string, number>();
+    const metricCounts = new Map<string, number>();
+    if (assetIds.length) {
+      const mc: Array<{ asset_id: string; cnt: number }> =
+        await this.assetRepository.manager.query(
+          `SELECT ad.asset_id, COUNT(*)::int AS cnt
+             FROM asset_documents ad
+             JOIN documents d ON d.id = ad.document_id
+            WHERE d.doc_class = 'manual' AND ad.asset_id = ANY($1)
+            GROUP BY ad.asset_id`,
+          [assetIds],
+        );
+      for (const r of mc) manualCounts.set(r.asset_id, r.cnt);
+      const kc: Array<{ bound_asset_id: string; cnt: number }> =
+        await this.assetRepository.manager.query(
+          `SELECT bound_asset_id, COUNT(*)::int AS cnt
+             FROM ship_metric_catalog
+            WHERE bound_asset_id = ANY($1) AND is_enabled = true
+            GROUP BY bound_asset_id`,
+          [assetIds],
+        );
+      for (const r of kc) metricCounts.set(r.bound_asset_id, r.cnt);
+    }
+
     // The SQL sort is lexical ("SWX.10" < "SWX.2", "sub 10" < "sub 2"), so
     // the register read as group 10 → 2. Re-sort numerically. Safe because
     // the admin loads the whole register in one page (limit 2000 ≥ fleet);
@@ -239,7 +268,16 @@ export class AssetsService {
     items.sort((a, b) =>
       naturalCompareIds(a.assetIdInternal, b.assetIdInternal),
     );
-    return { items, total, limit, offset };
+    return {
+      items: items.map((a) => ({
+        ...a,
+        manualCount: manualCounts.get(a.id) ?? 0,
+        metricCount: metricCounts.get(a.id) ?? 0,
+      })),
+      total,
+      limit,
+      offset,
+    };
   }
 
   async getOne(shipId: string, assetId: string): Promise<AssetEntity> {
