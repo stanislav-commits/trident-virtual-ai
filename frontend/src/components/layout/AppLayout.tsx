@@ -7,6 +7,7 @@ interface AppLayoutProps {
   sidebar: ReactNode;
   onNewChat?: () => void;
   onSearch?: (query: string) => void;
+  topTitle?: string | null;
   children: ReactNode;
 }
 
@@ -14,6 +15,7 @@ export function AppLayout({
   sidebar,
   onNewChat,
   onSearch,
+  topTitle,
   children,
 }: AppLayoutProps) {
   const { collapsed, toggle, setCollapsed } = useSidebarCollapsed();
@@ -22,7 +24,7 @@ export function AppLayout({
     <div className="chat-layout">
       <div className="chat-layout__top">
         <SidebarBrand collapsed={collapsed} onToggleCollapsed={toggle} />
-        <TopBar />
+        <TopBar title={topTitle} />
       </div>
       <div className="chat-layout__content">
         <SidebarBody

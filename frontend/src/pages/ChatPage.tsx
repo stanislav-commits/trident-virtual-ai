@@ -528,6 +528,7 @@ export function ChatPage() {
 
   return (
     <AppLayout
+      topTitle={activeSessionTitle}
       sidebar={
         <ChatList
           sessions={sessions.map((session) => ({
@@ -564,13 +565,6 @@ export function ChatPage() {
           >
             <div className="chat-main__stars" aria-hidden />
             <section className="chat-main__conversation">
-              {activeSessionTitle ? (
-                <header className="chat-main__title-bar">
-                  <h1 className="chat-main__title" title={activeSessionTitle}>
-                    {activeSessionTitle}
-                  </h1>
-                </header>
-              ) : null}
               <MessageList
                 messages={messages}
                 isLoadingResponse={isWaitingForResponse || isLoadingMessages}

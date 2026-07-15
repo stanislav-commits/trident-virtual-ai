@@ -13,7 +13,7 @@ function formatActiveVesselName(ship: { name: string }): string {
   return ship.name.trim() || "Unnamed vessel";
 }
 
-export function TopBar() {
+export function TopBar({ title }: { title?: string | null } = {}) {
   const { user, token } = useAuth();
   const myAccess = useMyAccess();
   const {
@@ -111,6 +111,11 @@ export function TopBar() {
           </div>
         )}
       </div>
+      {title ? (
+        <div className="chat-topbar__title" title={title}>
+          {title}
+        </div>
+      ) : null}
       <div className="chat-topbar__right">
         {(canRead(myAccess, "alerts") ||
           canRead(myAccess, "alerts_certificates")) && (

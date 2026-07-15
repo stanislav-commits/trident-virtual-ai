@@ -714,19 +714,12 @@
     transform var(--transition-slow);
 }
 
-.chat-main__title-bar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  padding: 0.7rem 1.25rem;
-  min-height: 3rem;
-  border-bottom: 1px solid var(--chat-border-sidebar);
-  position: relative;
-  z-index: 2;
-}
-
-.chat-main__title {
-  margin: 0;
+/* Active chat session title, centred in the top bar (level with the active
+   vessel selector and notifications), not above the conversation. */
+.chat-topbar__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
   font-size: 0.95rem;
   font-weight: 600;
   line-height: 1.3;
@@ -734,7 +727,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+  padding: 0 12px;
 }
 
 .chat-main__workspace--with-panel .chat-main__conversation {
