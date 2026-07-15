@@ -714,6 +714,29 @@
     transform var(--transition-slow);
 }
 
+.chat-main__title-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0.7rem 1.25rem;
+  min-height: 3rem;
+  border-bottom: 1px solid var(--chat-border-sidebar);
+  position: relative;
+  z-index: 2;
+}
+
+.chat-main__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--chat-text-primary, currentColor);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .chat-main__workspace--with-panel .chat-main__conversation {
   box-shadow: inset -1px 0 0 var(--chat-border-sidebar);
 }

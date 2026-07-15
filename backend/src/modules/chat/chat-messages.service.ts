@@ -202,11 +202,24 @@ export class ChatMessagesService {
     });
 
     await this.chatSessionsService.touchSession(sessionId);
-    void this.chatSessionsService.refreshAutoTitleAfterTurn({
-      sessionId,
-      messages: [...messages, savedAssistantMessage],
-      summary: context.summary,
-    });
+    // Title generation is async (a separate LLM call) so it must not delay the
+    // reply. When it lands, push a 'title' event so the client updates live
+    // instead of only after a page reload.
+    void this.chatSessionsService
+      .refreshAutoTitleAfterTurn({
+        sessionId,
+        messages: [...messages, savedAssistantMessage],
+        summary: context.summary,
+      })
+      .then((newTitle) => {
+        if (newTitle) {
+          this.chatProgressBus.emit(sessionId, {
+            type: 'title',
+            text: newTitle,
+            title: newTitle,
+          });
+        }
+      });
 
     return savedAssistantMessage;
   }

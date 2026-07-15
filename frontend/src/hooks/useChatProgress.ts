@@ -10,9 +10,11 @@ export interface ChatProgressEvent {
     | "delta"
     | "delta_reset"
     | "done"
+    | "title"
     | "error";
   text: string;
   messageId?: string;
+  title?: string;
   ts: number;
 }
 
@@ -34,6 +36,7 @@ export function useChatProgress(input: {
   active: boolean;
   onDone?: (messageId: string) => void;
   onError?: (text: string) => void;
+  onTitle?: (title: string) => void;
 }) {
   const { sessionId, token, active } = input;
   const [progressText, setProgressText] = useState<string | null>(null);
@@ -42,8 +45,10 @@ export function useChatProgress(input: {
   // parent re-renders with a new closure.
   const onDoneRef = useRef(input.onDone);
   const onErrorRef = useRef(input.onError);
+  const onTitleRef = useRef(input.onTitle);
   onDoneRef.current = input.onDone;
   onErrorRef.current = input.onError;
+  onTitleRef.current = input.onTitle;
 
   useEffect(() => {
     if (!sessionId || !token || !active) {
@@ -78,6 +83,10 @@ export function useChatProgress(input: {
         }
         if (event.type === "delta_reset") {
           setDraftText(null);
+          return;
+        }
+        if (event.type === "title") {
+          if (event.title) onTitleRef.current?.(event.title);
           return;
         }
         setProgressText(event.text);

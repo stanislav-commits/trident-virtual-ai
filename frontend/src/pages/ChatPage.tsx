@@ -62,6 +62,11 @@ export function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  // Keep the progress stream open briefly after the reply so the async
+  // auto-title ('title' event, generated a beat after 'done') still arrives
+  // and updates the header/sidebar live instead of only after a reload.
+  const [titleWatch, setTitleWatch] = useState(false);
+  const titleWatchTimer = useRef<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sourcesPanelCitations, setSourcesPanelCitations] = useState<
     ChatContextReferenceDto[] | null
@@ -169,13 +174,20 @@ export function ChatPage() {
     };
   }, []);
 
+  const clearTitleWatchTimer = useCallback(() => {
+    if (titleWatchTimer.current !== null) {
+      window.clearTimeout(titleWatchTimer.current);
+      titleWatchTimer.current = null;
+    }
+  }, []);
+
   // Live SSE progress while the reply is generating: shows real pipeline
   // activity under the typing dots and delivers the finished message
   // instantly (polling remains the fallback transport if SSE drops).
   const { progressText, draftText } = useChatProgress({
     sessionId: activeSessionId,
     token,
-    active: isWaitingForResponse,
+    active: isWaitingForResponse || titleWatch,
     onDone: () => {
       pollAbortRef.current?.abort();
       void (async () => {
@@ -183,13 +195,54 @@ export function ChatPage() {
         setIsWaitingForResponse(false);
         refreshSessions();
       })();
+      // Safety: stop holding the stream open for the title after a while, in
+      // case the title refresh is skipped (already titled / manual title). The
+      // handle is tracked so a later turn can cancel this timer and it can't
+      // tear down that turn's title stream (see clearTitleWatchTimer).
+      clearTitleWatchTimer();
+      titleWatchTimer.current = window.setTimeout(() => {
+        titleWatchTimer.current = null;
+        setTitleWatch(false);
+      }, 12000);
     },
     onError: (text) => {
       pollAbortRef.current?.abort();
       setIsWaitingForResponse(false);
+      // Error ends the turn — stop watching for a title so the stream closes.
+      clearTitleWatchTimer();
+      setTitleWatch(false);
       setSendError(text);
     },
+    // The auto-title is generated after the reply (separate LLM call); refresh
+    // the session list the moment it lands so the header + sidebar update live
+    // instead of only after a page reload.
+    onTitle: () => {
+      clearTitleWatchTimer();
+      setTitleWatch(false);
+      refreshSessions();
+    },
   });
+
+  // Header title. Kept in state (not derived) so it survives the active session
+  // being filtered out of the sidebar search or falling off the first page:
+  // adopt the title once the session appears in the loaded list, reset only
+  // when the user switches to a different session.
+  const [activeSessionTitle, setActiveSessionTitle] = useState<string | null>(
+    null,
+  );
+  const prevTitleSessionId = useRef<string | null>(activeSessionId);
+  useEffect(() => {
+    const switched = prevTitleSessionId.current !== activeSessionId;
+    prevTitleSessionId.current = activeSessionId;
+    const found = sessions.find(
+      (session) => session.id === activeSessionId,
+    )?.title;
+    if (found) {
+      setActiveSessionTitle(found);
+    } else if (switched) {
+      setActiveSessionTitle(null);
+    }
+  }, [sessions, activeSessionId]);
 
   // Track unmount/session-change so a long-running pollForResponse loop
   // doesn't keep firing setState after the component is gone or the user
@@ -203,17 +256,21 @@ export function ChatPage() {
       isMountedRef.current = false;
       pollAbortRef.current?.abort();
       pollAbortRef.current = null;
+      clearTitleWatchTimer();
     };
-  }, []);
+  }, [clearTitleWatchTimer]);
 
   // When the user switches sessions, abort the in-flight poll for the
-  // previous one — its result is no longer relevant to this view.
+  // previous one — its result is no longer relevant to this view, and stop
+  // watching for the previous turn's title so its stream doesn't linger.
   useEffect(() => {
     return () => {
       pollAbortRef.current?.abort();
       pollAbortRef.current = null;
+      clearTitleWatchTimer();
+      setTitleWatch(false);
     };
-  }, [activeSessionId]);
+  }, [activeSessionId, clearTitleWatchTimer]);
 
   const pollForResponse = useCallback(
     async (currentSessionId: string, userMessageId: string) => {
@@ -310,6 +367,8 @@ export function ChatPage() {
         }
 
         setIsWaitingForResponse(true);
+        clearTitleWatchTimer();
+        setTitleWatch(true);
         const userMessage = await sendChatMessage(
           currentSessionId,
           textToSend,
@@ -330,6 +389,7 @@ export function ChatPage() {
     [
       activeSessionId,
       addMessage,
+      clearTitleWatchTimer,
       createSession,
       inputValue,
       isSending,
@@ -425,6 +485,8 @@ export function ChatPage() {
 
       try {
         setIsWaitingForResponse(true);
+        clearTitleWatchTimer();
+        setTitleWatch(true);
         await regenerateChatResponse(activeSessionId, token);
         await refetchMessages();
         refreshSessions();
@@ -434,7 +496,13 @@ export function ChatPage() {
         setIsWaitingForResponse(false);
       }
     },
-    [activeSessionId, refetchMessages, refreshSessions, token],
+    [
+      activeSessionId,
+      clearTitleWatchTimer,
+      refetchMessages,
+      refreshSessions,
+      token,
+    ],
   );
 
   const handleSelectSession = useCallback(
@@ -496,6 +564,13 @@ export function ChatPage() {
           >
             <div className="chat-main__stars" aria-hidden />
             <section className="chat-main__conversation">
+              {activeSessionTitle ? (
+                <header className="chat-main__title-bar">
+                  <h1 className="chat-main__title" title={activeSessionTitle}>
+                    {activeSessionTitle}
+                  </h1>
+                </header>
+              ) : null}
               <MessageList
                 messages={messages}
                 isLoadingResponse={isWaitingForResponse || isLoadingMessages}

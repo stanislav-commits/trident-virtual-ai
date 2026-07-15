@@ -231,15 +231,16 @@ export class ChatSessionsService {
     sessionId: string;
     messages: ChatMessageEntity[];
     summary: string | null;
-  }): Promise<void> {
+  }): Promise<string | null> {
     try {
-      await this.refreshAutoTitleAfterTurnUnsafe(input);
+      return await this.refreshAutoTitleAfterTurnUnsafe(input);
     } catch (error) {
       this.logger.warn(
         `Failed to refresh chat title for session ${input.sessionId}: ${
           formatError(error)
         }`,
       );
+      return null;
     }
   }
 
@@ -247,7 +248,7 @@ export class ChatSessionsService {
     sessionId: string;
     messages: ChatMessageEntity[];
     summary: string | null;
-  }): Promise<void> {
+  }): Promise<string | null> {
     const activeMessages = input.messages.filter(
       (message) => !message.deletedAt,
     );
@@ -256,7 +257,7 @@ export class ChatSessionsService {
     ).length;
 
     if (userMessageCount === 0 || activeMessages.length < 2) {
-      return;
+      return null;
     }
 
     const session = await this.chatSessionsRepository.findOne({
@@ -270,18 +271,18 @@ export class ChatSessionsService {
     });
 
     if (!session || session.titleStatus === ChatSessionTitleStatus.MANUAL) {
-      return;
+      return null;
     }
 
     const shouldRefine =
       userMessageCount >= CHAT_TITLE_REFINED_MIN_USER_MESSAGES;
 
     if (session.titleStatus === ChatSessionTitleStatus.AUTO_REFINED) {
-      return;
+      return null;
     }
 
     if (!shouldRefine && this.hasGeneratedAutoTitle(session.title)) {
-      return;
+      return null;
     }
 
     const generatedTitle = this.normalizeGeneratedTitle(
@@ -294,7 +295,7 @@ export class ChatSessionsService {
     );
 
     if (!generatedTitle) {
-      return;
+      return null;
     }
 
     const nextStatus = shouldRefine
@@ -313,6 +314,8 @@ export class ChatSessionsService {
         updatedAt: new Date(),
       },
     );
+
+    return generatedTitle;
   }
 
   private async resolveShipId(

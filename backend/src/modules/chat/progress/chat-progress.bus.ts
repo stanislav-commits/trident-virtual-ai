@@ -15,10 +15,13 @@ export interface ChatProgressEvent {
     | 'delta'
     | 'delta_reset'
     | 'done'
+    | 'title'
     | 'error';
   text: string;
   /** Present on type='done' — the saved assistant message id. */
   messageId?: string;
+  /** Present on type='title' — the freshly generated session title. */
+  title?: string;
   ts: number;
 }
 
