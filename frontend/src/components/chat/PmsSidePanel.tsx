@@ -131,12 +131,12 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
-  const [tab, setTab] = useState<"all" | "due" | "critical">("all");
+  const [tab, setTab] = useState<"all" | "overdue" | "due" | "scheduled">("all");
   const [selId, setSelId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
-  // Default to today's tasks only; "Show all" (selDay = null) reveals the full list.
-  const [selDay, setSelDay] = useState<string | null>(() => dayKey(new Date()));
+  // Grouped list by default; tapping a day in the week strip filters to that day.
+  const [selDay, setSelDay] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30000);
@@ -160,11 +160,13 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
   useEffect(reload, [token, shipId]);
 
   const filtered = useMemo(() => {
-    if (tab === "due")
-      return tasks.filter((t) => t.status === "overdue" || t.status === "due-soon");
-    if (tab === "critical") return tasks.filter(isCritical);
-    return tasks;
-  }, [tasks, tab]);
+    if (tab === "all") return tasks;
+    // Each tab maps 1:1 onto a header count / section horizon so the numbers up
+    // top ("N overdue · N due · N scheduled") are all viewable. "due" == the
+    // week horizon (matching horizonOf, not the backend's looser 30-day status).
+    const target: Horizon = tab === "due" ? "week" : tab;
+    return tasks.filter((t) => horizonOf(t, now) === target);
+  }, [tasks, tab, now]);
 
   const byDue = (a: PmsTaskDto, b: PmsTaskDto) => {
     const at = a.dueDate ? Date.parse(a.dueDate) : Infinity;
@@ -192,11 +194,12 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
       .sort(byDue);
   }, [tasks, selDay]);
 
-  // week strip — Mon..Sun of (current + weekOffset) week, with per-day counts
+  // week strip — a 7-day window centred on today (today sits in the middle
+  // slot, index 3, with three days either side), navigable ±1 week.
   const week = useMemo(() => {
-    const monday = new Date(now);
-    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7) + weekOffset * 7);
-    monday.setHours(0, 0, 0, 0);
+    const start = new Date(now);
+    start.setDate(start.getDate() - 3 + weekOffset * 7);
+    start.setHours(0, 0, 0, 0);
     const counts = new Map<string, number>();
     for (const t of tasks)
       if (t.dueDate) {
@@ -204,8 +207,8 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
         counts.set(k, (counts.get(k) ?? 0) + 1);
       }
     return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
       const k = dayKey(d);
       return { d, key: k, isToday: k === dayKey(now), count: counts.get(k) ?? 0 };
     });
@@ -350,20 +353,25 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
             </div>
           </div>
 
-          {/* tabs */}
-          <div style={{ display: "flex", gap: 6, padding: "10px 12px 6px" }}>
-            {(["all", "due", "critical"] as const).map((k) => (
+          {/* tabs — All / Overdue / Due / Scheduled (mirror the header counts);
+              a tab click also exits day-filter mode */}
+          <div style={{ display: "flex", gap: 5, padding: "10px 10px 6px" }}>
+            {(["all", "overdue", "due", "scheduled"] as const).map((k) => (
               <button
                 key={k}
                 type="button"
-                onClick={() => setTab(k)}
+                onClick={() => {
+                  setTab(k);
+                  setSelDay(null);
+                }}
                 style={{
                   flex: 1,
                   fontFamily: SANS,
-                  fontSize: 12.5,
-                  padding: "6px 0",
+                  fontSize: 11.5,
+                  padding: "6px 2px",
                   borderRadius: 7,
                   cursor: "pointer",
+                  whiteSpace: "nowrap",
                   textTransform: "capitalize",
                   color: tab === k ? T.text : T.dim,
                   background: tab === k ? T.raised : "transparent",
@@ -389,13 +397,9 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
                       ? "Today"
                       : fmtDate(new Date(selDay + "T00:00:00"))}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setSelDay(null)}
-                    style={{ marginLeft: "auto", background: "transparent", border: 0, color: T.hero, fontFamily: SANS, fontSize: 12, cursor: "pointer" }}
-                  >
-                    Show all
-                  </button>
+                  <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, color: T.faint }}>
+                    {dayTasks?.length ?? 0}
+                  </span>
                 </div>
                 {dayTasks.length === 0 ? (
                   <div style={stateStyle}>No tasks due on this day</div>
