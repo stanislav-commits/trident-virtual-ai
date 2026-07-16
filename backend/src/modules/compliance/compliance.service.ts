@@ -418,7 +418,7 @@ export class ComplianceService {
         sectionCode: string;
         sectionName: string;
         types: Array<Record<string, unknown>>;
-        counts: Record<ComplianceStatus | 'not_required', number>;
+        counts: Record<ComplianceStatus, number>;
       }
     >();
 
@@ -429,18 +429,14 @@ export class ComplianceService {
           sectionCode: type.sectionCode,
           sectionName: type.sectionName,
           types: [],
-          counts: { valid: 0, expiring: 0, expired: 0, missing: 0, not_required: 0 },
+          counts: { valid: 0, expiring: 0, expired: 0, missing: 0 },
         };
         sections.set(type.sectionCode, section);
       }
 
       const records = docsByType.get(type.id) ?? [];
-      const status = this.typeStatus(type, records);
-      if (status === null) {
-        section.counts.not_required += 1;
-      } else {
-        section.counts[status] += 1;
-      }
+      const status = this.typeStatus(records);
+      section.counts[status] += 1;
 
       section.types.push({
         id: type.id,
@@ -846,16 +842,13 @@ export class ComplianceService {
   }
 
   /**
-   * Type-level verdict: null for not-required types (N / R / blank);
-   * 'missing' when required but no records; otherwise the WORST record
-   * status (one expired liferaft cert makes the whole LSA line expired —
-   * Shaun's many-units semantics).
+   * Type-level verdict: 'missing' when there are no records; otherwise the
+   * WORST record status (one expired liferaft cert makes the whole LSA line
+   * expired — Shaun's many-units semantics). Every rulebook type is treated
+   * as required — the vessel-profile "not required" gate was retired so the
+   * full list always shows a real status.
    */
-  private typeStatus(
-    type: ComplianceDocTypeEntity,
-    records: ComplianceDocEntity[],
-  ): ComplianceStatus | null {
-    if (type.applicability !== 'Y' && type.applicability !== 'C') return null;
+  private typeStatus(records: ComplianceDocEntity[]): ComplianceStatus {
     if (!records.length) return 'missing';
     const order: ComplianceStatus[] = ['expired', 'expiring', 'valid'];
     for (const status of order) {

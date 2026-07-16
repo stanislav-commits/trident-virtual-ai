@@ -277,7 +277,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
   };
 
   const totals = useMemo(() => {
-    const t = { valid: 0, expiring: 0, expired: 0, missing: 0, not_required: 0 };
+    const t = { valid: 0, expiring: 0, expired: 0, missing: 0 };
     for (const s of overview?.sections ?? []) {
       for (const k of Object.keys(t) as (keyof typeof t)[]) {
         t[k] += s.counts[k] ?? 0;
@@ -318,15 +318,19 @@ export function ComplianceSection({ token }: { token: string | null }) {
     }
   };
 
-  const searchResults = useMemo(() => {
-    if (!query) return null;
+  // A search query OR an active status filter switches the main panel to the
+  // cross-section grouped view (matches from every section), the way search
+  // has always worked. Only "all" filter + empty query shows one section.
+  const filteredResults = useMemo(() => {
+    if (!query && typeFilter === "all") return null;
     return visibleSections
       .map((s) => ({
         section: s,
         types: s.types.filter(
           (t) =>
             matchesFilter(t) &&
-            (t.name.toLowerCase().includes(query) ||
+            (!query ||
+              t.name.toLowerCase().includes(query) ||
               t.sfiCode.toLowerCase().includes(query)),
         ),
       }))
@@ -797,7 +801,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
                     }`}
                   >
                     {section.counts.valid}/
-                    {section.counts.valid + issues + section.counts.not_required}
+                    {section.counts.valid + issues}
                   </span>
                 </button>
               );
@@ -825,16 +829,18 @@ export function ComplianceSection({ token }: { token: string | null }) {
                 />
               );
 
-              if (searchResults) {
-                if (searchResults.length === 0) {
+              if (filteredResults) {
+                if (filteredResults.length === 0) {
                   return (
                     <div className="compliance__placeholder">
-                      Nothing matches “{search.trim()}”.
+                      {query
+                        ? `Nothing matches “${search.trim()}”.`
+                        : "No documents match this filter."}
                     </div>
                   );
                 }
-                // Search mode: matches from every section, grouped.
-                return searchResults.map(({ section, types }) => (
+                // Search / filter mode: matches from every section, grouped.
+                return filteredResults.map(({ section, types }) => (
                   <div key={section.sectionCode}>
                     <div className="compliance__main-head">
                       {section.sectionCode} {section.sectionName}
@@ -850,7 +856,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
                   <div className="compliance__main-head">
                     {current.sectionCode} {current.sectionName}
                   </div>
-                  {current.types.filter(matchesFilter).map(renderTypeRow)}
+                  {current.types.map(renderTypeRow)}
                 </>
               );
             })()}

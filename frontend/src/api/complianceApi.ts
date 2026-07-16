@@ -68,7 +68,7 @@ export interface ComplianceDocType {
   regBasis: string | null;
   basisNote: string | null;
   drivesPms: string | null;
-  status: ComplianceStatus | null;
+  status: ComplianceStatus;
   records: ComplianceRecord[];
 }
 
@@ -76,7 +76,7 @@ export interface ComplianceSection {
   sectionCode: string;
   sectionName: string;
   types: ComplianceDocType[];
-  counts: Record<ComplianceStatus | "not_required", number>;
+  counts: Record<ComplianceStatus, number>;
 }
 
 export interface ComplianceOverview {
