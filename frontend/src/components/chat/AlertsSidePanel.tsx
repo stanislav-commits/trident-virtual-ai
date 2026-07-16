@@ -34,9 +34,9 @@ const SEV: Record<
 > = {
   critical: {
     label: "Critical",
-    color: "var(--status-danger)",
-    bg: "color-mix(in srgb, var(--status-danger) 12%, transparent)",
-    bar: "var(--status-danger)",
+    color: "var(--alarm-critical)",
+    bg: "color-mix(in srgb, var(--alarm-critical) 16%, transparent)",
+    bar: "var(--alarm-critical)",
     Icon: IconAlertCircle,
   },
   high: {
@@ -182,6 +182,7 @@ export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi }: Ale
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<FilterTab>("all");
+  const [sevFilter, setSevFilter] = useState<Sev | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const reload = useCallback(() => {
@@ -220,20 +221,34 @@ export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi }: Ale
     return { active, critical, ack };
   }, [visible]);
 
-  const filtered = useMemo(() => {
-    const order: Record<Sev, number> = { critical: 0, high: 1, warning: 2, info: 3 };
-    return visible
-      .filter((a) => {
+  // Alarms in the current status tab (before the severity chip filter).
+  const statusFiltered = useMemo(
+    () =>
+      visible.filter((a) => {
         const s = statusOf(a);
         if (filter === "active") return s === "active";
         if (filter === "acknowledged") return s === "acknowledged";
         return true;
-      })
+      }),
+    [visible, filter],
+  );
+
+  // Per-severity counts within the current tab — drives the filter chips.
+  const sevCounts = useMemo(() => {
+    const c: Record<Sev, number> = { critical: 0, high: 0, warning: 0, info: 0 };
+    for (const a of statusFiltered) c[sevOf(a)]++;
+    return c;
+  }, [statusFiltered]);
+
+  const filtered = useMemo(() => {
+    const order: Record<Sev, number> = { critical: 0, high: 1, warning: 2, info: 3 };
+    return statusFiltered
+      .filter((a) => !sevFilter || sevOf(a) === sevFilter)
       .sort(
         (a, b) =>
           order[sevOf(a)] - order[sevOf(b)] || b.startedAt.localeCompare(a.startedAt),
       );
-  }, [visible, filter]);
+  }, [statusFiltered, sevFilter]);
 
   const ack = async (a: Alert) => {
     if (!token || !shipId) return;
@@ -294,22 +309,26 @@ export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi }: Ale
           )}
         </div>
 
-        {/* Summary chips */}
-        {counts.active > 0 && (
-          <div className="alarm-panel__chips">
+        {/* Severity filter chips — click to show only that severity, click again to clear */}
+        {statusFiltered.length > 0 && (
+          <div className="alarm-panel__chips" role="group" aria-label="Filter by severity">
             {(["critical", "high", "warning", "info"] as Sev[]).map((s) => {
-              const n = visible.filter((a) => statusOf(a) === "active" && sevOf(a) === s).length;
+              const n = sevCounts[s];
               if (!n) return null;
               const cfg = SEV[s];
+              const on = sevFilter === s;
               return (
-                <div
+                <button
                   key={s}
-                  className="alarm-chip"
+                  type="button"
+                  className={`alarm-chip${on ? " alarm-chip--on" : ""}`}
                   style={{ ["--sev" as string]: cfg.color, ["--sev-bg" as string]: cfg.bg }}
+                  onClick={() => setSevFilter((prev) => (prev === s ? null : s))}
+                  aria-pressed={on}
                 >
                   <cfg.Icon />
                   {n} {cfg.label}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -322,7 +341,10 @@ export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi }: Ale
               key={t.key}
               type="button"
               className={`alarm-tab${filter === t.key ? " alarm-tab--on" : ""}`}
-              onClick={() => setFilter(t.key)}
+              onClick={() => {
+                setFilter(t.key);
+                setSevFilter(null);
+              }}
             >
               {t.label}
               <span className="alarm-tab__count">{t.count}</span>

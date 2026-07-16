@@ -19,6 +19,9 @@
   --status-danger-bg: rgba(248, 113, 113, 0.1);
   --status-muted: var(--chat-text-muted);
   --status-muted-bg: var(--chat-surface-2);
+  /* Vivid alarm red — the muted --status-danger is too pale for the alarm
+     count badges, icons and critical accents to read at a glance. */
+  --alarm-critical: #ff3b30;
 }
 
 /* Light theme: the bright dark-mode status hues (#4ade80 etc.) are far too pale
@@ -34,6 +37,7 @@
   --status-danger: #dc2626;
   --status-danger-border: rgba(220, 38, 38, 0.3);
   --status-danger-bg: rgba(220, 38, 38, 0.08);
+  --alarm-critical: #e01111;
 }
 
 /* ── Root layout ── */
