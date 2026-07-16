@@ -6,6 +6,7 @@ import {
   type Alert,
 } from "../../../api/alertsApi";
 import {
+  listAssets,
   unlinkAssetDocument,
   updateMetricBinding,
   updateMetricUnit,
@@ -13,6 +14,7 @@ import {
   type RelatedAssetResult,
   type UpdateAssetInput,
 } from "../../../api/assetsApi";
+import { AssetSelect, type AssetOption } from "../AssetMultiSelect";
 import {
   openComplianceDocFile,
   type AssetComplianceRecord,
@@ -170,6 +172,7 @@ function OverviewFieldRow({
   onSave,
   placeholder,
   width,
+  pickAssets,
 }: {
   label: string;
   value: string | null;
@@ -177,6 +180,8 @@ function OverviewFieldRow({
   onSave?: (next: string | null) => Promise<void> | void;
   placeholder?: string;
   width?: "full" | "half";
+  /** When present, the field is an asset picker instead of free text. */
+  pickAssets?: AssetOption[];
 }) {
   return (
     <div
@@ -186,11 +191,20 @@ function OverviewFieldRow({
     >
       <span className="assets-section__field-label">{label}</span>
       {onSave ? (
-        <EditableCell
-          value={value}
-          placeholder={placeholder ?? "—"}
-          onSave={onSave}
-        />
+        pickAssets ? (
+          <AssetSelect
+            assets={pickAssets}
+            value={value}
+            onChange={(id) => void onSave(id)}
+            placeholder={placeholder ?? "Link asset…"}
+          />
+        ) : (
+          <EditableCell
+            value={value}
+            placeholder={placeholder ?? "—"}
+            onSave={onSave}
+          />
+        )
       ) : (
         <span className="assets-section__field-readonly">{value ?? "—"}</span>
       )}
@@ -272,6 +286,27 @@ export function AssetDrawer({
   useEffect(() => {
     void loadParts();
   }, [loadParts]);
+
+  // Register options for the "Served by" picker. served_by_asset_id stores the
+  // INTERNAL code (e.g. SWX.2.11.02), so option ids are assetIdInternal.
+  const [registerOptions, setRegisterOptions] = useState<AssetOption[]>([]);
+  useEffect(() => {
+    if (!token) return;
+    void listAssets(token, shipId, { limit: 2000 })
+      .then((r) =>
+        setRegisterOptions(
+          r.items.map((a) => ({
+            id: a.assetIdInternal,
+            label: `${a.assetIdInternal} — ${a.displayName}`,
+            sfiGroup: a.sfiGroup,
+            sfiGroupName: a.sfiGroupName,
+            sfiSub: a.sfiSub,
+            sfiSubName: a.sfiSubName,
+          })),
+        ),
+      )
+      .catch(() => setRegisterOptions([]));
+  }, [token, shipId]);
 
   const [alerts, setAlerts] = useState<Alert[]>([]);
   useEffect(() => {
@@ -548,7 +583,10 @@ export function AssetDrawer({
             label="Served by"
             value={asset.servedByAssetId}
             onSave={save("servedByAssetId")}
-            placeholder="asset ID, e.g. SWX.2.11.02"
+            placeholder="link the serving asset…"
+            pickAssets={registerOptions.filter(
+              (o) => o.id !== asset.assetIdInternal,
+            )}
           />
           <OverviewFieldRow label="Location" value={asset.location} onSave={save("location")} width="full" />
           <OverviewFieldRow label="Drawing ref" value={asset.drawingRef} onSave={save("drawingRef")} />

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { XIcon } from "./AdminPanelIcons";
+import { AssetMultiSelect, type AssetOption } from "./AssetMultiSelect";
 import type { ArchetypeField } from "../../api/complianceApi";
 import {
   prettyLabel,
@@ -12,7 +13,10 @@ export interface DocModalValues {
   certNo: string;
   issuer: string;
   issueDate: string;
+  /** Crew member label (person cardinality); assets use `assetIds`. */
   assetLabel: string;
+  /** Linked asset ids (M:N) for asset-cardinality documents. */
+  assetIds: string[];
   fields: Record<string, string>;
 }
 
@@ -23,13 +27,15 @@ interface ComplianceDocModalProps {
   /** The archetype's field block from the schema — drives which fields show. */
   archetypeFields: ArchetypeField[];
   linkCardinality: string | null;
-  assetOptions: Array<{ id: string; label: string }>;
+  assetOptions: AssetOption[];
   crewOptions: Array<{ id: string; label: string; rank: string }>;
   initial: DocModalValues;
   previewUrl: string | null;
   isImage: boolean;
   mode: "create" | "edit";
   saving: boolean;
+  /** Save failure — rendered inside the modal, not behind it. */
+  error?: string | null;
   onSave: (values: DocModalValues) => void;
   onCancel: () => void;
 }
@@ -53,6 +59,7 @@ export function ComplianceDocModal({
   isImage,
   mode,
   saving,
+  error,
   onSave,
   onCancel,
 }: ComplianceDocModalProps) {
@@ -115,21 +122,33 @@ export function ComplianceDocModal({
                   onChange={(e) => setValues((s) => ({ ...s, issueDate: e.target.value }))}
                 />
               </label>
-              <label className="compliance__field">
-                <span className="compliance__field-label">Linked entity</span>
-                {canLink ? (
+              {linksCrew ? (
+                <label className="compliance__field">
+                  <span className="compliance__field-label">Linked crew</span>
                   <input
-                    list={linksCrew ? "compliance-modal-crew" : "compliance-modal-assets"}
-                    placeholder={linksCrew ? "crew member…" : "asset…"}
+                    list="compliance-modal-crew"
+                    placeholder="crew member…"
                     value={values.assetLabel}
                     onChange={(e) =>
                       setValues((s) => ({ ...s, assetLabel: e.target.value }))
                     }
                   />
-                ) : (
+                </label>
+              ) : canLink ? (
+                <div className="compliance__field compliance__field--assets">
+                  <span className="compliance__field-label">Linked assets</span>
+                  <AssetMultiSelect
+                    assets={assetOptions}
+                    value={values.assetIds}
+                    onChange={(ids) => setValues((s) => ({ ...s, assetIds: ids }))}
+                  />
+                </div>
+              ) : (
+                <label className="compliance__field">
+                  <span className="compliance__field-label">Linked entity</span>
                   <input value="This vessel" readOnly />
-                )}
-              </label>
+                </label>
+              )}
 
               {schemaFields.length > 0 && (
                 <div className="compliance__form-section">
@@ -165,11 +184,6 @@ export function ComplianceDocModal({
               ))}
             </div>
 
-            <datalist id="compliance-modal-assets">
-              {assetOptions.map((a) => (
-                <option key={a.id} value={a.label} />
-              ))}
-            </datalist>
             <datalist id="compliance-modal-crew">
               {crewOptions.map((c) => (
                 <option key={c.id} value={c.label} />
@@ -193,6 +207,12 @@ export function ComplianceDocModal({
             )}
           </div>
         </div>
+
+        {error && (
+          <div className="admin-panel__error" role="alert">
+            {error}
+          </div>
+        )}
 
         <div className="admin-panel__modal-actions">
           <button type="button" className="compliance__action-btn" onClick={onCancel}>

@@ -42,6 +42,8 @@ export interface UpsertComplianceDocInput {
   issueDate?: string | null;
   expiryDate?: string | null;
   assetId?: string | null;
+  /** Multiple asset links (M:N). Falls back to `assetId` when absent. */
+  assetIds?: string[] | null;
   documentId?: string | null;
   notes?: string | null;
   // doc-control schema v9
@@ -555,21 +557,27 @@ export class ComplianceService {
     if (!draft) this.validateRequired(type.archetype, fields);
 
     // What a document links to is driven by its cardinality (schema v9):
-    //   person → a crew member; vessel → nothing; else → an asset (hard-match).
+    //   person → a crew member; vessel → nothing; else → asset(s).
     const cardinality = type.linkCardinality;
-    const assetCardinality =
-      cardinality === 'single_asset' ||
-      cardinality === 'per_unit' ||
-      cardinality === 'sub_group';
-    if (!draft) {
-      if (cardinality === 'person' && !input.crewMemberId) {
-        throw new BadRequestException(
-          'This document requires a linked crew member.',
-        );
-      } else if (assetCardinality && !input.assetId) {
-        throw new BadRequestException('This document requires a linked asset.');
-      }
+    // Asset linking is OPTIONAL: operators upload the document first and link
+    // the asset(s) afterwards. (Crew certs still need their person.)
+    if (!draft && cardinality === 'person' && !input.crewMemberId) {
+      throw new BadRequestException(
+        'This document requires a linked crew member.',
+      );
     }
+
+    // Resolve the asset link set — a document can link to MANY assets (M:N).
+    // Accepts assetIds[]; falls back to the legacy single assetId.
+    const assetIds =
+      cardinality === 'person' || cardinality === 'vessel'
+        ? []
+        : (input.assetIds?.length
+            ? input.assetIds
+            : input.assetId
+              ? [input.assetId]
+              : []
+          ).filter((id): id is string => Boolean(id));
 
     // The [AUTH] validity field is the canonical expiry for status.
     const expiryDate =
@@ -582,11 +590,8 @@ export class ComplianceService {
         issuer: input.issuer ?? null,
         issueDate: input.issueDate ?? null,
         expiryDate,
-        // asset_id is the deprecated single-asset mirror; only for asset docs.
-        assetId:
-          cardinality === 'person' || cardinality === 'vessel'
-            ? null
-            : (input.assetId ?? null),
+        // asset_id is the deprecated single-asset mirror of the M:N links.
+        assetId: assetIds[0] ?? null,
         documentId: input.documentId ?? null,
         notes: input.notes ?? null,
         fields,
@@ -598,11 +603,13 @@ export class ComplianceService {
             : null,
       }),
     );
-    // Mirror the primary link into the M:N link model.
+    // Mirror the links into the M:N link model — one row per linked asset.
     if (cardinality === 'person' && input.crewMemberId) {
       await this.addLink(shipId, saved.id, { crewMemberId: input.crewMemberId });
-    } else if (cardinality !== 'vessel' && input.assetId) {
-      await this.addLink(shipId, saved.id, { assetId: input.assetId });
+    } else {
+      for (const assetId of assetIds) {
+        await this.addLink(shipId, saved.id, { assetId });
+      }
     }
     // Document wins, PMS follows — drive the linked maintenance task.
     await this.syncPmsForDoc(shipId, saved, type);

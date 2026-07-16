@@ -9,7 +9,8 @@ import {
 import { createPortal } from "react-dom";
 import { PlusIcon, XIcon, RefreshIcon, TrashIcon, UploadIcon } from "./AdminPanelIcons";
 import { fetchSfiGroups, type SfiNode } from "../../api/sfiApi";
-import { listAssets, type AssetItem } from "../../api/assetsApi";
+import { listAssets } from "../../api/assetsApi";
+import { AssetMultiSelect, type AssetOption } from "./AssetMultiSelect";
 import { useAccessSchema } from "../../hooks/useAccessSchema";
 import {
   listPmsTasks,
@@ -300,100 +301,43 @@ function AssetMultiPicker({
   selected: LinkedAsset[];
   onChange: (next: LinkedAsset[]) => void;
 }) {
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState<AssetItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [focused, setFocused] = useState(false);
-
+  const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
   useEffect(() => {
-    if (!token || !shipId || !focused) return;
-    let alive = true;
-    setLoading(true);
-    const h = setTimeout(async () => {
-      try {
-        const r = await listAssets(token, shipId, {
-          search: q.trim() || undefined,
-          limit: 20,
-        });
-        if (alive) setResults(r.items);
-      } catch {
-        if (alive) setResults([]);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    }, 250);
-    return () => {
-      alive = false;
-      clearTimeout(h);
-    };
-  }, [q, token, shipId, focused]);
+    if (!token || !shipId) return;
+    void listAssets(token, shipId, { limit: 2000 })
+      .then((r) =>
+        setAssetOptions(
+          r.items.map((a) => ({
+            id: a.id,
+            label: `${a.assetIdInternal} — ${a.displayName}`,
+            sfiGroup: a.sfiGroup,
+            sfiGroupName: a.sfiGroupName,
+            sfiSub: a.sfiSub,
+            sfiSubName: a.sfiSubName,
+          })),
+        ),
+      )
+      .catch(() => setAssetOptions([]));
+  }, [token, shipId]);
 
-  const add = (a: AssetItem) => {
-    if (!selected.some((s) => s.id === a.id))
-      onChange([...selected, { id: a.id, name: a.displayName }]);
-    setQ("");
-  };
-  const remove = (id: string) => onChange(selected.filter((s) => s.id !== id));
-
-  const available = results.filter((a) => !selected.some((s) => s.id === a.id));
-
+  const byId = new Map(assetOptions.map((a) => [a.id, a]));
   return (
-    <div>
-      {selected.length > 0 && (
-        <div className="pms__chips-sel">
-          {selected.map((s) => (
-            <span key={s.id} className="pms__chip-sel">
-              {s.name}
-              <span
-                className="pms__chip-x"
-                role="button"
-                aria-label={`Remove ${s.name}`}
-                onClick={() => remove(s.id)}
-              >
-                ✕
-              </span>
-            </span>
-          ))}
-        </div>
-      )}
-      <input
-        type="search"
-        className="admin-panel__input admin-panel__input--full"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        onFocus={() => setFocused(true)}
-        placeholder={
-          shipId ? "Search the asset register…" : "Select an active vessel first"
-        }
-        disabled={!shipId}
-      />
-      {focused && (
-        <div className="pms__picker-results">
-          {loading && <div className="pms__picker-empty">Searching…</div>}
-          {!loading && available.length === 0 && (
-            <div className="pms__picker-empty">
-              {q.trim()
-                ? "No assets match."
-                : "No assets yet — import the register first."}
-            </div>
-          )}
-          {!loading &&
-            available.slice(0, 8).map((a) => (
-              <div
-                key={a.id}
-                className="pms__picker-item"
-                role="button"
-                onClick={() => add(a)}
-              >
-                {a.displayName}
-                {a.assetIdInternal ? (
-                  <span className="pms__code"> {a.assetIdInternal}</span>
-                ) : null}
-              </div>
-            ))}
-        </div>
-      )}
-    </div>
+    <AssetMultiSelect
+      assets={assetOptions}
+      value={selected.map((s) => s.id)}
+      onChange={(ids) =>
+        onChange(
+          ids.map((id) => ({
+            id,
+            name:
+              byId.get(id)?.label ??
+              selected.find((s) => s.id === id)?.name ??
+              id,
+          })),
+        )
+      }
+      placeholder={shipId ? "Link asset(s)…" : "Select a vessel first"}
+    />
   );
 }
 

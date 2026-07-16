@@ -122,6 +122,8 @@ export interface UpsertComplianceDocInput {
   issueDate?: string | null;
   expiryDate?: string | null;
   assetId?: string | null;
+  /** Multiple asset links (M:N). Falls back to `assetId` when absent. */
+  assetIds?: string[] | null;
   documentId?: string | null;
   notes?: string | null;
   fields?: Record<string, unknown> | null;
@@ -188,6 +190,8 @@ export interface CommitProposal {
   issueDate?: string | null;
   fields?: Record<string, unknown> | null;
   assetId?: string | null;
+  /** Multiple asset links (M:N) chosen in the review window. */
+  assetIds?: string[] | null;
   crewMemberId?: string | null;
   extractedText?: string | null;
 }

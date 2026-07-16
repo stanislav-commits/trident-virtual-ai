@@ -10,6 +10,7 @@ import {
   type AlertSeverity,
 } from "../../api/alertsApi";
 import { listAssets } from "../../api/assetsApi";
+import { AssetSelect, type AssetOption } from "./AssetMultiSelect";
 import { useAdminShip } from "../../context/AdminShipContext";
 
 interface AlertsSectionProps {
@@ -95,9 +96,7 @@ export function AlertsSection({ token }: AlertsSectionProps) {
   // ── Rules tab: full Grafana rule list + manual asset binding + history ──
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
-  const [assetOptions, setAssetOptions] = useState<
-    Array<{ id: string; label: string }>
-  >([]);
+  const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
   const [ruleFilter, setRuleFilter] = useState("");
   const [expandedRule, setExpandedRule] = useState<string | null>(null);
   const [history, setHistory] = useState<Alert[]>([]);
@@ -130,6 +129,10 @@ export function AlertsSection({ token }: AlertsSectionProps) {
           r.items.map((a) => ({
             id: a.id,
             label: `${a.assetIdInternal} — ${a.displayName}`,
+            sfiGroup: a.sfiGroup,
+            sfiGroupName: a.sfiGroupName,
+            sfiSub: a.sfiSub,
+            sfiSubName: a.sfiSubName,
           })),
         ),
       )
@@ -272,11 +275,6 @@ export function AlertsSection({ token }: AlertsSectionProps) {
 
       {tab === "rules" && (
         <div className="inv__table-wrap">
-          <datalist id="alert-rule-assets">
-            {assetOptions.map((a) => (
-              <option key={a.id} value={a.label} />
-            ))}
-          </datalist>
           <table className="inv__table">
             <thead>
               <tr>
@@ -405,32 +403,13 @@ function RuleRow({
   onBind,
 }: {
   rule: AlertRule;
-  assetOptions: Array<{ id: string; label: string }>;
+  assetOptions: AssetOption[];
   expanded: boolean;
   history: Alert[];
   historyLoading: boolean;
   onToggleHistory: () => void;
   onBind: (assetId: string | null) => void;
 }) {
-  const boundLabel =
-    assetOptions.find((a) => a.id === rule.assetId)?.label ??
-    rule.assetName ??
-    "";
-  const [draft, setDraft] = useState(boundLabel);
-  // Re-sync the input when the binding changes server-side (refresh).
-  useEffect(() => setDraft(boundLabel), [boundLabel]);
-
-  const commit = () => {
-    const match = assetOptions.find((a) => a.label === draft)?.id ?? null;
-    if (draft.trim() === "" && rule.assetId) {
-      onBind(null);
-    } else if (match && match !== rule.assetId) {
-      onBind(match);
-    } else {
-      setDraft(boundLabel); // unknown text — revert
-    }
-  };
-
   return (
     <>
       <tr className="inv__row">
@@ -461,16 +440,13 @@ function RuleRow({
           </span>
         </td>
         <td>
-          <input
-            className="pms__cat-filter"
-            list="alert-rule-assets"
-            placeholder="unbound — type to search…"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          <AssetSelect
+            assets={assetOptions}
+            value={rule.assetId}
+            onChange={(id) => {
+              if (id !== rule.assetId) onBind(id);
             }}
+            placeholder="unbound — link asset…"
           />
         </td>
         <td className="inv__muted">

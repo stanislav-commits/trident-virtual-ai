@@ -169,10 +169,11 @@ export default function configuration() {
       },
       // Grafana alerting webhook -> Trident. Shared secret authenticates the
       // webhook (no JWT). autoTaskSeverity: at/above this severity a firing
-      // alert spawns an unplanned PMS task ('off' disables).
+      // alert spawns an unplanned PMS task. Default 'off' — alerts do NOT
+      // create tasks (set ALERT_AUTO_TASK_SEVERITY=critical to re-enable).
       grafanaAlerts: {
         webhookSecret: process.env.GRAFANA_WEBHOOK_SECRET ?? '',
-        autoTaskSeverity: process.env.ALERT_AUTO_TASK_SEVERITY ?? 'critical',
+        autoTaskSeverity: process.env.ALERT_AUTO_TASK_SEVERITY ?? 'off',
         // Read-only rule-list sync for the admin Rules panel (see
         // GrafanaRulesService). SA token needs alerting read.
         apiUrl:

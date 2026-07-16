@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { PlusIcon, XIcon, TrashIcon } from "./AdminPanelIcons";
 import {
@@ -12,7 +12,8 @@ import {
   type InventoryLink,
   type UpsertInventoryInput,
 } from "../../api/inventoryApi";
-import { listAssets, type AssetItem } from "../../api/assetsApi";
+import { listAssets } from "../../api/assetsApi";
+import { AssetMultiSelect, type AssetOption } from "./AssetMultiSelect";
 import { listPmsTasks, type PmsTaskDto } from "../../api/pmsApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 
@@ -53,118 +54,42 @@ function MultiAssetPicker({
   value: InventoryLink[];
   onChange: (next: InventoryLink[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<AssetItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const selectedIds = new Set(value.map((a) => a.id));
-
+  const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
   useEffect(() => {
-    if (!open || !token) return;
-    let alive = true;
-    const t = setTimeout(() => {
-      setLoading(true);
-      listAssets(token, shipId, {
-        search: query.trim() || undefined,
-        limit: 25,
-      })
-        .then((r) => alive && setResults(r.items))
-        .catch(() => alive && setResults([]))
-        .finally(() => alive && setLoading(false));
-    }, 220);
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
-  }, [open, query, token, shipId]);
+    if (!token) return;
+    void listAssets(token, shipId, { limit: 2000 })
+      .then((r) =>
+        setAssetOptions(
+          r.items.map((a) => ({
+            id: a.id,
+            label: `${a.assetIdInternal} — ${a.displayName}`,
+            sfiGroup: a.sfiGroup,
+            sfiGroupName: a.sfiGroupName,
+            sfiSub: a.sfiSub,
+            sfiSubName: a.sfiSubName,
+          })),
+        ),
+      )
+      .catch(() => setAssetOptions([]));
+  }, [token, shipId]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
-
-  const toggle = (a: AssetItem) => {
-    if (selectedIds.has(a.id)) {
-      onChange(value.filter((v) => v.id !== a.id));
-    } else {
-      onChange([...value, { id: a.id, name: a.displayName }]);
-    }
-  };
-  const removeChip = (id: string) => onChange(value.filter((v) => v.id !== id));
-
+  const byId = new Map(assetOptions.map((a) => [a.id, a]));
   return (
-    <div className="inv__picker" ref={boxRef}>
-      {value.length > 0 && (
-        <div className="inv__chips">
-          {value.map((a) => (
-            <span key={a.id} className="inv__chip">
-              {a.name}
-              <button
-                type="button"
-                className="inv__chip-x"
-                onClick={() => removeChip(a.id)}
-                aria-label={`Unlink ${a.name}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <button
-        type="button"
-        className="admin-panel__input inv__picker-trigger"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className={value.length ? "" : "inv__muted"}>
-          {value.length
-            ? `${value.length} asset${value.length === 1 ? "" : "s"} linked`
-            : "— none —"}
-        </span>
-        <span className="inv__picker-caret">＋</span>
-      </button>
-      {open && (
-        <div className="inv__picker-pop">
-          <input
-            type="search"
-            className="admin-panel__input admin-panel__input--full"
-            placeholder="Search asset by name or tag…"
-            value={query}
-            autoFocus
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <div className="inv__picker-list">
-            {loading && <div className="inv__picker-hint">Searching…</div>}
-            {!loading && results.length === 0 && (
-              <div className="inv__picker-hint">No matches</div>
-            )}
-            {results.map((a) => {
-              const on = selectedIds.has(a.id);
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`inv__picker-opt${on ? " inv__picker-opt--active" : ""}`}
-                  onClick={() => toggle(a)}
-                >
-                  <span>
-                    <input type="checkbox" checked={on} readOnly /> {a.displayName}
-                  </span>
-                  <span className="inv__mono inv__muted">{a.assetIdInternal}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
+    <AssetMultiSelect
+      assets={assetOptions}
+      value={value.map((a) => a.id)}
+      onChange={(ids) =>
+        onChange(
+          ids.map((id) => ({
+            id,
+            name:
+              byId.get(id)?.label ??
+              value.find((v) => v.id === id)?.name ??
+              id,
+          })),
+        )
+      }
+    />
   );
 }
 

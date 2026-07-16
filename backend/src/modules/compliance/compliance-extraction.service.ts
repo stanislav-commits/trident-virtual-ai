@@ -52,6 +52,8 @@ export interface CommitProposal {
   issueDate?: string | null;
   fields?: Record<string, unknown> | null;
   assetId?: string | null;
+  /** Multiple asset links (M:N) chosen in the review window. */
+  assetIds?: string[] | null;
   crewMemberId?: string | null;
   /** Full transcribed text captured at preview — persisted for chat. */
   extractedText?: string | null;
@@ -310,6 +312,7 @@ export class ComplianceExtractionService {
           issuer: p.issuer ?? null,
           issueDate: p.issueDate ?? null,
           assetId: p.assetId ?? null,
+          assetIds: p.assetIds ?? null,
           crewMemberId: p.crewMemberId ?? null,
           fields: p.fields ?? null,
           extractedText: p.extractedText ?? null,

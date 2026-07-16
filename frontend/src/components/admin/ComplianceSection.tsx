@@ -26,6 +26,7 @@ import { ComplianceIngestModal } from "./ComplianceIngestModal";
 import { ComplianceDocModal, type DocModalValues } from "./ComplianceDocModal";
 import { uploadDocument } from "../../api/documentsApi";
 import { listAssets } from "../../api/assetsApi";
+import { type AssetOption } from "./AssetMultiSelect";
 import { listCrew } from "../../api/crewApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { ComplianceTypeRow } from "./ComplianceTypeRow";
@@ -45,9 +46,13 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const [overview, setOverview] = useState<ComplianceOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>(null);
-  const [hideNotRequired, setHideNotRequired] = useState(true);
+  const [typeFilter, setTypeFilter] = useState<
+    "all" | "empty" | "filled" | "expired" | "expiring" | "valid"
+  >("all");
   const [schema, setSchema] = useState<ArchetypeSchema | null>(null);
   const [savingDoc, setSavingDoc] = useState(false);
+  // Single-doc save failure — shown INSIDE the doc modal, not behind it.
+  const [docSaveError, setDocSaveError] = useState<string | null>(null);
   // Single-document review / edit window.
   const [docModal, setDocModal] = useState<{
     type: ComplianceDocType;
@@ -66,9 +71,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
   });
   const [generating, setGenerating] = useState(false);
   const [addingTypeId, setAddingTypeId] = useState<string | null>(null);
-  const [assetOptions, setAssetOptions] = useState<
-    Array<{ id: string; label: string }>
-  >([]);
+  const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
   const [crewOptions, setCrewOptions] = useState<
     Array<{ id: string; label: string; rank: string }>
   >([]);
@@ -150,9 +153,25 @@ export function ComplianceSection({ token }: { token: string | null }) {
     setCommitting(true);
     setCommitError(null);
     try {
-      await commitComplianceDocs(token, shipId, proposals, review?.files ?? []);
-      setReview(null);
-      await reload();
+      const { created } = await commitComplianceDocs(
+        token,
+        shipId,
+        proposals,
+        review?.files ?? [],
+      );
+      // The server returns 200 even when some records fail validation server-
+      // side. Surface a shortfall instead of closing as a silent "success".
+      if (created < proposals.length) {
+        setCommitError(
+          `Saved ${created} of ${proposals.length}. ${
+            proposals.length - created
+          } could not be saved — check the required fields (marked *).`,
+        );
+        await reload();
+      } else {
+        setReview(null);
+        await reload();
+      }
     } catch (e) {
       // Shown INSIDE the review modal — a page-level banner would be hidden
       // behind the overlay.
@@ -205,6 +224,10 @@ export function ComplianceSection({ token }: { token: string | null }) {
           r.items.map((a) => ({
             id: a.id,
             label: `${a.assetIdInternal} — ${a.displayName}`,
+            sfiGroup: a.sfiGroup,
+            sfiGroupName: a.sfiGroupName,
+            sfiSub: a.sfiSub,
+            sfiSubName: a.sfiSubName,
           })),
         ),
       )
@@ -264,13 +287,8 @@ export function ComplianceSection({ token }: { token: string | null }) {
   }, [overview]);
 
   const visibleSections = useMemo(
-    () =>
-      (overview?.sections ?? []).filter((s) =>
-        hideNotRequired
-          ? s.types.some((t) => t.status !== null)
-          : s.types.length > 0,
-      ),
-    [overview, hideNotRequired],
+    () => (overview?.sections ?? []).filter((s) => s.types.length > 0),
+    [overview],
   );
 
   const current =
@@ -282,22 +300,39 @@ export function ComplianceSection({ token }: { token: string | null }) {
   // grouped per section in the main panel while the query is non-empty.
   const [search, setSearch] = useState("");
   const query = search.trim().toLowerCase();
+  // Status filter for the type list (All / Empty / Filled / Expired / …).
+  const matchesFilter = (t: ComplianceDocType) => {
+    switch (typeFilter) {
+      case "empty":
+        return t.records.length === 0;
+      case "filled":
+        return t.records.length > 0;
+      case "expired":
+        return t.status === "expired";
+      case "expiring":
+        return t.status === "expiring";
+      case "valid":
+        return t.status === "valid";
+      default:
+        return true;
+    }
+  };
+
   const searchResults = useMemo(() => {
     if (!query) return null;
     return visibleSections
       .map((s) => ({
         section: s,
-        types: (hideNotRequired
-          ? s.types.filter((t) => t.status !== null)
-          : s.types
-        ).filter(
+        types: s.types.filter(
           (t) =>
-            t.name.toLowerCase().includes(query) ||
-            t.sfiCode.toLowerCase().includes(query),
+            matchesFilter(t) &&
+            (t.name.toLowerCase().includes(query) ||
+              t.sfiCode.toLowerCase().includes(query)),
         ),
       }))
       .filter((g) => g.types.length > 0);
-  }, [visibleSections, query, hideNotRequired]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleSections, query, typeFilter]);
 
   // Extraction values (unknown-typed) → the modal's string form values.
   const toFormFields = (f: Record<string, unknown> | null | undefined) => {
@@ -310,6 +345,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
   };
 
   const closeDocModal = () => {
+    setDocSaveError(null);
     setDocModal((m) => {
       if (m?.previewUrl) URL.revokeObjectURL(m.previewUrl);
       return null;
@@ -351,7 +387,8 @@ export function ComplianceSection({ token }: { token: string | null }) {
           certNo: proposal.certNo ?? "",
           issuer: proposal.issuer ?? "",
           issueDate: proposal.issueDate ?? "",
-          assetLabel: proposal.assetName ?? "",
+          assetLabel: type.linkCardinality === "person" ? (proposal.assetName ?? "") : "",
+          assetIds: proposal.assetId ? [proposal.assetId] : [],
           fields: toFormFields(proposal.fields),
         },
       });
@@ -387,7 +424,19 @@ export function ComplianceSection({ token }: { token: string | null }) {
           certNo: rec.certNo ?? "",
           issuer: rec.issuer ?? "",
           issueDate: rec.issueDate ?? "",
-          assetLabel: rec.assetName ?? "",
+          assetLabel:
+            type.linkCardinality === "person" ? (rec.assetName ?? "") : "",
+          // Pre-fill every currently-linked asset (M:N); fall back to the mirror.
+          assetIds: (() => {
+            const fromLinks = (rec.links ?? [])
+              .map((l) => l.assetId)
+              .filter((x): x is string => Boolean(x));
+            return fromLinks.length
+              ? fromLinks
+              : rec.assetId
+                ? [rec.assetId]
+                : [];
+          })(),
           fields: toFormFields(rec.fields),
         },
       });
@@ -402,13 +451,13 @@ export function ComplianceSection({ token }: { token: string | null }) {
     if (!token || !shipId || !docModal) return;
     const { type, mode, docId, documentId } = docModal;
     setSavingDoc(true);
+    setDocSaveError(null);
     try {
       const linksCrew = type.linkCardinality === "person";
-      const matched = values.assetLabel
-        ? (linksCrew ? crewOptions : assetOptions).find(
-            (o) => o.label === values.assetLabel,
-          )
-        : null;
+      const crewMatch =
+        linksCrew && values.assetLabel
+          ? crewOptions.find((o) => o.label === values.assetLabel)
+          : null;
       const fields = Object.fromEntries(
         Object.entries(values.fields).filter(([, v]) => v !== ""),
       );
@@ -417,8 +466,9 @@ export function ComplianceSection({ token }: { token: string | null }) {
         certNo: values.certNo || null,
         issuer: values.issuer || null,
         issueDate: values.issueDate || null,
-        assetId: linksCrew ? null : (matched?.id ?? null),
-        crewMemberId: linksCrew ? (matched?.id ?? null) : null,
+        assetId: linksCrew ? null : (values.assetIds[0] ?? null),
+        assetIds: linksCrew ? null : values.assetIds,
+        crewMemberId: linksCrew ? (crewMatch?.id ?? null) : null,
         fields: Object.keys(fields).length ? fields : null,
         documentId: documentId ?? undefined,
         extractedText: docModal.extractedText,
@@ -432,7 +482,8 @@ export function ComplianceSection({ token }: { token: string | null }) {
       closeDocModal();
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save record");
+      // Shown inside the doc modal (it stays open), not as a page banner behind it.
+      setDocSaveError(e instanceof Error ? e.message : "Failed to save record");
     } finally {
       setSavingDoc(false);
     }
@@ -515,14 +566,6 @@ export function ComplianceSection({ token }: { token: string | null }) {
           </div>
         </div>
         <div className="compliance__head-controls">
-          <label className="compliance__toggle">
-            <input
-              type="checkbox"
-              checked={hideNotRequired}
-              onChange={(e) => setHideNotRequired(e.target.checked)}
-            />
-            Hide not required
-          </label>
           <div className="compliance__upload-wrap">
             <button
               type="button"
@@ -620,6 +663,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
           isImage={docModal.isImage}
           mode={docModal.mode}
           saving={savingDoc}
+          error={docSaveError}
           onSave={(values) => void saveDocModal(values)}
           onCancel={closeDocModal}
         />
@@ -694,6 +738,32 @@ export function ComplianceSection({ token }: { token: string | null }) {
       )}
 
       {overview && overview.sections.length > 0 && (
+        <div className="compliance__filters">
+          {(
+            [
+              ["all", "All"],
+              ["empty", "Empty"],
+              ["filled", "Filled"],
+              ["expired", "Expired"],
+              ["expiring", "Expiring"],
+              ["valid", "Valid"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={`compliance__filter${
+                typeFilter === key ? " compliance__filter--on" : ""
+              }`}
+              onClick={() => setTypeFilter(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {overview && overview.sections.length > 0 && (
         <div className="compliance__layout">
           <nav className="compliance__rail">
             {visibleSections.map((section) => {
@@ -727,11 +797,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
                     }`}
                   >
                     {section.counts.valid}/
-                    {/* denominator tracks the visible list: required-only when
-                        "Hide not required" is on, otherwise all types */}
-                    {section.counts.valid +
-                      issues +
-                      (hideNotRequired ? 0 : section.counts.not_required)}
+                    {section.counts.valid + issues + section.counts.not_required}
                   </span>
                 </button>
               );
@@ -784,10 +850,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
                   <div className="compliance__main-head">
                     {current.sectionCode} {current.sectionName}
                   </div>
-                  {(hideNotRequired
-                    ? current.types.filter((t) => t.status !== null)
-                    : current.types
-                  ).map(renderTypeRow)}
+                  {current.types.filter(matchesFilter).map(renderTypeRow)}
                 </>
               );
             })()}

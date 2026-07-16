@@ -11,6 +11,7 @@ import {
   unlinkAssetDocument,
 } from "../../../api/assetsApi";
 import { listAssets } from "../../../api/assetsApi";
+import { AssetMultiSelect, type AssetOption } from "../AssetMultiSelect";
 import { EditIcon, XIcon } from "../AdminPanelIcons";
 
 /**
@@ -38,11 +39,7 @@ export function DocumentEditModal({
   const [links, setLinks] = useState<{
     pinned: DocumentAssetLink[];
   } | null>(null);
-  const [linksBusyId, setLinksBusyId] = useState<string | null>(null);
-  const [assetOptions, setAssetOptions] = useState<
-    Array<{ id: string; label: string }>
-  >([]);
-  const [attachDraft, setAttachDraft] = useState("");
+  const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
   const [attaching, setAttaching] = useState(false);
 
   const refreshLinks = useCallback(async () => {
@@ -66,6 +63,10 @@ export function DocumentEditModal({
           r.items.map((a) => ({
             id: a.id,
             label: `${a.assetIdInternal} — ${a.displayName}`,
+            sfiGroup: a.sfiGroup,
+            sfiGroupName: a.sfiGroupName,
+            sfiSub: a.sfiSub,
+            sfiSubName: a.sfiSubName,
           })),
         ),
       )
@@ -89,65 +90,32 @@ export function DocumentEditModal({
     }
   };
 
-  const detach = async (assetId: string) => {
-    if (!token) return;
-    setLinksBusyId(assetId);
-    setError("");
-    try {
-      await unlinkAssetDocument(token, doc.shipId, assetId, doc.id);
-      await refreshLinks();
-      // Also refresh the parent table so its Linked/Unlinked chip updates live
-      // instead of only after a page reload.
-      await onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Detach failed");
-    } finally {
-      setLinksBusyId(null);
-    }
-  };
-
-  const attach = async () => {
-    if (!token) return;
-    const match = assetOptions.find((a) => a.label === attachDraft);
-    if (!match) {
-      setError("Pick an asset from the list to attach.");
-      return;
-    }
+  /** Reconcile the linked-asset set: link new picks, unlink removed ones. */
+  const setDocAssets = async (nextIds: string[]) => {
+    if (!token || !links) return;
+    const current = new Set(links.pinned.map((l) => l.id));
+    const next = new Set(nextIds);
+    const toAdd = nextIds.filter((id) => !current.has(id));
+    const toRemove = [...current].filter((id) => !next.has(id));
+    if (!toAdd.length && !toRemove.length) return;
     setAttaching(true);
     setError("");
     try {
-      await linkAssetDocument(token, doc.shipId, match.id, doc.id);
-      setAttachDraft("");
+      for (const id of toAdd) {
+        await linkAssetDocument(token, doc.shipId, id, doc.id);
+      }
+      for (const id of toRemove) {
+        await unlinkAssetDocument(token, doc.shipId, id, doc.id);
+      }
       await refreshLinks();
-      // Also refresh the parent table so its Linked/Unlinked chip updates live
-      // instead of only after a page reload.
+      // Refresh the parent table so its Linked/Unlinked chip updates live.
       await onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Attach failed");
+      setError(e instanceof Error ? e.message : "Update failed");
     } finally {
       setAttaching(false);
     }
   };
-
-  const renderRow = (a: DocumentAssetLink) => (
-    <div key={a.id} className="assets-section__doc-row">
-      <span className="assets-section__doc-row-main">
-        <span className="assets-section__doc-name">
-          {a.assetIdInternal} — {a.displayName}
-        </span>
-      </span>
-      <button
-        type="button"
-        className="assets-section__metric-unbind"
-        disabled={linksBusyId === a.id}
-        onClick={() => void detach(a.id)}
-        title="Remove this link"
-        aria-label={`Detach ${a.displayName}`}
-      >
-        {linksBusyId === a.id ? "…" : "×"}
-      </button>
-    </div>
-  );
 
   return createPortal(
     <div className="admin-panel__modal-overlay">
@@ -192,42 +160,19 @@ export function DocumentEditModal({
               <label className="admin-panel__field-label">
                 Connected assets
               </label>
-              {!links && (
+              {!links ? (
                 <div className="admin-panel__muted">Loading…</div>
-              )}
-              {links && links.pinned.length === 0 && (
-                <div className="admin-panel__muted">
-                  Not linked to any asset. Search below to attach one.
-                </div>
-              )}
-              {links?.pinned.length ? (
-                <div className="documents-edit__asset-list">
-                  {links.pinned.map((a) => renderRow(a))}
-                </div>
-              ) : null}
-
-              <div className="documents-edit__attach-row">
-                <input
-                  className="admin-panel__input admin-panel__input--full"
-                  list="doc-edit-assets"
-                  placeholder="Type to search the asset register…"
-                  value={attachDraft}
-                  onChange={(e) => setAttachDraft(e.target.value)}
+              ) : (
+                <AssetMultiSelect
+                  assets={assetOptions}
+                  value={links.pinned.map((l) => l.id)}
+                  onChange={(ids) => void setDocAssets(ids)}
+                  placeholder="Link asset(s)…"
                 />
-                <datalist id="doc-edit-assets">
-                  {assetOptions.map((a) => (
-                    <option key={a.id} value={a.label} />
-                  ))}
-                </datalist>
-                <button
-                  type="button"
-                  className="admin-panel__btn admin-panel__btn--ghost"
-                  disabled={attaching || !attachDraft.trim()}
-                  onClick={() => void attach()}
-                >
-                  {attaching ? "Attaching…" : "Attach"}
-                </button>
-              </div>
+              )}
+              {attaching && (
+                <div className="admin-panel__muted">Updating…</div>
+              )}
             </div>
           )}
 

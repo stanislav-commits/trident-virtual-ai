@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { CascadingSelect, type CascadeGroup } from "./CascadingSelect";
+import { AssetMultiSelect, type AssetOption } from "./AssetMultiSelect";
 import {
   prettyLabel,
   inputTypeFor,
@@ -65,7 +66,7 @@ interface Row {
   issuer: string;
   issueDate: string;
   fields: Record<string, string>;
-  assetLabel: string;
+  assetIds: string[];
   confidence?: number;
   message?: string;
   include: boolean;
@@ -100,7 +101,7 @@ export function ComplianceIngestModal({
   files: File[];
   types: TypeOption[];
   schema: ArchetypeSchema | null;
-  assetOptions: Array<{ id: string; label: string }>;
+  assetOptions: AssetOption[];
   busy: boolean;
   /** Commit failure — rendered inside the modal (a page banner would be hidden behind the overlay). */
   error?: string | null;
@@ -144,7 +145,7 @@ export function ComplianceIngestModal({
         issuer: p.issuer ?? "",
         issueDate: p.issueDate ?? "",
         fields: foldForType(schema, typeById, p.typeId ?? null, fields),
-        assetLabel: assetOptions.find((a) => a.id === p.assetId)?.label ?? "",
+        assetIds: p.assetId ? [p.assetId] : [],
         confidence: p.confidence,
         message: p.message,
         include: p.status === "matched",
@@ -200,7 +201,8 @@ export function ComplianceIngestModal({
         certNo: r.certNo || null,
         issuer: r.issuer || null,
         issueDate: r.issueDate || null,
-        assetId: assetOptions.find((a) => a.label === r.assetLabel)?.id ?? null,
+        assetIds: r.assetIds,
+        assetId: r.assetIds[0] ?? null,
         // Save the confirmed type's schema fields, not whatever keys the AI
         // proposal carried (they belong to the originally guessed type).
         fields: pickFields(r),
@@ -295,15 +297,14 @@ export function ComplianceIngestModal({
                       onChange={(e) => patch({ issueDate: e.target.value })}
                     />
                   </label>
-                  <label className="compliance__field">
-                    <span className="compliance__field-label">Linked asset</span>
-                    <input
-                      list="compliance-assets"
-                      value={row.assetLabel}
-                      placeholder="optional…"
-                      onChange={(e) => patch({ assetLabel: e.target.value })}
+                  <div className="compliance__field compliance__field--assets">
+                    <span className="compliance__field-label">Linked assets</span>
+                    <AssetMultiSelect
+                      assets={assetOptions}
+                      value={row.assetIds}
+                      onChange={(ids) => patch({ assetIds: ids })}
                     />
-                  </label>
+                  </div>
                   {schemaFieldsFor(row.typeId).length > 0
                     ? // Schema-driven: the selected type's archetype decides the
                       // field set; extracted values were folded onto it when the
