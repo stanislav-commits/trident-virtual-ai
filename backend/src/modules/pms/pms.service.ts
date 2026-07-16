@@ -23,6 +23,14 @@ export type PmsStatus = 'overdue' | 'due-soon' | 'ok';
 const HOURS_SOON_WINDOW = 20; // hrs before due that still count as due-soon
 const DAYS_SOON_WINDOW = 10;
 
+/**
+ * Metric alerts must never surface as maintenance tasks. Auto-spawning is
+ * disabled (ALERT_AUTO_TASK_SEVERITY defaults to 'off'), but legacy `alert`
+ * rows created before that change can linger in the DB — filter them out of
+ * every task list so alarms stay in the alerts panel, not the PMS list.
+ */
+const isNotAlertTask = (t: PmsTaskEntity): boolean => t.source !== 'alert';
+
 export interface UpsertPmsTaskInput {
   task: string;
   category?: string;
@@ -75,7 +83,10 @@ export class PmsService {
       relations: { assets: true },
       order: { createdAt: 'DESC' },
     });
-    const visible = this.filterByDepartment(tasks, viewerDepartment);
+    const visible = this.filterByDepartment(
+      tasks.filter(isNotAlertTask),
+      viewerDepartment,
+    );
     const names = await this.assigneeNames(visible);
     const hours = await this.hoursForTasks(shipId, visible);
     return visible.map((t) => this.toDto(t, names, hours));
@@ -106,7 +117,10 @@ export class PmsService {
       .andWhere('l.asset_id = :assetId', { assetId })
       .orderBy('t.created_at', 'DESC')
       .getMany();
-    const visible = this.filterByDepartment(rows, viewerDepartment);
+    const visible = this.filterByDepartment(
+      rows.filter(isNotAlertTask),
+      viewerDepartment,
+    );
     const names = await this.assigneeNames(visible);
     const hours = await this.hoursForTasks(shipId, visible);
     return visible.map((t) => this.toDto(t, names, hours));
