@@ -22,6 +22,7 @@ import { ChatSourcesPanel } from "../components/chat/ChatSourcesPanel";
 import { PmsSidePanel } from "../components/chat/PmsSidePanel";
 import { AlertsSidePanel } from "../components/chat/AlertsSidePanel";
 import type { Alert } from "../api/alertsApi";
+import type { PmsTaskDto } from "../api/pmsApi";
 import { MessageInput } from "../components/chat/MessageInput";
 import { MessageList } from "../components/chat/MessageList";
 import logoImg from "../assets/logo-home.png";
@@ -435,6 +436,41 @@ export function ChatPage() {
     [handleSend],
   );
 
+  // "Ask AI" on a maintenance task: close the PMS panel and send a
+  // context-rich question — the assistant has manual/asset tools, so it can
+  // ground the how/where/what in the linked equipment's actual documentation
+  // instead of just repeating the task's short checklist title.
+  const handleAskTaskAi = useCallback(
+    (task: PmsTaskDto) => {
+      if (pmsTimer.current) {
+        window.clearTimeout(pmsTimer.current);
+        pmsTimer.current = null;
+      }
+      pmsOpenRef.current = false;
+      setPmsClosing(false);
+      setShowPms(false);
+
+      const assetNames = task.assets.map((a) => a.name).filter(Boolean);
+      const subject = assetNames.join(", ") || "the linked equipment";
+      const card = JSON.stringify({
+        title: task.task,
+        asset: assetNames.join(", ") || null,
+        category: task.category,
+        due: task.due,
+      });
+      const prompt =
+        `[[TASK]]${card}\n` +
+        `Explain how to actually perform this maintenance task on ${subject}: ` +
+        `where on the equipment to look, what tools or parts are typically ` +
+        `needed, and the key steps — pull specifics from ${subject}'s manual ` +
+        `if available. The task description only has a short checklist line ` +
+        `("${task.task}"${task.description ? ` — ${task.description}` : ""}); ` +
+        `give the practical how-to behind it.`;
+      void handleSend(prompt);
+    },
+    [handleSend],
+  );
+
   const handleDeleteSession = useCallback(
     async (targetSessionId: string) => {
       try {
@@ -597,6 +633,7 @@ export function ChatPage() {
                 shipId={sessionShipId}
                 closing={pmsClosing}
                 noAnim={panelSwap}
+                onAskAi={handleAskTaskAi}
               />
             )}
             {(showAlerts || alertsClosing) && (
@@ -646,6 +683,7 @@ export function ChatPage() {
                 shipId={sessionShipId}
                 closing={pmsClosing}
                 noAnim={panelSwap}
+                onAskAi={handleAskTaskAi}
               />
             )}
             {(showAlerts || alertsClosing) && (

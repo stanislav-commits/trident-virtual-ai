@@ -4,6 +4,7 @@ import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
 import { appRoutes, defaultAdminSection } from "../../utils/routes";
 import { listAlerts } from "../../api/alertsApi";
+import { listPmsTasks, type PmsTaskDto } from "../../api/pmsApi";
 import { canRead } from "../../api/accessControlApi";
 import { useMyAccess } from "../../hooks/useMyAccess";
 import { UserAvatar } from "./UserAvatar";
@@ -11,6 +12,24 @@ import { getUserAvatarLabel } from "./userAvatarUtils";
 
 function formatActiveVesselName(ship: { name: string }): string {
   return ship.name.trim() || "Unnamed vessel";
+}
+
+/**
+ * Overdue = open task past its real due mark (calendar or running hours) —
+ * mirrors PmsSidePanel's horizonOf "overdue" branch so the badge count equals
+ * the panel's header "N overdue".
+ */
+function isTaskOverdue(t: PmsTaskDto): boolean {
+  if (t.completedAt) return false;
+  if (t.dueDate) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(`${t.dueDate}T00:00:00`).getTime() < today.getTime();
+  }
+  if (t.dueHours != null && t.currentHours != null) {
+    return t.currentHours > t.dueHours;
+  }
+  return t.status === "overdue";
 }
 
 export function TopBar({ title }: { title?: string | null } = {}) {
@@ -27,6 +46,7 @@ export function TopBar({ title }: { title?: string | null } = {}) {
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const loadAlertCount = useCallback(() => {
@@ -34,21 +54,41 @@ export function TopBar({ title }: { title?: string | null } = {}) {
       setAlertCount(0);
       return;
     }
+    // Badge = ACTIVE alarms only (firing AND not yet acknowledged) — matches
+    // the panel's Active count and the "needs attention now" meaning.
     listAlerts(token, sessionShipId, "firing")
-      .then((a) => setAlertCount(a.length))
+      .then((a) => setAlertCount(a.filter((x) => !x.ackedAt).length))
       .catch(() => {});
   }, [token, sessionShipId]);
 
-  useEffect(() => {
+  const loadOverdueCount = useCallback(() => {
+    if (!token || !sessionShipId) {
+      setOverdueCount(0);
+      return;
+    }
+    listPmsTasks(token, sessionShipId)
+      .then((tasks) => setOverdueCount(tasks.filter(isTaskOverdue).length))
+      .catch(() => {});
+  }, [token, sessionShipId]);
+
+  const loadCounts = useCallback(() => {
     loadAlertCount();
-    const id = setInterval(loadAlertCount, 30000);
-    const onChange = () => loadAlertCount();
-    window.addEventListener("trident:alerts-changed", onChange);
+    loadOverdueCount();
+  }, [loadAlertCount, loadOverdueCount]);
+
+  useEffect(() => {
+    loadCounts();
+    const id = setInterval(loadCounts, 30000);
+    const onAlerts = () => loadAlertCount();
+    const onTasks = () => loadOverdueCount();
+    window.addEventListener("trident:alerts-changed", onAlerts);
+    window.addEventListener("trident:tasks-changed", onTasks);
     return () => {
       clearInterval(id);
-      window.removeEventListener("trident:alerts-changed", onChange);
+      window.removeEventListener("trident:alerts-changed", onAlerts);
+      window.removeEventListener("trident:tasks-changed", onTasks);
     };
-  }, [loadAlertCount]);
+  }, [loadCounts, loadAlertCount, loadOverdueCount]);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -174,6 +214,11 @@ export function TopBar({ title }: { title?: string | null } = {}) {
             <path d="M16 2v4M8 2v4M3 10h18" />
             <path d="M9 16l2 2 4-4" />
           </svg>
+          {overdueCount > 0 && (
+            <span className="chat-topbar__bell-badge">
+              {overdueCount > 99 ? "99+" : overdueCount}
+            </span>
+          )}
         </button>
         )}
         {user && user.role !== "admin" && (

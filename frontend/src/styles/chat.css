@@ -1600,6 +1600,16 @@
   animation-name: messageSlideLeft;
 }
 
+/* A task/alert "Ask AI" message is its own bordered card (.chat-alert-card) —
+   drop the bubble chrome so that card's border is the only visible edge,
+   instead of a grey cloud around it. */
+.chat-message--user.chat-message--card {
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
 .chat-message--assistant {
   align-self: flex-start;
   max-width: 100%;
@@ -2528,6 +2538,7 @@
 
 /* ── Upcoming PMS panel (mirrors .chat-sources-panel) ── */
 .chat-topbar__pms-btn {
+  position: relative; /* anchor for the overdue-count badge */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2577,19 +2588,9 @@
   gap: 10px; padding: 14px 14px 12px;
 }
 .alarm-panel__heading { display: flex; align-items: center; gap: 11px; }
-.alarm-panel__bell {
-  position: relative; display: inline-flex; padding: 8px;
-  background: var(--chat-surface-2); border: 1px solid var(--chat-border); border-radius: 11px;
-  color: var(--chat-text);
-}
-.alarm-panel__bell-badge {
-  position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px;
-  display: flex; align-items: center; justify-content: center; padding: 0 4px;
-  border-radius: 9px; background: var(--alarm-critical); color: #fff; font-size: 10px; font-weight: 700;
-}
 .alarm-panel__title { font-size: 15px; font-weight: 600; color: var(--chat-text); line-height: 1.2; }
 .alarm-panel__sub { font-size: 12px; color: var(--chat-text-muted); margin-top: 3px; }
-.alarm-panel__sub--crit { color: var(--alarm-critical); font-weight: 600; }
+.alarm-panel__sub--crit { color: var(--status-danger-soft, var(--alarm-critical)); font-weight: 600; }
 .alarm-panel__ackall {
   display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px;
   border-radius: 9px; font-size: 12.5px; font-weight: 600; cursor: pointer;
@@ -2644,7 +2645,7 @@
    small icon tint, dot + badge. Timestamp sits in the top-right corner. */
 .alarm-card {
   position: relative; border-radius: 12px; overflow: hidden;
-  border: 1px solid var(--chat-border); background: var(--chat-surface-2);
+  border: 1px solid var(--chat-border); background: transparent;
   flex-shrink: 0; /* never let the flex column squash cards into thin strips */
 }
 .alarm-card--active { border-color: color-mix(in srgb, var(--sev) 32%, var(--chat-border)); }

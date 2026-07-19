@@ -11,6 +11,7 @@ import {
   type PmsTaskDto,
   type PmsStatus,
 } from "../../api/pmsApi";
+import { listTaskInventory, type InventoryItem } from "../../api/inventoryApi";
 
 interface PmsSidePanelProps {
   token: string | null;
@@ -18,6 +19,7 @@ interface PmsSidePanelProps {
   closing?: boolean;
   /** Suppress the width open/close animation (when swapped in for another panel). */
   noAnim?: boolean;
+  onAskAi: (task: PmsTaskDto) => void;
 }
 
 // Maps onto the app design tokens so the panel matches the main screen.
@@ -32,8 +34,14 @@ const T = {
   dim: "var(--chat-text-muted)",
   faint: "var(--chat-text-subtle)",
   hero: "var(--status-warn)",
-  alarm: "var(--status-danger)",
+  // Overdue red — softer than --alarm-critical (that neon red repeated down
+  // every row of a task list reads as too harsh); still clearly red, unlike
+  // the original pale --status-danger.
+  alarm: "var(--status-danger-soft, var(--status-danger))",
   ok: "var(--status-ok)",
+  // The app's actual interactive/brand accent (blue) — for buttons the user
+  // taps, as opposed to `hero`, which is a due-soon STATUS color, not a CTA.
+  action: "var(--accent-bright, #60a5fa)",
 } as const;
 const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 const SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -50,7 +58,12 @@ const statusColor = (s: PmsStatus) =>
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+// Zero-padded ISO (YYYY-MM-DD) — must stay a real parseable date string since
+// several call sites round-trip it through `new Date(key + "T00:00:00")"; the
+// unpadded "YYYY-M-D" form used to break that reconstruction (Invalid Date ->
+// "undefined NaN undefined" in the tapped-day header) for any non-today day.
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const fmtDate = (d: Date) => `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}`;
 const fmtTime = (d: Date) =>
   `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -74,9 +87,6 @@ function dueLabel(t: PmsTaskDto, now: Date): string {
   if (days < 0) return `${-days}d overdue`;
   if (days === 0) return "today";
   return fmtDate(d).replace(/^(\w{3}) (\d+) (\w{3})$/, "$1 $2 $3");
-}
-function isCritical(t: PmsTaskDto): boolean {
-  return t.priority === "critical" || t.priority === "high";
 }
 function daysUntil(dateStr: string, now: Date): number {
   const d = new Date(dateStr + "T00:00:00");
@@ -126,7 +136,7 @@ function Ring({ ratio, color }: { ratio: number; color: string }) {
   );
 }
 
-export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelProps) {
+export function PmsSidePanel({ token, shipId, closing, noAnim, onAskAi }: PmsSidePanelProps) {
   const [tasks, setTasks] = useState<PmsTaskDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,8 +145,10 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
   const [selId, setSelId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
-  // Grouped list by default; tapping a day in the week strip filters to that day.
-  const [selDay, setSelDay] = useState<string | null>(null);
+  // Default to today's tasks — that's what the crew opens this panel to check
+  // first. Tapping a horizon tab (All/Overdue/Due/Scheduled) or another day
+  // leaves day-filter mode.
+  const [selDay, setSelDay] = useState<string | null>(() => dayKey(new Date()));
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30000);
@@ -151,7 +163,11 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
     setIsLoading(true);
     setError(null);
     listPmsTasks(token, shipId)
-      .then((r) => setTasks(r.filter((t) => t.completedAt == null)))
+      .then((r) => {
+        setTasks(r.filter((t) => t.completedAt == null));
+        // Keep the top-bar overdue badge in sync after a complete/log-hours.
+        window.dispatchEvent(new CustomEvent("trident:tasks-changed"));
+      })
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : "Failed to load"),
       )
@@ -236,12 +252,30 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
 
   const selected = selId ? tasks.find((t) => t.id === selId) ?? null : null;
 
-  const markDone = async (t: PmsTaskDto) => {
+  // Spare parts linked to the open task (view-only here — linking happens
+  // in the admin Tasks tab).
+  const [parts, setParts] = useState<InventoryItem[]>([]);
+  useEffect(() => {
+    if (!selId || !token || !shipId) {
+      setParts([]);
+      return;
+    }
+    let alive = true;
+    listTaskInventory(token, shipId, selId)
+      .then((p) => alive && setParts(p))
+      .catch(() => alive && setParts([]));
+    return () => {
+      alive = false;
+    };
+  }, [selId, token, shipId]);
+
+  const markDone = async (t: PmsTaskDto, notes: string) => {
     if (!token || !shipId) return;
     setBusy(true);
     try {
       await completePmsTask(token, shipId, t.id, {
         doneAtHours: t.currentHours ?? undefined,
+        notes: notes.trim() || null,
       });
       setSelId(null);
       reload();
@@ -282,11 +316,13 @@ export function PmsSidePanel({ token, shipId, closing, noAnim }: PmsSidePanelPro
       {selected ? (
         <Detail
           task={selected}
+          parts={parts}
           now={now}
           busy={busy}
           onBack={() => setSelId(null)}
-          onDone={() => void markDone(selected)}
+          onDone={(notes) => void markDone(selected, notes)}
           onLogHours={(h) => void logHours(selected, h)}
+          onAskAi={() => onAskAi(selected)}
         />
       ) : (
         <>
@@ -484,7 +520,7 @@ function TaskCard({ task, now, onClick }: { task: PmsTaskDto; now: Date; onClick
         display: "block",
         width: "100%",
         textAlign: "left",
-        background: T.panel,
+        background: "transparent",
         border: `1px solid ${T.line}`,
         borderRadius: 10,
         padding: "11px 13px 11px 15px",
@@ -504,11 +540,6 @@ function TaskCard({ task, now, onClick }: { task: PmsTaskDto; now: Date; onClick
           <div style={{ fontFamily: SANS, fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.25 }}>
             {task.task}
           </div>
-          {task.description && (
-            <div style={{ fontFamily: SANS, fontSize: 12, color: T.dim, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {task.description.split("\n")[0]}
-            </div>
-          )}
         </div>
         <div style={{ flexShrink: 0, textAlign: "right" }}>
           {hours && remaining != null ? (
@@ -531,20 +562,25 @@ function TaskCard({ task, now, onClick }: { task: PmsTaskDto; now: Date; onClick
 
 function Detail({
   task,
+  parts,
   now,
   busy,
   onBack,
   onDone,
   onLogHours,
+  onAskAi,
 }: {
   task: PmsTaskDto;
+  parts: InventoryItem[];
   now: Date;
   busy: boolean;
   onBack: () => void;
-  onDone: () => void;
+  onDone: (notes: string) => void;
   onLogHours: (hours: number) => void;
+  onAskAi: () => void;
 }) {
   const [reading, setReading] = useState("");
+  const [notes, setNotes] = useState("");
   const isHoursReminder = task.source === "hours_reminder";
   const assetNames = task.assets.map((a) => a.name).filter(Boolean).join(" · ");
   const sc = statusColor(task.status);
@@ -572,15 +608,33 @@ function Detail({
         <button type="button" onClick={onBack} style={{ background: "transparent", border: 0, color: T.dim, fontFamily: SANS, fontSize: 13, cursor: "pointer", padding: 0 }}>
           ‹ All tasks
         </button>
-        <span style={{ fontFamily: MONO, fontSize: 11, color: T.faint }}>
-          {task.id.slice(0, 8)}
-        </span>
+        <button
+          type="button"
+          onClick={onAskAi}
+          title="Ask the AI how to do this job"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            background: `${T.action}1a`,
+            border: `1px solid ${T.action}55`,
+            color: T.action,
+            fontFamily: SANS,
+            fontSize: 12.5,
+            fontWeight: 600,
+            borderRadius: 999,
+            padding: "5px 11px",
+            cursor: "pointer",
+          }}
+        >
+          ✨ Ask AI
+        </button>
       </div>
       <div style={{ flex: "1 1 auto", overflowY: "auto", padding: "16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: sc }} />
-          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: isCritical(task) ? T.alarm : T.ok }}>
-            {isCritical(task) ? "Critical" : "Routine"}
+          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: T.dim }}>
+            {task.status === "overdue" ? "Overdue" : task.status === "due-soon" ? "Due soon" : "Scheduled"}
           </span>
           {task.category && <span style={{ fontFamily: SANS, fontSize: 12, color: T.faint }}>· {task.category}</span>}
         </div>
@@ -620,6 +674,51 @@ function Detail({
           {task.lastDone && <Row label="Last done" value={task.lastDone} />}
           {task.source === "compliance" && <Row label="Source" value="Compliance certificate" />}
         </div>
+
+        {task.completionNotes && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={sectStyle}>Note from last completion</div>
+            <div style={{ fontFamily: SANS, fontSize: 13, color: T.text, lineHeight: 1.5 }}>
+              {task.completionNotes}
+            </div>
+          </div>
+        )}
+
+        {parts.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={sectStyle}>Parts &amp; spares</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {parts.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    gap: 10,
+                    padding: "7px 10px",
+                    background: "transparent",
+                    border: `1px solid ${T.line}`,
+                    borderRadius: 8,
+                  }}
+                >
+                  <span style={{ fontFamily: SANS, fontSize: 12.5, color: T.text, minWidth: 0 }}>
+                    {p.name}
+                    {p.partNumber && (
+                      <span style={{ fontFamily: MONO, fontSize: 11, color: T.dim, marginLeft: 8 }}>
+                        {p.partNumber}
+                      </span>
+                    )}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 11, color: T.dim, flexShrink: 0, whiteSpace: "nowrap" }}>
+                    {p.quantity != null ? `×${p.quantity}${p.unit ? ` ${p.unit}` : ""}` : null}
+                    {p.location ? ` · ${p.location}` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.line}`, background: T.app }}>
@@ -641,7 +740,7 @@ function Detail({
                 type="button"
                 disabled={busy || !reading}
                 onClick={() => onLogHours(Number(reading))}
-                style={{ background: T.hero, border: 0, color: "#1a1206", fontFamily: SANS, fontSize: 14, fontWeight: 600, borderRadius: 8, padding: "0 16px", cursor: "pointer", opacity: busy || !reading ? 0.5 : 1 }}
+                style={{ background: T.action, border: 0, color: "#fff", fontFamily: SANS, fontSize: 14, fontWeight: 600, borderRadius: 8, padding: "0 16px", cursor: "pointer", opacity: busy || !reading ? 0.5 : 1 }}
               >
                 {busy ? "Saving…" : "Log"}
               </button>
@@ -655,23 +754,47 @@ function Detail({
             </button>
           </>
         ) : (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={onDone}
-              disabled={busy}
-              style={{ flex: 1, background: T.hero, border: 0, color: "#1a1206", fontFamily: SANS, fontSize: 14, fontWeight: 600, borderRadius: 8, padding: "10px 0", cursor: "pointer" }}
-            >
-              {busy ? "Saving…" : "Mark done"}
-            </button>
-            <button
-              type="button"
-              onClick={onBack}
-              style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, fontFamily: SANS, fontSize: 14, borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}
-            >
-              Back
-            </button>
-          </div>
+          <>
+            <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase", color: T.dim, marginBottom: 7 }}>
+              Notes (optional)
+            </div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Anything the next person should know — what you found, what you changed, parts used…"
+              rows={2}
+              style={{
+                width: "100%",
+                resize: "vertical",
+                background: T.panel,
+                border: `1px solid ${T.line}`,
+                color: T.text,
+                fontFamily: SANS,
+                fontSize: 13,
+                borderRadius: 8,
+                padding: "8px 10px",
+                marginBottom: 10,
+                boxSizing: "border-box",
+              }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => onDone(notes)}
+                disabled={busy}
+                style={{ flex: 1, background: T.action, border: 0, color: "#fff", fontFamily: SANS, fontSize: 14, fontWeight: 600, borderRadius: 8, padding: "10px 0", cursor: "pointer" }}
+              >
+                {busy ? "Saving…" : "Mark done"}
+              </button>
+              <button
+                type="button"
+                onClick={onBack}
+                style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, fontFamily: SANS, fontSize: 14, borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}
+              >
+                Back
+              </button>
+            </div>
+          </>
         )}
       </div>
     </>

@@ -34,9 +34,12 @@ const SEV: Record<
 > = {
   critical: {
     label: "Critical",
-    color: "var(--alarm-critical)",
-    bg: "color-mix(in srgb, var(--alarm-critical) 16%, transparent)",
-    bar: "var(--alarm-critical)",
+    // Softer than --alarm-critical on purpose: this red repeats across every
+    // critical card + chip in the open panel — the neon badge tone is
+    // reserved for the single sparse top-bar bell count, not for body content.
+    color: "var(--status-danger-soft, var(--alarm-critical))",
+    bg: "color-mix(in srgb, var(--status-danger-soft, var(--alarm-critical)) 16%, transparent)",
+    bar: "var(--status-danger-soft, var(--alarm-critical))",
     Icon: IconAlertCircle,
   },
   high: {
@@ -181,7 +184,8 @@ function AlarmCard({
 export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi }: AlertsSidePanelProps) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<FilterTab>("all");
+  // Open on Active — an alarm panel is about what needs attention NOW.
+  const [filter, setFilter] = useState<FilterTab>("active");
   const [sevFilter, setSevFilter] = useState<Sev | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
@@ -282,12 +286,6 @@ export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi }: Ale
         {/* Header */}
         <div className="alarm-panel__header">
           <div className="alarm-panel__heading">
-            <div className="alarm-panel__bell">
-              <IconBell />
-              {counts.active > 0 && (
-                <span className="alarm-panel__bell-badge">{counts.active}</span>
-              )}
-            </div>
             <div>
               <div className="alarm-panel__title">Alarm Notifications</div>
               {counts.critical > 0 ? (
@@ -392,7 +390,6 @@ function svg(children: ReactElement, size = 14) {
 function IconAlertCircle() { return svg(<><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></>, 16); }
 function IconAlertTriangle() { return svg(<><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></>, 16); }
 function IconInfo() { return svg(<><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></>, 16); }
-function IconBell() { return svg(<><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></>, 18); }
 function IconBellOff() { return svg(<><path d="M13.73 21a2 2 0 0 1-3.46 0" /><path d="M18.63 13A17.89 17.89 0 0 1 18 8" /><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14" /><path d="M18 8a6 6 0 0 0-9.33-5" /><line x1="1" y1="1" x2="23" y2="23" /></>, 22); }
 function IconCheck() { return svg(<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>); }
 function IconX() { return svg(<><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>); }

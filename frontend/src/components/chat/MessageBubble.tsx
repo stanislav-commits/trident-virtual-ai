@@ -55,6 +55,54 @@ function parseAlertMessage(content: string): AlertCard | null {
   }
 }
 
+interface TaskCard {
+  title: string;
+  asset?: string | null;
+  category?: string;
+  due?: string;
+}
+
+/** A user message that was sent from the PMS panel ("Ask AI"). */
+function parseTaskMessage(content: string): TaskCard | null {
+  const PREFIX = "[[TASK]]";
+  if (!content.startsWith(PREFIX)) return null;
+  const nl = content.indexOf("\n");
+  const json = content.slice(PREFIX.length, nl > 0 ? nl : undefined);
+  try {
+    const c = JSON.parse(json) as TaskCard;
+    return c && typeof c.title === "string" ? c : null;
+  } catch {
+    return null;
+  }
+}
+
+// Reuses the alert card's structural classes (icon/body/title/meta) — same
+// visual grammar for any "sent from a side panel" message, just a different
+// accent and icon.
+function TaskMessageCard({ card }: { card: TaskCard }) {
+  const sc = "var(--status-warn, #e0a800)";
+  return (
+    <div className="chat-alert-card" style={{ borderLeftColor: sc }}>
+      <span className="chat-alert-card__icon" style={{ color: sc }} aria-hidden>
+        ✓
+      </span>
+      <div className="chat-alert-card__body">
+        <div className="chat-alert-card__title">{card.title}</div>
+        <div className="chat-alert-card__meta">
+          {card.asset && <span>{card.asset}</span>}
+          {card.category && (
+            <span>
+              {card.asset ? "· " : ""}
+              {card.category}
+            </span>
+          )}
+          {card.due && <span className="chat-alert-card__when">· {card.due}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function alertSeverityColor(s?: string): string {
   if (s === "critical") return "var(--status-danger, #d9534f)";
   if (s === "high" || s === "warning") return "var(--status-warn, #e0a800)";
@@ -321,9 +369,16 @@ export function MessageBubble({
   );
   const mdComponents = useMdComponents(refs, handleOpenDocument);
   const alertCard = role === "user" ? parseAlertMessage(content) : null;
+  const taskCard = role === "user" && !alertCard ? parseTaskMessage(content) : null;
+  // A task/alert "Ask AI" message renders as its own bordered card — skip the
+  // usual grey chat bubble around it so the card's own border is the only
+  // visible boundary, instead of a card nested inside a bubble.
+  const isCardMessage = !!(alertCard || taskCard);
 
   return (
-    <div className={`chat-message chat-message--${role}`}>
+    <div
+      className={`chat-message chat-message--${role}${isCardMessage ? " chat-message--card" : ""}`}
+    >
       <div className="chat-message__content">
         {role === "assistant" && isAdmin && telemetryShips.length > 0 && (
           <div
@@ -349,6 +404,8 @@ export function MessageBubble({
           </ReactMarkdown>
         ) : alertCard ? (
           <AlertMessageCard card={alertCard} />
+        ) : taskCard ? (
+          <TaskMessageCard card={taskCard} />
         ) : (
           content.trim()
         )}
