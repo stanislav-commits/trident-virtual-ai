@@ -49,6 +49,14 @@ export interface PmsImportDraft {
   assetHint?: string | null;
   // the system/group the equipment belongs to, when the source distinguishes it
   assetGroup?: string | null;
+  // source PMS reference id ("1P231") — idempotency key: re-import updates
+  externalRef?: string | null;
+  // hour-counter name for hour-based intervals ("50 CASTOLDI" → "CASTOLDI")
+  counter?: string | null;
+  // matched asset's running-hours source ('none' means the counter isn't wired)
+  assetHoursSource?: string | null;
+  // review opt-in: switch the matched asset to manual hour counting on commit
+  enableManualHours?: boolean;
   // resolved against the ship's asset register
   assetMatch?: { id: string; name: string; matchType: string } | null;
   // no register match → commit may create the asset (user can veto per row)
@@ -73,6 +81,8 @@ export interface PmsImportPreview {
 
 export interface PmsImportCommitResult {
   created: number;
+  /** Tasks matched by external_ref and updated in place (idempotent re-import). */
+  updated: number;
   assetsCreated: number;
   partsCreated: number;
   partsLinked: number;
@@ -126,6 +136,8 @@ interface LlmTask {
   asset?: string | null;
   asset_group?: string | null;
   sfi_group?: string | null;
+  ref_id?: string | null;
+  counter?: string | null;
   parts?: LlmPart[] | null;
   // history mode
   completed_date?: string | null;
@@ -217,12 +229,39 @@ export class PmsImportService {
     // createAsset=true for anything the register genuinely doesn't have.
     await this.resolveAssetMatches(drafts, assets, notes);
 
+    // Hour-based tasks need their asset's running-hours source wired; surface
+    // its state so the review can flag "no counter" and offer manual counting.
+    await this.annotateHoursSources(drafts);
+
     return {
       drafts,
       counts: this.buildCounts(drafts),
       sourceChars: text.length,
       notes,
     };
+  }
+
+  /** Stamp each hour-based draft with its matched asset's hours source. */
+  private async annotateHoursSources(drafts: PmsImportDraft[]): Promise<void> {
+    const assetIds = [
+      ...new Set(
+        drafts
+          .filter((d) => d.intervalHours != null && d.assetMatch)
+          .map((d) => (d.assetMatch as { id: string }).id),
+      ),
+    ];
+    if (assetIds.length === 0) return;
+    const rows: Array<{ asset_id: string; source: string }> =
+      await this.assetRepository.manager.query(
+        `SELECT asset_id, source FROM asset_hours_config WHERE asset_id = ANY($1)`,
+        [assetIds],
+      );
+    const byAsset = new Map(rows.map((r) => [r.asset_id, r.source]));
+    for (const d of drafts) {
+      if (d.intervalHours != null && d.assetMatch) {
+        d.assetHoursSource = byAsset.get(d.assetMatch.id) ?? 'none';
+      }
+    }
   }
 
   private buildCounts(drafts: PmsImportDraft[]): PmsImportPreview['counts'] {
@@ -453,7 +492,13 @@ export class PmsImportService {
     }
     if (mode === 'history') {
       const { created } = await this.commitHistory(shipId, drafts);
-      return { created, assetsCreated: 0, partsCreated: 0, partsLinked: 0 };
+      return {
+        created,
+        updated: 0,
+        assetsCreated: 0,
+        partsCreated: 0,
+        partsLinked: 0,
+      };
     }
 
     // 1) Create register assets for unmatched equipment (opt-in), so the
@@ -479,10 +524,44 @@ export class PmsImportService {
       }),
     );
 
-    // 3) Create tasks ONE BY ONE (we need each task's id to link its spare
-    //    parts). Mirrors createMany semantics: a bad row is skipped, logged,
-    //    and never aborts the batch.
+    // 3) Idempotency: a draft whose external_ref already exists on this ship
+    //    UPDATES that task instead of creating a duplicate.
+    const refs = [
+      ...new Set(
+        drafts.map((d) => d.externalRef).filter((v): v is string => !!v),
+      ),
+    ];
+    const existingByRef = new Map<string, string>();
+    if (refs.length > 0) {
+      const rows: Array<{ id: string; external_ref: string }> =
+        await this.assetRepository.manager.query(
+          `SELECT id, external_ref FROM pms_tasks
+            WHERE ship_id = $1 AND external_ref = ANY($2)`,
+          [shipId, refs],
+        );
+      for (const r of rows) existingByRef.set(r.external_ref, r.id);
+    }
+    // Drafts WITHOUT a reference id fall back to (normalized title) as the
+    // idempotency key among previously imported ref-less tasks, so re-imports
+    // don't duplicate them either.
+    const existingByTitle = new Map<string, string>();
+    {
+      const rows: Array<{ id: string; task: string }> =
+        await this.assetRepository.manager.query(
+          `SELECT id, task FROM pms_tasks
+            WHERE ship_id = $1 AND source = 'import' AND external_ref IS NULL`,
+          [shipId],
+        );
+      for (const r of rows) {
+        existingByTitle.set(this.normalizeAssetKey(r.task), r.id);
+      }
+    }
+
+    // 4) Create/update tasks ONE BY ONE (we need each task's id to link its
+    //    spare parts). Mirrors createMany semantics: a bad row is skipped,
+    //    logged, and never aborts the batch.
     let created = 0;
+    let updated = 0;
     const taskIdByDraft = new Map<PmsImportDraft, string>();
     for (const d of drafts) {
       if (!d.task?.trim()) continue;
@@ -526,11 +605,25 @@ export class PmsImportService {
         lastDoneAt: d.lastDoneAt ?? null,
         assetIds: d.assetMatch ? [d.assetMatch.id] : [],
         source: 'import',
+        externalRef: d.externalRef ?? null,
       };
       try {
-        const saved = await this.pmsService.create(shipId, input);
-        if (saved?.id) taskIdByDraft.set(d, saved.id);
-        created++;
+        const existingId = d.externalRef
+          ? existingByRef.get(d.externalRef)
+          : existingByTitle.get(this.normalizeAssetKey(d.task));
+        if (existingId) {
+          const saved = await this.pmsService.update(
+            shipId,
+            existingId,
+            input,
+          );
+          if (saved?.id) taskIdByDraft.set(d, saved.id);
+          updated++;
+        } else {
+          const saved = await this.pmsService.create(shipId, input);
+          if (saved?.id) taskIdByDraft.set(d, saved.id);
+          created++;
+        }
       } catch (error) {
         this.logger.warn(
           `Skipped import task "${input.task}": ${
@@ -540,14 +633,43 @@ export class PmsImportService {
       }
     }
 
-    // 4) Spare parts → inventory items linked to their tasks and assets.
+    // 5) Spare parts → inventory items linked to their tasks and assets.
     const { partsCreated, partsLinked } = await this.upsertParts(
       shipId,
       drafts,
       taskIdByDraft,
     );
 
-    return { created, assetsCreated, partsCreated, partsLinked };
+    // 6) Review opt-in: switch un-wired assets of hour-based tasks to manual
+    //    hour counting (creates the monthly "record running hours" reminder).
+    const manualAssetIds = [
+      ...new Set(
+        drafts
+          .filter(
+            (d) =>
+              d.enableManualHours &&
+              d.intervalHours != null &&
+              d.assetMatch &&
+              (d.assetHoursSource ?? 'none') === 'none',
+          )
+          .map((d) => (d.assetMatch as { id: string }).id),
+      ),
+    ];
+    for (const assetId of manualAssetIds) {
+      try {
+        await this.assetHoursService.setConfig(shipId, assetId, {
+          source: 'manual',
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Could not enable manual hours for asset ${assetId}: ${
+            error instanceof Error ? error.message : error
+          }`,
+        );
+      }
+    }
+
+    return { created, updated, assetsCreated, partsCreated, partsLinked };
   }
 
   /**
@@ -575,10 +697,31 @@ export class PmsImportService {
       byName.set(key, arr);
     }
 
+    // Re-imports must reuse assets created by a previous run, not duplicate
+    // them: look up existing register rows by normalized display name first.
+    const existingAssets: Array<{ id: string; display_name: string }> =
+      await this.assetRepository.manager.query(
+        `SELECT id, display_name FROM assets WHERE ship_id = $1`,
+        [shipId],
+      );
+    const existingByName = new Map(
+      existingAssets.map((a) => [this.normalizeAssetKey(a.display_name), a]),
+    );
+
     let createdCount = 0;
     for (const group of byName.values()) {
       const sample = group[0];
       const displayName = (sample.assetHint as string).slice(0, 255);
+      const already = existingByName.get(this.normalizeAssetKey(displayName));
+      if (already) {
+        const match = {
+          id: already.id,
+          name: already.display_name,
+          matchType: 'created',
+        };
+        for (const d of group) d.assetMatch = match;
+        continue;
+      }
       try {
         const { assetIdInternal } = await this.assetsService.nextAssetId(
           shipId,
@@ -897,6 +1040,8 @@ export class PmsImportService {
 
     const intervalHours = this.toNum(t.interval_hours) ?? repaired.intervalHours;
     const intervalValue = this.toNum(t.interval_value) ?? repaired.intervalValue;
+    const externalRef = t.ref_id?.trim().slice(0, 40) || null;
+    const counter = t.counter?.trim().slice(0, 80) || null;
     const intervalUnit =
       t.interval_unit != null || repaired.intervalUnit == null
         ? this.normUnit(t.interval_unit)
@@ -914,6 +1059,8 @@ export class PmsImportService {
       intervalHours,
       dueDate: this.normDate(t.due_date),
       lastDoneAt: this.normDate(t.last_done),
+      externalRef,
+      counter,
       assetHint,
       assetGroup,
       assetMatch: null,
@@ -1276,6 +1423,7 @@ const SCHEMA_HINT =
   '"interval_unit": "days"|"weeks"|"months"|"years"|null, "due_date": string|null, ' +
   '"last_done": string|null, "description": string|null, "asset": string|null, ' +
   '"asset_group": string|null, "sfi_group": string|null, ' +
+  '"ref_id": string|null, "counter": string|null, ' +
   '"parts": [ { "name": string, "quantity": number|null, "unit": string|null, ' +
   '"location": string|null, "manufacturer_no": string|null, "supplier_no": string|null } ]|null } ] }';
 
@@ -1332,6 +1480,8 @@ Return ONLY JSON: { "tasks": [ ... ] }. One object per maintenance task. Fields:
 - asset: the specific equipment/component the task is on (see repair rule 3), else null.
 - asset_group: the system/group the equipment belongs to, when the source distinguishes one (e.g. "Bilge and fire pumps", "0331 Tenders"), else null.
 - sfi_group: an SFI group code if present, else null.
+- ref_id: the task's Reference ID exactly as written in the source (e.g. "1P231", "1O15"), else null. Never invent one.
+- counter: for hour-based intervals, the NAME of the hour counter the interval is measured on — "50 CASTOLDI" means interval_hours 50 on counter "CASTOLDI"; "100 CHASE BOAT GENERATOR" -> interval_hours 100, counter "CHASE BOAT GENERATOR". Else null.
 - parts: spare parts for this task extracted from the row (see repair rule 4), else null.
 
 REPAIR RULES — real export defects you MUST fix:
@@ -1343,6 +1493,10 @@ REPAIR RULES — real export defects you MUST fix:
    - Reconstruct ONLY from pieces present in the row — never invent a name.
 4. EMBEDDED SPARE-PARTS TABLES: a description may embed a parts table, typically after a header like "Spare Name Quantity Location Manufacturer Part# Supplier Part#". Pull EVERY row out into parts[]: name, quantity (number), unit ("20 Lt" -> quantity 20 unit "L"; plain count -> unit "pcs"), location (storage place, e.g. "Box 04 Pumps", "Bilge under beach club"), manufacturer_no (manufacturer part number), supplier_no (supplier part number). REMOVE the table text from description. Part names in sentence case, keep part-number casing.
 5. RUN-ON CHECKLISTS: "1. DO X 2. DO Y 3.DO Z" -> one step per line in description: "1. Do x\\n2. Do y\\n3. Do z". Keep manufacturer references (Fig. 82, section numbers).
+6. SELF-SUFFICIENT TITLES: a title must make sense in a list WITHOUT the equipment column.
+   - A bare action ("GREASING", "INSPECTION", "SERVICE", "OVERHAUL") gets its component folded in: "GREASING" on Jet Ski Hatch Drive -> "Grease jet ski hatch drive".
+   - Generic hour services take the component: "100 HRS SERVICE" on Chase Boat Generator -> "Chase boat generator — 100 h service"; "CASTPOLDIN ENGINE 300 HRS" -> "Castoldi engine — 300 h service" (typos fixed).
+   - Never put intervals, dates or reference IDs in the title — they have their own fields.
 
 Rules: omit header/section/total rows that are not tasks. Do not invent intervals — if none is stated, leave all interval fields null. Keep task titles short; move detail into description. Output valid JSON only, no prose.`;
 

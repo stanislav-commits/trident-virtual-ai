@@ -10,6 +10,10 @@ export interface PmsTaskDto {
   source?: string;
   /** 'maintenance' (asset upkeep) | 'general' (certificates/drills/assignments). */
   board?: string;
+  /** Our permanent code, e.g. "SWX-M0421". */
+  taskCode?: string | null;
+  /** Source PMS reference id (e.g. "1P231") when imported. */
+  externalRef?: string | null;
   description?: string;
   sfiGroup?: string;
   sfiGroupName?: string;
@@ -92,6 +96,10 @@ export interface PmsImportDraft {
   lastDoneHours?: number | null;
   assetHint?: string | null;
   assetGroup?: string | null;
+  externalRef?: string | null;
+  counter?: string | null;
+  assetHoursSource?: string | null;
+  enableManualHours?: boolean;
   assetMatch?: { id: string; name: string; matchType: string } | null;
   createAsset?: boolean;
   parts?: PmsImportPartDraft[];
@@ -115,6 +123,7 @@ export interface PmsImportPreview {
 
 export interface PmsImportCommitResult {
   created: number;
+  updated: number;
   assetsCreated: number;
   partsCreated: number;
   partsLinked: number;

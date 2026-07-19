@@ -5203,6 +5203,27 @@
   font-size: 11px;
 }
 /* Spare-parts count chip on an import row (tooltip lists the parts). */
+/* Source reference id under the task title in the import preview. */
+.pms__import-ref {
+  font-family: ui-monospace, "SF Mono", Monaco, monospace;
+  font-size: 10px;
+  color: var(--chat-text-subtle, #778);
+  margin-top: 2px;
+}
+/* Hour-based task whose asset has no hours source: amber hint + opt-in. */
+.pms__import-hours-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--status-warn);
+  cursor: pointer;
+}
+.pms__import-hours-warn input {
+  accent-color: var(--status-warn);
+}
+
 .pms__import-parts {
   display: inline-flex;
   align-items: center;
@@ -5300,6 +5321,15 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
+}
+.pms-drawer__code {
+  font-family: ui-monospace, "SF Mono", Monaco, monospace;
+  font-size: 11px;
+  color: var(--chat-text-muted);
+  margin-bottom: 4px;
+}
+.pms-drawer__code-ref {
+  color: var(--chat-text-subtle, #778);
 }
 .pms-drawer__title {
   margin: 0;
@@ -10542,6 +10572,14 @@
 .pms__task {
   display: flex;
   align-items: center;
+}
+/* Our permanent task code (SWX-M0421) — quiet mono line above the title. */
+.pms__task-code {
+  font-family: ui-monospace, "SF Mono", Monaco, monospace;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--chat-text-subtle, #778);
+  margin-bottom: 2px;
 }
 .pms__person {
   font-size: 12px;

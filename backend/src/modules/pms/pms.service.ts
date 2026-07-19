@@ -12,6 +12,7 @@ import { UserEntity } from '../users/entities/user.entity';
 import { PmsTaskEntity } from './entities/pms-task.entity';
 import { AssetHoursService } from './asset-hours.service';
 import { addInterval } from './date-interval.util';
+import { nextTaskCode } from './pms-task-code.util';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import {
   POSITION_LABELS,
@@ -68,6 +69,8 @@ export interface UpsertPmsTaskInput {
   source?: string;
   /** 'maintenance' (asset upkeep) | 'general' (certificates/drills/assignments). */
   board?: string;
+  /** Source PMS reference id (e.g. "1P231") — import idempotency key. */
+  externalRef?: string | null;
   completedAt?: string | null;
   completedByName?: string | null;
   completedByPosition?: string | null;
@@ -145,9 +148,15 @@ export class PmsService {
     if (!input.task?.trim()) {
       throw new BadRequestException('Task title is required');
     }
+    const mapped = this.mapInput(input);
     const entity = this.taskRepository.create({
       shipId,
-      ...this.mapInput(input),
+      ...mapped,
+      taskCode: await nextTaskCode(
+        this.taskRepository.manager,
+        shipId,
+        mapped.board ?? 'maintenance',
+      ),
       assets: await this.resolveAssets(shipId, input.assetIds),
     });
     const saved = await this.taskRepository.save(entity);
@@ -164,9 +173,15 @@ export class PmsService {
       // whole import — skip it and keep going, so the operator gets everything
       // that IS valid instead of a 500 and a half-written batch.
       try {
+        const mapped = this.mapInput(input);
         const entity = this.taskRepository.create({
           shipId,
-          ...this.mapInput(input),
+          ...mapped,
+          taskCode: await nextTaskCode(
+            this.taskRepository.manager,
+            shipId,
+            mapped.board ?? 'maintenance',
+          ),
           assets: await this.resolveAssets(shipId, input.assetIds),
         });
         await this.taskRepository.save(entity);
@@ -347,6 +362,7 @@ export class PmsService {
     set('board', (v) => {
       if (v === 'general' || v === 'maintenance') out.board = v;
     });
+    set('externalRef', (v) => (out.externalRef = cap(v, 40)));
     set('completedByName', (v) => (out.completedByName = cap(v, 120)));
     set('completedByPosition', (v) => (out.completedByPosition = cap(v, 64)));
     if (input.completedAt !== undefined) {
@@ -408,6 +424,11 @@ export class PmsService {
           repeatDate: false,
           source: 'compliance',
           board: 'general',
+          taskCode: await nextTaskCode(
+            this.taskRepository.manager,
+            shipId,
+            'general',
+          ),
           sourceDocId: input.docId,
           assets,
         }),
@@ -507,6 +528,8 @@ export class PmsService {
       planning: task.planning,
       source: task.source ?? undefined,
       board: task.board ?? 'maintenance',
+      taskCode: task.taskCode ?? null,
+      externalRef: task.externalRef ?? null,
       description: task.description ?? undefined,
       sfiGroup: task.sfiGroup ?? undefined,
       sfiGroupName: undefined,

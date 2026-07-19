@@ -116,6 +116,16 @@ export function TaskDetailDrawer({
                 <span className="pms__dept">from certificate</span>
               )}
             </div>
+            {(task.taskCode || task.externalRef) && (
+              <div className="pms-drawer__code">
+                {task.taskCode}
+                {task.externalRef && (
+                  <span className="pms-drawer__code-ref">
+                    {" "}· PMS ref {task.externalRef}
+                  </span>
+                )}
+              </div>
+            )}
             <h2 className="pms-drawer__title">{task.task}</h2>
           </div>
           <button

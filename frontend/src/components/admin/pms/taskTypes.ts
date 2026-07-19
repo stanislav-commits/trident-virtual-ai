@@ -54,6 +54,9 @@ export interface PmsTask {
   source?: string;
   // 'maintenance' (asset upkeep) | 'general' (certificates/drills/assignments).
   board?: string;
+  // Our permanent code (SWX-M0421) + the source PMS's reference id (1P231).
+  taskCode?: string | null;
+  externalRef?: string | null;
   // engine | bridge | ratings | "" (general) — drives rank-based visibility.
   department?: string;
   description?: string;

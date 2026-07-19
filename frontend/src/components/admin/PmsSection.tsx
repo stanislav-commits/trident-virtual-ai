@@ -428,6 +428,8 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
           (dueFilter === "all" || dueHorizon(t) === dueFilter) &&
           (!q ||
             t.task.toLowerCase().includes(q) ||
+            (t.taskCode ?? "").toLowerCase().includes(q) ||
+            (t.externalRef ?? "").toLowerCase().includes(q) ||
             (t.responsibleRole ?? "").toLowerCase().includes(q) ||
             (t.completedByName ?? "").toLowerCase().includes(q) ||
             (t.sfiGroupName ?? "").toLowerCase().includes(q) ||
@@ -676,6 +678,8 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
           importMode === "history" ? "record" : "task"
         }${result.created === 1 ? "" : "s"}`,
       ];
+      if (result.updated > 0)
+        bits.push(`${result.updated} updated by reference id`);
       if (result.assetsCreated > 0)
         bits.push(`${result.assetsCreated} new asset${result.assetsCreated === 1 ? "" : "s"}`);
       if (result.partsCreated > 0)
@@ -895,6 +899,9 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
                   )}
                 </td>
                 <td>
+                  {t.taskCode && (
+                    <div className="pms__task-code">{t.taskCode}</div>
+                  )}
                   <div className="pms__task">{t.task}</div>
                   {(t.source === "hours_reminder" ||
                     t.source === "compliance") && (
@@ -1559,6 +1566,14 @@ export function ImportPreviewModal({
                         ⚠
                       </span>
                     )}
+                    {r.externalRef && (
+                      <div
+                        className="pms__import-ref"
+                        title="Source PMS reference — re-importing the same file updates this task instead of duplicating it"
+                      >
+                        ref {r.externalRef}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <select
@@ -1652,6 +1667,27 @@ export function ImportPreviewModal({
                         🔧 {r.parts?.length}
                       </span>
                     )}
+                    {r.intervalHours != null &&
+                      r.assetMatch &&
+                      (r.assetHoursSource ?? "none") === "none" && (
+                        <label
+                          className="pms__import-hours-warn"
+                          title={`Runs every ${r.intervalHours} h${
+                            r.counter ? ` on counter "${r.counter}"` : ""
+                          }, but this asset has no running-hours source. Tick to enable MANUAL counting — a monthly "record running hours" reminder task is created; metric-based counting can be set later in the asset's PMS tab.`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={r.enableManualHours === true}
+                            onChange={(e) =>
+                              patch(r._key, {
+                                enableManualHours: e.target.checked,
+                              })
+                            }
+                          />
+                          ⏱ no hours source — count manually
+                        </label>
+                      )}
                   </td>
                 </tr>
               ))}

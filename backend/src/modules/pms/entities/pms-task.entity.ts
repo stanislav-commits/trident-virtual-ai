@@ -111,6 +111,14 @@ export class PmsTaskEntity {
   @Column({ name: 'completion_notes', type: 'text', nullable: true })
   completionNotes!: string | null;
 
+  /** OUR permanent human-readable id, e.g. "SWX-M0421" — system-generated. */
+  @Column({ name: 'task_code', type: 'varchar', length: 20, nullable: true })
+  taskCode!: string | null;
+
+  /** The source PMS's reference id (e.g. "1P231") — import idempotency key. */
+  @Column({ name: 'external_ref', type: 'varchar', length: 40, nullable: true })
+  externalRef!: string | null;
+
   @Column({ type: 'varchar', length: 20, default: 'manual' })
   source!: string;
 

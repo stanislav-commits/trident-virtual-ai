@@ -8,6 +8,7 @@ import { ShipEntity } from '../ships/entities/ship.entity';
 import { AssetHoursConfigEntity } from './entities/asset-hours-config.entity';
 import { AssetHourReadingEntity } from './entities/asset-hour-reading.entity';
 import { PmsTaskEntity } from './entities/pms-task.entity';
+import { nextTaskCode } from './pms-task-code.util';
 import { AssetEntity } from '../assets/entities/asset.entity';
 
 export interface SetHoursConfigInput {
@@ -150,6 +151,11 @@ export class AssetHoursService {
         intervalValue: 1,
         intervalUnit: 'months',
         source: 'hours_reminder',
+        taskCode: await nextTaskCode(
+          this.taskRepository.manager,
+          shipId,
+          'maintenance',
+        ),
         assets: asset ? [asset] : [],
       }),
     );
