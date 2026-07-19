@@ -107,7 +107,12 @@ export class PmsController {
   complete(
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { doneAtHours?: number | null; doneOn?: string | null },
+    @Body()
+    body: {
+      doneAtHours?: number | null;
+      doneOn?: string | null;
+      notes?: string | null;
+    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.pmsService.complete(shipId, id, body, user);
@@ -165,12 +170,18 @@ export class PmsController {
   @Roles(UserRole.ADMIN)
   importCommit(
     @Param('shipId', ParseUUIDPipe) shipId: string,
-    @Body() body: { drafts: PmsImportDraft[]; mode?: PmsImportMode },
+    @Body()
+    body: {
+      drafts: PmsImportDraft[];
+      mode?: PmsImportMode;
+      createMissingAssets?: boolean;
+    },
   ) {
     return this.pmsImportService.commit(
       shipId,
       body?.drafts ?? [],
       body?.mode === 'history' ? 'history' : 'tasks',
+      { createMissingAssets: body?.createMissingAssets === true },
     );
   }
 
