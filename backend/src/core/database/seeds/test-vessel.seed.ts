@@ -34,11 +34,12 @@ const CREW: Array<{
   { name: 'Mia Rossi', department: 'interior', rank: 'Chief Stewardess', rankLevel: 1, position: 'hod_interior', loginId: 'test-chiefstew', password: 'chiefstew123' },
 ];
 
-const TASKS: Array<{ task: string; department: string | null; dueDate: string }> = [
+const TASKS: Array<{ task: string; department: string | null; dueDate: string; board?: string; category?: string }> = [
   { task: 'Main Engine Oil Change (Port)', department: 'engine', dueDate: '2026-07-20' },
   { task: 'Sea Water Pump Inspection', department: 'engine', dueDate: '2026-08-01' },
   { task: 'Guest Cabin A/C Filter Clean', department: 'interior', dueDate: '2026-07-15' },
-  { task: 'Monthly Fire & Abandon Ship Drill', department: null, dueDate: '2026-07-10' },
+  // Drills are people-work → the general Tasks board, not the maintenance plan.
+  { task: 'Monthly Fire & Abandon Ship Drill', department: null, dueDate: '2026-07-10', board: 'general', category: 'Drill' },
 ];
 
 async function run() {
@@ -121,11 +122,12 @@ async function run() {
         tasksRepo.create({
           shipId: ship.id,
           task: t.task,
-          category: 'Service',
+          category: t.category ?? 'Service',
           planning: 'planned',
           department: t.department,
           priority: 'medium',
           dueDate: t.dueDate,
+          board: t.board ?? 'maintenance',
         }),
       );
     }

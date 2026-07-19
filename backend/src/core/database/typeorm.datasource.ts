@@ -79,6 +79,8 @@ import { AddPmsTaskCompletedBy20260710000600 } from './migrations/20260710000600
 import { AddAlertAssetBindings20260711000100 } from './migrations/20260711000100-add-alert-asset-bindings';
 import { RenumberPublicationsLibrary20260711000200 } from './migrations/20260711000200-renumber-publications-library';
 import { DropAssetLifecycleStatus20260711000300 } from './migrations/20260711000300-drop-asset-lifecycle-status';
+import { AddPmsTaskCompletionNotes20260717000100 } from './migrations/20260717000100-add-pms-task-completion-notes';
+import { AddPmsTaskBoard20260717000200 } from './migrations/20260717000200-add-pms-task-board';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -178,6 +180,8 @@ const dataSource = new DataSource({
     AddAlertAssetBindings20260711000100,
     RenumberPublicationsLibrary20260711000200,
     DropAssetLifecycleStatus20260711000300,
+    AddPmsTaskCompletionNotes20260717000100,
+    AddPmsTaskBoard20260717000200,
   ],
   synchronize: false,
   ssl: db.ssl

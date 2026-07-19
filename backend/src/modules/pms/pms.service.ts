@@ -53,6 +53,8 @@ export interface UpsertPmsTaskInput {
   lastDoneAt?: string | null;
   assetIds?: string[];
   source?: string;
+  /** 'maintenance' (asset upkeep) | 'general' (certificates/drills/assignments). */
+  board?: string;
   completedAt?: string | null;
   completedByName?: string | null;
   completedByPosition?: string | null;
@@ -199,7 +201,11 @@ export class PmsService {
   async complete(
     shipId: string,
     id: string,
-    input?: { doneAtHours?: number | null; doneOn?: string | null },
+    input?: {
+      doneAtHours?: number | null;
+      doneOn?: string | null;
+      notes?: string | null;
+    },
     user?: AuthenticatedUser,
   ) {
     const task = await this.taskRepository.findOne({
@@ -222,6 +228,9 @@ export class PmsService {
 
     const doneOn = input?.doneOn ?? new Date().toISOString().slice(0, 10);
     task.lastDoneAt = doneOn;
+    if (input?.notes !== undefined) {
+      task.completionNotes = input.notes?.trim() || null;
+    }
     if (input?.doneAtHours != null) {
       task.lastDoneHours = String(input.doneAtHours);
       if (task.intervalHours != null) {
@@ -319,6 +328,11 @@ export class PmsService {
     set('dueHours', (v) => (out.dueHours = v != null ? String(v) : null));
     set('lastDoneAt', (v) => (out.lastDoneAt = v as string | null));
     set('source', (v) => (out.source = (v as string) ?? 'manual'));
+    // Only accept the two known boards; null/junk leaves the field untouched
+    // (a PATCH {board: null} must not silently move a task between boards).
+    set('board', (v) => {
+      if (v === 'general' || v === 'maintenance') out.board = v;
+    });
     set('completedByName', (v) => (out.completedByName = cap(v, 120)));
     set('completedByPosition', (v) => (out.completedByPosition = cap(v, 64)));
     if (input.completedAt !== undefined) {
@@ -351,11 +365,17 @@ export class PmsService {
       return;
     }
     const assets = await this.resolveAssets(shipId, input.assetIds);
+    // Map the compliance spec's maintenance-taxonomy category onto the
+    // general board's vocabulary (renewal 'Service' → 'Certificate'), so the
+    // Tasks board's category filter can actually find these.
+    const category = input.category === 'Survey' ? 'Survey' : 'Certificate';
     if (existing) {
       existing.task = input.title.slice(0, 200);
-      existing.category = input.category;
+      existing.category = category;
       existing.dueDate = input.dueDate;
       existing.assets = assets;
+      // Certificate deadlines are people-work, not equipment upkeep.
+      existing.board = 'general';
       // A moved deadline re-activates the task (the cert was renewed).
       existing.completedAt = null;
       await this.taskRepository.save(existing);
@@ -364,12 +384,13 @@ export class PmsService {
         this.taskRepository.create({
           shipId,
           task: input.title.slice(0, 200),
-          category: input.category,
+          category,
           planning: 'planned',
           priority: 'medium',
           dueDate: input.dueDate,
           repeatDate: false,
           source: 'compliance',
+          board: 'general',
           sourceDocId: input.docId,
           assets,
         }),
@@ -468,6 +489,7 @@ export class PmsService {
       category: task.category,
       planning: task.planning,
       source: task.source ?? undefined,
+      board: task.board ?? 'maintenance',
       description: task.description ?? undefined,
       sfiGroup: task.sfiGroup ?? undefined,
       sfiGroupName: undefined,
@@ -494,6 +516,7 @@ export class PmsService {
       completedAt: task.completedAt ? task.completedAt.toISOString() : null,
       completedByName: task.completedByName ?? null,
       completedByPosition: task.completedByPosition ?? null,
+      completionNotes: task.completionNotes ?? null,
       assets: (task.assets ?? []).map((a) => ({
         id: a.id,
         name: a.displayName,

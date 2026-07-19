@@ -19,9 +19,16 @@
   --status-danger-bg: rgba(248, 113, 113, 0.1);
   --status-muted: var(--chat-text-muted);
   --status-muted-bg: var(--chat-surface-2);
-  /* Vivid alarm red — the muted --status-danger is too pale for the alarm
-     count badges, icons and critical accents to read at a glance. */
+  /* Vivid alarm red — the muted --status-danger is too pale to read at a
+     glance. Reserved for the single sparse, always-visible ambient
+     indicator (the top-bar bell count) — NOT for repeated body content,
+     where this neon tone is fatiguing (see --status-danger-soft below). */
   --alarm-critical: #ff3b30;
+  /* Softer red for red that REPEATS across a body — a task table's overdue
+     column, or every card inside an open alarms panel. Still clearly red,
+     unlike the original pale --status-danger, but calmer than the single
+     ambient --alarm-critical badge. */
+  --status-danger-soft: #f87171;
 }
 
 /* Light theme: the bright dark-mode status hues (#4ade80 etc.) are far too pale
@@ -38,6 +45,7 @@
   --status-danger-border: rgba(220, 38, 38, 0.3);
   --status-danger-bg: rgba(220, 38, 38, 0.08);
   --alarm-critical: #e01111;
+  --status-danger-soft: #dc2626;
 }
 
 /* ── Root layout ── */
@@ -5179,7 +5187,274 @@
   color: var(--status-warn, #d98a00);
   cursor: help;
 }
+/* "New asset will be created" state — green, with a per-row veto checkbox. */
+.pms__import-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--status-ok);
+  cursor: pointer;
+}
+.pms__import-create input {
+  accent-color: var(--status-ok);
+}
+.pms__import-matchtype {
+  color: var(--chat-text-subtle, #778);
+  font-size: 11px;
+}
+/* Spare-parts count chip on an import row (tooltip lists the parts). */
+.pms__import-parts {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--chat-surface-3);
+  border: 1px solid var(--chat-border);
+  font-size: 11px;
+  cursor: help;
+  white-space: nowrap;
+}
 
+/* Secondary line under the due text: repeat interval / hours countdown. */
+.pms__due-sub {
+  font-size: 11px;
+  color: var(--chat-text-subtle, #778);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* Plain parts count in the tasks table (details live in the drawer). */
+.pms__parts-cell {
+  white-space: nowrap;
+}
+.pms__parts-n {
+  font-variant-numeric: tabular-nums;
+  color: var(--chat-text);
+}
+
+/* The create/edit form rendered as a right-side panel (same shell as the
+   task drawer — Edit swaps the view for the form in place). */
+.pms-drawer--form {
+  width: min(560px, 96vw);
+}
+.pms-drawer__form {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 14px 18px 0;
+}
+.pms-drawer__actions--form {
+  position: sticky;
+  bottom: 0;
+  background: var(--chat-surface);
+  margin: auto -18px 0;
+  justify-content: flex-end;
+}
+
+/* ── Task detail drawer ── */
+.pms-drawer__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: var(--overlay-subtle, rgba(0, 0, 0, 0.4));
+  display: flex;
+  justify-content: flex-end;
+}
+.pms-drawer {
+  width: min(480px, 96vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--chat-surface);
+  border-left: 1px solid var(--chat-border);
+  box-shadow: -24px 0 48px var(--overlay-subtle, rgba(0, 0, 0, 0.35));
+  animation: pmsDrawerIn 0.22s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes pmsDrawerIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.pms-drawer__head {
+  display: flex;
+  gap: 10px;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--chat-border);
+}
+.pms-drawer__head-main {
+  min-width: 0;
+  flex: 1;
+}
+.pms-drawer__status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.pms-drawer__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--chat-text);
+}
+.pms-drawer__close {
+  background: none;
+  border: 0;
+  color: var(--chat-text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  align-self: flex-start;
+}
+.pms-drawer__close:hover {
+  color: var(--chat-text);
+}
+.pms-drawer__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.pms-drawer__section {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--chat-border);
+}
+.pms-drawer__section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--chat-text-muted);
+  margin-bottom: 10px;
+}
+.pms-drawer__section-action {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--accent-bright, #6ea8fe);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.pms-drawer__count {
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--chat-surface-3);
+  font-size: 10.5px;
+  color: var(--chat-text-muted);
+}
+.pms-drawer__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.pms-drawer__row-label {
+  color: var(--chat-text-subtle, #778);
+  flex-shrink: 0;
+}
+.pms-drawer__row-value {
+  color: var(--chat-text);
+  text-align: right;
+}
+.pms-drawer__muted {
+  font-size: 12.5px;
+  color: var(--chat-text-muted);
+}
+.pms-drawer__hoursbar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--chat-surface-3);
+  overflow: hidden;
+  margin: 8px 0 4px;
+}
+.pms-drawer__hoursbar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--status-ok);
+  transition: width 0.2s ease;
+}
+.pms-drawer__hoursbar--over span {
+  background: var(--status-danger-soft, var(--status-danger));
+}
+.pms-drawer__desc {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--chat-text);
+}
+.pms-drawer__desc-step {
+  padding: 3px 0 3px 10px;
+  border-left: 2px solid var(--chat-border);
+  margin-bottom: 2px;
+}
+.pms-drawer__desc-line {
+  margin-bottom: 6px;
+}
+.pms-drawer__parts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.pms-drawer__part {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--chat-border);
+  border-radius: 8px;
+  background: var(--chat-surface-2);
+  font-size: 12.5px;
+}
+.pms-drawer__part-main {
+  min-width: 0;
+}
+.pms-drawer__part-name {
+  color: var(--chat-text);
+}
+.pms-drawer__part-no {
+  margin-left: 8px;
+  font-family: ui-monospace, "SF Mono", Monaco, monospace;
+  font-size: 11px;
+  color: var(--chat-text-muted);
+}
+.pms-drawer__part-side {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+  color: var(--chat-text-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.pms-drawer__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--chat-border);
+}
+.pms-drawer__actions-gap {
+  flex: 1;
+}
 .admin-panel__modal-icon {
   width: 44px;
   height: 44px;
@@ -10176,7 +10451,7 @@
 }
 .pms__status--overdue {
   background: var(--status-danger-bg);
-  color: var(--status-danger);
+  color: var(--status-danger-soft, var(--status-danger));
 }
 .pms__status--due-soon {
   background: var(--status-warn-bg);
@@ -10186,10 +10461,13 @@
   background: var(--status-ok-bg);
   color: var(--status-ok);
 }
-.pms__due--danger {
-  color: var(--status-danger);
+/* td.pms__due--danger (not just .pms__due--danger): ".pms__table td" outranks
+   a single class selector, so the plain class alone was always losing and
+   these cells silently rendered in the default text color. */
+.pms__table td.pms__due--danger {
+  color: var(--status-danger-soft, var(--status-danger));
 }
-.pms__due--warn {
+.pms__table td.pms__due--warn {
   color: var(--status-warn);
 }
 .pms__src {
@@ -10265,25 +10543,6 @@
   display: flex;
   align-items: center;
 }
-.pms__pri {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 8px;
-}
-.pms__pri--critical {
-  background: var(--status-danger);
-}
-.pms__pri--high {
-  background: var(--status-warn);
-}
-.pms__pri--medium {
-  background: #6ab0f3;
-}
-.pms__pri--low {
-  background: var(--chat-text-subtle);
-}
 .pms__person {
   font-size: 12px;
   color: var(--chat-text-muted);
@@ -10301,24 +10560,20 @@
 .pms__row--clickable {
   cursor: pointer;
 }
-.pms__recur {
-  margin-left: 7px;
-  color: var(--chat-text-muted);
-  font-size: 13px;
-}
 .pms__assets {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
   margin-top: 3px;
 }
+/* Plain text, not a pill — matches the Responsible column's look. Multiple
+   assets on one task are separated by a middle dot, not a box each. */
 .pms__asset-chip {
-  font-size: 11px;
-  padding: 1px 7px;
-  border-radius: 5px;
-  background: var(--chat-surface-2);
+  font-size: 12px;
   color: var(--chat-text);
-  border: 1px solid var(--chat-border);
+}
+.pms__asset-chip:not(:last-child)::after {
+  content: " · ";
+  color: var(--chat-text-subtle, #778);
 }
 .pms__check {
   display: flex;

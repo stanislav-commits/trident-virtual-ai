@@ -8,6 +8,8 @@ export interface PmsTaskDto {
   category: string;
   planning: string;
   source?: string;
+  /** 'maintenance' (asset upkeep) | 'general' (certificates/drills/assignments). */
+  board?: string;
   description?: string;
   sfiGroup?: string;
   sfiGroupName?: string;
@@ -32,6 +34,7 @@ export interface PmsTaskDto {
   completedAt: string | null;
   completedByName: string | null;
   completedByPosition: string | null;
+  completionNotes: string | null;
   assets: { id: string; name: string }[];
 }
 
@@ -57,10 +60,20 @@ export interface UpsertPmsTaskInput {
   lastDoneAt?: string | null;
   assetIds?: string[];
   source?: string;
+  board?: string;
   completedAt?: string | null;
 }
 
 // ── AI-mapped import ──
+
+export interface PmsImportPartDraft {
+  name: string;
+  quantity?: number | null;
+  unit?: string | null;
+  location?: string | null;
+  manufacturerNo?: string | null;
+  supplierNo?: string | null;
+}
 
 export interface PmsImportDraft {
   task: string;
@@ -78,7 +91,10 @@ export interface PmsImportDraft {
   completedAt?: string | null;
   lastDoneHours?: number | null;
   assetHint?: string | null;
+  assetGroup?: string | null;
   assetMatch?: { id: string; name: string; matchType: string } | null;
+  createAsset?: boolean;
+  parts?: PmsImportPartDraft[];
   confidence?: "high" | "low";
 }
 
@@ -86,9 +102,22 @@ export type PmsImportMode = "tasks" | "history";
 
 export interface PmsImportPreview {
   drafts: PmsImportDraft[];
-  counts: { total: number; matchedAssets: number; lowConfidence: number };
+  counts: {
+    total: number;
+    matchedAssets: number;
+    lowConfidence: number;
+    willCreateAssets: number;
+    partsTotal: number;
+  };
   sourceChars: number;
   notes: string[];
+}
+
+export interface PmsImportCommitResult {
+  created: number;
+  assetsCreated: number;
+  partsCreated: number;
+  partsLinked: number;
 }
 
 export async function previewPmsImport(
@@ -114,12 +143,13 @@ export async function commitPmsImport(
   shipId: string,
   drafts: PmsImportDraft[],
   mode: PmsImportMode = "tasks",
-): Promise<{ created: number }> {
+  createMissingAssets = false,
+): Promise<PmsImportCommitResult> {
   const r = await fetchWithAuth(`ships/${shipId}/pms/import/commit`, {
     token,
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ drafts, mode }),
+    body: JSON.stringify({ drafts, mode, createMissingAssets }),
   });
   await ok(r, "Import tasks");
   return r.json();
@@ -199,7 +229,11 @@ export async function completePmsTask(
   token: string,
   shipId: string,
   id: string,
-  input?: { doneAtHours?: number | null; doneOn?: string | null },
+  input?: {
+    doneAtHours?: number | null;
+    doneOn?: string | null;
+    notes?: string | null;
+  },
 ): Promise<PmsTaskDto> {
   const r = await fetchWithAuth(`ships/${shipId}/pms/tasks/${id}/complete`, {
     token,

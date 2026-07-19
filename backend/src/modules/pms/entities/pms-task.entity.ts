@@ -106,8 +106,21 @@ export class PmsTaskEntity {
   @Column({ name: 'completed_by_position', type: 'varchar', length: 64, nullable: true })
   completedByPosition!: string | null;
 
+  /** Free-text notes from whoever performed the task — distinct from the
+   *  job's own `description` (the scheduled instructions). */
+  @Column({ name: 'completion_notes', type: 'text', nullable: true })
+  completionNotes!: string | null;
+
   @Column({ type: 'varchar', length: 20, default: 'manual' })
   source!: string;
+
+  /**
+   * Which board the task lives on:
+   *  'maintenance' — equipment upkeep tied to assets (the PMS proper);
+   *  'general'     — people-directed work (certificates, drills, assignments).
+   */
+  @Column({ type: 'varchar', length: 16, default: 'maintenance' })
+  board!: string;
 
   /** When source='compliance', the compliance_docs record that drives this task. */
   @Column({ name: 'source_doc_id', type: 'uuid', nullable: true })

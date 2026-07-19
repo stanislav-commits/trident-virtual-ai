@@ -9,6 +9,7 @@ import {
   DocumentsIcon,
   MetricsIcon,
   MaintenanceIcon,
+  TasksIcon,
   CrewIcon,
   InventoryIcon,
   AlertsIcon,
@@ -45,7 +46,8 @@ const SECTION_TITLES: Record<AdminSectionRoute, string> = {
   ships: "Ships",
   assets: "Asset Register",
   compliance: "Compliance Docs",
-  maintenance: "Tasks",
+  maintenance: "Maintenance Plan",
+  tasks: "Tasks",
   crew: "Crew",
   inventory: "Inventory",
   alerts: "Alerts",
@@ -159,6 +161,16 @@ export function AdminPanelPage() {
           >
             <span className="admin-panel__nav-icon">
               <MaintenanceIcon />
+            </span>
+            <span className="admin-panel__nav-label">Maintenance Plan</span>
+          </button>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "tasks" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("tasks")}
+          >
+            <span className="admin-panel__nav-icon">
+              <TasksIcon />
             </span>
             <span className="admin-panel__nav-label">Tasks</span>
           </button>
@@ -288,7 +300,7 @@ export function AdminPanelPage() {
 
           <div
             className={`admin-panel__content${
-              ["compliance", "maintenance", "crew", "inventory", "alerts", "documents", "metrics", "publications"].includes(
+              ["compliance", "maintenance", "tasks", "crew", "inventory", "alerts", "documents", "metrics", "publications"].includes(
                 activeSection,
               )
                 ? " admin-panel__content--wide"
@@ -321,7 +333,12 @@ export function AdminPanelPage() {
 
             {activeSection === "assets" && <AssetsSection token={token} />}
             {activeSection === "compliance" && <ComplianceSection token={token} />}
-            {activeSection === "maintenance" && <PmsSection token={token} />}
+            {activeSection === "maintenance" && (
+              <PmsSection key="maintenance" token={token} board="maintenance" />
+            )}
+            {activeSection === "tasks" && (
+              <PmsSection key="tasks" token={token} board="general" />
+            )}
             {activeSection === "crew" && <CrewSection token={token} />}
             {activeSection === "inventory" && <InventorySection token={token} />}
             {activeSection === "alerts" && <AlertsSection token={token} />}

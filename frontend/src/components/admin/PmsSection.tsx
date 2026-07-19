@@ -7,7 +7,7 @@ import {
   type FormEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { PlusIcon, XIcon, RefreshIcon, TrashIcon, UploadIcon } from "./AdminPanelIcons";
+import { PlusIcon, XIcon, RefreshIcon, UploadIcon } from "./AdminPanelIcons";
 import { fetchSfiGroups, type SfiNode } from "../../api/sfiApi";
 import { listAssets } from "../../api/assetsApi";
 import { AssetMultiSelect, type AssetOption } from "./AssetMultiSelect";
@@ -32,122 +32,73 @@ import {
   type InventoryItem,
 } from "../../api/inventoryApi";
 import { useAdminShip } from "../../context/AdminShipContext";
+import {
+  CATEGORIES,
+  GENERAL_CATEGORIES,
+  INTERVAL_UNITS,
+  STATUS_LABEL,
+  STATUS_ORDER,
+  addInterval,
+  deriveHours,
+  dueHorizon,
+  repeatLabel,
+  todayIso,
+  type IntervalUnit,
+  type LinkedAsset,
+  type PmsBoard,
+  type PmsCategory,
+  type PmsPlanning,
+  type PmsPriority,
+  type PmsStatus,
+  type PmsTask,
+} from "./pms/taskTypes";
+import { TaskPartsPicker } from "./pms/TaskPartsPicker";
+import { TaskDetailDrawer } from "./pms/TaskDetailDrawer";
 
 interface PmsSectionProps {
   token: string | null;
+  /**
+   * Which board this section shows:
+   *  'maintenance' — equipment upkeep tied to assets (Maintenance Plan);
+   *  'general'     — people-directed work: certificates, drills, assignments.
+   */
+  board?: PmsBoard;
 }
 
-type PmsStatus = "overdue" | "due-soon" | "ok";
-type PmsPriority = "low" | "medium" | "high" | "critical";
-type PmsPlanning = "planned" | "unplanned";
-type IntervalUnit = "days" | "weeks" | "months" | "years";
-
-const CATEGORIES = [
-  "Inspection",
-  "Service",
-  "Replacement",
-  "Overhaul",
-  "Lubrication",
-  "Test",
-  "Cleaning",
-  "Calibration",
-  "Survey",
-  "Repair",
-  "Other",
-] as const;
-type PmsCategory = (typeof CATEGORIES)[number];
-
-interface LinkedAsset {
-  id: string;
-  name: string;
-}
-
-interface PmsTask {
-  id: string;
-  task: string;
-  category: PmsCategory;
-  planning: PmsPlanning;
-  // System-managed marker; "hours_reminder" = auto monthly hours-reading task.
-  source?: string;
-  // engine | bridge | ratings | "" (general) — drives rank-based visibility.
-  department?: string;
-  description?: string;
-  assets: LinkedAsset[];
-  sfiGroup?: string;
-  sfiGroupName?: string;
-  assigneeId?: string;
-  assigneeName?: string;
-  responsibleRole?: string;
-  priority: PmsPriority;
-  // Calendar schedule.
-  dueDate: string | null;
-  startDate: string | null;
-  repeatDate: boolean;
-  intervalValue: number | null;
-  intervalUnit: IntervalUnit;
-  // Running-hours schedule (current hours come from the asset's metric).
-  intervalHours: number | null;
-  startHours: number | null;
-  currentHours: number | null;
-  dueHours: number | null;
-  lastDoneHours: number | null;
-  lastDone: string | null;
-  // Computed.
-  status: PmsStatus;
-  due: string;
-  completedAt: string | null;
-  completedByName: string | null;
-  completedByPosition: string | null;
-}
-
-const STATUS_LABEL: Record<PmsStatus, string> = {
-  overdue: "Overdue",
-  "due-soon": "Due soon",
-  ok: "OK",
-};
-
-const STATUS_ORDER: Record<PmsStatus, number> = {
-  overdue: 0,
-  "due-soon": 1,
-  ok: 2,
-};
-
-const PRIORITY_LABEL: Record<PmsPriority, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  critical: "Critical",
-};
-
-const INTERVAL_UNITS: IntervalUnit[] = ["days", "weeks", "months", "years"];
+/** Per-board copy + behaviour. */
+const BOARD_CONFIG = {
+  maintenance: {
+    title: "Maintenance Plan",
+    subtitle:
+      "Planned maintenance across the vessel — by date and/or running hours, linked to assets.",
+    categories: CATEGORIES,
+    canImport: true,
+    emptyHint: "No maintenance tasks yet — create or import to get started.",
+    createTitle: "Create maintenance task",
+  },
+  general: {
+    title: "Tasks",
+    subtitle:
+      "Certificates, drills and personal assignments — work directed at people, not equipment.",
+    categories: GENERAL_CATEGORIES,
+    canImport: false,
+    emptyHint: "No tasks yet — create one to get started.",
+    createTitle: "Create task",
+  },
+} as const;
 
 // Departments come from the shared access taxonomy (useAccessSchema) — see the
 // component body. "" = general/all crew.
 
-/** Windows within which a task still counts as "due soon". */
-const HOURS_SOON_WINDOW = 20;
-const DAYS_SOON_WINDOW = 10;
-
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function daysUntil(dateStr: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = new Date(`${dateStr}T00:00:00`);
-  return Math.round((d.getTime() - today.getTime()) / 86400000);
-}
-
-type DueHorizon = "overdue" | "week" | "month" | "later" | "none";
-function dueHorizon(t: { dueDate: string | null }): DueHorizon {
-  if (!t.dueDate) return "none";
-  const days = daysUntil(t.dueDate);
-  if (days < 0) return "overdue";
-  if (days <= 7) return "week";
-  if (days <= 30) return "month";
-  return "later";
+/** History's "Completed" cell: a readable date, not the raw ISO timestamp. */
+function fmtCompletedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 /**
@@ -198,53 +149,6 @@ function HeaderFilter({
       </select>
     </span>
   );
-}
-
-function addInterval(iso: string, value: number, unit: IntervalUnit): string {
-  const d = new Date(`${iso}T00:00:00`);
-  if (unit === "days") d.setDate(d.getDate() + value);
-  else if (unit === "weeks") d.setDate(d.getDate() + value * 7);
-  else if (unit === "months") d.setMonth(d.getMonth() + value);
-  else if (unit === "years") d.setFullYear(d.getFullYear() + value);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Next service mark strictly after `current`, aligned to interval multiples. */
-function nextHoursMark(current: number, interval: number): number {
-  return (Math.floor(current / interval) + 1) * interval;
-}
-
-function intervalLabel(value: number, unit: IntervalUnit): string {
-  return `${value} ${value === 1 ? unit.slice(0, -1) : unit}`;
-}
-
-function deriveDue(dateStr: string): { status: PmsStatus; due: string } {
-  const days = daysUntil(dateStr);
-  const status: PmsStatus =
-    days < 0 ? "overdue" : days <= DAYS_SOON_WINDOW ? "due-soon" : "ok";
-  const due =
-    days < 0
-      ? `${-days} day${days === -1 ? "" : "s"} ago`
-      : days === 0
-        ? "today"
-        : `in ${days} day${days === 1 ? "" : "s"}`;
-  return { status, due };
-}
-
-function deriveHours(
-  current: number,
-  due: number,
-): { status: PmsStatus; due: string } {
-  const left = Math.round(due - current);
-  const status: PmsStatus =
-    left < 0 ? "overdue" : left <= HOURS_SOON_WINDOW ? "due-soon" : "ok";
-  const dueTxt =
-    left < 0 ? `${-left} hrs over` : left === 0 ? "due now" : `${left} hrs left`;
-  return { status, due: dueTxt };
-}
-
-function isRecurring(t: PmsTask): boolean {
-  return t.planning === "planned" && (t.repeatDate || t.intervalHours != null);
 }
 
 const EMPTY_FORM = {
@@ -341,126 +245,8 @@ function AssetMultiPicker({
   );
 }
 
-/**
- * Searchable linked-parts picker for a task (same UX as the asset picker):
- * chips for attached parts + a popup with a search box and checkmark results.
- * Filters the ship's inventory client-side (parts are bounded per vessel).
- */
-function TaskPartsPicker({
-  all,
-  value,
-  onChange,
-}: {
-  all: InventoryItem[];
-  value: InventoryItem[];
-  onChange: (next: InventoryItem[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const selectedIds = new Set(value.map((p) => p.id));
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
-
-  const q = query.trim().toLowerCase();
-  const results = (
-    q
-      ? all.filter((p) =>
-          [p.name, p.partNumber, p.manufacturer, p.category]
-            .filter(Boolean)
-            .some((v) => (v as string).toLowerCase().includes(q)),
-        )
-      : all
-  ).slice(0, 40);
-
-  const toggle = (p: InventoryItem) => {
-    if (selectedIds.has(p.id)) onChange(value.filter((v) => v.id !== p.id));
-    else onChange([...value, p]);
-  };
-
-  return (
-    <div className="inv__picker" ref={boxRef}>
-      {value.length > 0 && (
-        <div className="inv__chips">
-          {value.map((p) => (
-            <span key={p.id} className="inv__chip">
-              {p.name}
-              {p.partNumber ? (
-                <span className="inv__mono inv__muted"> {p.partNumber}</span>
-              ) : null}
-              <button
-                type="button"
-                className="inv__chip-x"
-                onClick={() => onChange(value.filter((v) => v.id !== p.id))}
-                aria-label={`Unlink ${p.name}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <button
-        type="button"
-        className="admin-panel__input inv__picker-trigger"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className={value.length ? "" : "inv__muted"}>
-          {value.length
-            ? `${value.length} part${value.length === 1 ? "" : "s"} linked`
-            : "— none —"}
-        </span>
-        <span className="inv__picker-caret">＋</span>
-      </button>
-      {open && (
-        <div className="inv__picker-pop">
-          <input
-            type="search"
-            className="admin-panel__input admin-panel__input--full"
-            placeholder="Search part by name or number…"
-            value={query}
-            autoFocus
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <div className="inv__picker-list">
-            {results.length === 0 && (
-              <div className="inv__picker-hint">No matching parts</div>
-            )}
-            {results.map((p) => {
-              const on = selectedIds.has(p.id);
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`inv__picker-opt${on ? " inv__picker-opt--active" : ""}`}
-                  onClick={() => toggle(p)}
-                >
-                  <span>
-                    <input type="checkbox" checked={on} readOnly /> {p.name}
-                  </span>
-                  {p.partNumber ? (
-                    <span className="inv__mono inv__muted">{p.partNumber}</span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function PmsSection({ token }: PmsSectionProps) {
+export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
+  const boardCfg = BOARD_CONFIG[board];
   const { selectedShipId } = useAdminShip();
   const accessSchema = useAccessSchema();
   const DEPARTMENTS = useMemo(
@@ -478,8 +264,9 @@ export function PmsSection({ token }: PmsSectionProps) {
   const [tasks, setTasks] = useState<PmsTask[]>([]);
   const [view, setView] = useState<"active" | "history">("active");
   const [statusFilter, setStatusFilter] = useState<PmsStatus | null>(null);
-  const [categoryFilter] = useState<PmsCategory | "all">("all");
   // Per-column filters for the task table (all but Task).
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [deptFilter, setDeptFilter] = useState<string>("all");
   const [assetFilter, setAssetFilter] = useState<string>("all");
   const [personFilter, setPersonFilter] = useState<string>("all");
   const [dueFilter, setDueFilter] = useState<string>("all");
@@ -515,22 +302,54 @@ export function PmsSection({ token }: PmsSectionProps) {
     };
   }, [token]);
 
-  // Tasks come from the backend (pms_tasks), scoped to the active vessel.
+  // Tasks come from the backend (pms_tasks), scoped to the active vessel and
+  // to THIS board (maintenance plan vs people-directed tasks).
   const refresh = useCallback(async () => {
     if (!token || !shipId) {
       setTasks([]);
       return;
     }
     try {
-      setTasks((await listPmsTasks(token, shipId)) as unknown as PmsTask[]);
+      const all = (await listPmsTasks(token, shipId)) as unknown as PmsTask[];
+      setTasks(all.filter((t) => (t.board ?? "maintenance") === board));
     } catch {
       setTasks([]);
     }
-  }, [token, shipId]);
+  }, [token, shipId, board]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Ship-level inventory (feeds the per-task parts map + the form's picker).
+  const refreshParts = useCallback(async () => {
+    if (!token || !shipId) {
+      setAllParts([]);
+      return;
+    }
+    try {
+      setAllParts(await listInventory(token, shipId));
+    } catch {
+      setAllParts([]);
+    }
+  }, [token, shipId]);
+
+  useEffect(() => {
+    void refreshParts();
+  }, [refreshParts]);
+
+  // taskId → linked inventory items (inventory rows carry their task links).
+  const partsByTask = useMemo(() => {
+    const map = new Map<string, InventoryItem[]>();
+    for (const item of allParts) {
+      for (const tid of item.taskIds ?? []) {
+        const arr = map.get(tid) ?? [];
+        arr.push(item);
+        map.set(tid, arr);
+      }
+    }
+    return map;
+  }, [allParts]);
 
   // Map the form `fields` shape to the backend upsert input.
   const toUpsert = (f: {
@@ -571,6 +390,7 @@ export function PmsSection({ token }: PmsSectionProps) {
     startHours: f.startHours,
     dueHours: f.dueHours,
     assetIds: f.assets.map((a) => a.id),
+    board, // tasks created/edited here belong to this section's board
   });
 
   const active = useMemo(() => tasks.filter((t) => !t.completedAt), [tasks]);
@@ -599,6 +419,7 @@ export function PmsSection({ token }: PmsSectionProps) {
         (t) =>
           (view === "history" || !statusFilter || t.status === statusFilter) &&
           (categoryFilter === "all" || t.category === categoryFilter) &&
+          (deptFilter === "all" || (t.department ?? "") === deptFilter) &&
           (assetFilter === "all" ||
             t.assets.some((a) => a.name === assetFilter)) &&
           (personFilter === "all" ||
@@ -623,6 +444,7 @@ export function PmsSection({ token }: PmsSectionProps) {
     history,
     statusFilter,
     categoryFilter,
+    deptFilter,
     assetFilter,
     personFilter,
     dueFilter,
@@ -634,21 +456,6 @@ export function PmsSection({ token }: PmsSectionProps) {
     [tasks, detailId],
   );
 
-  // Load the linked parts whenever a task detail is opened (read-only view).
-  useEffect(() => {
-    if (!detailId || !token || !selectedShipId) {
-      if (!detailId) setTaskPartsState([]);
-      return;
-    }
-    let alive = true;
-    void listTaskInventory(token, selectedShipId, detailId)
-      .then((p) => alive && setTaskPartsState(p))
-      .catch(() => alive && setTaskPartsState([]));
-    return () => {
-      alive = false;
-    };
-  }, [detailId, token, selectedShipId]);
-
   const set =
     (key: keyof PmsForm) =>
     (
@@ -659,7 +466,14 @@ export function PmsSection({ token }: PmsSectionProps) {
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const openCreate = () => {
-    setForm({ ...EMPTY_FORM });
+    setForm({
+      ...EMPTY_FORM,
+      // Sensible per-board default: hand-created general tasks are usually
+      // personal assignments; maintenance ones are equipment service.
+      category: (board === "general"
+        ? "Assignment"
+        : EMPTY_FORM.category) as PmsCategory,
+    });
     setAssetDraft([]);
     setEditId(null);
     setShowForm(true);
@@ -670,16 +484,14 @@ export function PmsSection({ token }: PmsSectionProps) {
     setForm(formFromTask(t));
     setAssetDraft([...t.assets]);
     setEditId(t.id);
-    setDetailId(null);
+    // Keep detailId — the form panel replaces the view drawer; closing the
+    // form drops back to the task's view.
     setShowForm(true);
-    setTaskPartsState([]);
+    setTaskPartsState(partsByTask.get(t.id) ?? []);
     if (token && shipId) {
       void listTaskInventory(token, shipId, t.id)
         .then(setTaskPartsState)
-        .catch(() => setTaskPartsState([]));
-      void listInventory(token, shipId)
-        .then(setAllParts)
-        .catch(() => setAllParts([]));
+        .catch(() => undefined);
     }
   };
 
@@ -689,6 +501,7 @@ export function PmsSection({ token }: PmsSectionProps) {
     if (!token || !shipId || !editId) return;
     try {
       await setTaskParts(token, shipId, editId, next.map((p) => p.id));
+      void refreshParts(); // keep the table's parts chips in sync
     } catch {
       // reload truth on failure
       if (token && shipId)
@@ -760,14 +573,26 @@ export function PmsSection({ token }: PmsSectionProps) {
 
     if (!token || !shipId) return;
     const input = toUpsert(fields);
+    const stagedParts = taskParts;
     void (async () => {
       try {
         if (editId) {
           await updatePmsTask(token, shipId, editId, input);
         } else {
-          await createPmsTask(token, shipId, input);
+          // Create, then attach the parts staged in the form.
+          const created = await createPmsTask(token, shipId, input);
+          if (created?.id && stagedParts.length > 0) {
+            await setTaskParts(
+              token,
+              shipId,
+              created.id,
+              stagedParts.map((p) => p.id),
+            );
+          }
+          if (created?.id) setDetailId(created.id); // open the new task
         }
         await refresh();
+        await refreshParts();
       } catch (e) {
         setImportNote(e instanceof Error ? e.message : "Failed to save task");
       }
@@ -837,14 +662,27 @@ export function PmsSection({ token }: PmsSectionProps) {
     if (!token || !shipId) return;
     setImportBusy(true);
     try {
-      const { created } = await commitPmsImport(token, shipId, drafts, importMode);
-      setImportPreview(null);
-      setImportNote(
-        `Imported ${created} ${importMode === "history" ? "record" : "task"}${
-          created === 1 ? "" : "s"
-        }.`,
+      // Create register assets for confirmed unmatched equipment (tasks mode).
+      const result = await commitPmsImport(
+        token,
+        shipId,
+        drafts,
+        importMode,
+        importMode === "tasks",
       );
+      setImportPreview(null);
+      const bits = [
+        `Imported ${result.created} ${
+          importMode === "history" ? "record" : "task"
+        }${result.created === 1 ? "" : "s"}`,
+      ];
+      if (result.assetsCreated > 0)
+        bits.push(`${result.assetsCreated} new asset${result.assetsCreated === 1 ? "" : "s"}`);
+      if (result.partsCreated > 0)
+        bits.push(`${result.partsCreated} spare part${result.partsCreated === 1 ? "" : "s"} added to inventory`);
+      setImportNote(`${bits.join(" · ")}.`);
       await refresh();
+      await refreshParts();
     } catch (e) {
       setImportNote(e instanceof Error ? e.message : "Import failed.");
     } finally {
@@ -862,31 +700,30 @@ export function PmsSection({ token }: PmsSectionProps) {
     <div className="pms">
       <div className="pms__header">
         <div>
-          <h2 className="pms__title">Tasks</h2>
-          <p className="pms__subtitle">
-            Planned maintenance across the vessel — by date and/or running
-            hours, linked to assets.
-          </p>
+          <h2 className="pms__title">{boardCfg.title}</h2>
+          <p className="pms__subtitle">{boardCfg.subtitle}</p>
         </div>
         <div className="pms__actions">
-          <button
-            type="button"
-            className="pms__btn"
-            disabled={importBusy}
-            onClick={() => fileRef.current?.click()}
-            title={
-              view === "history"
-                ? "Import a maintenance HISTORY file (performed records) — PDF, Excel, CSV or text. AI maps it to completed entries."
-                : "Import a task list — PDF, Excel, CSV or text. AI maps it to planned tasks."
-            }
-          >
-            <UploadIcon />{" "}
-            {importBusy
-              ? "Reading…"
-              : view === "history"
-                ? "Import history"
-                : "Import"}
-          </button>
+          {boardCfg.canImport && (
+            <button
+              type="button"
+              className="pms__btn"
+              disabled={importBusy}
+              onClick={() => fileRef.current?.click()}
+              title={
+                view === "history"
+                  ? "Import a maintenance HISTORY file (performed records) — PDF, Excel, CSV or text. AI maps it to completed entries."
+                  : "Import a task list — PDF, Excel, CSV or text. AI maps it to planned tasks."
+              }
+            >
+              <UploadIcon />{" "}
+              {importBusy
+                ? "Reading…"
+                : view === "history"
+                  ? "Import history"
+                  : "Import"}
+            </button>
+          )}
           <button
             type="button"
             className="pms__btn pms__btn--primary"
@@ -894,13 +731,15 @@ export function PmsSection({ token }: PmsSectionProps) {
           >
             <PlusIcon /> Create task
           </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.xlsx,.xls,.csv,.txt,application/pdf,text/csv,text/plain"
-            style={{ display: "none" }}
-            onChange={onFileChange}
-          />
+          {boardCfg.canImport && (
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.xlsx,.xls,.csv,.txt,application/pdf,text/csv,text/plain"
+              style={{ display: "none" }}
+              onChange={onFileChange}
+            />
+          )}
         </div>
       </div>
 
@@ -954,6 +793,37 @@ export function PmsSection({ token }: PmsSectionProps) {
                 />
               </th>
               <th>Task</th>
+              <th>Type</th>
+              <th>
+                <HeaderFilter
+                  label="Category"
+                  value={categoryFilter}
+                  active={categoryFilter !== "all"}
+                  onChange={setCategoryFilter}
+                  options={[
+                    { value: "all", label: "All categories" },
+                    ...boardCfg.categories.map((c) => ({
+                      value: c,
+                      label: c,
+                    })),
+                  ]}
+                />
+              </th>
+              <th>
+                <HeaderFilter
+                  label="Dept"
+                  value={deptFilter}
+                  active={deptFilter !== "all"}
+                  onChange={setDeptFilter}
+                  options={[
+                    { value: "all", label: "All departments" },
+                    ...DEPARTMENTS.map((d) => ({
+                      value: d.value,
+                      label: d.label,
+                    })),
+                  ]}
+                />
+              </th>
               <th>
                 <HeaderFilter
                   label="Asset"
@@ -984,6 +854,7 @@ export function PmsSection({ token }: PmsSectionProps) {
                   ]}
                 />
               </th>
+              <th aria-label="Spare parts">Parts</th>
               <th>
                 {view === "history" ? (
                   "Completed"
@@ -1024,49 +895,45 @@ export function PmsSection({ token }: PmsSectionProps) {
                   )}
                 </td>
                 <td>
-                  <div className="pms__task">
-                    <span
-                      className={`pms__pri pms__pri--${t.priority}`}
-                      title={`${PRIORITY_LABEL[t.priority]} priority`}
-                    />
-                    {t.task}
-                    {isRecurring(t) && (
-                      <span className="pms__recur" title="Recurring">
-                        ⟳
-                      </span>
-                    )}
-                  </div>
-                  <div className="pms__taglist">
-                    <span
-                      className={`pms__plan pms__plan--${t.planning}`}
-                    >
-                      {t.planning === "planned" ? "Planned" : "Unplanned"}
+                  <div className="pms__task">{t.task}</div>
+                  {(t.source === "hours_reminder" ||
+                    t.source === "compliance") && (
+                    <div className="pms__taglist">
+                      {t.source === "hours_reminder" && (
+                        <span
+                          className="pms__cat"
+                          title="Auto monthly hours-reading reminder"
+                        >
+                          monthly reading
+                        </span>
+                      )}
+                      {t.source === "compliance" && (
+                        <span
+                          className="pms__dept"
+                          title="Driven by a compliance certificate — date follows the document"
+                        >
+                          from certificate
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </td>
+                <td>
+                  <span className={`pms__plan pms__plan--${t.planning}`}>
+                    {t.planning === "planned" ? "Planned" : "Unplanned"}
+                  </span>
+                </td>
+                <td>
+                  <span className="pms__cat">{t.category}</span>
+                </td>
+                <td>
+                  {t.department ? (
+                    <span className="pms__dept" title="Department (visibility)">
+                      {deptLabel(t.department)}
                     </span>
-                    <span className="pms__cat">{t.category}</span>
-                    {t.department && (
-                      <span className="pms__dept" title="Department (visibility)">
-                        {deptLabel(t.department)}
-                      </span>
-                    )}
-                    {t.source === "hours_reminder" && (
-                      <span className="pms__cat" title="Auto monthly hours-reading reminder">
-                        monthly reading
-                      </span>
-                    )}
-                    {t.source === "compliance" && (
-                      <span
-                        className="pms__dept"
-                        title="Driven by a compliance certificate — date follows the document"
-                      >
-                        from certificate
-                      </span>
-                    )}
-                    {t.description && (
-                      <span className="pms__detail">
-                        {t.description.split("\n")[0]}
-                      </span>
-                    )}
-                  </div>
+                  ) : (
+                    <span className="pms__person">—</span>
+                  )}
                 </td>
                 <td>
                   {t.assets.length > 0 && (
@@ -1096,10 +963,21 @@ export function PmsSection({ token }: PmsSectionProps) {
                   {view === "history"
                     ? t.completedByName
                       ? `${t.completedByName}${
-                          t.completedByPosition ? ` · ${t.completedByPosition}` : ""
+                          t.completedByPosition
+                            ? ` · ${t.completedByPosition}`
+                            : ""
                         }`
                       : (t.responsibleRole ?? "—")
                     : (t.responsibleRole ?? "—")}
+                </td>
+                <td className="pms__parts-cell">
+                  {(partsByTask.get(t.id)?.length ?? 0) > 0 ? (
+                    <span className="pms__parts-n">
+                      {partsByTask.get(t.id)?.length}
+                    </span>
+                  ) : (
+                    <span className="pms__person">—</span>
+                  )}
                 </td>
                 <td
                   className={
@@ -1112,7 +990,20 @@ export function PmsSection({ token }: PmsSectionProps) {
                           : "pms__due"
                   }
                 >
-                  {t.completedAt ?? t.due}
+                  {t.completedAt ? fmtCompletedAt(t.completedAt) : t.due}
+                  {!t.completedAt &&
+                    (() => {
+                      const rep = repeatLabel(t);
+                      const hrs =
+                        t.currentHours != null && t.dueHours != null
+                          ? deriveHours(t.currentHours, t.dueHours).due
+                          : null;
+                      return (rep || hrs) && (
+                        <div className="pms__due-sub">
+                          {[rep, hrs].filter(Boolean).join(" · ")}
+                        </div>
+                      );
+                    })()}
                 </td>
                 <td>
                   {t.completedAt ? (
@@ -1147,11 +1038,11 @@ export function PmsSection({ token }: PmsSectionProps) {
             ))}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={6} className="pms__empty">
+                <td colSpan={10} className="pms__empty">
                   {view === "history"
                     ? "No completed tasks yet — performed tasks move here."
                     : tasks.length === 0
-                      ? "No maintenance tasks yet — create or import to get started."
+                      ? boardCfg.emptyHint
                       : active.length === 0
                         ? "All caught up — no active tasks."
                         : "No tasks match the current filters."}
@@ -1162,24 +1053,24 @@ export function PmsSection({ token }: PmsSectionProps) {
         </table>
       </div>
 
-      {detailTask &&
-        createPortal(
-          <TaskDetailModal
-            task={detailTask}
-            parts={taskParts}
-            onClose={() => setDetailId(null)}
-            onEdit={() => startEdit(detailTask)}
-            onPerform={() => performTask(detailTask.id)}
-            onReopen={() => reopenTask(detailTask.id)}
-            onDelete={() => deleteTask(detailTask.id)}
-          />,
-          document.body,
-        )}
+      {detailTask && !showForm && (
+        <TaskDetailDrawer
+          key={detailTask.id}
+          task={detailTask}
+          parts={partsByTask.get(detailTask.id) ?? []}
+          deptLabel={deptLabel}
+          onClose={() => setDetailId(null)}
+          onEdit={() => startEdit(detailTask)}
+          onPerform={() => performTask(detailTask.id)}
+          onReopen={() => reopenTask(detailTask.id)}
+          onDelete={() => deleteTask(detailTask.id)}
+        />
+      )}
 
       {showForm &&
         createPortal(
           <div
-            className="admin-panel__modal-overlay"
+            className="pms-drawer__overlay"
             role="dialog"
             aria-modal="true"
             aria-labelledby="pms-form-title"
@@ -1187,25 +1078,30 @@ export function PmsSection({ token }: PmsSectionProps) {
               if (e.target === e.currentTarget) setShowForm(false);
             }}
           >
-            <div className="admin-panel__modal pms__modal">
-              <button
-                type="button"
-                className="admin-panel__modal-close"
-                onClick={() => setShowForm(false)}
-                aria-label="Close"
-              >
-                <XIcon />
-              </button>
-              <div className="admin-panel__modal-head">
-                <h2 id="pms-form-title" className="admin-panel__modal-title">
-                  {editId ? "Edit task" : "Create maintenance task"}
-                </h2>
-                <p className="admin-panel__modal-desc">
-                  Planned tasks recur on an interval; unplanned tasks are
-                  one-off by date or running hours.
-                </p>
+            <aside className="pms-drawer pms-drawer--form">
+              <div className="pms-drawer__head">
+                <div className="pms-drawer__head-main">
+                  <h2 id="pms-form-title" className="pms-drawer__title">
+                    {editId ? "Edit task" : boardCfg.createTitle}
+                  </h2>
+                  <p className="pms-drawer__muted" style={{ marginTop: 4 }}>
+                    Planned tasks recur on an interval; unplanned tasks are
+                    one-off by date or running hours.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="pms-drawer__close"
+                  onClick={() => setShowForm(false)}
+                  aria-label="Close"
+                >
+                  <XIcon />
+                </button>
               </div>
-              <form onSubmit={submitTask} className="admin-panel__modal-form">
+              <form
+                onSubmit={submitTask}
+                className="admin-panel__modal-form pms-drawer__form"
+              >
                 <div className="admin-panel__modal-field">
                   <label className="admin-panel__field-label">Task *</label>
                   <input
@@ -1227,67 +1123,20 @@ export function PmsSection({ token }: PmsSectionProps) {
                       value={form.category}
                       onChange={set("category")}
                     >
-                      {CATEGORIES.map((c) => (
+                      {/* Keep an off-board category visible while editing
+                          (e.g. a cert task opened on the wrong board). */}
+                      {!boardCfg.categories.includes(
+                        form.category as never,
+                      ) && (
+                        <option value={form.category}>{form.category}</option>
+                      )}
+                      {boardCfg.categories.map((c) => (
                         <option key={c} value={c}>
                           {c}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div className="admin-panel__modal-field">
-                    <label className="admin-panel__field-label">Priority</label>
-                    <select
-                      className="admin-panel__input admin-panel__input--full"
-                      value={form.priority}
-                      onChange={set("priority")}
-                    >
-                      {(Object.keys(PRIORITY_LABEL) as PmsPriority[]).map((p) => (
-                        <option key={p} value={p}>
-                          {PRIORITY_LABEL[p]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="admin-panel__modal-field-row">
-                  <div className="admin-panel__modal-field">
-                    <label className="admin-panel__field-label">
-                      Department
-                    </label>
-                    <select
-                      className="admin-panel__input admin-panel__input--full"
-                      value={form.department}
-                      onChange={set("department")}
-                    >
-                      {DEPARTMENTS.map((d) => (
-                        <option key={d.value} value={d.value}>
-                          {d.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="admin-panel__modal-field">
-                    <label className="admin-panel__field-label">
-                      Position responsible
-                    </label>
-                    <select
-                      className="admin-panel__input admin-panel__input--full"
-                      value={form.responsibleRole}
-                      onChange={set("responsibleRole")}
-                      title="A position, not a person — crew rotate, the position stays. Who actually completes it is recorded in History."
-                    >
-                      <option value="">— unassigned —</option>
-                      {(accessSchema?.positions ?? []).map((p) => (
-                        <option key={p.value} value={p.label}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="admin-panel__modal-field-row">
                   <div className="admin-panel__modal-field">
                     <label className="admin-panel__field-label">
                       Group (SFI, optional)
@@ -1301,6 +1150,57 @@ export function PmsSection({ token }: PmsSectionProps) {
                       {sfiGroups.map((g) => (
                         <option key={g.code} value={g.code}>
                           {g.code} · {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="admin-panel__modal-field-row">
+                  <div className="admin-panel__modal-field">
+                    <label className="admin-panel__field-label">
+                      Position responsible
+                    </label>
+                    <select
+                      className="admin-panel__input admin-panel__input--full"
+                      value={form.responsibleRole}
+                      onChange={(e) => {
+                        const label = e.target.value;
+                        // Auto-fill department from the position's own
+                        // department (the access schema's source of truth) —
+                        // the field to the right stays editable afterward.
+                        const dept =
+                          accessSchema?.positions.find((p) => p.label === label)
+                            ?.department ?? "";
+                        setForm((f) => ({
+                          ...f,
+                          responsibleRole: label,
+                          department: label ? dept : f.department,
+                        }));
+                      }}
+                      title="A position, not a person — crew rotate, the position stays. Who actually completes it is recorded in History."
+                    >
+                      <option value="">— unassigned —</option>
+                      {(accessSchema?.positions ?? []).map((p) => (
+                        <option key={p.value} value={p.label}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="admin-panel__modal-field">
+                    <label className="admin-panel__field-label">
+                      Department
+                    </label>
+                    <select
+                      className="admin-panel__input admin-panel__input--full"
+                      value={form.department}
+                      onChange={set("department")}
+                      title="Auto-filled from the position above; you can still override it."
+                    >
+                      {DEPARTMENTS.map((d) => (
+                        <option key={d.value} value={d.value}>
+                          {d.label}
                         </option>
                       ))}
                     </select>
@@ -1323,17 +1223,15 @@ export function PmsSection({ token }: PmsSectionProps) {
                   <label className="admin-panel__field-label">
                     Parts / spares
                   </label>
-                  {editId ? (
-                    <TaskPartsPicker
-                      all={allParts}
-                      value={taskParts}
-                      onChange={(next) => void saveTaskParts(next)}
-                    />
-                  ) : (
-                    <div className="pms__hint">
-                      Save the task first, then re-open it to link spare parts.
-                    </div>
-                  )}
+                  <TaskPartsPicker
+                    all={allParts}
+                    value={taskParts}
+                    onChange={(next) =>
+                      editId
+                        ? void saveTaskParts(next)
+                        : setTaskPartsState(next) // staged; linked on create
+                    }
+                  />
                 </div>
 
                 <div className="pms__section-head">Type</div>
@@ -1479,7 +1377,7 @@ export function PmsSection({ token }: PmsSectionProps) {
                   />
                 </div>
 
-                <div className="admin-panel__modal-actions">
+                <div className="pms-drawer__actions pms-drawer__actions--form">
                   <button
                     type="button"
                     className="admin-panel__btn admin-panel__btn--ghost"
@@ -1496,7 +1394,7 @@ export function PmsSection({ token }: PmsSectionProps) {
                   </button>
                 </div>
               </form>
-            </div>
+            </aside>
           </div>,
           document.body,
         )}
@@ -1600,6 +1498,18 @@ export function ImportPreviewModal({
         <div className="pms__import-summary">
           <span>{includedCount} selected</span>
           <span>· {preview.counts.matchedAssets} linked to an asset</span>
+          {(preview.counts.willCreateAssets ?? 0) > 0 && (
+            <span className="pms__import-create">
+              · {preview.counts.willCreateAssets} new asset
+              {preview.counts.willCreateAssets === 1 ? "" : "s"} will be created
+            </span>
+          )}
+          {(preview.counts.partsTotal ?? 0) > 0 && (
+            <span>
+              · {preview.counts.partsTotal} spare part
+              {preview.counts.partsTotal === 1 ? "" : "s"} → inventory
+            </span>
+          )}
           {preview.counts.lowConfidence > 0 && (
             <span className="pms__import-warn">
               · {preview.counts.lowConfidence} need a check
@@ -1694,7 +1604,29 @@ export function ImportPreviewModal({
                     {r.assetMatch ? (
                       <span title={`matched: ${r.assetMatch.matchType}`}>
                         {r.assetMatch.name}
+                        {r.assetMatch.matchType !== "exact" && (
+                          <span className="pms__import-matchtype">
+                            {" "}
+                            · {r.assetMatch.matchType}
+                          </span>
+                        )}
                       </span>
+                    ) : r.assetHint && r.createAsset !== false ? (
+                      <label
+                        className="pms__import-create"
+                        title={`Not in the register — a new asset will be created${
+                          r.assetGroup ? ` (system: ${r.assetGroup})` : ""
+                        }. Untick to leave the task unlinked.`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={r.createAsset === true}
+                          onChange={(e) =>
+                            patch(r._key, { createAsset: e.target.checked })
+                          }
+                        />
+                        + {r.assetHint}
+                      </label>
                     ) : r.assetHint ? (
                       <span
                         className="pms__import-warn"
@@ -1704,6 +1636,21 @@ export function ImportPreviewModal({
                       </span>
                     ) : (
                       "—"
+                    )}
+                    {(r.parts?.length ?? 0) > 0 && (
+                      <span
+                        className="pms__import-parts"
+                        title={(r.parts ?? [])
+                          .map(
+                            (p) =>
+                              `${p.name}${p.quantity != null ? ` ×${p.quantity}${p.unit ? ` ${p.unit}` : ""}` : ""}${
+                                p.manufacturerNo ? ` (${p.manufacturerNo})` : ""
+                              }`,
+                          )
+                          .join("\n")}
+                      >
+                        🔧 {r.parts?.length}
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -1733,226 +1680,6 @@ export function ImportPreviewModal({
                   includedCount === 1 ? "" : "s"
                 }`}
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DlItem({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="pms__dl-item">
-      <span className="pms__dl-label">{label}</span>
-      <span className="pms__dl-value">{value ?? "—"}</span>
-    </div>
-  );
-}
-
-function TaskDetailModal({
-  task,
-  parts,
-  onClose,
-  onEdit,
-  onPerform,
-  onReopen,
-  onDelete,
-}: {
-  task: PmsTask;
-  parts: InventoryItem[];
-  onClose: () => void;
-  onEdit: () => void;
-  onPerform: () => void;
-  onReopen: () => void;
-  onDelete: () => void;
-}) {
-  const repeatDate =
-    task.repeatDate && task.intervalValue != null
-      ? `every ${intervalLabel(task.intervalValue, task.intervalUnit)}`
-      : "—";
-
-  const hoursService =
-    task.intervalHours != null ? `every ${task.intervalHours} h` : "—";
-
-  const nextDueHours =
-    task.dueHours != null
-      ? `${task.dueHours} h${
-          task.currentHours != null
-            ? ` (${deriveHours(task.currentHours, task.dueHours).due})`
-            : ""
-        }`
-      : task.intervalHours != null && task.currentHours != null
-        ? `${nextHoursMark(task.currentHours, task.intervalHours)} h`
-        : task.intervalHours != null
-          ? "awaiting metric"
-          : "—";
-
-  const planned = task.planning === "planned";
-
-  return (
-    <div
-      className="admin-panel__modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="pms-detail-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="admin-panel__modal pms__modal">
-        <button
-          type="button"
-          className="admin-panel__modal-close"
-          onClick={onClose}
-          aria-label="Close"
-        >
-          <XIcon />
-        </button>
-        <div className="admin-panel__modal-head">
-          <div className="pms__detail-title-row">
-            <span className={`pms__pri pms__pri--${task.priority}`} />
-            <h2 id="pms-detail-title" className="admin-panel__modal-title">
-              {task.task}
-            </h2>
-            {task.completedAt ? (
-              <span className="pms__status pms__status--done">Done</span>
-            ) : (
-              <span className={`pms__status pms__status--${task.status}`}>
-                {STATUS_LABEL[task.status]}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="pms__section-head">General</div>
-        <div className="pms__dl">
-          <DlItem label="Type" value={planned ? "Planned" : "Unplanned"} />
-          <DlItem label="Category" value={task.category} />
-          <DlItem label="Priority" value={PRIORITY_LABEL[task.priority]} />
-          <DlItem label="Person responsible" value={task.assigneeName ?? "—"} />
-          <DlItem
-            label="Group (SFI)"
-            value={
-              task.sfiGroupName ? `${task.sfiGroup} · ${task.sfiGroupName}` : "—"
-            }
-          />
-        </div>
-
-        <div className="pms__dl-item" style={{ marginBottom: 12 }}>
-          <span className="pms__dl-label">Linked assets</span>
-          <span className="pms__dl-value">
-            {task.assets.length === 0 ? (
-              "—"
-            ) : (
-              <span className="pms__assets">
-                {task.assets.map((a) => (
-                  <span key={a.id} className="pms__asset-chip">
-                    {a.name}
-                  </span>
-                ))}
-              </span>
-            )}
-          </span>
-        </div>
-
-        <div className="pms__dl-item" style={{ marginBottom: 12 }}>
-          <span className="pms__dl-label">Parts / spares</span>
-          <span className="pms__dl-value">
-            {parts.length === 0 ? (
-              "—"
-            ) : (
-              <span className="pms__assets">
-                {parts.map((p) => (
-                  <span key={p.id} className="pms__asset-chip">
-                    {p.name}
-                    {p.partNumber ? ` · ${p.partNumber}` : ""}
-                  </span>
-                ))}
-              </span>
-            )}
-          </span>
-        </div>
-
-        <div className="pms__section-head">Schedule</div>
-        <div className="pms__dl">
-          <DlItem
-            label={planned ? "Next due" : "Due date"}
-            value={
-              task.dueDate
-                ? `${task.dueDate} (${deriveDue(task.dueDate).due})`
-                : "—"
-            }
-          />
-          {planned ? (
-            <>
-              <DlItem label="Repeat (calendar)" value={repeatDate} />
-              <DlItem label="Service interval (hours)" value={hoursService} />
-            </>
-          ) : (
-            <DlItem label="Due at (hours)" value={nextDueHours} />
-          )}
-          <DlItem
-            label="Current hours"
-            value={
-              task.currentHours != null
-                ? `${task.currentHours} h`
-                : "from metrics (pending)"
-            }
-          />
-          {planned && <DlItem label="Next due (hours)" value={nextDueHours} />}
-          <DlItem label="Last done" value={task.lastDone ?? "—"} />
-        </div>
-
-        {task.completedAt && (
-          <div className="pms__dl" style={{ marginTop: 12 }}>
-            <DlItem label="Completed" value={task.completedAt} />
-          </div>
-        )}
-
-        {task.description && (
-          <>
-            <div className="pms__section-head">Description</div>
-            <div className="pms__jd">{task.description}</div>
-          </>
-        )}
-
-        <div className="admin-panel__modal-actions">
-          <button
-            type="button"
-            className="admin-panel__btn admin-panel__btn--ghost pms__btn-danger"
-            onClick={onDelete}
-          >
-            <TrashIcon /> Delete
-          </button>
-          <button
-            type="button"
-            className="admin-panel__btn admin-panel__btn--ghost"
-            onClick={onEdit}
-          >
-            Edit
-          </button>
-          {task.completedAt ? (
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--primary"
-              onClick={() => {
-                onReopen();
-                onClose();
-              }}
-            >
-              Reopen
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="admin-panel__btn admin-panel__btn--primary"
-              onClick={() => {
-                onPerform();
-                onClose();
-              }}
-            >
-              Perform
-            </button>
-          )}
         </div>
       </div>
     </div>
