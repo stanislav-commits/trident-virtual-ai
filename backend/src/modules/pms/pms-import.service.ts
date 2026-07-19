@@ -233,7 +233,9 @@ export class PmsImportService {
       willCreateAssets: new Set(
         drafts
           .filter((d) => !d.assetMatch && d.createAsset && d.assetHint)
-          .map((d) => this.normalizeAssetKey(d.assetHint as string)),
+          // Key on hint+group (same as resolveAssetMatches/createMissingAssets)
+          // so two same-named components in different systems count as two.
+          .map((d) => this.assetGroupKey(d)),
       ).size,
       partsTotal: drafts.reduce((n, d) => n + (d.parts?.length ?? 0), 0),
     };
@@ -562,9 +564,12 @@ export class PmsImportService {
     );
     if (pending.length === 0) return 0;
 
+    // Group by hint+group — the SAME key resolveAssetMatches used — so two
+    // same-named components in different systems ("Pump" in Bilge vs Fire)
+    // become two distinct assets, not one shared (mislinked) asset.
     const byName = new Map<string, PmsImportDraft[]>();
     for (const d of pending) {
-      const key = this.normalizeAssetKey(d.assetHint as string);
+      const key = this.assetGroupKey(d);
       const arr = byName.get(key) ?? [];
       arr.push(d);
       byName.set(key, arr);
@@ -668,13 +673,21 @@ export class PmsImportService {
       try {
         if (found) {
           // Only ADD links — never overwrite stock qty/location of real items.
+          // update() REPLACES the whole link set, so we must merge against the
+          // item's CURRENT links and write the merged set back onto the shared
+          // snapshot — otherwise a second aggregate that resolves to the same
+          // item (e.g. matched by name, then by part number) would compute off
+          // the stale original set and clobber the links this pass just added.
+          const before = new Set(found.taskIds);
           const taskIds = [...new Set([...found.taskIds, ...agg.taskIds])];
           const assetIds = [...new Set([...found.assetIds, ...agg.assetIds])];
           await this.inventoryService.update(shipId, found.id, {
             taskIds,
             assetIds,
           });
-          partsLinked += agg.taskIds.size;
+          found.taskIds = taskIds;
+          found.assetIds = assetIds;
+          partsLinked += [...agg.taskIds].filter((t) => !before.has(t)).length;
         } else {
           await this.inventoryService.create(shipId, {
             name: part.name,
@@ -1010,6 +1023,15 @@ export class PmsImportService {
       .trim();
   }
 
+  /**
+   * Dedup key for a draft's equipment: hint + system group. The SINGLE key
+   * used by asset matching, auto-create and the willCreateAssets count so a
+   * same-named component in two systems is never collapsed into one asset.
+   */
+  private assetGroupKey(d: PmsImportDraft): string {
+    return this.normalizeAssetKey(`${d.assetHint ?? ''} ${d.assetGroup ?? ''}`);
+  }
+
   // ── register matching (fuzzy scoring + LLM disambiguation) ──
 
   /** Tokens for fuzzy matching: normalized, synonym-folded, lightly stemmed. */
@@ -1056,9 +1078,7 @@ export class PmsImportService {
     const byHint = new Map<string, PmsImportDraft[]>();
     for (const d of drafts) {
       if (!d.assetHint) continue;
-      const key = this.normalizeAssetKey(
-        `${d.assetHint} ${d.assetGroup ?? ''}`,
-      );
+      const key = this.assetGroupKey(d);
       const arr = byHint.get(key) ?? [];
       arr.push(d);
       byHint.set(key, arr);

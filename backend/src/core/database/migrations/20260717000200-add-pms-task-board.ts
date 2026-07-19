@@ -19,11 +19,13 @@ export class AddPmsTaskBoard20260717000200 implements MigrationInterface {
       `UPDATE "pms_tasks" SET "board" = 'general' WHERE "source" = 'compliance'`,
     );
     // Re-home compliance categories onto the general board's vocabulary so
-    // the Tasks board's category filter can find them (renewals arrive as
-    // maintenance-taxonomy 'Service').
+    // the Tasks board's category filter can find them: only the maintenance-
+    // only categories (e.g. 'Service') fold to 'Certificate'; any category
+    // that is already a general one (Survey, Inspection, …) is preserved.
     await queryRunner.query(
       `UPDATE "pms_tasks" SET "category" = 'Certificate'
-       WHERE "source" = 'compliance' AND "category" NOT IN ('Survey', 'Certificate')`,
+       WHERE "source" = 'compliance'
+         AND "category" NOT IN ('Certificate', 'Survey', 'Drill', 'Assignment', 'Inspection', 'Training', 'Other')`,
     );
   }
 

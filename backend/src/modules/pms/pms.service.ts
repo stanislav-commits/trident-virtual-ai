@@ -23,6 +23,19 @@ export type PmsStatus = 'overdue' | 'due-soon' | 'ok';
 const HOURS_SOON_WINDOW = 20; // hrs before due that still count as due-soon
 const DAYS_SOON_WINDOW = 10;
 
+// The Tasks (general) board's category vocabulary — must mirror the frontend
+// GENERAL_CATEGORIES. A compliance category already in this set is kept;
+// anything else (maintenance-only, e.g. 'Service') folds to 'Certificate'.
+const GENERAL_BOARD_CATEGORIES = new Set([
+  'Certificate',
+  'Survey',
+  'Drill',
+  'Assignment',
+  'Inspection',
+  'Training',
+  'Other',
+]);
+
 /**
  * Metric alerts must never surface as maintenance tasks. Auto-spawning is
  * disabled (ALERT_AUTO_TASK_SEVERITY defaults to 'off'), but legacy `alert`
@@ -228,9 +241,10 @@ export class PmsService {
 
     const doneOn = input?.doneOn ?? new Date().toISOString().slice(0, 10);
     task.lastDoneAt = doneOn;
-    if (input?.notes !== undefined) {
-      task.completionNotes = input.notes?.trim() || null;
-    }
+    // Always reflect THIS completion's note — a recurring task rolls forward
+    // keeping completionNotes, so a later completion with no note must clear
+    // the previous cycle's note rather than keep mislabelling it as latest.
+    task.completionNotes = input?.notes?.trim() || null;
     if (input?.doneAtHours != null) {
       task.lastDoneHours = String(input.doneAtHours);
       if (task.intervalHours != null) {
@@ -365,10 +379,13 @@ export class PmsService {
       return;
     }
     const assets = await this.resolveAssets(shipId, input.assetIds);
-    // Map the compliance spec's maintenance-taxonomy category onto the
-    // general board's vocabulary (renewal 'Service' → 'Certificate'), so the
-    // Tasks board's category filter can actually find these.
-    const category = input.category === 'Survey' ? 'Survey' : 'Certificate';
+    // Map the compliance spec's category onto the general board's vocabulary:
+    // keep any category that already IS a general one (Survey, Inspection…),
+    // only fold the maintenance-only ones (e.g. renewal 'Service') into
+    // 'Certificate', so the Tasks board's category filter can find them.
+    const category = GENERAL_BOARD_CATEGORIES.has(input.category)
+      ? input.category
+      : 'Certificate';
     if (existing) {
       existing.task = input.title.slice(0, 200);
       existing.category = category;
