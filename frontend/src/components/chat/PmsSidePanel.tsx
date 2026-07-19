@@ -210,6 +210,14 @@ export function PmsSidePanel({ token, shipId, closing, noAnim, onAskAi }: PmsSid
       .sort(byDue);
   }, [tasks, selDay]);
 
+  // All overdue tasks (by real horizon) — surfaced under the Today view when
+  // nothing is due today, so overdue work is never hidden behind a tab.
+  const overdueTasks = useMemo(
+    () =>
+      tasks.filter((t) => horizonOf(t, now) === "overdue").sort(byDue),
+    [tasks, now],
+  );
+
   // week strip — a 7-day window centred on today (today sits in the middle
   // slot, index 3, with three days either side), navigable ±1 week.
   const week = useMemo(() => {
@@ -392,31 +400,56 @@ export function PmsSidePanel({ token, shipId, closing, noAnim, onAskAi }: PmsSid
           {/* tabs — All / Overdue / Due / Scheduled (mirror the header counts);
               a tab click also exits day-filter mode */}
           <div style={{ display: "flex", gap: 5, padding: "10px 10px 6px" }}>
-            {(["all", "overdue", "due", "scheduled"] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => {
-                  setTab(k);
-                  setSelDay(null);
-                }}
-                style={{
-                  flex: 1,
-                  fontFamily: SANS,
-                  fontSize: 11.5,
-                  padding: "6px 2px",
-                  borderRadius: 7,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  textTransform: "capitalize",
-                  color: tab === k ? T.text : T.dim,
-                  background: tab === k ? T.raised : "transparent",
-                  border: `1px solid ${tab === k ? T.line : "transparent"}`,
-                }}
-              >
-                {k}
-              </button>
-            ))}
+            {(["all", "overdue", "due", "scheduled"] as const).map((k) => {
+              const n =
+                k === "overdue"
+                  ? counts.overdue
+                  : k === "due"
+                    ? counts.due
+                    : k === "scheduled"
+                      ? counts.ok
+                      : null;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => {
+                    setTab(k);
+                    setSelDay(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 4,
+                    fontFamily: SANS,
+                    fontSize: 11.5,
+                    padding: "6px 2px",
+                    borderRadius: 7,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    textTransform: "capitalize",
+                    color: tab === k ? T.text : T.dim,
+                    background: tab === k ? T.raised : "transparent",
+                    border: `1px solid ${tab === k ? T.line : "transparent"}`,
+                  }}
+                >
+                  {k}
+                  {n != null && n > 0 && (
+                    <span
+                      style={{
+                        fontFamily: MONO,
+                        fontSize: 9.5,
+                        color: k === "overdue" ? T.alarm : T.faint,
+                      }}
+                    >
+                      {n}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* list */}
@@ -438,7 +471,29 @@ export function PmsSidePanel({ token, shipId, closing, noAnim, onAskAi }: PmsSid
                   </span>
                 </div>
                 {dayTasks.length === 0 ? (
-                  <div style={stateStyle}>No tasks due on this day</div>
+                  selDay === dayKey(now) && overdueTasks.length > 0 ? (
+                    // Nothing due today, but overdue work exists — surface it
+                    // instead of a dead "nothing here" that hides urgent tasks.
+                    <>
+                      <div style={{ ...stateStyle, padding: "10px 4px 2px", textAlign: "left" }}>
+                        Nothing due today — showing overdue.
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 4px 7px" }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.alarm }} />
+                        <span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: T.text }}>
+                          Overdue
+                        </span>
+                        <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, color: T.faint }}>
+                          {overdueTasks.length}
+                        </span>
+                      </div>
+                      {overdueTasks.map((t) => (
+                        <TaskCard key={t.id} task={t} now={now} onClick={() => setSelId(t.id)} />
+                      ))}
+                    </>
+                  ) : (
+                    <div style={stateStyle}>No tasks due on this day</div>
+                  )
                 ) : (
                   dayTasks.map((t) => (
                     <TaskCard key={t.id} task={t} now={now} onClick={() => setSelId(t.id)} />
