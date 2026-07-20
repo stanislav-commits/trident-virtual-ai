@@ -108,7 +108,12 @@ const CATEGORIES = [
 // cap — dense batches used to overflow it, truncating the JSON and dropping the
 // whole batch. Fewer tasks per batch also means faster, more reliable mapping.
 const CHUNK_CHARS = 4500;
-const MAX_SOURCE_CHARS = 120_000; // safety cap on a single import
+// Safety cap on a single import. Raised for the real 691-page maintenance
+// HISTORY export (~1.09M extracted chars) — the old 120_000 cap silently
+// truncated a big history file to its first ~11%, dropping most records
+// with no warning. preview() now also warns in `notes` if a file still
+// exceeds this.
+const MAX_SOURCE_CHARS = 2_000_000;
 const MAP_CONCURRENCY = 10; // chunks mapped in parallel (keeps the request fast)
 // Route the tabular mapping through Claude Haiku — fast + high throughput, far
 // quicker than the OpenAI sub-model endpoint for a multi-batch import.
@@ -176,10 +181,8 @@ export class PmsImportService {
     rawText?: string,
     mode: PmsImportMode = 'tasks',
   ): Promise<PmsImportPreview> {
-    const text = (rawText?.trim() || (await this.extractText(file))).slice(
-      0,
-      MAX_SOURCE_CHARS,
-    );
+    const fullText = rawText?.trim() || (await this.extractText(file));
+    const text = fullText.slice(0, MAX_SOURCE_CHARS);
     if (!text.trim()) {
       throw new BadRequestException(
         'No readable text found in the uploaded file.',
@@ -197,6 +200,11 @@ export class PmsImportService {
     });
 
     const notes: string[] = [];
+    if (fullText.length > MAX_SOURCE_CHARS) {
+      notes.push(
+        `File truncated: only the first ${MAX_SOURCE_CHARS.toLocaleString()} of ${fullText.length.toLocaleString()} characters were mapped. Split the file and import the rest separately.`,
+      );
+    }
     const llmTasks: LlmTask[] = [];
     const chunks = this.chunk(text);
     if (chunks.length > 1) {
