@@ -332,6 +332,71 @@ export async function setAssetHours(
   return r.json();
 }
 
+// ── Bulk hours binding (phase C) ─────────────────────────────────────────
+
+export interface HoursMetricOption {
+  id: string;
+  key: string;
+  label: string;
+  unit: string | null;
+  kind: string | null;
+  boundAssetId: string | null;
+}
+
+export interface HoursOverviewAsset {
+  assetId: string;
+  name: string;
+  internalId: string | null;
+  hoursTaskCount: number;
+  sampleTasks: string[];
+  source: string;
+  metricCatalogId: string | null;
+  suggestions: { metricId: string; score: number }[];
+}
+
+export interface HoursOverview {
+  assets: HoursOverviewAsset[];
+  metricPool: HoursMetricOption[];
+}
+
+export interface BulkHoursItem extends SetHoursConfigInput {
+  assetId: string;
+}
+
+export interface BulkHoursResult {
+  results: {
+    assetId: string;
+    ok: boolean;
+    source?: string;
+    currentHours?: number | null;
+    error?: string;
+  }[];
+}
+
+export async function fetchHoursOverview(
+  token: string,
+  shipId: string,
+): Promise<HoursOverview> {
+  const r = await fetchWithAuth(`ships/${shipId}/pms/hours/overview`, { token });
+  await ok(r, "Load hours overview");
+  return r.json();
+}
+
+export async function bulkSetAssetHours(
+  token: string,
+  shipId: string,
+  items: BulkHoursItem[],
+): Promise<BulkHoursResult> {
+  const r = await fetchWithAuth(`ships/${shipId}/pms/hours/bulk`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+  await ok(r, "Apply hours bindings");
+  return r.json();
+}
+
 export async function addAssetHoursReading(
   token: string,
   shipId: string,

@@ -55,6 +55,7 @@ import {
 } from "./pms/taskTypes";
 import { TaskPartsPicker } from "./pms/TaskPartsPicker";
 import { TaskDetailDrawer } from "./pms/TaskDetailDrawer";
+import { HoursBindingModal } from "./pms/HoursBindingModal";
 
 interface PmsSectionProps {
   token: string | null;
@@ -288,6 +289,7 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
   const [importBusy, setImportBusy] = useState(false);
   // Which tab the import was launched from — active → task list, history → log.
   const [importMode, setImportMode] = useState<PmsImportMode>("tasks");
+  const [hoursModalOpen, setHoursModalOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const shipId = selectedShipId;
@@ -714,6 +716,16 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
           <p className="pms__subtitle">{boardCfg.subtitle}</p>
         </div>
         <div className="pms__actions">
+          {boardCfg.canImport && (
+            <button
+              type="button"
+              className="pms__btn"
+              onClick={() => setHoursModalOpen(true)}
+              title="Bind assets to running-hour counters in bulk — hour-interval tasks need a source to compute due status."
+            >
+              Hours
+            </button>
+          )}
           {boardCfg.canImport && (
             <button
               type="button"
@@ -1421,6 +1433,17 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
             mode={importMode}
             onCancel={() => setImportPreview(null)}
             onConfirm={commitImport}
+          />,
+          document.body,
+        )}
+
+      {hoursModalOpen && token && shipId &&
+        createPortal(
+          <HoursBindingModal
+            token={token}
+            shipId={shipId}
+            onClose={() => setHoursModalOpen(false)}
+            onApplied={() => void refresh()}
           />,
           document.body,
         )}

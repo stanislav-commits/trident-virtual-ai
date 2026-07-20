@@ -22,7 +22,11 @@ import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { PmsService, UpsertPmsTaskInput } from './pms.service';
-import { AssetHoursService, SetHoursConfigInput } from './asset-hours.service';
+import {
+  AssetHoursService,
+  BulkHoursConfigItem,
+  SetHoursConfigInput,
+} from './asset-hours.service';
 import {
   PmsImportService,
   PmsImportDraft,
@@ -140,6 +144,25 @@ export class PmsController {
       user,
       await this.viewerDept(shipId, user),
     );
+  }
+
+  /** Bulk hours-binding view: assets with hours-legged tasks + scored
+   *  hour-counter metric candidates. */
+  @Get('hours/overview')
+  @Roles(UserRole.ADMIN)
+  hoursOverview(@Param('shipId', ParseUUIDPipe) shipId: string) {
+    return this.assetHoursService.hoursOverview(shipId);
+  }
+
+  /** Apply many hours configs at once; each result carries live currentHours
+   *  as the verification signal. */
+  @Post('hours/bulk')
+  @Roles(UserRole.ADMIN)
+  bulkSetHours(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Body() body: { items: BulkHoursConfigItem[] },
+  ) {
+    return this.assetHoursService.bulkSetConfig(shipId, body?.items ?? []);
   }
 
   @Get('assets/:assetId/hours')
