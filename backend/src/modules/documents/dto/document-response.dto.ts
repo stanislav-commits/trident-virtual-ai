@@ -10,6 +10,8 @@ export class DocumentResponseDto {
   shipId!: string;
   uploadedByUserId!: string | null;
   originalFileName!: string;
+  docCode!: string | null;
+  formRefs!: string[] | null;
   storageKey!: string | null;
   mimeType!: string;
   fileSizeBytes!: number;

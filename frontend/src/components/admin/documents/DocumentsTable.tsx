@@ -440,6 +440,23 @@ export function DocumentsTable({
                           Unlinked
                         </span>
                       )}
+                    {document.docCode && (
+                      <span
+                        className="admin-panel__doc-code"
+                        title="Controlled-document code (from the filename) — SMS procedures reference this form by it"
+                      >
+                        {document.docCode}
+                      </span>
+                    )}
+                    {(document.formRefs?.length ?? 0) > 0 && (
+                      <span
+                        className="admin-panel__doc-code"
+                        title={`References controlled forms:\n${(document.formRefs ?? []).join("\n")}`}
+                      >
+                        {document.formRefs?.length} form
+                        {document.formRefs?.length === 1 ? "" : "s"}
+                      </span>
+                    )}
                     <div className="admin-panel__document-file-meta">
                       {fileMetaItems.map((item) => (
                         <span key={item.label} title={item.title}>

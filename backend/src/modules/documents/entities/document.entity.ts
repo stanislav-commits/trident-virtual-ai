@@ -62,6 +62,15 @@ export class DocumentEntity {
   @Column({ name: 'original_file_name', type: 'varchar', length: 512 })
   originalFileName!: string;
 
+  /** Controlled-document code parsed from the filename ("EM 002 01"). */
+  @Column({ name: 'doc_code', type: 'varchar', length: 20, nullable: true })
+  docCode!: string | null;
+
+  /** Controlled codes REFERENCED by this document's text (SMS procedures /
+   *  circulars) — the read-time join key onto forms' doc_code. */
+  @Column({ name: 'form_refs', type: 'jsonb', nullable: true })
+  formRefs!: string[] | null;
+
   @Column({ name: 'storage_key', type: 'varchar', length: 1024, nullable: true })
   storageKey!: string | null;
 

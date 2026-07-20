@@ -24,6 +24,9 @@ import { DocumentEntity } from '../entities/document.entity';
 import { DocumentParseStatus } from '../enums/document-parse-status.enum';
 import { DocumentTimeScope } from '../enums/document-time-scope.enum';
 import { toDocumentResponse } from '../mapping/documents.mapper';
+import { parseDocCode, scanFormRefs } from '../doc-code.util';
+import { DocumentDocClass } from '../enums/document-doc-class.enum';
+import pdfParse from 'pdf-parse';
 import { UploadedDocumentFile } from './documents-upload.types';
 import { DocumentsUploadStorageService } from './documents-upload-storage.service';
 import { DocumentsParseDrainService } from '../parsing/documents-parse-drain.service';
@@ -71,10 +74,35 @@ export class DocumentsIngestionService {
     const profile = getParsingProfileForDocClass(input.docClass);
     const metadata = buildDocumentMetadata(ship.id, input);
 
+    // SMS↔forms join keys: the document's own controlled code from its
+    // filename, and — for the classes whose TEXT cites forms by code (SMS
+    // procedures, fleet circulars) — the codes referenced inside the PDF.
+    // Related forms are then a read-time lookup by code; upload order
+    // (forms first or SMS first) doesn't matter.
+    const docCode = parseDocCode(normalizedFile.originalName);
+    let formRefs: string[] | null = null;
+    if (
+      (input.docClass === DocumentDocClass.PROCEDURE ||
+        input.docClass === DocumentDocClass.CIRCULAR) &&
+      normalizedFile.mimeType === 'application/pdf'
+    ) {
+      try {
+        const parsed = await pdfParse(normalizedFile.buffer);
+        const refs = scanFormRefs(parsed.text).filter((code) => code !== docCode);
+        formRefs = refs.length ? refs : null;
+      } catch (error) {
+        this.logger.warn(
+          `Form-ref scan failed for "${normalizedFile.originalName}": ${formatError(error)}`,
+        );
+      }
+    }
+
     const document = this.documentsRepository.create({
       shipId: ship.id,
       uploadedByUserId: user.id,
       originalFileName: normalizedFile.originalName,
+      docCode,
+      formRefs,
       storageKey: null,
       mimeType: normalizedFile.mimeType,
       fileSizeBytes: normalizedFile.size,

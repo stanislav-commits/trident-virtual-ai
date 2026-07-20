@@ -177,10 +177,19 @@ export class ChatDocumentsResponderService {
       ).retrieval;
     }
 
+    // SMS↔forms: forms the evidence procedures reference by controlled code
+    // ("…fill in JMS EM 002 01…") — fed to the answer model so it instructs
+    // by code, and attached as openable references.
+    const referencedForms = await this.resolveReferencedForms(
+      shipId,
+      retrieval,
+    );
+
     const groundedAnswer = await this.buildGroundedSummary(
       input,
       retrieval,
       queryPlan,
+      this.buildReferencedFormsPromptBlock(referencedForms),
     );
 
     return {
@@ -212,12 +221,55 @@ export class ChatDocumentsResponderService {
           },
         },
       },
-      contextReferences: buildDocumentContextReferences(
-        retrieval,
-        groundedAnswer.summary,
-        groundedAnswer.groundingStatus,
-      ),
+      contextReferences: [
+        ...buildDocumentContextReferences(
+          retrieval,
+          groundedAnswer.summary,
+          groundedAnswer.groundingStatus,
+        ),
+        ...(groundedAnswer.groundingStatus === 'grounded'
+          ? referencedForms.map((form) => ({
+              id: `form-${form.docCode}`,
+              sourceType: 'document',
+              documentId: form.documentId,
+              shipId,
+              sourceTitle: form.title,
+              refCode: form.docCode,
+            }))
+          : []),
+      ],
     };
+  }
+
+  /** Forms referenced (by controlled code) by the documents behind the
+   *  selected evidence chunks. */
+  private async resolveReferencedForms(
+    shipId: string,
+    retrieval: DocumentRetrievalResponseDto,
+  ): Promise<{ documentId: string; docCode: string; title: string }[]> {
+    try {
+      const documentIds = [
+        ...new Set(
+          retrieval.results
+            .map((result) => result.documentId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      return await this.documentsService.referencedForms(shipId, documentIds);
+    } catch {
+      return [];
+    }
+  }
+
+  private buildReferencedFormsPromptBlock(
+    forms: { docCode: string; title: string }[],
+  ): string | null {
+    if (!forms.length) return null;
+    return [
+      'CONTROLLED FORMS & CHECKLISTS referenced by these procedures (available on the platform):',
+      ...forms.map((form) => `- ${form.docCode} — ${form.title}`),
+      'When the answer instructs the user to fill in or follow a form/checklist, name it by its code and title from this list. Do not invent codes that are not listed here.',
+    ].join('\n');
   }
 
   private async respondComposite(
@@ -484,6 +536,7 @@ export class ChatDocumentsResponderService {
     input: ChatTurnResponderInput,
     retrieval: DocumentRetrievalResponseDto,
     queryPlan: DocumentQueryPlan,
+    extraPromptBlock?: string | null,
   ): Promise<GroundedDocumentAnswer> {
     if (retrieval.evidenceQuality === 'none') {
       return {
@@ -527,7 +580,9 @@ export class ChatDocumentsResponderService {
           answerStyle: {
             structuredMaintenanceRecord: structuredMaintenanceRecordAnswer,
           },
-        }) + (assetContext ? `\n${assetContext.promptBlock}` : ''),
+        }) +
+        (assetContext ? `\n${assetContext.promptBlock}` : '') +
+        (extraPromptBlock ? `\n${extraPromptBlock}` : ''),
       temperature: 0.1,
       maxTokens: retrieval.evidenceQuality === 'strong' ? 650 : 420,
       useMainModel: true,

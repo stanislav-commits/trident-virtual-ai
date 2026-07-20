@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, ILike, Repository } from 'typeorm';
+import { FindOptionsWhere, ILike, In, Repository } from 'typeorm';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { RagService } from '../../integrations/rag/rag.service';
@@ -29,6 +29,7 @@ import { UpdateDocumentClassificationDto } from './dto/update-document-classific
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
+import { parseDocCode } from './doc-code.util';
 import { toDocumentResponse } from './mapping/documents.mapper';
 import { DocumentsIngestionService } from './ingestion/documents-ingestion.service';
 import { DocumentsUploadStorageService } from './ingestion/documents-upload-storage.service';
@@ -279,6 +280,42 @@ export class DocumentsService {
   }
 
   /**
+   * Forms & checklists that the given documents' TEXT references by
+   * controlled code (SMS procedure says "…fill in JMS EM 002 01…" → the
+   * uploaded form whose doc_code is "EM 002 01"). This is the SMS↔forms
+   * join: procedures carry form_refs (scanned at upload), forms carry
+   * doc_code (parsed from the filename) — resolved here at read time, so
+   * upload order never matters.
+   */
+  async referencedForms(
+    shipId: string,
+    documentIds: string[],
+  ): Promise<{ documentId: string; docCode: string; title: string }[]> {
+    if (!documentIds.length) return [];
+    const sources = await this.documentsRepository.find({
+      where: { id: In(documentIds) },
+      select: ['id', 'formRefs'],
+    });
+    const codes = [
+      ...new Set(sources.flatMap((source) => source.formRefs ?? [])),
+    ];
+    if (!codes.length) return [];
+    const forms = await this.documentsRepository.find({
+      where: {
+        shipId,
+        docClass: DocumentDocClass.FORM,
+        docCode: In(codes),
+      },
+      order: { docCode: 'ASC' },
+    });
+    return forms.map((form) => ({
+      documentId: form.id,
+      docCode: form.docCode as string,
+      title: form.originalFileName,
+    }));
+  }
+
+  /**
    * Rename a document. The display name lives in original_file_name (UI,
    * files-route lookup, citations) and, when the doc is in RAGFlow, on the
    * remote document too — the remote rename is best-effort: a RAGFlow hiccup
@@ -297,6 +334,9 @@ export class DocumentsService {
     }
 
     document.originalFileName = name;
+    // The controlled code lives in the name — keep it in sync (renaming a
+    // form to add its "EM 002 01" code is exactly how codes get fixed).
+    document.docCode = parseDocCode(name);
     await this.documentsRepository.save(document);
 
     if (document.ragflowDatasetId && document.ragflowDocumentId) {

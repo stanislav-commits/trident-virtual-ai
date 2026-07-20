@@ -1891,6 +1891,20 @@
   background: color-mix(in srgb, var(--status-warn, #e0a800) 15%, transparent);
 }
 
+/* Controlled-document code chip ("EM 002 01") / "N forms" references chip. */
+.admin-panel__doc-code {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 1px 7px;
+  border-radius: 5px;
+  cursor: help;
+  color: var(--chat-text-muted);
+  background: var(--overlay-faint, rgba(127, 127, 127, 0.12));
+  font-family: var(--font-mono, monospace);
+}
+
 .admin-panel__document-name-button {
   display: block;
   max-width: 100%;

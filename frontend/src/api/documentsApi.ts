@@ -43,6 +43,10 @@ export interface DocumentListItem {
   shipId: string;
   uploadedByUserId: string | null;
   originalFileName: string;
+  /** Controlled-document code parsed from the filename ("EM 002 01"). */
+  docCode: string | null;
+  /** Codes this document's text references (SMS procedures/circulars). */
+  formRefs: string[] | null;
   storageKey: string | null;
   mimeType: string;
   fileSizeBytes: number;

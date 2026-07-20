@@ -7,6 +7,8 @@ export function toDocumentResponse(entity: DocumentEntity): DocumentResponseDto 
     shipId: entity.shipId,
     uploadedByUserId: entity.uploadedByUserId,
     originalFileName: entity.originalFileName,
+    docCode: entity.docCode,
+    formRefs: entity.formRefs,
     storageKey: entity.storageKey,
     mimeType: entity.mimeType,
     fileSizeBytes: entity.fileSizeBytes,
