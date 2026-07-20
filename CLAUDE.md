@@ -22,7 +22,7 @@ CI (`.github/workflows/ci.yml` + `checks` job in `deploy.yml`) runs typecheck + 
 - **Push to `main` = automatic production deploy** (GitHub Action → SSH to DO droplet → `scripts/deploy.sh`) with a ~30s outage. **Never push without the user's explicit per-push OK.** Local commits are fine anytime.
 - Batch commits and push once, not per-commit.
 - Prod: frontend `trident-virtual.ai`, API `https://api.trident-virtual.ai/api`, DO droplet FRA1 (PM2 process `trident-backend`, live dir `/var/www/trident-virtual-ai/backend`), DO managed Postgres. See `.claude/skills/prod-debug` for access recipes.
-- Migrations must be run manually on prod after deploys that add them (see table above).
+- Prod migrations run automatically: `scripts/deploy.sh` executes `npm run db:migrate` as a deploy step (verified live 2026-07-20). Verify they landed (deploy-check skill); no separate manual step. Locally they stay manual (table above).
 - This is a multi-developer repo (Mark, Shaun and others commit) — expect main to move; rebase/merge before starting work.
 
 ## Architecture map
