@@ -174,14 +174,12 @@ export class PmsController {
     body: {
       drafts: PmsImportDraft[];
       mode?: PmsImportMode;
-      createMissingAssets?: boolean;
     },
   ) {
     return this.pmsImportService.commit(
       shipId,
       body?.drafts ?? [],
       body?.mode === 'history' ? 'history' : 'tasks',
-      { createMissingAssets: body?.createMissingAssets === true },
     );
   }
 

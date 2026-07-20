@@ -5187,17 +5187,6 @@
   color: var(--status-warn, #d98a00);
   cursor: help;
 }
-/* "New asset will be created" state — green, with a per-row veto checkbox. */
-.pms__import-create {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--status-ok);
-  cursor: pointer;
-}
-.pms__import-create input {
-  accent-color: var(--status-ok);
-}
 .pms__import-matchtype {
   color: var(--chat-text-subtle, #778);
   font-size: 11px;

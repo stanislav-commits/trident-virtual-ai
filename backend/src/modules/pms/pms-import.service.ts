@@ -9,7 +9,6 @@ import { Repository } from 'typeorm';
 import * as XLSX from 'xlsx';
 import pdfParse from 'pdf-parse';
 import { AssetEntity } from '../assets/entities/asset.entity';
-import { AssetsService } from '../assets/assets.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { LlmService } from '../../integrations/llm/llm.service';
 import { PmsService, UpsertPmsTaskInput } from './pms.service';
@@ -59,8 +58,6 @@ export interface PmsImportDraft {
   enableManualHours?: boolean;
   // resolved against the ship's asset register
   assetMatch?: { id: string; name: string; matchType: string } | null;
-  // no register match → commit may create the asset (user can veto per row)
-  createAsset?: boolean;
   // spare parts pulled out of the description's embedded table
   parts?: PmsImportPartDraft[];
   confidence?: 'high' | 'low';
@@ -72,7 +69,8 @@ export interface PmsImportPreview {
     total: number;
     matchedAssets: number;
     lowConfidence: number;
-    willCreateAssets: number;
+    /** Equipment names with no register match — add these manually, then re-import to link them. */
+    unmatchedAssets: number;
     partsTotal: number;
   };
   sourceChars: number;
@@ -83,7 +81,6 @@ export interface PmsImportCommitResult {
   created: number;
   /** Tasks matched by external_ref and updated in place (idempotent re-import). */
   updated: number;
-  assetsCreated: number;
   partsCreated: number;
   partsLinked: number;
 }
@@ -151,11 +148,6 @@ interface LlmTask {
   spares?: string | null;
 }
 
-/** How commit should treat drafts without a register match. */
-export interface PmsImportCommitOptions {
-  createMissingAssets?: boolean;
-}
-
 export type PmsImportMode = 'tasks' | 'history';
 
 @Injectable()
@@ -168,7 +160,6 @@ export class PmsImportService {
     private readonly llmService: LlmService,
     private readonly pmsService: PmsService,
     private readonly assetHoursService: AssetHoursService,
-    private readonly assetsService: AssetsService,
     private readonly inventoryService: InventoryService,
   ) {}
 
@@ -233,8 +224,9 @@ export class PmsImportService {
       .filter((d): d is PmsImportDraft => d != null);
 
     // Resolve every distinct equipment name against the register: fuzzy token
-    // scoring first, an LLM disambiguation pass for the uncertain middle, and
-    // createAsset=true for anything the register genuinely doesn't have.
+    // scoring first, then an LLM disambiguation pass for the uncertain middle.
+    // Anything the register genuinely doesn't have is left unmatched — the
+    // register is curated by hand, never auto-populated from an import.
     await this.resolveAssetMatches(drafts, assets, notes);
 
     // Hour-based tasks need their asset's running-hours source wired; surface
@@ -277,11 +269,11 @@ export class PmsImportService {
       total: drafts.length,
       matchedAssets: drafts.filter((d) => d.assetMatch).length,
       lowConfidence: drafts.filter((d) => d.confidence === 'low').length,
-      willCreateAssets: new Set(
+      unmatchedAssets: new Set(
         drafts
-          .filter((d) => !d.assetMatch && d.createAsset && d.assetHint)
-          // Key on hint+group (same as resolveAssetMatches/createMissingAssets)
-          // so two same-named components in different systems count as two.
+          .filter((d) => !d.assetMatch && d.assetHint)
+          // Key on hint+group (same as resolveAssetMatches) so two same-named
+          // components in different systems count as two, not one.
           .map((d) => this.assetGroupKey(d)),
       ).size,
       partsTotal: drafts.reduce((n, d) => n + (d.parts?.length ?? 0), 0),
@@ -493,7 +485,6 @@ export class PmsImportService {
     shipId: string,
     drafts: PmsImportDraft[],
     mode: PmsImportMode = 'tasks',
-    opts: PmsImportCommitOptions = {},
   ): Promise<PmsImportCommitResult> {
     if (!Array.isArray(drafts) || drafts.length === 0) {
       throw new BadRequestException('No tasks to import.');
@@ -503,19 +494,16 @@ export class PmsImportService {
       return {
         created,
         updated: 0,
-        assetsCreated: 0,
         partsCreated: 0,
         partsLinked: 0,
       };
     }
 
-    // 1) Create register assets for unmatched equipment (opt-in), so the
-    //    tasks below can link to them. One asset per distinct name.
-    const assetsCreated = opts.createMissingAssets
-      ? await this.createMissingAssets(shipId, drafts)
-      : 0;
+    // Unmatched equipment is NEVER auto-created here — the register is
+    // curated by hand. A draft with no assetMatch just imports unlinked;
+    // add the equipment to the register and re-import to link it.
 
-    // 2) Anchor each hours-interval task to its asset's CURRENT running hours,
+    // Anchor each hours-interval task to its asset's CURRENT running hours,
     //    so the hours countdown has a baseline from the moment it's imported.
     const matchedAssetIds = [
       ...new Set(
@@ -678,95 +666,7 @@ export class PmsImportService {
       }
     }
 
-    return { created, updated, assetsCreated, partsCreated, partsLinked };
-  }
-
-  /**
-   * Create one register asset per distinct unmatched equipment name (drafts
-   * flagged createAsset). Created assets live under the pseudo-SFI sub "PMS"
-   * so they're easy to review/re-house later; the source system goes to notes.
-   */
-  private async createMissingAssets(
-    shipId: string,
-    drafts: PmsImportDraft[],
-  ): Promise<number> {
-    const pending = drafts.filter(
-      (d) => !d.assetMatch && d.createAsset && d.assetHint,
-    );
-    if (pending.length === 0) return 0;
-
-    // Group by hint+group — the SAME key resolveAssetMatches used — so two
-    // same-named components in different systems ("Pump" in Bilge vs Fire)
-    // become two distinct assets, not one shared (mislinked) asset.
-    const byName = new Map<string, PmsImportDraft[]>();
-    for (const d of pending) {
-      const key = this.assetGroupKey(d);
-      const arr = byName.get(key) ?? [];
-      arr.push(d);
-      byName.set(key, arr);
-    }
-
-    // Re-imports must reuse assets created by a previous run, not duplicate
-    // them: look up existing register rows by normalized display name first.
-    const existingAssets: Array<{ id: string; display_name: string }> =
-      await this.assetRepository.manager.query(
-        `SELECT id, display_name FROM assets WHERE ship_id = $1`,
-        [shipId],
-      );
-    const existingByName = new Map(
-      existingAssets.map((a) => [this.normalizeAssetKey(a.display_name), a]),
-    );
-
-    let createdCount = 0;
-    for (const group of byName.values()) {
-      const sample = group[0];
-      const displayName = (sample.assetHint as string).slice(0, 255);
-      const already = existingByName.get(this.normalizeAssetKey(displayName));
-      if (already) {
-        const match = {
-          id: already.id,
-          name: already.display_name,
-          matchType: 'created',
-        };
-        for (const d of group) d.assetMatch = match;
-        continue;
-      }
-      try {
-        const { assetIdInternal } = await this.assetsService.nextAssetId(
-          shipId,
-          'PMS',
-        );
-        if (!assetIdInternal) {
-          this.logger.warn(
-            `Could not derive an asset id prefix for ship ${shipId}; skipping asset "${displayName}".`,
-          );
-          continue;
-        }
-        const asset = await this.assetsService.create(shipId, {
-          assetIdInternal,
-          displayName,
-          sfiSub: 'PMS',
-          sfiSubName: 'PMS import',
-          notes: sample.assetGroup
-            ? `Created by PMS import (system: ${sample.assetGroup})`
-            : 'Created by PMS import',
-        });
-        createdCount++;
-        const match = {
-          id: asset.id,
-          name: asset.displayName,
-          matchType: 'created',
-        };
-        for (const d of group) d.assetMatch = match;
-      } catch (error) {
-        this.logger.warn(
-          `Could not create asset "${displayName}": ${
-            error instanceof Error ? error.message : error
-          }`,
-        );
-      }
-    }
-    return createdCount;
+    return { created, updated, partsCreated, partsLinked };
   }
 
   /**
@@ -1215,8 +1115,8 @@ export class PmsImportService {
 
   /**
    * Dedup key for a draft's equipment: hint + system group. The SINGLE key
-   * used by asset matching, auto-create and the willCreateAssets count so a
-   * same-named component in two systems is never collapsed into one asset.
+   * used by asset matching and the unmatchedAssets count so a same-named
+   * component in two systems is never collapsed into one asset.
    */
   private assetGroupKey(d: PmsImportDraft): string {
     return this.normalizeAssetKey(`${d.assetHint ?? ''} ${d.assetGroup ?? ''}`);
@@ -1253,7 +1153,8 @@ export class PmsImportService {
    * Resolve every draft's assetHint against the register.
    * Tier 1: deterministic fuzzy token score (high ⇒ auto-link).
    * Tier 2: LLM picks among the top candidates for the uncertain middle.
-   * Unresolved hints get createAsset=true (commit may create them).
+   * Unresolved hints are left unmatched — add the equipment to the register
+   * by hand, then re-import the same file to link it (upsert by external_ref).
    */
   private async resolveAssetMatches(
     drafts: PmsImportDraft[],
@@ -1312,9 +1213,8 @@ export class PmsImportService {
           group: sample.assetGroup ?? null,
           candidates: scored.filter((c) => c.score >= 0.3),
         });
-      } else {
-        for (const d of group) d.createAsset = true;
       }
+      // else: no plausible candidate — assetMatch stays unset (unlinked).
     }
 
     // Tier 2 — LLM decides the uncertain middle in batches.
@@ -1332,19 +1232,15 @@ export class PmsImportService {
             const match = { id: c.id, name: c.name, matchType: 'ai' };
             for (const d of drafts_) d.assetMatch = match;
             resolvedByAi++;
-          } else {
-            for (const d of drafts_) d.createAsset = true;
           }
+          // else: no confident AI pick — assetMatch stays unset (unlinked).
         }
       }
       if (resolvedByAi > 0) {
         notes.push(`AI matched ${resolvedByAi} ambiguous equipment names to the register.`);
       }
-    } else {
-      for (const item of uncertain) {
-        for (const d of byHint.get(item.key) ?? []) d.createAsset = true;
-      }
     }
+    // else (no LLM configured): the uncertain-middle drafts stay unmatched too.
   }
 
   /** Ask the LLM which register candidate (if any) IS the named equipment. */

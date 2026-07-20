@@ -13,7 +13,6 @@ import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { IntegrationsModule } from '../../integrations/integrations.module';
 import { CrewModule } from '../crew/crew.module';
-import { AssetsModule } from '../assets/assets.module';
 import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
@@ -29,7 +28,6 @@ import { InventoryModule } from '../inventory/inventory.module';
     ]),
     IntegrationsModule,
     CrewModule,
-    AssetsModule,
     InventoryModule,
   ],
   controllers: [PmsController],

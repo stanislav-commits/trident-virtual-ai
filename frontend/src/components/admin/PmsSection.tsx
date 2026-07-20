@@ -664,14 +664,7 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
     if (!token || !shipId) return;
     setImportBusy(true);
     try {
-      // Create register assets for confirmed unmatched equipment (tasks mode).
-      const result = await commitPmsImport(
-        token,
-        shipId,
-        drafts,
-        importMode,
-        importMode === "tasks",
-      );
+      const result = await commitPmsImport(token, shipId, drafts, importMode);
       setImportPreview(null);
       const bits = [
         `Imported ${result.created} ${
@@ -680,8 +673,6 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
       ];
       if (result.updated > 0)
         bits.push(`${result.updated} updated by reference id`);
-      if (result.assetsCreated > 0)
-        bits.push(`${result.assetsCreated} new asset${result.assetsCreated === 1 ? "" : "s"}`);
       if (result.partsCreated > 0)
         bits.push(`${result.partsCreated} spare part${result.partsCreated === 1 ? "" : "s"} added to inventory`);
       setImportNote(`${bits.join(" · ")}.`);
@@ -1505,10 +1496,13 @@ export function ImportPreviewModal({
         <div className="pms__import-summary">
           <span>{includedCount} selected</span>
           <span>· {preview.counts.matchedAssets} linked to an asset</span>
-          {(preview.counts.willCreateAssets ?? 0) > 0 && (
-            <span className="pms__import-create">
-              · {preview.counts.willCreateAssets} new asset
-              {preview.counts.willCreateAssets === 1 ? "" : "s"} will be created
+          {(preview.counts.unmatchedAssets ?? 0) > 0 && (
+            <span
+              className="pms__import-warn"
+              title="Not in the register — add these manually, then re-import to link them"
+            >
+              · {preview.counts.unmatchedAssets} equipment name
+              {preview.counts.unmatchedAssets === 1 ? "" : "s"} not in the register
             </span>
           )}
           {(preview.counts.partsTotal ?? 0) > 0 && (
@@ -1626,26 +1620,10 @@ export function ImportPreviewModal({
                           </span>
                         )}
                       </span>
-                    ) : r.assetHint && r.createAsset !== false ? (
-                      <label
-                        className="pms__import-create"
-                        title={`Not in the register — a new asset will be created${
-                          r.assetGroup ? ` (system: ${r.assetGroup})` : ""
-                        }. Untick to leave the task unlinked.`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={r.createAsset === true}
-                          onChange={(e) =>
-                            patch(r._key, { createAsset: e.target.checked })
-                          }
-                        />
-                        + {r.assetHint}
-                      </label>
                     ) : r.assetHint ? (
                       <span
                         className="pms__import-warn"
-                        title="No matching asset in the register"
+                        title="Not in the register — add it manually, then re-import to link this task"
                       >
                         {r.assetHint} (unlinked)
                       </span>

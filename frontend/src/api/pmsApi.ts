@@ -101,7 +101,6 @@ export interface PmsImportDraft {
   assetHoursSource?: string | null;
   enableManualHours?: boolean;
   assetMatch?: { id: string; name: string; matchType: string } | null;
-  createAsset?: boolean;
   parts?: PmsImportPartDraft[];
   confidence?: "high" | "low";
 }
@@ -114,7 +113,8 @@ export interface PmsImportPreview {
     total: number;
     matchedAssets: number;
     lowConfidence: number;
-    willCreateAssets: number;
+    /** Equipment names with no register match — add these manually, then re-import to link them. */
+    unmatchedAssets: number;
     partsTotal: number;
   };
   sourceChars: number;
@@ -124,7 +124,6 @@ export interface PmsImportPreview {
 export interface PmsImportCommitResult {
   created: number;
   updated: number;
-  assetsCreated: number;
   partsCreated: number;
   partsLinked: number;
 }
@@ -152,13 +151,12 @@ export async function commitPmsImport(
   shipId: string,
   drafts: PmsImportDraft[],
   mode: PmsImportMode = "tasks",
-  createMissingAssets = false,
 ): Promise<PmsImportCommitResult> {
   const r = await fetchWithAuth(`ships/${shipId}/pms/import/commit`, {
     token,
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ drafts, mode, createMissingAssets }),
+    body: JSON.stringify({ drafts, mode }),
   });
   await ok(r, "Import tasks");
   return r.json();
