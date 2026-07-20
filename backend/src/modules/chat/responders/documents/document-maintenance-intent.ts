@@ -44,7 +44,13 @@ function hasExplicitNonRecordDocumentIntent(value: string): boolean {
 }
 
 function hasAdministrativeComplianceSignal(value: string): boolean {
-  return /\b(?:certificate|certificates|certification|approval|issuer|validity|valid until|valid|expires?|expiry|expiration|registration|permit|compliance|regulation|regulatory|survey|marpol|solas|sop|checklist|emergency procedure|class approval)\b/u.test(
+  // NOTE: sop / checklist / emergency procedure used to be in this list, but
+  // they are PROCEDURE signals — with the SMS knowledge base they overrode
+  // step_by_step_procedure asks ("emergency, which forms do I fill in?") to
+  // COMPLIANCE_OR_CERTIFICATE, whose stricter evidence assessment killed the
+  // procedure chunks → silent web fallback. Certificate STATUS questions now
+  // route to the dedicated `compliance` responder anyway.
+  return /\b(?:certificate|certificates|certification|approval|issuer|validity|valid until|valid|expires?|expiry|expiration|registration|permit|compliance|regulation|regulatory|survey|marpol|solas|class approval)\b/u.test(
     value,
   );
 }

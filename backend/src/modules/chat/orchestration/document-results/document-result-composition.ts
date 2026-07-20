@@ -35,11 +35,19 @@ export function filterContextReferencesForAnswer(
 ): unknown[] {
   const citedRanks = extractCitedEvidenceRanks(content);
 
-  if (!citedRanks.size) {
-    return [];
-  }
-
   return contextReferences.filter((reference) => {
+    // Controlled-form references (SMS↔forms) are cited by CODE in the answer
+    // text ("fill in EM 002 01 Emergency Report"), not by [N] rank — keep
+    // them whenever the final composed reply actually names their code.
+    const refCode = (reference as { refCode?: unknown } | null)?.refCode;
+    if (typeof refCode === 'string' && refCode) {
+      return content.includes(refCode);
+    }
+
+    if (!citedRanks.size) {
+      return false;
+    }
+
     const rank = getDocumentReferenceRank(reference);
 
     return rank !== null && citedRanks.has(rank);
