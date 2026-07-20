@@ -41,6 +41,7 @@ import {
 } from "../../../api/inventoryApi";
 import { InventorySuggestModal } from "./InventorySuggestModal";
 import type { PmsTaskDto } from "../../../api/pmsApi";
+import { deriveDue, deriveHours } from "../pms/taskTypes";
 import { AssetHoursPanel } from "./AssetHoursPanel";
 import { StatusBadge } from "../StatusBadge";
 import { BindMetricPicker } from "./BindMetricPicker";
@@ -933,6 +934,22 @@ export function AssetDrawer({
                 ? "DUE SOON"
                 : "OK";
           const isReminder = t.source === "hours_reminder";
+          // Dual-interval tasks (calendar AND hours) are due on WHICHEVER
+          // comes first — show both sides, not just the winning one, so it's
+          // clear when e.g. a calendar leg is overdue while hours still have
+          // slack (or vice versa). Falls back to the single-dimension `due`.
+          const calendarText =
+            !isReminder && t.dueDate ? deriveDue(t.dueDate).due : null;
+          const hoursText = isReminder
+            ? null
+            : t.currentHours != null && t.dueHours != null
+              ? deriveHours(t.currentHours, t.dueHours).due
+              : t.intervalHours != null
+                ? "awaiting metric"
+                : null;
+          const dueLine = isReminder
+            ? `${t.due} · monthly reading`
+            : [calendarText, hoursText].filter(Boolean).join(" · ") || t.due;
           return (
             <div key={t.id} className="assets-section__pms-row">
               <div className="assets-section__pms-main">
@@ -940,12 +957,7 @@ export function AssetDrawer({
                   {isReminder ? "🕐" : "🔧"} {t.task}
                 </span>
                 <span className="assets-section__pms-due">
-                  {t.due}
-                  {isReminder
-                    ? " · monthly reading"
-                    : t.intervalHours != null
-                      ? ` · every ${t.intervalHours} h`
-                      : ""}
+                  {dueLine}
                   {t.assigneeName ? ` · ${t.assigneeName}` : ""}
                 </span>
               </div>
