@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { formatError } from '../../../common/utils/error.utils';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RagService } from '../../../integrations/rag/rag.service';
@@ -26,6 +28,8 @@ import {
 
 @Injectable()
 export class DocumentsRetrievalService {
+  private readonly logger = new Logger(DocumentsRetrievalService.name);
+
   constructor(
     @InjectRepository(ShipEntity)
     private readonly shipsRepository: Repository<ShipEntity>,
@@ -143,18 +147,12 @@ export class DocumentsRetrievalService {
       });
     }
 
-    const ragflowResponse = await this.ragService.retrieveChunks({
-      question: normalizedQuestion,
+    const ragflowResponse = await this.retrieveChunksDroppingDeadDatasets(
+      normalizedQuestion,
       datasetIds,
-      documentIds: retrievalDocuments
-        .map((document) => document.ragflowDocumentId)
-        .filter((id): id is string => Boolean(id)),
-      page: 1,
-      pageSize: context.candidateK,
-      topK: RAGFLOW_RETRIEVAL_TOP_K,
-      vectorSimilarityWeight: RAGFLOW_VECTOR_SIMILARITY_WEIGHT,
-      highlight: true,
-    });
+      retrievalDocuments,
+      context.candidateK,
+    );
     const enrichedCandidates = this.reranker.enrichCandidates(
       ragflowResponse.chunks ?? [],
       this.filterBuilder.indexByRagflowDocumentId(usableDocuments),
@@ -210,6 +208,52 @@ export class DocumentsRetrievalService {
       evidenceQuality,
       results,
     });
+  }
+
+  /**
+   * RAGFlow fails the WHOLE retrieval when ANY dataset in the list is not
+   * owned by the current API key ("You don't own the dataset <id>" — e.g. a
+   * dataset created under a rotated key). One stale dataset must not kill
+   * ship-document answers: drop the dataset RAGFlow rejects (and its
+   * documents) and retry with the rest.
+   */
+  private async retrieveChunksDroppingDeadDatasets(
+    question: string,
+    initialDatasetIds: string[],
+    initialDocuments: { ragflowDocumentId: string | null; ragflowDatasetId: string | null }[],
+    candidateK: number,
+  ) {
+    let datasetIds = [...initialDatasetIds];
+    let documents = initialDocuments;
+    for (;;) {
+      try {
+        return await this.ragService.retrieveChunks({
+          question,
+          datasetIds,
+          documentIds: documents
+            .map((document) => document.ragflowDocumentId)
+            .filter((id): id is string => Boolean(id)),
+          page: 1,
+          pageSize: candidateK,
+          topK: RAGFLOW_RETRIEVAL_TOP_K,
+          vectorSimilarityWeight: RAGFLOW_VECTOR_SIMILARITY_WEIGHT,
+          highlight: true,
+        });
+      } catch (error) {
+        const message = formatError(error);
+        const dead = /don'?t own the dataset\s*([0-9a-f-]+)/i.exec(message)?.[1];
+        if (!dead || !datasetIds.includes(dead) || datasetIds.length <= 1) {
+          throw error;
+        }
+        this.logger.warn(
+          `RAGFlow rejected dataset ${dead} (not owned by the current key) — retrying retrieval without it.`,
+        );
+        datasetIds = datasetIds.filter((id) => id !== dead);
+        documents = documents.filter(
+          (document) => document.ragflowDatasetId !== dead,
+        );
+      }
+    }
   }
 
   /**
