@@ -147,16 +147,34 @@ export class LlmService {
       return null;
     }
 
-    const result = await this.createToolCallChatCompletionDetailed({
-      messages: [
-        { role: 'system', content: input.systemPrompt },
-        { role: 'user', content: input.userPrompt },
-      ],
-      tools: [],
-      temperature: input.temperature,
-      maxTokens: input.maxTokens,
-      model,
-    });
+    const complete = (temperature: number | undefined) =>
+      this.createToolCallChatCompletionDetailed({
+        messages: [
+          { role: 'system', content: input.systemPrompt },
+          { role: 'user', content: input.userPrompt },
+        ],
+        tools: [],
+        temperature,
+        maxTokens: input.maxTokens,
+        model,
+      });
+
+    let result = await complete(input.temperature);
+
+    // Newer Claude families (Opus 4.8+, Sonnet 5, Fable/Mythos) reject the
+    // temperature field with a 400. Answers must stay on the main model, so
+    // retry once without it instead of degrading to the sub-model.
+    if (
+      !result.ok &&
+      result.kind === 'bad_request' &&
+      input.temperature !== undefined &&
+      /temperature/i.test(result.error)
+    ) {
+      this.logger.warn(
+        `Main-model (Claude) rejected temperature for "${model}" — retrying without it.`,
+      );
+      result = await complete(undefined);
+    }
 
     if (result.ok) {
       return result.result.content ?? null;
