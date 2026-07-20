@@ -267,6 +267,12 @@ export class PmsService {
     // keeping completionNotes, so a later completion with no note must clear
     // the previous cycle's note rather than keep mislabelling it as latest.
     task.completionNotes = input?.notes?.trim() || null;
+    // Completing the task starts a fresh cycle — drop any postpone metadata so
+    // the count/reason don't leak into the next occurrence.
+    task.postponeReason = null;
+    task.postponedByName = null;
+    task.postponedAt = null;
+    task.postponeCount = 0;
     if (input?.doneAtHours != null) {
       task.lastDoneHours = String(input.doneAtHours);
       if (task.intervalHours != null) {
@@ -305,6 +311,78 @@ export class PmsService {
     } else {
       task.completedAt = new Date();
     }
+    await this.taskRepository.save(task);
+    return this.reload(id);
+  }
+
+  /**
+   * Defer a task's CALENDAR due date by an interval, recording who/why/when.
+   * New due = (later of today and the current due) + interval, so "postpone by
+   * a month" reads the same whether the task is overdue or not-yet-due. Only
+   * the calendar leg moves — a task also overdue by running hours stays so.
+   */
+  async postpone(
+    shipId: string,
+    id: string,
+    input: {
+      intervalValue: number;
+      intervalUnit: string;
+      reason: string;
+    },
+    user?: AuthenticatedUser,
+    viewerDepartment?: string | null,
+  ) {
+    const task = await this.taskRepository.findOne({ where: { id, shipId } });
+    if (!task) throw new NotFoundException('Task not found');
+    // Crew may only act on tasks they can SEE — mirror the read path's
+    // department gating so the write scope never exceeds the read scope.
+    if (
+      viewerDepartment &&
+      task.department &&
+      task.department !== viewerDepartment
+    ) {
+      throw new NotFoundException('Task not found');
+    }
+    if (task.completedAt) {
+      throw new BadRequestException('Cannot postpone a completed task.');
+    }
+    // Postpone moves the CALENDAR leg only — a task with no due date (e.g.
+    // running-hours-only) has nothing to defer; refuse rather than fabricate one.
+    if (!task.dueDate) {
+      throw new BadRequestException(
+        'This task has no calendar due date to postpone.',
+      );
+    }
+    const value = Math.trunc(Number(input?.intervalValue));
+    if (!Number.isFinite(value) || value <= 0 || value > 1200) {
+      throw new BadRequestException(
+        'Postpone interval must be a positive number (max 1200).',
+      );
+    }
+    const unit = ['days', 'weeks', 'months', 'years'].includes(input?.intervalUnit)
+      ? input.intervalUnit
+      : 'months';
+    const reason = String(input?.reason ?? '').trim();
+    if (!reason) {
+      throw new BadRequestException('A reason is required to postpone a task.');
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    // Anchor from whichever is later so an overdue task gets the full interval
+    // from now, while a future-dated one just slides out by the interval.
+    const anchor = task.dueDate > today ? task.dueDate : today;
+    task.dueDate = addInterval(anchor, value, unit);
+    task.postponeReason = reason.slice(0, 1000);
+    task.postponedAt = new Date();
+    task.postponeCount = (task.postponeCount ?? 0) + 1;
+
+    if (user) {
+      const account = await this.userRepository.findOne({
+        where: { id: user.id },
+      });
+      task.postponedByName = user.name ?? account?.name ?? user.userId;
+    }
+
     await this.taskRepository.save(task);
     return this.reload(id);
   }
@@ -564,6 +642,10 @@ export class PmsService {
       completedByName: task.completedByName ?? null,
       completedByPosition: task.completedByPosition ?? null,
       completionNotes: task.completionNotes ?? null,
+      postponeReason: task.postponeReason ?? null,
+      postponedByName: task.postponedByName ?? null,
+      postponedAt: task.postponedAt ? task.postponedAt.toISOString() : null,
+      postponeCount: task.postponeCount ?? 0,
       assets: (task.assets ?? []).map((a) => ({
         id: a.id,
         name: a.displayName,

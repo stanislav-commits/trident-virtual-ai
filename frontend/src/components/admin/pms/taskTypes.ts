@@ -87,6 +87,11 @@ export interface PmsTask {
   completedByName: string | null;
   completedByPosition: string | null;
   completionNotes: string | null;
+  // Postpone (calendar deferral with a recorded reason).
+  postponeReason: string | null;
+  postponedByName: string | null;
+  postponedAt: string | null;
+  postponeCount: number;
 }
 
 export const STATUS_LABEL: Record<PmsStatus, string> = {

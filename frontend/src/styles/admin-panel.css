@@ -5474,6 +5474,40 @@
 .pms-drawer__actions-gap {
   flex: 1;
 }
+/* Inline postpone form, expands above the footer actions. */
+.pms-drawer__postpone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+}
+.pms-drawer__postpone-head {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--chat-text-muted);
+}
+.pms-drawer__postpone-row {
+  display: flex;
+  gap: 8px;
+}
+.pms-drawer__postpone-num {
+  width: 80px;
+  flex: 0 0 auto;
+}
+.pms-drawer__postpone-reason {
+  width: 100%;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.pms-drawer__postpone-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .admin-panel__modal-icon {
   width: 44px;
   height: 44px;

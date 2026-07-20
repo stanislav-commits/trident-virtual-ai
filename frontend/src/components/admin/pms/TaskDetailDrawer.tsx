@@ -1,9 +1,10 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { TrashIcon } from "../AdminPanelIcons";
 import type { InventoryItem } from "../../../api/inventoryApi";
 import {
   STATUS_LABEL,
+  INTERVAL_UNITS,
   type PmsTask,
   deriveDue,
   deriveHours,
@@ -11,6 +12,12 @@ import {
   intervalLabel,
   nextHoursMark,
 } from "./taskTypes";
+
+export interface PostponeInput {
+  intervalValue: number;
+  intervalUnit: string;
+  reason: string;
+}
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -34,6 +41,7 @@ export function TaskDetailDrawer({
   onEdit,
   onPerform,
   onReopen,
+  onPostpone,
   onDelete,
 }: {
   task: PmsTask;
@@ -43,9 +51,26 @@ export function TaskDetailDrawer({
   onEdit: () => void;
   onPerform: () => void;
   onReopen: () => void;
+  onPostpone: (input: PostponeInput) => void;
   onDelete: () => void;
 }) {
   const planned = task.planning === "planned";
+  const [postponeOpen, setPostponeOpen] = useState(false);
+  const [pValue, setPValue] = useState("1");
+  const [pUnit, setPUnit] = useState("months");
+  const [pReason, setPReason] = useState("");
+  const canPostpone = Number(pValue) > 0 && pReason.trim().length > 0;
+  const submitPostpone = () => {
+    if (!canPostpone) return;
+    onPostpone({
+      intervalValue: Math.trunc(Number(pValue)),
+      intervalUnit: pUnit,
+      reason: pReason.trim(),
+    });
+    setPostponeOpen(false);
+    setPReason("");
+    setPValue("1");
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -251,6 +276,30 @@ export function TaskDetailDrawer({
             )}
           </section>
 
+          {/* Postpone trail — shows the current occurrence has been deferred,
+              why, by whom, and how many times (a chronic-postpone red flag). */}
+          {task.postponeCount > 0 && (
+            <section className="pms-drawer__section">
+              <div className="pms-drawer__section-head">
+                Postponed
+                <span className="pms-drawer__count">
+                  {task.postponeCount}×
+                </span>
+              </div>
+              {task.postponeReason && (
+                <div className="pms-drawer__desc">{task.postponeReason}</div>
+              )}
+              <div className="pms-drawer__muted" style={{ marginTop: 4 }}>
+                {[
+                  task.postponedByName,
+                  task.postponedAt ? task.postponedAt.slice(0, 10) : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            </section>
+          )}
+
           {/* Note left by whoever performed it — recurring tasks keep this
               even though completedAt itself resets to null on roll-forward. */}
           {task.completionNotes && (
@@ -325,6 +374,57 @@ export function TaskDetailDrawer({
           </section>
         </div>
 
+        {/* Postpone form — expands above the footer when Postpone is clicked */}
+        {postponeOpen && !task.completedAt && task.dueDate && (
+          <div className="pms-drawer__postpone">
+            <div className="pms-drawer__postpone-head">Postpone due date by</div>
+            <div className="pms-drawer__postpone-row">
+              <input
+                type="number"
+                min={1}
+                className="admin-panel__input pms-drawer__postpone-num"
+                value={pValue}
+                onChange={(e) => setPValue(e.target.value)}
+              />
+              <select
+                className="admin-panel__input"
+                value={pUnit}
+                onChange={(e) => setPUnit(e.target.value)}
+              >
+                {INTERVAL_UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <textarea
+              className="admin-panel__input pms-drawer__postpone-reason"
+              value={pReason}
+              onChange={(e) => setPReason(e.target.value)}
+              rows={2}
+              placeholder="Why is this being postponed? (required)"
+            />
+            <div className="pms-drawer__postpone-actions">
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--ghost"
+                onClick={() => setPostponeOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="admin-panel__btn admin-panel__btn--primary"
+                disabled={!canPostpone}
+                onClick={submitPostpone}
+              >
+                Postpone
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Footer actions */}
         <div className="pms-drawer__actions">
           <button
@@ -335,6 +435,15 @@ export function TaskDetailDrawer({
             <TrashIcon /> Delete
           </button>
           <span className="pms-drawer__actions-gap" />
+          {!task.completedAt && task.dueDate && (
+            <button
+              type="button"
+              className="admin-panel__btn admin-panel__btn--ghost"
+              onClick={() => setPostponeOpen((o) => !o)}
+            >
+              Postpone
+            </button>
+          )}
           <button
             type="button"
             className="admin-panel__btn admin-panel__btn--ghost"

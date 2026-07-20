@@ -39,6 +39,10 @@ export interface PmsTaskDto {
   completedByName: string | null;
   completedByPosition: string | null;
   completionNotes: string | null;
+  postponeReason: string | null;
+  postponedByName: string | null;
+  postponedAt: string | null;
+  postponeCount: number;
   assets: { id: string; name: string }[];
 }
 
@@ -249,6 +253,22 @@ export async function completePmsTask(
     body: JSON.stringify(input ?? {}),
   });
   await ok(r, "Complete task");
+  return r.json();
+}
+
+export async function postponePmsTask(
+  token: string,
+  shipId: string,
+  id: string,
+  input: { intervalValue: number; intervalUnit: string; reason: string },
+): Promise<PmsTaskDto> {
+  const r = await fetchWithAuth(`ships/${shipId}/pms/tasks/${id}/postpone`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  await ok(r, "Postpone task");
   return r.json();
 }
 

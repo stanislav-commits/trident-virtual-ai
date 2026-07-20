@@ -134,6 +134,22 @@ export class PmsTaskEntity {
   @Column({ name: 'source_doc_id', type: 'uuid', nullable: true })
   sourceDocId!: string | null;
 
+  // ── Postpone (calendar deferral with a recorded reason) ──
+  /** Why the task was last postponed (required by the UI when postponing). */
+  @Column({ name: 'postpone_reason', type: 'text', nullable: true })
+  postponeReason!: string | null;
+
+  /** Snapshot of who postponed it. */
+  @Column({ name: 'postponed_by_name', type: 'varchar', length: 120, nullable: true })
+  postponedByName!: string | null;
+
+  @Column({ name: 'postponed_at', type: 'timestamptz', nullable: true })
+  postponedAt!: Date | null;
+
+  /** How many times THIS occurrence has been pushed; reset on completion. */
+  @Column({ name: 'postpone_count', type: 'integer', default: 0 })
+  postponeCount!: number;
+
   @ManyToMany(() => AssetEntity, { cascade: false })
   @JoinTable({
     name: 'pms_task_assets',

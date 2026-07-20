@@ -17,6 +17,7 @@ import {
   createPmsTask,
   updatePmsTask,
   completePmsTask,
+  postponePmsTask,
   deletePmsTask,
   previewPmsImport,
   commitPmsImport,
@@ -627,6 +628,20 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
       .catch(() => undefined);
   };
 
+  const postponeTask = (
+    id: string,
+    input: { intervalValue: number; intervalUnit: string; reason: string },
+  ) => {
+    if (!token || !shipId) return;
+    void postponePmsTask(token, shipId, id, input)
+      .then(refresh)
+      .catch((e) =>
+        setImportNote(
+          e instanceof Error ? e.message : "Failed to postpone task",
+        ),
+      );
+  };
+
   const deleteTask = (id: string) => {
     if (!token || !shipId) return;
     setDetailId((d) => (d === id ? null : d));
@@ -1061,6 +1076,7 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
           onEdit={() => startEdit(detailTask)}
           onPerform={() => performTask(detailTask.id)}
           onReopen={() => reopenTask(detailTask.id)}
+          onPostpone={(input) => postponeTask(detailTask.id, input)}
           onDelete={() => deleteTask(detailTask.id)}
         />
       )}

@@ -7,6 +7,7 @@ import {
 import {
   listPmsTasks,
   completePmsTask,
+  postponePmsTask,
   addAssetHoursReading,
   type PmsTaskDto,
   type PmsStatus,
@@ -294,6 +295,23 @@ export function PmsSidePanel({ token, shipId, closing, noAnim, onAskAi }: PmsSid
     }
   };
 
+  const postpone = async (
+    t: PmsTaskDto,
+    input: { intervalValue: number; intervalUnit: string; reason: string },
+  ) => {
+    if (!token || !shipId) return;
+    setBusy(true);
+    try {
+      await postponePmsTask(token, shipId, t.id, input);
+      setSelId(null);
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to postpone");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const logHours = async (t: PmsTaskDto, hours: number) => {
     if (!token || !shipId) return;
     const assetId = t.assets[0]?.id;
@@ -329,6 +347,7 @@ export function PmsSidePanel({ token, shipId, closing, noAnim, onAskAi }: PmsSid
           busy={busy}
           onBack={() => setSelId(null)}
           onDone={(notes) => void markDone(selected, notes)}
+          onPostpone={(input) => void postpone(selected, input)}
           onLogHours={(h) => void logHours(selected, h)}
           onAskAi={() => onAskAi(selected)}
         />
@@ -622,6 +641,7 @@ function Detail({
   busy,
   onBack,
   onDone,
+  onPostpone,
   onLogHours,
   onAskAi,
 }: {
@@ -631,11 +651,21 @@ function Detail({
   busy: boolean;
   onBack: () => void;
   onDone: (notes: string) => void;
+  onPostpone: (input: {
+    intervalValue: number;
+    intervalUnit: string;
+    reason: string;
+  }) => void;
   onLogHours: (hours: number) => void;
   onAskAi: () => void;
 }) {
   const [reading, setReading] = useState("");
   const [notes, setNotes] = useState("");
+  const [postponeOpen, setPostponeOpen] = useState(false);
+  const [pValue, setPValue] = useState("1");
+  const [pUnit, setPUnit] = useState("months");
+  const [pReason, setPReason] = useState("");
+  const canPostpone = Number(pValue) > 0 && pReason.trim().length > 0;
   const isHoursReminder = task.source === "hours_reminder";
   const assetNames = task.assets.map((a) => a.name).filter(Boolean).join(" · ");
   const sc = statusColor(task.status);
@@ -729,6 +759,22 @@ function Detail({
           {task.lastDone && <Row label="Last done" value={task.lastDone} />}
           {task.source === "compliance" && <Row label="Source" value="Compliance certificate" />}
         </div>
+
+        {task.postponeCount > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={sectStyle}>Postponed {task.postponeCount}×</div>
+            {task.postponeReason && (
+              <div style={{ fontFamily: SANS, fontSize: 13, color: T.text, lineHeight: 1.5 }}>
+                {task.postponeReason}
+              </div>
+            )}
+            {(task.postponedByName || task.postponedAt) && (
+              <div style={{ fontFamily: SANS, fontSize: 12, color: T.faint, marginTop: 3 }}>
+                {[task.postponedByName, task.postponedAt?.slice(0, 10)].filter(Boolean).join(" · ")}
+              </div>
+            )}
+          </div>
+        )}
 
         {task.completionNotes && (
           <div style={{ marginBottom: 18 }}>
@@ -841,14 +887,71 @@ function Detail({
               >
                 {busy ? "Saving…" : "Mark done"}
               </button>
-              <button
-                type="button"
-                onClick={onBack}
-                style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, fontFamily: SANS, fontSize: 14, borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}
-              >
-                Back
-              </button>
+              {task.dueDate && (
+                <button
+                  type="button"
+                  onClick={() => setPostponeOpen((o) => !o)}
+                  style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, fontFamily: SANS, fontSize: 14, borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}
+                >
+                  Postpone
+                </button>
+              )}
             </div>
+
+            {postponeOpen && task.dueDate && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.line}` }}>
+                <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase", color: T.dim, marginBottom: 7 }}>
+                  Postpone due date by
+                </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <input
+                    type="number"
+                    min={1}
+                    value={pValue}
+                    onChange={(e) => setPValue(e.target.value)}
+                    style={{ width: 70, background: T.panel, border: `1px solid ${T.line}`, color: T.text, fontFamily: MONO, fontSize: 14, borderRadius: 8, padding: "9px 10px", boxSizing: "border-box" }}
+                  />
+                  <select
+                    value={pUnit}
+                    onChange={(e) => setPUnit(e.target.value)}
+                    style={{ flex: 1, background: T.panel, border: `1px solid ${T.line}`, color: T.text, fontFamily: SANS, fontSize: 14, borderRadius: 8, padding: "9px 10px" }}
+                  >
+                    {["days", "weeks", "months", "years"].map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                </div>
+                <textarea
+                  value={pReason}
+                  onChange={(e) => setPReason(e.target.value)}
+                  placeholder="Why is this being postponed? (required)"
+                  rows={2}
+                  style={{ width: "100%", resize: "vertical", background: T.panel, border: `1px solid ${T.line}`, color: T.text, fontFamily: SANS, fontSize: 13, borderRadius: 8, padding: "8px 10px", marginBottom: 8, boxSizing: "border-box" }}
+                />
+                <button
+                  type="button"
+                  disabled={busy || !canPostpone}
+                  onClick={() =>
+                    onPostpone({
+                      intervalValue: Math.trunc(Number(pValue)),
+                      intervalUnit: pUnit,
+                      reason: pReason.trim(),
+                    })
+                  }
+                  style={{ width: "100%", background: T.action, border: 0, color: "#fff", fontFamily: SANS, fontSize: 14, fontWeight: 600, borderRadius: 8, padding: "10px 0", cursor: "pointer", opacity: busy || !canPostpone ? 0.5 : 1 }}
+                >
+                  {busy ? "Saving…" : "Confirm postpone"}
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={onBack}
+              style={{ marginTop: 8, width: "100%", background: "transparent", border: `1px solid ${T.line}`, color: T.dim, fontFamily: SANS, fontSize: 13, borderRadius: 8, padding: "8px 0", cursor: "pointer" }}
+            >
+              Back
+            </button>
           </>
         )}
       </div>

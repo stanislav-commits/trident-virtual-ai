@@ -118,6 +118,30 @@ export class PmsController {
     return this.pmsService.complete(shipId, id, body, user);
   }
 
+  /** Defer a task's due date with a recorded reason. Open to crew, not just
+   *  admins — deferring a job you can see is a normal operational action.
+   *  Gated to the caller's department, exactly like the read endpoints. */
+  @Post('tasks/:id/postpone')
+  async postpone(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body()
+    body: {
+      intervalValue: number;
+      intervalUnit: string;
+      reason: string;
+    },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.pmsService.postpone(
+      shipId,
+      id,
+      body,
+      user,
+      await this.viewerDept(shipId, user),
+    );
+  }
+
   @Get('assets/:assetId/hours')
   hoursConfig(
     @Param('shipId', ParseUUIDPipe) shipId: string,
