@@ -99,6 +99,14 @@ export function AssetHoursPanel({
     <div className="asset-hours">
       <div className="asset-hours__head">
         <span className="asset-hours__title">Running hours</span>
+        {cfg.autoDerived && (
+          <span
+            className="asset-hours__auto"
+            title="No explicit hours source set — this metric is already bound to this asset in the register and looks like an hour counter, so it's used automatically. Pick a source below to override."
+          >
+            auto
+          </span>
+        )}
         <span className="asset-hours__current">
           {cfg.currentHours != null ? `${cfg.currentHours} h` : "—"}
         </span>

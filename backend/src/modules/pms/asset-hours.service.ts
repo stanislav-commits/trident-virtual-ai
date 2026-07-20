@@ -1,7 +1,7 @@
 import { formatError } from '../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { InfluxService } from '../../integrations/influx/influx.service';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
@@ -19,29 +19,15 @@ export interface SetHoursConfigInput {
   runningThreshold?: number | null;
 }
 
-export interface BulkHoursConfigItem extends SetHoursConfigInput {
-  assetId: string;
-}
-
-export interface HoursMetricOption {
-  id: string;
-  key: string;
-  label: string; // measurement.field
-  unit: string | null;
-  kind: string | null;
-  boundAssetId: string | null;
-}
-
-export interface HoursOverviewAsset {
-  assetId: string;
-  name: string;
-  internalId: string | null;
-  hoursTaskCount: number;
-  sampleTasks: string[];
+interface EffectiveHoursConfig {
   source: string;
   metricCatalogId: string | null;
-  /** Candidate hour-counter metrics, best first (ids into metricPool). */
-  suggestions: { metricId: string; score: number }[];
+  baselineHours: number | null;
+  baselineAt: Date | null;
+  runningThreshold: number;
+  /** True when this config was NOT explicitly set — it was derived from an
+   *  hours-shaped metric already bound to this asset in the register. */
+  autoDerived: boolean;
 }
 
 @Injectable()
@@ -65,21 +51,20 @@ export class AssetHoursService {
   ) {}
 
   async getConfig(shipId: string, assetId: string) {
-    const cfg = await this.configRepository.findOne({
-      where: { assetId, shipId },
-    });
+    const effective = await this.resolveEffective(shipId, assetId);
     const readings = await this.readingRepository.find({
       where: { assetId },
       order: { readOn: 'DESC' },
       take: 12,
     });
     return {
-      source: cfg?.source ?? 'none',
-      metricCatalogId: cfg?.metricCatalogId ?? null,
-      baselineHours: cfg?.baselineHours != null ? Number(cfg.baselineHours) : null,
-      baselineAt: cfg?.baselineAt ? cfg.baselineAt.toISOString() : null,
-      runningThreshold: cfg ? Number(cfg.runningThreshold) : 0,
-      currentHours: await this.currentHours(shipId, assetId),
+      source: effective.source,
+      metricCatalogId: effective.metricCatalogId,
+      baselineHours: effective.baselineHours,
+      baselineAt: effective.baselineAt ? effective.baselineAt.toISOString() : null,
+      runningThreshold: effective.runningThreshold,
+      autoDerived: effective.autoDerived,
+      currentHours: await this.currentHoursFor(effective, shipId, assetId),
       readings: readings.map((r) => ({
         id: r.id,
         hours: Number(r.hours),
@@ -132,169 +117,87 @@ export class AssetHoursService {
     return this.getConfig(shipId, assetId);
   }
 
-  // ── bulk binding (phase C) ──
-
   /**
-   * Everything the bulk hours-binding UX needs in one call: the assets that
-   * have an hours-legged task (plus any already-configured assets), their
-   * current config, and scored hour-counter metric candidates per asset.
-   * Deliberately does NOT resolve currentHours (one Influx query per asset) —
-   * the bulk apply returns live readings as its verification step instead.
+   * Resolve the config that actually drives currentHours: an explicit
+   * asset_hours_config row if one exists with a real source, otherwise an
+   * hours-shaped metric already bound to this asset in the register
+   * (ship_metric_catalog.bound_asset_id) — so binding a metric to an asset
+   * once, in the register, is enough; no separate PMS-side step is needed.
+   * Only `metric_direct` is auto-derivable: `metric_derived` needs a
+   * human-entered baseline that can't be invented, and `manual` is
+   * inherently a human process.
    */
-  async hoursOverview(shipId: string) {
-    // Assets with an ACTIVE hours-legged task.
-    const taskRows: {
-      asset_id: string;
-      task: string;
-    }[] = await this.taskRepository
-      .createQueryBuilder('t')
-      .innerJoin('pms_task_assets', 'l', 'l.task_id = t.id')
-      .select('l.asset_id', 'asset_id')
-      .addSelect('t.task', 'task')
-      .where('t.ship_id = :shipId', { shipId })
-      .andWhere('t.interval_hours IS NOT NULL')
-      .andWhere('t.completed_at IS NULL')
-      .getRawMany();
-
-    const tasksByAsset = new Map<string, string[]>();
-    for (const row of taskRows) {
-      const list = tasksByAsset.get(row.asset_id) ?? [];
-      list.push(row.task);
-      tasksByAsset.set(row.asset_id, list);
-    }
-
-    const configs = await this.configRepository.find({ where: { shipId } });
-    const configByAsset = new Map(configs.map((c) => [c.assetId, c]));
-
-    // Row set = assets with hours tasks ∪ assets already configured.
-    const assetIds = new Set<string>(tasksByAsset.keys());
-    for (const c of configs) {
-      if (c.source !== 'none') assetIds.add(c.assetId);
-    }
-    if (assetIds.size === 0) {
-      return { assets: [], metricPool: [] };
-    }
-
-    const assets = await this.assetRepository.find({
-      where: { id: In([...assetIds]) },
+  private async resolveEffective(
+    shipId: string,
+    assetId: string,
+  ): Promise<EffectiveHoursConfig> {
+    const cfg = await this.configRepository.findOne({
+      where: { assetId, shipId },
     });
+    if (cfg && cfg.source !== 'none') {
+      return {
+        source: cfg.source,
+        metricCatalogId: cfg.metricCatalogId,
+        baselineHours: cfg.baselineHours != null ? Number(cfg.baselineHours) : null,
+        baselineAt: cfg.baselineAt,
+        runningThreshold: Number(cfg.runningThreshold),
+        autoDerived: false,
+      };
+    }
 
-    // Candidate pool: enabled metrics that look like hour counters, plus any
-    // metric already bound to one of these assets (strongest signal of all).
-    const catalog = await this.catalogRepository.find({
-      where: { shipId, isEnabled: true },
-    });
-    const pool = catalog.filter(
-      (m) =>
-        this.isHoursMetric(m) ||
-        (m.boundAssetId != null && assetIds.has(m.boundAssetId)),
-    );
+    const derived = await this.autoDerivedMetric(shipId, assetId);
+    if (derived) {
+      return {
+        source: 'metric_direct',
+        metricCatalogId: derived.id,
+        baselineHours: null,
+        baselineAt: null,
+        runningThreshold: 0,
+        autoDerived: true,
+      };
+    }
 
-    const metricPool: HoursMetricOption[] = pool.map((m) => ({
-      id: m.id,
-      key: m.key,
-      label: `${m.key.split('::')[1] ?? m.bucket}.${m.field}`,
-      unit: m.aiUnit,
-      kind: m.aiKind,
-      boundAssetId: m.boundAssetId,
-    }));
-
-    const overviewAssets: HoursOverviewAsset[] = assets
-      .map((asset) => {
-        const cfg = configByAsset.get(asset.id);
-        const titles = tasksByAsset.get(asset.id) ?? [];
-        return {
-          assetId: asset.id,
-          name: asset.displayName,
-          internalId: asset.assetIdInternal ?? null,
-          hoursTaskCount: titles.length,
-          sampleTasks: titles.slice(0, 3),
-          source: cfg?.source ?? 'none',
-          metricCatalogId: cfg?.metricCatalogId ?? null,
-          suggestions: this.scoreMetricCandidates(asset, pool),
-        };
-      })
-      // Unbound assets that need a source first, then by task count.
-      .sort((a, b) => {
-        const aNeeds = a.source === 'none' ? 0 : 1;
-        const bNeeds = b.source === 'none' ? 0 : 1;
-        if (aNeeds !== bNeeds) return aNeeds - bNeeds;
-        return b.hoursTaskCount - a.hoursTaskCount;
-      });
-
-    return { assets: overviewAssets, metricPool };
+    return {
+      source: 'none',
+      metricCatalogId: null,
+      baselineHours: null,
+      baselineAt: null,
+      runningThreshold: 0,
+      autoDerived: false,
+    };
   }
 
-  /**
-   * Apply many hours configs in one call. Sequential on purpose: setConfig may
-   * create the manual-reminder task (task-code sequence) and each result
-   * resolves live currentHours — the caller's verification signal.
-   */
-  async bulkSetConfig(shipId: string, items: BulkHoursConfigItem[]) {
-    const results: {
-      assetId: string;
-      ok: boolean;
-      source?: string;
-      currentHours?: number | null;
-      error?: string;
-    }[] = [];
-    const VALID_SOURCES = ['none', 'manual', 'metric_direct', 'metric_derived'];
-    for (const item of items) {
-      try {
-        if (!VALID_SOURCES.includes(item.source)) {
-          throw new Error(`Unknown source "${item.source}"`);
-        }
-        if (item.source.startsWith('metric')) {
-          if (!item.metricCatalogId) {
-            throw new Error('Metric source needs a metric');
-          }
-          const metric = await this.catalogRepository.findOne({
-            where: { id: item.metricCatalogId, shipId },
-          });
-          if (!metric) {
-            throw new Error('Metric not found on this ship');
-          }
-        }
-        // Bulk edits only carry source+metric — keep the fields they don't
-        // touch (derived baseline/threshold) instead of silently wiping them.
-        const existing = await this.configRepository.findOne({
-          where: { assetId: item.assetId, shipId },
-        });
-        const cfg = await this.setConfig(shipId, item.assetId, {
-          source: item.source,
-          metricCatalogId: item.metricCatalogId ?? null,
-          baselineHours:
-            item.baselineHours !== undefined
-              ? item.baselineHours
-              : existing?.baselineHours != null
-                ? Number(existing.baselineHours)
-                : null,
-          baselineAt:
-            item.baselineAt !== undefined
-              ? item.baselineAt
-              : (existing?.baselineAt?.toISOString() ?? null),
-          runningThreshold:
-            item.runningThreshold !== undefined
-              ? item.runningThreshold
-              : existing != null
-                ? Number(existing.runningThreshold)
-                : null,
-        });
-        results.push({
-          assetId: item.assetId,
-          ok: true,
-          source: cfg.source,
-          currentHours: cfg.currentHours,
-        });
-      } catch (error) {
-        results.push({
-          assetId: item.assetId,
-          ok: false,
-          error: formatError(error),
-        });
-      }
-    }
-    return { results };
+  /** The best hours-shaped metric already bound to this asset, or null. */
+  private async autoDerivedMetric(
+    shipId: string,
+    assetId: string,
+  ): Promise<ShipMetricCatalogEntity | null> {
+    const candidates = await this.catalogRepository.find({
+      where: { shipId, boundAssetId: assetId, isEnabled: true },
+    });
+    const hoursCandidates = candidates.filter((m) => this.isHoursMetric(m));
+    if (hoursCandidates.length === 0) return null;
+    // Deterministic pick when more than one hours-shaped metric is bound to
+    // the same asset: prefer an explicit hours unit, then a counter kind,
+    // then stable id order.
+    hoursCandidates.sort((a, b) => {
+      const aUnit = ['h', 'hr', 'hrs', 'hour', 'hours'].includes(
+        (a.aiUnit ?? '').trim().toLowerCase(),
+      )
+        ? 0
+        : 1;
+      const bUnit = ['h', 'hr', 'hrs', 'hour', 'hours'].includes(
+        (b.aiUnit ?? '').trim().toLowerCase(),
+      )
+        ? 0
+        : 1;
+      if (aUnit !== bUnit) return aUnit - bUnit;
+      const aKind = a.aiKind === 'counter' ? 0 : 1;
+      const bKind = b.aiKind === 'counter' ? 0 : 1;
+      if (aKind !== bKind) return aKind - bKind;
+      return a.id.localeCompare(b.id);
+    });
+    return hoursCandidates[0];
   }
 
   /** Does this catalog row look like a running-hours counter? */
@@ -309,85 +212,6 @@ export class AssetHoursService {
       HOURS_RE.test(m.description ?? '') ||
       HOURS_RE.test(m.aiDescription ?? '')
     );
-  }
-
-  /**
-   * Token-overlap score of each candidate metric against one asset (same idea
-   * as the metric-understanding asset prefilter, reversed): measurement token
-   * match ×2, field/description ×1, PS/SB side agreement +3 / conflict −4,
-   * already-bound-to-this-asset +10. Top 5, positive scores only.
-   */
-  private scoreMetricCandidates(
-    asset: AssetEntity,
-    pool: ShipMetricCatalogEntity[],
-  ): { metricId: string; score: number }[] {
-    const assetTokens = new Set(
-      this.tokenize(
-        [
-          asset.assetIdInternal,
-          asset.displayName,
-          asset.brand,
-          asset.model,
-          asset.sfiSubName,
-        ]
-          .filter(Boolean)
-          .join(' '),
-      ),
-    );
-    const assetSide = this.sideOf(assetTokens);
-
-    return pool
-      .map((m) => {
-        const measurement = m.key.split('::')[1] ?? m.bucket;
-        const measurementTokens = this.tokenize(measurement);
-        const otherTokens = this.tokenize(
-          `${m.field} ${m.description ?? ''} ${m.aiDescription ?? ''}`,
-        );
-        let score = 0;
-        for (const t of measurementTokens) {
-          if (assetTokens.has(t)) score += 2;
-        }
-        for (const t of new Set(otherTokens)) {
-          if (assetTokens.has(t)) score += 1;
-        }
-        const metricSide = this.sideOf(
-          new Set([...measurementTokens, ...otherTokens]),
-        );
-        if (assetSide && metricSide) {
-          score += assetSide === metricSide ? 3 : -4;
-        }
-        if (m.boundAssetId === asset.id) score += 10;
-        return { metricId: m.id, score };
-      })
-      .filter((s) => s.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-  }
-
-  private tokenize(text: string): string[] {
-    return (
-      text
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        // Keep single-digit tokens — "Jet Ski 2" vs "Jet Ski 1" and numbered
-        // unit pairs differ only by that digit.
-        .filter((t) => t.length >= 2 || /\d/.test(t))
-        // "02" and "2" must compare equal (register ids zero-pad).
-        .map((t) => (/^\d+$/.test(t) ? String(Number(t)) : t))
-    );
-  }
-
-  private sideOf(tokens: Set<string>): 'port' | 'stbd' | null {
-    if (tokens.has('port') || tokens.has('ps')) return 'port';
-    if (
-      tokens.has('stbd') ||
-      tokens.has('starboard') ||
-      tokens.has('sb') ||
-      tokens.has('stb')
-    ) {
-      return 'stbd';
-    }
-    return null;
   }
 
   // ── monthly hours-reading reminder (auto task) ──
@@ -465,13 +289,19 @@ export class AssetHoursService {
 
   /**
    * Resolve current running hours for an asset, or null if no source is
-   * configured / data is unavailable.
+   * configured (explicit or auto-derived) / data is unavailable.
    */
   async currentHours(shipId: string, assetId: string): Promise<number | null> {
-    const cfg = await this.configRepository.findOne({
-      where: { assetId, shipId },
-    });
-    if (!cfg || cfg.source === 'none') return null;
+    const effective = await this.resolveEffective(shipId, assetId);
+    return this.currentHoursFor(effective, shipId, assetId);
+  }
+
+  private async currentHoursFor(
+    cfg: EffectiveHoursConfig,
+    shipId: string,
+    assetId: string,
+  ): Promise<number | null> {
+    if (cfg.source === 'none') return null;
 
     if (cfg.source === 'manual') {
       const latest = await this.readingRepository.findOne({
@@ -510,14 +340,13 @@ export class AssetHoursService {
       }
 
       if (cfg.source === 'metric_derived') {
-        const baseline =
-          cfg.baselineHours != null ? Number(cfg.baselineHours) : 0;
+        const baseline = cfg.baselineHours ?? 0;
         const since = cfg.baselineAt ?? this.lookbackStart();
         const runtime = await this.runtimeHoursSince(
           ship.organizationName,
           selector,
           since,
-          Number(cfg.runningThreshold),
+          cfg.runningThreshold,
         );
         return runtime == null ? null : baseline + runtime;
       }
