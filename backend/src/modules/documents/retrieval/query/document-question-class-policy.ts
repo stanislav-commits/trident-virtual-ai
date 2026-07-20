@@ -26,6 +26,9 @@ const DOCUMENT_QUESTION_CLASS_POLICIES: Partial<
   [DocumentRetrievalQuestionType.STEP_BY_STEP_PROCEDURE]: {
     primary: [
       DocumentDocClass.PROCEDURE,
+      // Fleet circulars carry the management company's standing instructions
+      // and required actions — same authority tier as SMS procedures.
+      DocumentDocClass.CIRCULAR,
       DocumentDocClass.PUBLICATION,
       DocumentDocClass.REGULATION,
     ],
@@ -37,7 +40,9 @@ const DOCUMENT_QUESTION_CLASS_POLICIES: Partial<
   // the regulation/publication TEXT behind the requirement.
   [DocumentRetrievalQuestionType.COMPLIANCE_OR_CERTIFICATE]: {
     primary: [DocumentDocClass.PUBLICATION, DocumentDocClass.REGULATION],
-    secondary: [],
+    // Circulars often announce compliance requirements (e.g. SEEMP annual
+    // review, STCW training) before they land anywhere else.
+    secondary: [DocumentDocClass.CIRCULAR],
   },
   // HISTORICAL_CASE intentionally has NO policy: maintenance/PMS history is
   // answered from the live Tasks register via the `pms` chat route, not from
@@ -47,6 +52,7 @@ const DOCUMENT_QUESTION_CLASS_POLICIES: Partial<
     primary: [
       DocumentDocClass.MANUAL,
       DocumentDocClass.PROCEDURE,
+      DocumentDocClass.CIRCULAR,
       DocumentDocClass.PUBLICATION,
       DocumentDocClass.REGULATION,
     ],

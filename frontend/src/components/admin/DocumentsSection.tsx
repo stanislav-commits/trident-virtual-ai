@@ -34,7 +34,7 @@ const DEFAULT_KB_SECTION = KB_SECTIONS[0].value;
 // forms/checklists (Shaun's structure); equipment manuals + drawings sit under
 // Technical. Membership is by docClass value; order follows DOCUMENT_CLASS_OPTIONS.
 const KB_SECTION_GROUPS: Array<{ label: string; values: string[] }> = [
-  { label: "SMS Manual", values: ["procedure", "form"] },
+  { label: "SMS Manual", values: ["procedure", "form", "circular"] },
   { label: "Technical", values: ["manual", "plan"] },
 ];
 // Fixed page size — the Rows picker is gone by design.

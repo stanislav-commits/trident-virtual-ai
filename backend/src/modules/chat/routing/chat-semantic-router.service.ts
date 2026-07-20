@@ -97,7 +97,7 @@ export class ChatSemanticRouterService {
       'Document classes are only manual, historical_procedure, certificate, regulation.',
       'Document class meanings:',
       '- manual: equipment manuals, operation, maintenance, troubleshooting, alarms/faults, spare parts, and technical specifications.',
-      '- regulation: regulations, SOPs, formal onboard procedures, checklists, compliance procedures, emergency procedures, and required actions.',
+      '- regulation: regulations, SOPs, formal onboard procedures, checklists, compliance procedures, emergency procedures, required actions, and management-company fleet circulars / notices (standing instructions issued by the vessel\'s management company).',
       '- certificate: certificates, validity, issuer, class/approval, vessel/equipment coverage, and compliance status.',
       '- historical_procedure: historical or planned procedure/PMS/maintenance records, including when maintenance work was done, when maintenance work is due, completed/planned procedure history, status, and timeline.',
       'Document question types are equipment_reference, step_by_step_procedure, historical_case, compliance_or_certificate, multi_document_compare, troubleshooting.',

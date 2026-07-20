@@ -17,6 +17,7 @@ export const DOCUMENT_CLASS_OPTIONS: Array<{
   { value: "procedure", label: "Procedures" },
   { value: "manual", label: "Manuals" },
   { value: "form", label: "Forms & Checklists" },
+  { value: "circular", label: "Fleet Circulars" },
   { value: "plan", label: "Vessel Plans & Drawings" },
 ];
 
@@ -28,6 +29,7 @@ const DOCUMENT_CLASS_LABELS: Record<DocumentDocClass, string> = {
   procedure: "Procedures",
   manual: "Manuals",
   form: "Forms & Checklists",
+  circular: "Fleet Circulars",
   plan: "Vessel Plans & Drawings",
   publication: "Publications",
   historical_procedure: "Maintenance",

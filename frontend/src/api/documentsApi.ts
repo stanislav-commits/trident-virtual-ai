@@ -4,6 +4,7 @@ export type DocumentDocClass =
   | "procedure"
   | "manual"
   | "form"
+  | "circular"
   | "plan"
   | "publication"
   | "historical_procedure"

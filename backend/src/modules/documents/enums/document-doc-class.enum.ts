@@ -3,6 +3,7 @@ export enum DocumentDocClass {
   PROCEDURE = 'procedure', // SMS procedures, SOPs
   MANUAL = 'manual', // equipment manuals only
   FORM = 'form', // forms & checklists (templates)
+  CIRCULAR = 'circular', // fleet circulars / management-company notices
   PLAN = 'plan', // vessel plans & drawings (file store, no deep parse)
   // ── Platform (fleet-wide) ──
   PUBLICATION = 'publication', // MARPOL / IMO / rules & regulations
@@ -19,6 +20,7 @@ export const ACTIVE_DOC_CLASSES: DocumentDocClass[] = [
   DocumentDocClass.PROCEDURE,
   DocumentDocClass.MANUAL,
   DocumentDocClass.FORM,
+  DocumentDocClass.CIRCULAR,
   DocumentDocClass.PLAN,
   DocumentDocClass.PUBLICATION,
 ];
@@ -28,5 +30,6 @@ export const KNOWLEDGE_BASE_CLASSES: DocumentDocClass[] = [
   DocumentDocClass.PROCEDURE,
   DocumentDocClass.MANUAL,
   DocumentDocClass.FORM,
+  DocumentDocClass.CIRCULAR,
   DocumentDocClass.PLAN,
 ];

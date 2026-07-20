@@ -85,6 +85,7 @@ import { AddPmsTaskCodes20260719000100 } from './migrations/20260719000100-add-p
 import { AddInventoryImportFields20260720000100 } from './migrations/20260720000100-add-inventory-import-fields';
 import { RelaxExtrefUniqueForHistory20260720000200 } from './migrations/20260720000200-relax-extref-unique-for-history';
 import { AddPmsTaskPostpone20260720000300 } from './migrations/20260720000300-add-pms-task-postpone';
+import { AddCircularDocClass20260720000400 } from './migrations/20260720000400-add-circular-doc-class';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -190,6 +191,7 @@ const dataSource = new DataSource({
     AddInventoryImportFields20260720000100,
     RelaxExtrefUniqueForHistory20260720000200,
     AddPmsTaskPostpone20260720000300,
+    AddCircularDocClass20260720000400,
   ],
   synchronize: false,
   ssl: db.ssl
