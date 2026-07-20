@@ -8,9 +8,13 @@ import {
   deleteInventoryItem,
   INVENTORY_CATEGORIES,
   INVENTORY_UNITS,
+  previewInventoryImport,
+  commitInventoryImport,
   type InventoryItem,
   type InventoryLink,
   type UpsertInventoryInput,
+  type InventoryImportDraft,
+  type InventoryImportPreview,
 } from "../../api/inventoryApi";
 import { listAssets } from "../../api/assetsApi";
 import { AssetMultiSelect, type AssetOption } from "./AssetMultiSelect";
@@ -162,6 +166,13 @@ export function InventorySection({ token }: InventorySectionProps) {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY });
+  // Stock-file import
+  const [importOpen, setImportOpen] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importErr, setImportErr] = useState("");
+  const [importPreview, setImportPreview] =
+    useState<InventoryImportPreview | null>(null);
+  const [importFileName, setImportFileName] = useState("");
 
   const refresh = useCallback(async () => {
     if (!token || !shipId) {
@@ -270,6 +281,54 @@ export function InventorySection({ token }: InventorySectionProps) {
     setNote("");
     setShowForm(true);
   };
+
+  const openImport = () => {
+    setImportPreview(null);
+    setImportErr("");
+    setImportFileName("");
+    setImportOpen(true);
+  };
+
+  const onImportFile = async (file: File | null) => {
+    if (!file || !token || !shipId) return;
+    setImportBusy(true);
+    setImportErr("");
+    setImportPreview(null);
+    setImportFileName(file.name);
+    try {
+      const preview = await previewInventoryImport(token, shipId, file);
+      setImportPreview(preview);
+    } catch (e) {
+      setImportErr(e instanceof Error ? e.message : "Could not parse the file");
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const runImport = async () => {
+    if (!token || !shipId || !importPreview?.drafts.length) return;
+    setImportBusy(true);
+    setImportErr("");
+    try {
+      const drafts: InventoryImportDraft[] = importPreview.drafts.map(
+        ({ existing, ...d }) => {
+          void existing;
+          return d;
+        },
+      );
+      const res = await commitInventoryImport(token, shipId, drafts);
+      setImportOpen(false);
+      setNote(
+        `Imported ${res.created} new item${res.created === 1 ? "" : "s"}` +
+          (res.updated ? ` · ${res.updated} updated by part number` : ""),
+      );
+      await refresh();
+    } catch (e) {
+      setImportErr(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImportBusy(false);
+    }
+  };
   const openEdit = (i: InventoryItem) => {
     setEditId(i.id);
     setForm({
@@ -367,13 +426,18 @@ export function InventorySection({ token }: InventorySectionProps) {
             {items.length} items · spare parts, tools, fluids
           </p>
         </div>
-        <button
-          type="button"
-          className="pms__btn pms__btn--primary"
-          onClick={openCreate}
-        >
-          <PlusIcon /> Add part
-        </button>
+        <div className="inv__head-actions">
+          <button type="button" className="pms__btn" onClick={openImport}>
+            Import stock
+          </button>
+          <button
+            type="button"
+            className="pms__btn pms__btn--primary"
+            onClick={openCreate}
+          >
+            <PlusIcon /> Add part
+          </button>
+        </div>
       </div>
 
       <div className="inv__toolbar">
@@ -606,6 +670,156 @@ export function InventorySection({ token }: InventorySectionProps) {
           </tbody>
         </table>
       </div>
+
+      {importOpen &&
+        createPortal(
+          <div
+            className="admin-panel__modal-overlay"
+            onClick={() => !importBusy && setImportOpen(false)}
+          >
+            <div
+              className="admin-panel__modal pms__modal pms__modal--wide"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="admin-panel__modal-header">
+                <h3>Import stock</h3>
+                <button
+                  type="button"
+                  className="admin-panel__icon-btn"
+                  onClick={() => !importBusy && setImportOpen(false)}
+                >
+                  <XIcon />
+                </button>
+              </div>
+              <div className="admin-panel__modal-form">
+                <p className="inv__import-intro">
+                  Upload another PMS's stock export (PDF, Excel or CSV). It's
+                  reformatted into the Trident standard for review. Items whose
+                  part number already exists are <strong>updated</strong>, not
+                  duplicated.
+                </p>
+
+                {!importPreview && (
+                  <label className="inv__import-drop">
+                    <input
+                      type="file"
+                      accept=".pdf,.xlsx,.xls,.csv,.txt"
+                      hidden
+                      disabled={importBusy}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        // Clear the value so re-picking the SAME file after an
+                        // error still fires onChange.
+                        e.target.value = "";
+                        void onImportFile(f);
+                      }}
+                    />
+                    {importBusy ? (
+                      <span>Parsing {importFileName}…</span>
+                    ) : (
+                      <span>
+                        <strong>Choose a file</strong> to parse
+                        {importFileName ? ` · ${importFileName}` : ""}
+                      </span>
+                    )}
+                  </label>
+                )}
+
+                {importErr && (
+                  <div className="pms__import-error">{importErr}</div>
+                )}
+
+                {importPreview && (
+                  <>
+                    <div className="inv__import-summary">
+                      {importPreview.counts.parsed} items ·{" "}
+                      {importPreview.counts.withPartNo} with part no ·{" "}
+                      {importPreview.counts.existing} already on board ·{" "}
+                      {importPreview.counts.groups} groups
+                    </div>
+                    {importPreview.notes.map((n, idx) => (
+                      <div key={idx} className="pms__import-note">
+                        {n}
+                      </div>
+                    ))}
+                    <div className="inv__import-preview-wrap">
+                      <table className="inv__table inv__import-preview">
+                        <thead>
+                          <tr>
+                            <th>Item</th>
+                            <th>Part no</th>
+                            <th>Qty</th>
+                            <th>Min/Max</th>
+                            <th>Location</th>
+                            <th>Group</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importPreview.drafts.map((d, idx) => (
+                            <tr key={idx}>
+                              <td className="inv__name">
+                                {d.name}
+                                {d.manufacturer ? (
+                                  <span className="inv__import-sub">
+                                    {d.manufacturer}
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td className="inv__mono">
+                                {d.partNumber ?? "—"}
+                              </td>
+                              <td>{d.quantity ?? "—"}</td>
+                              <td className="inv__mono">
+                                {d.stockMin ?? "—"}/{d.stockMax ?? "—"}
+                              </td>
+                              <td>{d.location ?? "—"}</td>
+                              <td>{d.assetGroup ?? "—"}</td>
+                              <td>
+                                {d.existing ? (
+                                  <span className="inv__import-badge inv__import-badge--upd">
+                                    update
+                                  </span>
+                                ) : (
+                                  <span className="inv__import-badge inv__import-badge--new">
+                                    new
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="admin-panel__modal-actions">
+                <button
+                  type="button"
+                  className="pms__btn"
+                  onClick={() => setImportOpen(false)}
+                  disabled={importBusy}
+                >
+                  Cancel
+                </button>
+                {importPreview && (
+                  <button
+                    type="button"
+                    className="pms__btn pms__btn--primary"
+                    onClick={() => void runImport()}
+                    disabled={importBusy || !importPreview.drafts.length}
+                  >
+                    {importBusy
+                      ? "Importing…"
+                      : `Import ${importPreview.drafts.length} items`}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {showForm &&
         createPortal(

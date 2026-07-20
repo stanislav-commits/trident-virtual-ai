@@ -10880,7 +10880,28 @@
 /* ── Inventory ── */
 .inv { display: flex; flex-direction: column; gap: 14px; }
 .inv__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.inv__head-actions { display: flex; gap: 8px; align-items: center; }
 .inv__title { margin: 0; font-size: 20px; }
+
+/* ── Stock import modal ── */
+.pms__modal--wide { max-width: 920px; width: 92vw; }
+.inv__import-intro { margin: 0 0 12px; font-size: 13px; color: var(--chat-text-muted); line-height: 1.5; }
+.inv__import-drop {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 92px; padding: 18px; border: 1px dashed var(--chat-border);
+  border-radius: 10px; cursor: pointer; font-size: 14px;
+  color: var(--chat-text-muted); text-align: center;
+}
+.inv__import-drop:hover { border-color: var(--chat-accent); color: var(--chat-text); }
+.inv__import-drop strong { color: var(--chat-accent); }
+.inv__import-summary { font-size: 13px; font-weight: 600; margin: 4px 0 10px; }
+.inv__import-preview-wrap { max-height: 46vh; overflow: auto; border: 1px solid var(--chat-border); border-radius: 8px; }
+.inv__import-preview { width: 100%; font-size: 12.5px; }
+.inv__import-preview th { position: sticky; top: 0; background: var(--chat-surface-2); z-index: 1; }
+.inv__import-sub { display: block; font-size: 11px; color: var(--chat-text-muted); }
+.inv__import-badge { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+.inv__import-badge--new { background: color-mix(in srgb, var(--status-ok, #34c759) 18%, transparent); color: var(--status-ok, #34c759); }
+.inv__import-badge--upd { background: color-mix(in srgb, var(--chat-accent) 18%, transparent); color: var(--chat-accent); }
 .inv__sub { margin: 2px 0 0; font-size: 13px; color: var(--chat-text-muted); }
 .inv__empty { color: var(--chat-text-muted); font-size: 14px; padding: 20px 0; }
 .inv__toolbar { display: flex; gap: 10px; }

@@ -476,8 +476,17 @@ function buildMessagesUrl(baseUrl: string): URL {
   const trimmed = baseUrl.trim();
   if (!trimmed) throw new Error('Anthropic base URL is not configured');
   const parsed = new URL(trimmed);
-  if (!parsed.pathname.endsWith('/messages')) {
-    parsed.pathname = parsed.pathname.replace(/\/+$/, '') + '/messages';
+  const path = parsed.pathname.replace(/\/+$/, ''); // drop trailing slashes
+  if (path.endsWith('/messages')) {
+    parsed.pathname = path;
+  } else if (path === '') {
+    // A bare host ("https://api.anthropic.com" with no /v1) still needs the
+    // API version prefix — otherwise the request lands on /messages and 404s.
+    parsed.pathname = '/v1/messages';
+  } else {
+    // A base that already carries a path (e.g. a proxy, or ".../v1") just gets
+    // /messages appended.
+    parsed.pathname = path + '/messages';
   }
   return parsed;
 }

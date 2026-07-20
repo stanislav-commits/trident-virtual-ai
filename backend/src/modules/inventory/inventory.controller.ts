@@ -9,8 +9,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
@@ -20,11 +23,24 @@ import {
   UpsertInventoryInput,
   InventoryDraft,
 } from './inventory.service';
+import {
+  InventoryImportService,
+  InventoryImportDraft,
+} from './inventory-import.service';
+
+interface UploadedImportFile {
+  buffer?: Buffer;
+  originalname?: string;
+  mimetype?: string;
+}
 
 @Controller('ships/:shipId/inventory')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly inventoryImportService: InventoryImportService,
+  ) {}
 
   @Get()
   list(@Param('shipId', ParseUUIDPipe) shipId: string) {
@@ -98,6 +114,30 @@ export class InventoryController {
     @Body() body: { drafts: InventoryDraft[] },
   ) {
     return this.inventoryService.createMany(shipId, body?.drafts ?? []);
+  }
+
+  // ── Stock-file import (AI-reformatted → reviewed → idempotent upsert) ──
+
+  @Post('import/preview')
+  @Roles(UserRole.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 16 * 1024 * 1024 } }),
+  )
+  importPreview(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @UploadedFile() file: UploadedImportFile | undefined,
+    @Body() body: { text?: string },
+  ) {
+    return this.inventoryImportService.preview(shipId, file ?? null, body?.text);
+  }
+
+  @Post('import/commit')
+  @Roles(UserRole.ADMIN)
+  importCommit(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Body() body: { drafts: InventoryImportDraft[] },
+  ) {
+    return this.inventoryImportService.commit(shipId, body?.drafts ?? []);
   }
 
   @Post('assets/:assetId/suggest')

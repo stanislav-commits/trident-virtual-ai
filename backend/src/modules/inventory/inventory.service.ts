@@ -354,11 +354,18 @@ export class InventoryService {
         name: i.name,
         category: i.category,
         partNumber: i.partNumber ?? undefined,
+        barcode: i.barcode ?? undefined,
+        model: i.model ?? undefined,
         location: i.location ?? undefined,
         manufacturer: i.manufacturer ?? undefined,
         supplier: i.supplier ?? undefined,
+        supplPartNo: i.supplPartNo ?? undefined,
         quantity: i.quantity != null ? Number(i.quantity) : undefined,
+        stockMin: i.stockMin != null ? Number(i.stockMin) : undefined,
+        stockMax: i.stockMax != null ? Number(i.stockMax) : undefined,
+        valueEur: i.valueEur != null ? Number(i.valueEur) : undefined,
         unit: i.unit ?? undefined,
+        assetGroup: i.assetGroup ?? undefined,
         assetIds: aIds,
         assets: aIds
           .map((id) => ({ id, name: aMap.get(id) ?? null }))

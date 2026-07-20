@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
+import { InventoryImportService } from './inventory-import.service';
 import { InventoryItemEntity } from './entities/inventory-item.entity';
 import { InventoryItemAssetEntity } from './entities/inventory-item-asset.entity';
 import { InventoryItemTaskEntity } from './entities/inventory-item-task.entity';
@@ -21,7 +22,7 @@ import { IntegrationsModule } from '../../integrations/integrations.module';
     IntegrationsModule,
   ],
   controllers: [InventoryController],
-  providers: [InventoryService],
+  providers: [InventoryService, InventoryImportService],
   exports: [InventoryService],
 })
 export class InventoryModule {}

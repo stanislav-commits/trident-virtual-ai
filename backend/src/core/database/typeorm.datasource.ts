@@ -82,6 +82,7 @@ import { DropAssetLifecycleStatus20260711000300 } from './migrations/20260711000
 import { AddPmsTaskCompletionNotes20260717000100 } from './migrations/20260717000100-add-pms-task-completion-notes';
 import { AddPmsTaskBoard20260717000200 } from './migrations/20260717000200-add-pms-task-board';
 import { AddPmsTaskCodes20260719000100 } from './migrations/20260719000100-add-pms-task-codes';
+import { AddInventoryImportFields20260720000100 } from './migrations/20260720000100-add-inventory-import-fields';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -184,6 +185,7 @@ const dataSource = new DataSource({
     AddPmsTaskCompletionNotes20260717000100,
     AddPmsTaskBoard20260717000200,
     AddPmsTaskCodes20260719000100,
+    AddInventoryImportFields20260720000100,
   ],
   synchronize: false,
   ssl: db.ssl

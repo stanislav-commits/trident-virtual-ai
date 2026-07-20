@@ -35,11 +35,18 @@ export interface InventoryItem {
   name: string;
   category: string;
   partNumber?: string;
+  barcode?: string;
+  model?: string;
   location?: string;
   manufacturer?: string;
   supplier?: string;
+  supplPartNo?: string;
   quantity?: number;
+  stockMin?: number;
+  stockMax?: number;
+  valueEur?: number;
   unit?: string;
+  assetGroup?: string;
   assetIds: string[];
   assets: InventoryLink[];
   taskIds: string[];
@@ -200,5 +207,69 @@ export async function commitInventory(
     body: JSON.stringify({ drafts }),
   });
   await ok(r, "Import parts");
+  return r.json();
+}
+
+// ── Stock-file import (AI-reformatted → reviewed → idempotent upsert) ──
+
+export interface InventoryImportDraft {
+  name: string;
+  category: string;
+  manufacturer?: string | null;
+  partNumber?: string | null;
+  barcode?: string | null;
+  model?: string | null;
+  supplier?: string | null;
+  supplPartNo?: string | null;
+  quantity?: number | null;
+  stockMin?: number | null;
+  stockMax?: number | null;
+  unit?: string | null;
+  valueEur?: number | null;
+  location?: string | null;
+  assetGroup?: string | null;
+  notes?: string | null;
+  existing?: boolean;
+}
+
+export interface InventoryImportPreview {
+  drafts: InventoryImportDraft[];
+  counts: {
+    parsed: number;
+    withPartNo: number;
+    existing: number;
+    groups: number;
+  };
+  notes: string[];
+}
+
+export async function previewInventoryImport(
+  token: string,
+  shipId: string,
+  file: File,
+): Promise<InventoryImportPreview> {
+  const form = new FormData();
+  form.append("file", file);
+  const r = await fetchWithAuth(`ships/${shipId}/inventory/import/preview`, {
+    token,
+    method: "POST",
+    body: form,
+  });
+  await ok(r, "Parse stock file");
+  return r.json();
+}
+
+export async function commitInventoryImport(
+  token: string,
+  shipId: string,
+  drafts: InventoryImportDraft[],
+): Promise<{ created: number; updated: number }> {
+  const r = await fetchWithAuth(`ships/${shipId}/inventory/import/commit`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ drafts }),
+  });
+  await ok(r, "Import stock");
   return r.json();
 }
