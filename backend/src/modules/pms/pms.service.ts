@@ -174,14 +174,21 @@ export class PmsService {
       // that IS valid instead of a 500 and a half-written batch.
       try {
         const mapped = this.mapInput(input);
+        // History log rows are completions, not schedulable tasks — they don't
+        // get their own code (that would burn the SWX-M#### sequence and clash
+        // with the parent task they share an external_ref with).
+        const taskCode =
+          input.source === 'import-history'
+            ? null
+            : await nextTaskCode(
+                this.taskRepository.manager,
+                shipId,
+                mapped.board ?? 'maintenance',
+              );
         const entity = this.taskRepository.create({
           shipId,
           ...mapped,
-          taskCode: await nextTaskCode(
-            this.taskRepository.manager,
-            shipId,
-            mapped.board ?? 'maintenance',
-          ),
+          taskCode,
           assets: await this.resolveAssets(shipId, input.assetIds),
         });
         await this.taskRepository.save(entity);

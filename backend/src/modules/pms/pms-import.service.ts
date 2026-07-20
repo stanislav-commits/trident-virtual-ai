@@ -536,7 +536,8 @@ export class PmsImportService {
       const rows: Array<{ id: string; external_ref: string }> =
         await this.assetRepository.manager.query(
           `SELECT id, external_ref FROM pms_tasks
-            WHERE ship_id = $1 AND external_ref = ANY($2)`,
+            WHERE ship_id = $1 AND external_ref = ANY($2)
+              AND source <> 'import-history'`,
           [shipId, refs],
         );
       for (const r of rows) existingByRef.set(r.external_ref, r.id);
@@ -865,9 +866,40 @@ export class PmsImportService {
     shipId: string,
     drafts: PmsImportDraft[],
   ): Promise<{ created: number }> {
-    const inputs: UpsertPmsTaskInput[] = drafts
-      .filter((d) => d.task?.trim())
-      .map((d) => ({
+    // Idempotency key for a performed-maintenance record is external_ref + the
+    // completion DATE (per the import standard). The source PDF repeats each
+    // record several times and re-imports must not pile up duplicates, so we
+    // dedup both in-batch and against already-imported history.
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const key = (ref: string | null, task: string, dateIso: string | null) => {
+      const d = (dateIso ?? '').slice(0, 10);
+      return ref ? `r:${ref.toLowerCase()}|${d}` : `t:${norm(task)}|${d}`;
+    };
+
+    const existing: Array<{ external_ref: string | null; task: string; completed_at: Date | null }> =
+      await this.assetRepository.manager.query(
+        `SELECT external_ref, task, completed_at FROM pms_tasks
+          WHERE ship_id = $1 AND source = 'import-history'`,
+        [shipId],
+      );
+    const seen = new Set(
+      existing.map((r) =>
+        key(
+          r.external_ref,
+          r.task,
+          r.completed_at ? new Date(r.completed_at).toISOString() : null,
+        ),
+      ),
+    );
+
+    const inputs: UpsertPmsTaskInput[] = [];
+    for (const d of drafts) {
+      if (!d.task?.trim()) continue;
+      const completedAt = d.completedAt ?? d.lastDoneAt ?? null;
+      const k = key(d.externalRef ?? null, d.task, completedAt);
+      if (seen.has(k)) continue; // already imported, or a repeat in this batch
+      seen.add(k);
+      inputs.push({
         task: d.task.trim().slice(0, 200),
         category: this.normCategory(d.category),
         planning: 'unplanned',
@@ -875,18 +907,20 @@ export class PmsImportService {
         responsibleRole: d.responsibleRole?.slice(0, 80) ?? null,
         department: d.department ?? null,
         sfiGroup: d.sfiGroup ?? null,
+        externalRef: d.externalRef ?? null,
         priority: 'medium',
         dueDate: null,
         repeatDate: false,
         intervalValue: null,
         intervalHours: null,
-        lastDoneAt: d.completedAt ?? d.lastDoneAt ?? null,
+        lastDoneAt: completedAt,
         lastDoneHours: d.lastDoneHours ?? null,
-        completedAt: d.completedAt ?? d.lastDoneAt ?? null,
+        completedAt,
         completedByName: d.completedByName ?? null,
         assetIds: d.assetMatch ? [d.assetMatch.id] : [],
         source: 'import-history',
-      }));
+      });
+    }
     const created = await this.pmsService.createMany(shipId, inputs);
     return { created };
   }
@@ -1022,6 +1056,7 @@ export class PmsImportService {
         responsibleRole,
         department: departmentForRole(responsibleRole),
         sfiGroup: t.sfi_group?.toString().trim() || null,
+        externalRef: t.ref_id?.trim().slice(0, 40) || null,
         intervalValue: null,
         intervalUnit: null,
         intervalHours: null,
@@ -1444,9 +1479,10 @@ Return ONLY JSON: { "matches": [ { "i": <item index>, "k": <candidate index or -
 
 const HISTORY_SCHEMA_HINT =
   '{ "tasks": [ { "task": string, "category": string, "asset": string|null, ' +
-  '"completed_date": string|null, "hour_counter": number|null, ' +
-  '"performed_by": string|null, "spares": string|null, ' +
-  '"description": string|null, "sfi_group": string|null } ] }';
+  '"ref_id": string|null, "completed_date": string|null, ' +
+  '"hour_counter": number|null, "performed_by": string|null, ' +
+  '"spares": string|null, "description": string|null, ' +
+  '"sfi_group": string|null } ] }';
 
 const MAP_HISTORY_SYSTEM_PROMPT = `You convert a vessel's MAINTENANCE HISTORY (a log of work that has ALREADY been performed — in ANY layout) into a single normalized JSON shape. Each record is one completed maintenance action.
 
@@ -1454,12 +1490,13 @@ Return ONLY JSON: { "tasks": [ ... ] }. One object per performed record. Fields:
 - task (required): the maintenance action that was done, concise (e.g. "Replace 5 micron cartridge filters", "Overhaul pump"). Do not include the equipment name or date inside task.
 - category: one of Inspection, Service, Replacement, Overhaul, Lubrication, Test, Cleaning, Calibration, Survey, Repair, Other.
 - asset: the equipment/component name exactly as written (e.g. "WATERMAKER 2", "Port Generator"), else null.
+- ref_id: the record's Reference ID exactly as written (e.g. "Reference ID: 1P26" -> "1P26"), else null. Never invent one. This is the join key to the planned task, so extract it whenever present.
 - completed_date: the date the work was performed (the record's Date / performed / approved-at), ISO YYYY-MM-DD, else null.
-- hour_counter: the running-hours reading at completion as a number, else null.
+- hour_counter: the running-hours reading at completion as a number (the "Hour Counter" column; 0 is a valid reading, not null), else null.
 - performed_by: who performed/approved it, else null.
-- spares: the used spares/parts as a short text (name + qty), else null.
+- spares: the used spares/parts as a short text (name + qty); "No spares were used" -> null.
 - description: the record's notes / instructions text, else null.
-- sfi_group: an SFI group or Reference ID if present, else null.
+- sfi_group: an SFI group code if present (NOT the Reference ID — that goes in ref_id), else null.
 
 REPAIR RULES: titles/descriptions may be ALL-CAPS — rewrite in sentence case, keeping marine abbreviations (PS, SB, ER, FW, LO, BA), codes and part numbers uppercase. Asset cells may be mangled: strip report prefixes like "- Care "; footers ("Approved by:") and lone fragments ("ER)", "(2 PCS)") are NOT equipment — set asset null unless the full name is recoverable from the pieces present. Never invent names, dates or hours.
 
