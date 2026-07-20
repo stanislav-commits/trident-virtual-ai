@@ -30,6 +30,13 @@ interface EffectiveHoursConfig {
   autoDerived: boolean;
 }
 
+/** Metric units that name running hours outright. */
+const HOURS_UNITS = ['h', 'hr', 'hrs', 'hour', 'hours'];
+
+function hasHoursUnit(unit: string | null): boolean {
+  return HOURS_UNITS.includes((unit ?? '').trim().toLowerCase());
+}
+
 @Injectable()
 export class AssetHoursService {
   private readonly logger = new Logger(AssetHoursService.name);
@@ -181,16 +188,8 @@ export class AssetHoursService {
     // the same asset: prefer an explicit hours unit, then a counter kind,
     // then stable id order.
     hoursCandidates.sort((a, b) => {
-      const aUnit = ['h', 'hr', 'hrs', 'hour', 'hours'].includes(
-        (a.aiUnit ?? '').trim().toLowerCase(),
-      )
-        ? 0
-        : 1;
-      const bUnit = ['h', 'hr', 'hrs', 'hour', 'hours'].includes(
-        (b.aiUnit ?? '').trim().toLowerCase(),
-      )
-        ? 0
-        : 1;
+      const aUnit = hasHoursUnit(a.aiUnit) ? 0 : 1;
+      const bUnit = hasHoursUnit(b.aiUnit) ? 0 : 1;
       if (aUnit !== bUnit) return aUnit - bUnit;
       const aKind = a.aiKind === 'counter' ? 0 : 1;
       const bKind = b.aiKind === 'counter' ? 0 : 1;
@@ -202,8 +201,7 @@ export class AssetHoursService {
 
   /** Does this catalog row look like a running-hours counter? */
   private isHoursMetric(m: ShipMetricCatalogEntity): boolean {
-    const unit = (m.aiUnit ?? '').trim().toLowerCase();
-    if (['h', 'hr', 'hrs', 'hour', 'hours'].includes(unit)) return true;
+    if (hasHoursUnit(m.aiUnit)) return true;
     const HOURS_RE =
       /(^|[^a-z])(hours?|hrs?|run_?time|running_?hours?|operating_?hours?|engine_?hours?|moto_?hours?)([^a-z]|$)/i;
     return (
