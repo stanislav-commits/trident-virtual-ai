@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { LlmService } from '../../integrations/llm/llm.service';
+import { CHAT_ANSWER_HYGIENE_RULE } from '../../common/chat-answer-hygiene.const';
 import { formatConversationContext } from './context/chat-context-prompt.utils';
 import { ChatConversationContext } from './context/chat-conversation-context.types';
 import { ChatMessageRole } from './enums/chat-message-role.enum';
@@ -107,6 +108,7 @@ export class ChatLlmService {
         'Treat the `unit` field on each metric result as authoritative. Do not convert, scale, or substitute units (do not turn W into kW, W into liters, or attach a guessed unit when none is provided). If no unit is given, report the number without a unit rather than guess.',
         'Keep the reply natural and CONCISE: merge overlapping ask results instead of concatenating them, drop repetition, and answer only what the user actually asked. A focused reply the user can read in under a minute beats an exhaustive report.',
         'Use the requested response language if it is provided.',
+        CHAT_ANSWER_HYGIENE_RULE,
       ].join(' '),
       userPrompt: [
         `Latest user message: ${input.context.latestUserMessage?.content ?? 'unknown'}`,

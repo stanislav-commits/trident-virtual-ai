@@ -3,6 +3,7 @@ import {
   DocumentRetrievalResponseDto,
   DocumentRetrievalResultDto,
 } from '../../../documents/dto/document-retrieval-response.dto';
+import { CHAT_ANSWER_HYGIENE_RULE } from '../../../../common/chat-answer-hygiene.const';
 
 interface BuildGroundedAnswerUserPromptInput {
   userQuestion: string;
@@ -41,6 +42,7 @@ export function buildGroundedAnswerSystemPrompt(
     'If the row, model, column, value, or unit relationship is unclear, say the evidence is insufficient or ambiguous instead of giving a concrete value.',
     'BE CONCISE: answer exactly what was asked and stop. Do not add unrequested sections — no extra background, no invented troubleshooting or recommendations, no restating the question, no summary of what evidence was retrieved.',
     weakInstruction,
+    CHAT_ANSWER_HYGIENE_RULE,
   ].join(' ');
 }
 
@@ -157,9 +159,12 @@ function isMaintenanceTaskSelectionQuestion(value: string): boolean {
 export function formatEvidenceItem(
   result: DocumentRetrievalResultDto,
 ): string {
+  // NOTE: the raw filename is deliberately NOT included — it must never reach
+  // the answer (see CHAT_ANSWER_HYGIENE_RULE). The rank is the citation
+  // anchor; docClass gives the model the generic document type to frame the
+  // answer ("a procedure says…") without naming the file.
   return [
-    `[${result.rank}] ${result.filename}`,
-    `docClass: ${result.docClass}`,
+    `[${result.rank}] (${result.docClass})`,
     result.page ? `page: ${result.page}` : 'page: unknown',
     result.section ? `section: ${result.section}` : null,
     `snippet: ${result.snippet}`,

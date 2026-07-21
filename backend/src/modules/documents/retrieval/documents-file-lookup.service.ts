@@ -8,6 +8,9 @@ export interface FileLookupCandidate {
   documentId: string;
   fileName: string;
   docClass: DocumentDocClass;
+  /** Controlled form/checklist code, when this is a form — the one identifier
+   *  the chat is allowed to state to the user. */
+  docCode: string | null;
   score: number;
   descriptor: string | null;
 }
@@ -57,6 +60,7 @@ export class DocumentsFileLookupService {
       documentId: entry.document.id,
       fileName: entry.document.originalFileName,
       docClass: entry.document.docClass,
+      docCode: entry.document.docCode ?? null,
       score: entry.score,
       descriptor: entry.descriptor,
     }));

@@ -3,6 +3,7 @@ import {
   DocumentRetrievalResultDto,
 } from '../../../documents/dto/document-retrieval-response.dto';
 import { ChatSemanticDocumentCompositionMode } from '../../routing/chat-semantic-router.types';
+import { CHAT_ANSWER_HYGIENE_RULE } from '../../../../common/chat-answer-hygiene.const';
 import { formatEvidenceItem } from './document-grounded-answer-prompt';
 
 export interface CompositeDocumentPromptComponent {
@@ -38,6 +39,7 @@ export function buildCompositeDocumentAnswerSystemPrompt(): string {
     'When evidence is tabular, preserve the row and column relationship exactly as shown in one cited evidence item.',
     'Do not infer from adjacent rows, combine unrelated rows or tables, add values together, convert units, or guess missing cells.',
       'BE CONCISE: answer exactly what was asked and stop. Do not add unrequested sections, background, or recommendations beyond the question.',
+    CHAT_ANSWER_HYGIENE_RULE,
   ].join(' ');
 }
 

@@ -30,7 +30,7 @@ import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentFormLinkEntity } from './entities/document-form-link.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
-import { parseDocCode } from './doc-code.util';
+import { parseDocCode, cleanFormName } from './doc-code.util';
 import { AdminEventBus } from '../admin-events/admin-event.bus';
 import { toDocumentResponse } from './mapping/documents.mapper';
 import { DocumentsIngestionService } from './ingestion/documents-ingestion.service';
@@ -355,7 +355,10 @@ export class DocumentsService {
       .map((form) => ({
         documentId: form.id,
         docCode: form.docCode,
-        title: form.originalFileName,
+        // A clean human name (not the raw filename) — this is fed to the chat
+        // answer, which is allowed to state a form's name + code but never a
+        // filename (see CHAT_ANSWER_HYGIENE_RULE).
+        title: cleanFormName(form.originalFileName) || form.originalFileName,
       }));
   }
 

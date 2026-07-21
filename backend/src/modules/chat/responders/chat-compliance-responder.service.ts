@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ComplianceService } from '../../compliance/compliance.service';
+import { CHAT_ANSWER_HYGIENE_RULE } from '../../../common/chat-answer-hygiene.const';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { categoryForArchetype } from '../../access-control/access-positions';
 import { ChatLlmService } from '../chat-llm.service';
@@ -297,6 +298,7 @@ export class ChatComplianceResponderService {
       input.responseLanguage
         ? `Write the answer in this language: ${input.responseLanguage}.`
         : 'Write the answer in the same language as the question.',
+      CHAT_ANSWER_HYGIENE_RULE,
     ].join('\n');
 
     const userPrompt = [

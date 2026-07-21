@@ -9,6 +9,8 @@ import {
   ChatTurnResponderInput,
   ChatTurnResponderOutput,
 } from './interfaces/chat-turn-responder.types';
+import { CHAT_ANSWER_HYGIENE_RULE } from '../../../common/chat-answer-hygiene.const';
+import { cleanFormName } from '../../documents/doc-code.util';
 
 /**
  * Returns the ORIGINAL file the user is asking for ("show me the GA plan",
@@ -89,26 +91,35 @@ export class ChatFilesResponderService {
         : "I couldn't find a matching file in the ship's documents. Try naming the document or equipment.";
     }
 
+    // Feed the model a hygiene-safe label per candidate — NEVER the raw
+    // filename. A FORM/checklist may be named by its controlled code + a
+    // clean name (the one identifier the user is meant to see); everything
+    // else is referred to by its type + what it's about, and opened via the
+    // attached source.
     const list = input.candidates
-      .map(
-        (candidate, index) =>
-          `[${index + 1}] "${candidate.fileName}" (type: ${candidate.docClass}${
-            candidate.descriptor ? `; ${candidate.descriptor}` : ''
-          })`,
-      )
+      .map((candidate, index) => {
+        const about = candidate.descriptor ? ` about ${candidate.descriptor}` : '';
+        if (candidate.docClass === 'form') {
+          const name = cleanFormName(candidate.fileName);
+          const codePart = candidate.docCode ? `form ${candidate.docCode}` : 'form';
+          return `[${index + 1}] ${codePart}${name ? ` — ${name}` : ''}${about}`;
+        }
+        return `[${index + 1}] a ${candidate.docClass}${about}`;
+      })
       .join('\n');
 
     const systemPrompt = [
-      'You help the user locate a ship document to open.',
-      'You are given the ranked candidate documents (best first) that matched the request.',
-      'Present the single best match by its exact document name as the one to open.',
-      'If a few candidates are plausible, name the top one and briefly list the others so the user can pick — do NOT invent documents beyond the list.',
-      'The document is attached as a source the user can open; do NOT output a link or claim to attach it yourself.',
-      'Do NOT mention internal storage details, "original vs extract", copyright, or availability caveats — just point the user to the document.',
+      'You help the user find the right ship document to open.',
+      'You are given the ranked candidate documents (best first) that matched the request, described in plain terms.',
+      'Point the user to the single best match. It is attached as a source they can open; do NOT output a link or claim to attach it yourself.',
+      'If it is a FORM or checklist, name it by its plain name and code (e.g. "the Bunkering Checklist, form ENG 008 01"). For any other document (manual, procedure, plan, circular), refer to it by what it IS ("the generator manual", "the bunkering procedure") — never state a filename.',
+      'If a few candidates are plausible, point at the top one and briefly mention the others so the user can pick — do NOT invent documents beyond the list.',
+      'Do NOT mention internal storage details, "original vs extract", copyright, or availability caveats.',
       'Be brief — one or two sentences.',
       input.responseLanguage
         ? `Write the answer in this language: ${input.responseLanguage}.`
         : 'Write the answer in the same language as the question.',
+      CHAT_ANSWER_HYGIENE_RULE,
     ].join('\n');
 
     const userPrompt = [
@@ -126,7 +137,13 @@ export class ChatFilesResponderService {
       useMainModel: true,
     });
 
-    return reply?.trim() || `I found: ${input.candidates[0].fileName}.`;
+    const top = input.candidates[0];
+    const fallbackName =
+      top.docClass === 'form'
+        ? [top.docCode, cleanFormName(top.fileName)].filter(Boolean).join(' — ') ||
+          'the checklist'
+        : `the ${top.docClass}`;
+    return reply?.trim() || `I found ${fallbackName} — attached above to open.`;
   }
 
   /**

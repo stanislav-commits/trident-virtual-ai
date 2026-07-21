@@ -1,3 +1,5 @@
+import { CHAT_ANSWER_HYGIENE_RULE } from '../../../../common/chat-answer-hygiene.const';
+
 export const SYSTEM_PROMPT_BASE = [
   'You are a marine telemetry assistant for a yacht. Be proactive: gather',
   'data with tools, surface anomalies, and answer in plain language. Mirror',
@@ -260,4 +262,11 @@ export const SYSTEM_PROMPT_BASE = [
   '  asks for an export / file / email, say plainly that the chat returns',
   '  the data inline (e.g. as a markdown table) and that file export is not',
   '  available, then present the data directly.',
+  '',
+  // Tool payloads and the catalog digest below carry internal identifiers
+  // (metric keys like "genset::active_power", asset codes like "SWX.2.3.01")
+  // that the crew user must never see — use them to DO the work, not in the
+  // reply. This overrides the "cite the asset names" line above only for the
+  // codes/keys, not the plain names.
+  CHAT_ANSWER_HYGIENE_RULE,
 ].join('\n');

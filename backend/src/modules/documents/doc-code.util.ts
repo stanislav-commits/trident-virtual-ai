@@ -75,6 +75,30 @@ function matchToCode(match: RegExpExecArray | RegExpMatchArray): string {
   return `${dept} ${group.padStart(3, '0')} ${item.padStart(2, '0')}`;
 }
 
+/**
+ * Strip a controlled-form filename down to a human name — drops "JMS", the
+ * date placeholder, the code itself, version and extension. E.g.
+ * "JMS yyyy-MM-dd ENG 008 01 Bunkering Checklist V.2.0.pdf" → "Bunkering
+ * Checklist". Best-effort; '' if nothing readable remains.
+ */
+export function cleanFormName(fileName: string | null | undefined): string {
+  if (!fileName) return '';
+  return fileName
+    .replace(/\.[a-z0-9]+$/i, '') // extension
+    .replace(/^JMS\s+/i, '')
+    .replace(/\byyyy[-/]?mm[-/]?dd\b/gi, '')
+    .replace(
+      new RegExp(
+        `\\b${DEPT}\\s*\\d{1,3}(?:\\s*[A-Za-z])?\\s*\\d{1,2}\\b`,
+        'gi',
+      ),
+      '',
+    )
+    .replace(/\bv[.\s]*\d+(?:[.\s]*\d+)*\b/gi, '') // version
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export function parseDocCode(name: string | null | undefined): string | null {
   if (!name) return null;
   CODE_RE.lastIndex = 0;
