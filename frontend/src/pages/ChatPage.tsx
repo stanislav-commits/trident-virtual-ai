@@ -265,11 +265,22 @@ export function ChatPage() {
   // previous one — its result is no longer relevant to this view, and stop
   // watching for the previous turn's title so its stream doesn't linger.
   useEffect(() => {
+    // The session this cleanup belongs to. Sending the FIRST message in a new
+    // chat navigates null -> newId mid-turn, which fires this cleanup; if it
+    // reset the title-watch that handleSend just armed, the SSE would close
+    // the instant 'done' arrives (active = isWaiting||titleWatch both false)
+    // and the async auto-title event would be missed — leaving the sidebar
+    // stuck on "New Chat" until reload. So only cancel the title-watch on a
+    // real session->session switch (sessionAtSetup !== null), never on the
+    // null->new-session transition of a new chat's first send.
+    const sessionAtSetup = activeSessionId;
     return () => {
       pollAbortRef.current?.abort();
       pollAbortRef.current = null;
-      clearTitleWatchTimer();
-      setTitleWatch(false);
+      if (sessionAtSetup !== null) {
+        clearTitleWatchTimer();
+        setTitleWatch(false);
+      }
     };
   }, [activeSessionId, clearTitleWatchTimer]);
 
