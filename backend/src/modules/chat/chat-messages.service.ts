@@ -16,6 +16,7 @@ import { CreateChatMessageDto } from './dto/create-chat-message.dto';
 import { ChatMessageRole } from './enums/chat-message-role.enum';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ChatTurnOrchestratorService } from './orchestration/chat-turn-orchestrator.service';
+import { sanitizeContextReferencesForClient } from './orchestration/chat-context-reference-sanitizer.util';
 import { ChatProgressBus } from './progress/chat-progress.bus';
 
 @Injectable()
@@ -190,7 +191,7 @@ export class ChatMessagesService {
       sessionId,
       role: ChatMessageRole.ASSISTANT,
       content: response.content,
-      ragflowContext: response.ragflowContext ?? null,
+      ragflowContext: this.sanitizeRagflowContext(response.ragflowContext),
     });
     const savedAssistantMessage =
       await this.chatMessagesRepository.save(assistantMessage);
@@ -232,5 +233,51 @@ export class ChatMessagesService {
     }
 
     return normalized;
+  }
+
+  /**
+   * Last-line-of-defense scrub before persisting: drop any metric/telemetry
+   * reference from the fields the chat client actually reads for Sources —
+   * the top-level `contextReferences` (chat.mapper.ts serves this straight
+   * to the UI) and each ask's own `contextReferences` (not surfaced today,
+   * but kept consistent in case a future UI reads it directly). This holds
+   * regardless of which responder produced the reference, so a tagging gap
+   * in any one of them can never leak a metric key/asset code into Sources.
+   */
+  private sanitizeRagflowContext(
+    ragflowContext: Record<string, unknown> | null,
+  ): Record<string, unknown> | null {
+    if (!ragflowContext) {
+      return null;
+    }
+
+    const sanitized: Record<string, unknown> = { ...ragflowContext };
+
+    if (Array.isArray(sanitized.contextReferences)) {
+      sanitized.contextReferences = sanitizeContextReferencesForClient(
+        sanitized.contextReferences,
+      );
+    }
+
+    if (Array.isArray(sanitized.askResults)) {
+      sanitized.askResults = sanitized.askResults.map((askResult) => {
+        if (
+          !askResult ||
+          typeof askResult !== 'object' ||
+          !Array.isArray((askResult as Record<string, unknown>).contextReferences)
+        ) {
+          return askResult;
+        }
+
+        return {
+          ...askResult,
+          contextReferences: sanitizeContextReferencesForClient(
+            (askResult as Record<string, unknown>).contextReferences as unknown[],
+          ),
+        };
+      });
+    }
+
+    return sanitized;
   }
 }
