@@ -31,6 +31,7 @@ import { DocumentEntity } from './entities/document.entity';
 import { DocumentFormLinkEntity } from './entities/document-form-link.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
 import { parseDocCode } from './doc-code.util';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 import { toDocumentResponse } from './mapping/documents.mapper';
 import { DocumentsIngestionService } from './ingestion/documents-ingestion.service';
 import { DocumentsUploadStorageService } from './ingestion/documents-upload-storage.service';
@@ -96,7 +97,16 @@ export class DocumentsService {
     private readonly remoteIngestionDispatcher: DocumentsRemoteIngestionDispatcherService,
     private readonly documentsRetrievalService: DocumentsRetrievalService,
     private readonly ragService: RagService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
+
+  private emitChange(
+    shipId: string,
+    action: 'created' | 'updated' | 'deleted',
+    entityId?: string,
+  ): void {
+    this.adminEvents.emit({ domain: 'documents', action, shipId, entityId });
+  }
 
   async upload(
     input: UploadDocumentDto,
@@ -167,10 +177,12 @@ export class DocumentsService {
         extractionStatus: 'pending',
       });
       this.visionExtraction.queue(document.id);
+      this.emitChange(ship.id, 'created', document.id);
       return document;
     }
 
     void this.remoteIngestionDispatcher.dispatchPendingRemoteIngestions();
+    this.emitChange(ship.id, 'created', document.id);
     return document;
   }
 
@@ -612,6 +624,7 @@ export class DocumentsService {
         );
       }
     }
+    this.emitChange(document.shipId, 'updated', document.id);
     return toDocumentResponse(document);
   }
 
@@ -893,6 +906,7 @@ export class DocumentsService {
 
     await this.documentsRepository.delete({ id: document.id });
     await this.documentsIngestionService.deleteLocalUpload(document);
+    this.emitChange(document.shipId, 'deleted', document.id);
 
     return {
       id: document.id,

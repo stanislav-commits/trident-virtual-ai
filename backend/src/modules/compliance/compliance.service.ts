@@ -21,6 +21,7 @@ import { PmsService } from '../pms/pms.service';
 import { DocumentsService } from '../documents/documents.service';
 import { DocumentsUploadStorageService } from '../documents/ingestion/documents-upload-storage.service';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 import {
   ARCHETYPE_FIELDS,
   BASE_FIELDS,
@@ -72,7 +73,16 @@ export class ComplianceService {
     private readonly pmsService: PmsService,
     private readonly uploadStorage: DocumentsUploadStorageService,
     private readonly documentsService: DocumentsService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
+
+  private emitChange(
+    shipId: string,
+    action: 'created' | 'updated' | 'deleted',
+    entityId?: string,
+  ): void {
+    this.adminEvents.emit({ domain: 'compliance', action, shipId, entityId });
+  }
 
   /**
    * Load the stored full text for specific compliance records (chat full-text
@@ -612,6 +622,7 @@ export class ComplianceService {
     // Register wins — flag any identity mismatch vs the linked asset.
     saved.identityFlags = await this.computeIdentityFlags(saved, type);
     await this.docRepository.save(saved);
+    this.emitChange(shipId, 'created', saved.id);
     return { ...saved, status: this.recordStatus(saved) };
   }
 
@@ -640,7 +651,7 @@ export class ComplianceService {
       });
       if (existing) return existing;
     }
-    return this.linkRepository.save(
+    const link = await this.linkRepository.save(
       this.linkRepository.create({
         docId,
         assetId: input.assetId ?? null,
@@ -651,6 +662,8 @@ export class ComplianceService {
         verifyState: 'confirmed',
       }),
     );
+    this.emitChange(shipId, 'updated', docId);
+    return link;
   }
 
   async removeLink(shipId: string, docId: string, linkId: string): Promise<void> {
@@ -665,6 +678,7 @@ export class ComplianceService {
       doc.assetId = remaining.find((l) => l.assetId)?.assetId ?? null;
       await this.docRepository.save(doc);
     }
+    this.emitChange(shipId, 'updated', docId);
   }
 
   /** All links for a document, with resolved asset / crew names. */
@@ -752,6 +766,7 @@ export class ComplianceService {
     await this.syncPmsForDoc(shipId, saved, type ?? null);
     saved.identityFlags = await this.computeIdentityFlags(saved, type ?? null);
     await this.docRepository.save(saved);
+    this.emitChange(shipId, 'updated', docId);
     return { ...saved, status: this.recordStatus(saved) };
   }
 
@@ -811,6 +826,7 @@ export class ComplianceService {
     // Drop the PMS task this cert drove (the deadline is gone with it).
     await this.pmsService.removeForCompliance(doc.id);
     await this.docRepository.delete(doc.id);
+    this.emitChange(shipId, 'deleted', docId);
   }
 
   /** Update applicability / logic fields on a rulebook row. */
@@ -829,7 +845,9 @@ export class ComplianceService {
     });
     if (!type) throw new NotFoundException('Compliance doc type not found');
     Object.assign(type, input);
-    return this.typeRepository.save(type);
+    const saved = await this.typeRepository.save(type);
+    this.emitChange(shipId, 'updated', typeId);
+    return saved;
   }
 
   private recordStatus(doc: ComplianceDocEntity): ComplianceStatus {

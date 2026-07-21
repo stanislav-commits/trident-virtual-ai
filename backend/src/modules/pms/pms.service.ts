@@ -14,6 +14,7 @@ import { AssetHoursService } from './asset-hours.service';
 import { addInterval } from './date-interval.util';
 import { nextTaskCode } from './pms-task-code.util';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 import {
   POSITION_LABELS,
   isAccessPosition,
@@ -88,7 +89,18 @@ export class PmsService {
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     private readonly assetHoursService: AssetHoursService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
+
+  /** Broadcast a PMS change so other admins' Maintenance/Tasks boards
+   *  re-fetch live. */
+  private emitChange(
+    shipId: string,
+    action: 'created' | 'updated' | 'deleted',
+    entityId?: string,
+  ): void {
+    this.adminEvents.emit({ domain: 'pms', action, shipId, entityId });
+  }
 
   /**
    * All tasks for a ship, with derived status. When `viewerDepartment` is
@@ -160,6 +172,7 @@ export class PmsService {
       assets: await this.resolveAssets(shipId, input.assetIds),
     });
     const saved = await this.taskRepository.save(entity);
+    this.emitChange(shipId, 'created', saved.id);
     return this.reload(saved.id);
   }
 
@@ -205,6 +218,7 @@ export class PmsService {
     if (skipped) {
       this.logger.warn(`Import: ${created} created, ${skipped} skipped.`);
     }
+    if (created > 0) this.emitChange(shipId, 'created');
     return created;
   }
 
@@ -219,6 +233,7 @@ export class PmsService {
       task.assets = await this.resolveAssets(shipId, input.assetIds);
     }
     await this.taskRepository.save(task);
+    this.emitChange(shipId, 'updated', id);
     return this.reload(id);
   }
 
@@ -226,6 +241,7 @@ export class PmsService {
     const task = await this.taskRepository.findOne({ where: { id, shipId } });
     if (!task) throw new NotFoundException('Task not found');
     await this.taskRepository.delete(id);
+    this.emitChange(shipId, 'deleted', id);
   }
 
   /**
@@ -312,6 +328,7 @@ export class PmsService {
       task.completedAt = new Date();
     }
     await this.taskRepository.save(task);
+    this.emitChange(shipId, 'updated', id);
     return this.reload(id);
   }
 
@@ -384,6 +401,7 @@ export class PmsService {
     }
 
     await this.taskRepository.save(task);
+    this.emitChange(shipId, 'updated', id);
     return this.reload(id);
   }
 

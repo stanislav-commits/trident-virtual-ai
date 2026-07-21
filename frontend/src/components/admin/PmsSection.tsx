@@ -33,6 +33,7 @@ import {
   type InventoryItem,
 } from "../../api/inventoryApi";
 import { useAdminShip } from "../../context/AdminShipContext";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 import {
   CATEGORIES,
   GENERAL_CATEGORIES,
@@ -321,6 +322,11 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Live-sync: another admin's task change on this ship → re-fetch.
+  useAdminEvents("pms", (event) => {
+    if (event.shipId === shipId) void refresh();
+  });
 
   // Ship-level inventory (feeds the per-task parts map + the form's picker).
   const refreshParts = useCallback(async () => {

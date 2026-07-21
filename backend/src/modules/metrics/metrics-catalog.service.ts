@@ -16,6 +16,7 @@ import { ToggleShipMetricsDto } from './dto/toggle-ship-metrics.dto';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricDescriptionBackfillService } from './metric-description-backfill.service';
 import { MetricsSemanticBootstrapResultDto, MetricsSemanticBootstrapService } from './metrics-semantic-bootstrap.service';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 import {
   normalizeMetricDescription,
   shouldBackfillMetricDescription,
@@ -112,6 +113,7 @@ export class MetricsCatalogService {
     private readonly influxService: InfluxService,
     private readonly metricDescriptionBackfillService: MetricDescriptionBackfillService,
     private readonly metricsSemanticBootstrapService: MetricsSemanticBootstrapService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
 
   async discoverOrganizationMetrics(
@@ -460,6 +462,12 @@ export class MetricsCatalogService {
     }
 
     const savedEntry = await this.shipMetricCatalogRepository.save(metric);
+    this.adminEvents.emit({
+      domain: 'metrics',
+      action: 'updated',
+      shipId: savedEntry.shipId,
+      entityId: metricId,
+    });
     return this.serializeEntry(savedEntry);
   }
 
@@ -540,6 +548,7 @@ export class MetricsCatalogService {
         { id: In(dto.metricIds), shipId },
         { isEnabled: dto.isEnabled },
       );
+      this.adminEvents.emit({ domain: 'metrics', action: 'updated', shipId });
       return { updated: result.affected ?? 0 };
     }
 
@@ -547,6 +556,7 @@ export class MetricsCatalogService {
       { shipId },
       { isEnabled: dto.isEnabled },
     );
+    this.adminEvents.emit({ domain: 'metrics', action: 'updated', shipId });
     return { updated: result.affected ?? 0 };
   }
 

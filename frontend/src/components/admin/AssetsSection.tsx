@@ -19,6 +19,7 @@ import {
 } from "../../api/complianceApi";
 import { fetchSfiTaxonomy } from "../../api/sfiApi";
 import { useAssetsAdminData } from "../../hooks/admin/useAssetsAdminData";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 import { AssetDrawer } from "./assets/AssetDrawer";
 import { ImportPreviewModal } from "./assets/ImportPreviewModal";
 import { EditableCell } from "./assets/EditableCell";
@@ -75,6 +76,11 @@ export function AssetsSection({ token }: AssetsSectionProps) {
     effectiveShipId,
     true,
   );
+
+  // Live-sync: another admin's asset change on this ship → re-fetch.
+  useAdminEvents("assets", (event) => {
+    if (event.shipId === effectiveShipId) void reload();
+  });
 
   // Catalog names for group tabs + sub-group labels (Phase 3b). Falls back to
   // the asset's own sfi_sub_name / the hardcoded group map for codes not in

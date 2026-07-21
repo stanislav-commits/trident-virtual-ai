@@ -6,6 +6,7 @@ import { DocumentsService } from '../documents.service';
 import { DocumentDocClass } from '../enums/document-doc-class.enum';
 import { PublicationCatalogEntity } from '../entities/publication-catalog.entity';
 import { UploadedDocumentFile } from '../ingestion/documents-upload.types';
+import { AdminEventBus } from '../../admin-events/admin-event.bus';
 
 export interface PublicationCatalogItemDto {
   id: string;
@@ -30,7 +31,17 @@ export class PublicationCatalogService {
     @InjectRepository(PublicationCatalogEntity)
     private readonly catalogRepository: Repository<PublicationCatalogEntity>,
     private readonly documentsService: DocumentsService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
+
+  /** Publications are fleet-wide (no ship) — shipId is null. */
+  private emitChange(action: 'created' | 'updated' | 'deleted'): void {
+    this.adminEvents.emit({
+      domain: 'publications',
+      action,
+      shipId: null,
+    });
+  }
 
   async list(): Promise<PublicationCatalogItemDto[]> {
     const entries = await this.catalogRepository.find({
@@ -70,6 +81,7 @@ export class PublicationCatalogService {
     });
 
     const saved = await this.catalogRepository.save(entry);
+    this.emitChange('created');
 
     return (await this.list()).find((item) => item.id === saved.id)!;
   }
@@ -107,6 +119,7 @@ export class PublicationCatalogService {
 
     entry.documentId = document.id;
     await this.catalogRepository.save(entry);
+    this.emitChange('updated');
 
     return (await this.list()).find((item) => item.id === entry.id)!;
   }
@@ -122,6 +135,7 @@ export class PublicationCatalogService {
       entry.documentId = null;
       await this.catalogRepository.save(entry);
     }
+    this.emitChange('updated');
 
     return (await this.list()).find((item) => item.id === entry.id)!;
   }

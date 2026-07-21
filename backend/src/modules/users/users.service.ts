@@ -10,6 +10,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserNameDto } from './dto/update-user-name.dto';
 import { UpdateUserShipDto } from './dto/update-user-ship.dto';
 import { UserEntity } from './entities/user.entity';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 
 @Injectable()
 export class UsersService {
@@ -17,7 +18,13 @@ export class UsersService {
     @InjectRepository(UserEntity)
     private readonly usersRepository: Repository<UserEntity>,
     private readonly shipsQueryService: ShipsQueryService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
+
+  /** Users are platform-scoped — shipId is null. */
+  private emitChange(action: 'created' | 'updated' | 'deleted'): void {
+    this.adminEvents.emit({ domain: 'users', action, shipId: null });
+  }
 
   async list() {
     const users = await this.usersRepository.find({
@@ -55,6 +62,7 @@ export class UsersService {
     });
 
     const saved = await this.usersRepository.save(entity);
+    this.emitChange('created');
 
     return {
       id: saved.id,
@@ -101,6 +109,7 @@ export class UsersService {
 
     user.name = input.name?.trim() || null;
     const saved = await this.usersRepository.save(user);
+    this.emitChange('updated');
 
     return {
       id: saved.id,
@@ -170,6 +179,7 @@ export class UsersService {
     }
 
     await this.usersRepository.remove(user);
+    this.emitChange('deleted');
   }
 
   async count(): Promise<number> {

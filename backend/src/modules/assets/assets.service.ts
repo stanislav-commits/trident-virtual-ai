@@ -37,6 +37,7 @@ import {
   isValidZoneCode,
 } from './enums/asset-location-vocab';
 import { lowerTrim, normalizeHeaderKey } from './assets.normalization';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 
 // Map our DTO field → list of acceptable xlsx headers (case-insensitive,
 // whitespace-trimmed match). Names below match the real Trident Asset
@@ -178,7 +179,16 @@ export class AssetsService {
     @InjectRepository(ServiceRuleEntity)
     private readonly serviceRuleRepository: Repository<ServiceRuleEntity>,
     private readonly sfiService: SfiService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
+
+  private emitChange(
+    shipId: string,
+    action: 'created' | 'updated' | 'deleted',
+    entityId?: string,
+  ): void {
+    this.adminEvents.emit({ domain: 'assets', action, shipId, entityId });
+  }
 
   async list(shipId: string, query: QueryAssetsDto) {
     await this.assertShipExists(shipId);
@@ -546,7 +556,9 @@ export class AssetsService {
       notes: input.notes ?? null,
     });
 
-    return this.assetRepository.save(entity);
+    const saved = await this.assetRepository.save(entity);
+    this.emitChange(shipId, 'created', saved.id);
+    return saved;
   }
 
   async update(
@@ -604,12 +616,15 @@ export class AssetsService {
       asset.inspectionObligation = input.inspectionObligation;
     }
 
-    return this.assetRepository.save(asset);
+    const saved = await this.assetRepository.save(asset);
+    this.emitChange(shipId, 'updated', assetUuid);
+    return saved;
   }
 
   async remove(shipId: string, assetUuid: string): Promise<void> {
     const asset = await this.getOne(shipId, assetUuid);
     await this.assetRepository.remove(asset);
+    this.emitChange(shipId, 'deleted', assetUuid);
   }
 
   /**
@@ -633,6 +648,7 @@ export class AssetsService {
       userId,
     );
     await this.assetRepository.delete({ shipId });
+    this.emitChange(shipId, 'deleted');
     return { deleted, snapshotId };
   }
 

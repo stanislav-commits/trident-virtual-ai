@@ -12,6 +12,7 @@ import {
 import { listAssets } from "../../api/assetsApi";
 import { AssetSelect, type AssetOption } from "./AssetMultiSelect";
 import { useAdminShip } from "../../context/AdminShipContext";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 
 interface AlertsSectionProps {
   token: string | null;
@@ -60,6 +61,11 @@ export function AlertsSection({ token }: AlertsSectionProps) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Live-sync: another admin's alert change on this ship → re-fetch.
+  useAdminEvents("alerts", (event) => {
+    if (event.shipId === shipId) void refresh();
+  });
 
   const filtered = useMemo(() => {
     return alerts

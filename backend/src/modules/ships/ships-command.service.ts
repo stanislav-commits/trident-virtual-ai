@@ -8,6 +8,7 @@ import { CreateShipDto } from './dto/create-ship.dto';
 import { UpdateShipDto } from './dto/update-ship.dto';
 import { ShipEntity } from './entities/ship.entity';
 import { type ShipResponseDto, toShipResponse } from './ship-response.mapper';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 
 @Injectable()
 export class ShipsCommandService {
@@ -17,7 +18,13 @@ export class ShipsCommandService {
     @InjectRepository(UserEntity)
     private readonly usersRepository: Repository<UserEntity>,
     private readonly metricsCatalogService: MetricsCatalogService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
+
+  /** Ships are platform-scoped — shipId is null. */
+  private emitChange(action: 'created' | 'updated' | 'deleted'): void {
+    this.adminEvents.emit({ domain: 'ships', action, shipId: null });
+  }
 
   async create(input: CreateShipDto): Promise<ShipResponseDto> {
     const discoveredMetrics = await this.metricsCatalogService.discoverOrganizationMetrics(
@@ -44,6 +51,7 @@ export class ShipsCommandService {
 
     const savedShip = await this.shipsRepository.save(ship);
     await this.metricsCatalogService.syncShipCatalog(savedShip.id, discoveredMetrics);
+    this.emitChange('created');
     return toShipResponse(savedShip);
   }
 
@@ -117,6 +125,7 @@ export class ShipsCommandService {
       );
     }
 
+    this.emitChange('updated');
     return toShipResponse(savedShip);
   }
 
@@ -141,5 +150,6 @@ export class ShipsCommandService {
     }
 
     await this.shipsRepository.remove(ship);
+    this.emitChange('deleted');
   }
 }

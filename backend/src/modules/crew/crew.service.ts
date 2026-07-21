@@ -9,6 +9,7 @@ import { CrewMemberEntity } from './entities/crew-member.entity';
 import { UserEntity } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 import {
   CREW_DEPARTMENTS,
   DEPARTMENT_KEYS,
@@ -45,7 +46,16 @@ export class CrewService {
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     private readonly usersService: UsersService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
+
+  private emitChange(
+    shipId: string,
+    action: 'created' | 'updated' | 'deleted',
+    entityId?: string,
+  ): void {
+    this.adminEvents.emit({ domain: 'crew', action, shipId, entityId });
+  }
 
   /** Static rank catalog for the UI selectors. */
   catalog() {
@@ -88,6 +98,7 @@ export class CrewService {
       ...this.mapInput(input),
     });
     const saved = await this.crewRepository.save(entity);
+    this.emitChange(shipId, 'created', saved.id);
     return this.toDto(saved, await this.usernamesFor([saved]));
   }
 
@@ -96,6 +107,7 @@ export class CrewService {
     if (!row) throw new NotFoundException('Crew member not found');
     Object.assign(row, this.mapInput(input, row));
     const saved = await this.crewRepository.save(row);
+    this.emitChange(shipId, 'updated', id);
     return this.toDto(saved, await this.usernamesFor([saved]));
   }
 
@@ -105,6 +117,7 @@ export class CrewService {
     // Drop the linked login account too, so access is fully revoked.
     if (row.userId) await this.safeDeleteUser(row.userId);
     await this.crewRepository.delete(id);
+    this.emitChange(shipId, 'deleted', id);
   }
 
   // ── login provisioning (bridge to the users/auth layer) ──
@@ -122,6 +135,7 @@ export class CrewService {
     });
     row.userId = account.id;
     await this.crewRepository.save(row);
+    this.emitChange(shipId, 'updated', id);
     return { userId: account.userId, password: account.password };
   }
 
@@ -142,6 +156,7 @@ export class CrewService {
     row.userId = null;
     await this.crewRepository.save(row);
     await this.safeDeleteUser(userId);
+    this.emitChange(shipId, 'updated', id);
     return { revoked: true };
   }
 

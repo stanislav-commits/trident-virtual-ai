@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { deleteShip, type ShipSummaryItem } from "../../api/shipsApi";
 import { getUsers, type UserListItem } from "../../api/usersApi";
 import { useAdminShip } from "../../context/AdminShipContext";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 import { XIcon } from "./AdminPanelIcons";
 import { ShipsTable } from "./ships/ShipsTable";
 import { AddVesselModal } from "./AddVesselModal";
@@ -62,6 +63,11 @@ export function ShipsSection({
   const refreshAfterMutation = useCallback(async () => {
     await Promise.all([onLoadShips(), refreshAdminShips(), loadCrewUsers()]);
   }, [loadCrewUsers, onLoadShips, refreshAdminShips]);
+
+  // Live-sync: ships are platform-scoped — any admin's change re-loads.
+  useAdminEvents("ships", () => {
+    void refreshAfterMutation();
+  });
 
   const handleDeleteRequest = (ship: ShipSummaryItem) => {
     if (deletingShipId) return;

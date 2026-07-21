@@ -29,6 +29,7 @@ import { listAssets } from "../../api/assetsApi";
 import { type AssetOption } from "./AssetMultiSelect";
 import { listCrew } from "../../api/crewApi";
 import { useAdminShip } from "../../context/AdminShipContext";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 import { ComplianceTypeRow } from "./ComplianceTypeRow";
 
 /** Rebuild the overview tree with one record transformed (for optimistic
@@ -234,6 +235,11 @@ export function ComplianceSection({ token }: { token: string | null }) {
     setActiveSection(null);
     void reload();
   }, [reload]);
+
+  // Live-sync: another admin's compliance change on this ship → re-fetch.
+  useAdminEvents("compliance", (event) => {
+    if (event.shipId === shipId) void reload();
+  });
 
   // Archetype field schema (static; drives the dynamic record form).
   useEffect(() => {

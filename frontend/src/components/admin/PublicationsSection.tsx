@@ -10,6 +10,7 @@ import {
 } from "../../api/documentsApi";
 import { Toast } from "../layout/Toast";
 import { DocumentsIcon } from "./AdminPanelIcons";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 
 const PUBLICATION_UPLOAD_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.md,.txt";
 const EMPTY_CATALOG: PublicationCatalogItem[] = [];
@@ -62,6 +63,12 @@ export function PublicationsSection({ token }: PublicationsSectionProps) {
   useEffect(() => {
     void loadCatalog();
   }, [loadCatalog]);
+
+  // Live-sync: publications are fleet-wide (no ship filter) — any admin's
+  // change re-loads the catalog.
+  useAdminEvents("publications", () => {
+    void loadCatalog();
+  });
 
   const handleView = async (item: PublicationCatalogItem) => {
     if (!token) {

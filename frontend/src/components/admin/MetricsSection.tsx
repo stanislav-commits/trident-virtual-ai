@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { updateMetricBinding } from "../../api/assetsApi";
 import { useAdminShip } from "../../context/AdminShipContext";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 import { useShipMetricsAdminData } from "../../hooks/admin/useShipMetricsAdminData";
 import { useShipMetricsCatalogPageData } from "../../hooks/admin/useShipMetricsCatalogPageData";
 import { MetricsIcon, SearchIcon, ShipIcon } from "./AdminPanelIcons";
@@ -251,6 +252,11 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     effectiveSelectedShipId,
     Boolean(token && effectiveSelectedShipId && !isCatalogView),
   );
+  // Live-sync: another admin's metric change on this ship → re-fetch.
+  useAdminEvents("metrics", (event) => {
+    if (event.shipId === effectiveSelectedShipId) void refreshCatalog();
+  });
+
   const bucketOptions = catalogPage?.buckets ?? [];
   const effectiveSelectedBucketFilter =
     selectedBucketFilter === ALL_BUCKETS_FILTER ||

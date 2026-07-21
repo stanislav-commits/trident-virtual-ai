@@ -10,6 +10,7 @@ import { AssetEntity } from '../assets/entities/asset.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { PmsService } from '../pms/pms.service';
 import { GrafanaRulesService } from './grafana-rules.service';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 
 export type AlertDto = AlertEntity & { assetName: string | null };
 
@@ -73,6 +74,7 @@ export class AlertsService {
     private readonly pmsService: PmsService,
     private readonly configService: ConfigService,
     private readonly grafanaRulesService: GrafanaRulesService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
 
   /** Ingest one Grafana webhook batch; returns how many alerts were applied. */
@@ -512,6 +514,7 @@ export class AlertsService {
       { shipId, ruleName: name },
       { assetId },
     );
+    this.adminEvents.emit({ domain: 'alerts', action: 'updated', shipId });
     return { ruleName: name, assetId, rebound: result.affected ?? 0 };
   }
 
@@ -541,7 +544,14 @@ export class AlertsService {
     if (!alert) throw new NotFoundException('Alert not found');
     alert.ackedAt = new Date();
     alert.ackedByUserId = userId;
-    return this.alertRepository.save(alert);
+    const saved = await this.alertRepository.save(alert);
+    this.adminEvents.emit({
+      domain: 'alerts',
+      action: 'updated',
+      shipId,
+      entityId: id,
+    });
+    return saved;
   }
 
   // ── helpers ──

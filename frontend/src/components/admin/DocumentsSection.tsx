@@ -15,6 +15,7 @@ import {
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
 import { useDocumentsAdminData } from "../../hooks/admin/useDocumentsAdminData";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 import { Toast } from "../layout/Toast";
 import { UploadIcon } from "./AdminPanelIcons";
 import { DocumentDeleteDialog } from "./documents/DocumentDeleteDialog";
@@ -131,6 +132,11 @@ export function DocumentsSection() {
   const documentsPage = documentsData.documentsPage;
   const documents = documentsPage?.items ?? EMPTY_DOCUMENTS;
   const refreshDocuments = documentsData.refreshDocuments;
+
+  // Live-sync: another admin's document change on this ship → re-fetch.
+  useAdminEvents("documents", (event) => {
+    if (event.shipId === shipFilter) void refreshDocuments();
+  });
   const pagination = documentsPage?.pagination;
   const activePage = pagination?.page ?? page;
   const activePageSize = pagination?.pageSize ?? DOCUMENT_PAGE_SIZE;

@@ -17,6 +17,7 @@ import {
   type LoginCredentials,
 } from "../../api/crewApi";
 import { useAdminShip } from "../../context/AdminShipContext";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 
 interface CrewSectionProps {
   token: string | null;
@@ -67,6 +68,11 @@ export function CrewSection({ token }: CrewSectionProps) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Live-sync: another admin's crew change on this ship → re-fetch.
+  useAdminEvents("crew", (event) => {
+    if (event.shipId === shipId) void refresh();
+  });
 
   useEffect(() => {
     if (!token || !shipId) return;

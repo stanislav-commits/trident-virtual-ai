@@ -9,6 +9,7 @@ import {
 } from "../../api/usersApi";
 import { getShips } from "../../api/shipsApi";
 import { useAccessSchema, positionLabel } from "../../hooks/useAccessSchema";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 import {
   UsersIcon,
   CopyIcon,
@@ -129,6 +130,10 @@ export function UsersSection({
   onRestoreUsers,
 }: UsersSectionProps) {
   const accessSchema = useAccessSchema();
+  // Live-sync: users are platform-scoped — any admin's change re-loads.
+  useAdminEvents("users", () => {
+    void onLoadUsers();
+  });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createRole, setCreateRole] = useState<"user" | "admin">("user");
   const [createName, setCreateName] = useState("");
