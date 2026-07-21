@@ -12,12 +12,17 @@
 const DEPT = '(EM|AD|CW|HS|ENG|DCK|NAV|SEC)';
 
 /**
- * Matches controlled codes in BOTH shapes they occur in:
- * - separated: "EM 002 01", "EM-002-01", "JMS EM 002 1" (filenames, clean
- *   text) — lax digit counts, the SMS is not typed consistently;
- * - concatenated: "EM00201" — pdf-parse loses the spaces in the SMS PDFs'
- *   text layer ("FormEM00201EMERGENCYREPORT"), leaving dept + exactly 5
- *   digits (3-digit group + 2-digit item). "EM002" alone is a SECTION
+ * Matches controlled codes in the shapes they occur in:
+ * - lettered, separated: "AD 002 A 01", "AD-002-A-01" — a mid-code letter
+ *   segment (e.g. yacht cert data sheets, "Form AD-002-A-01" per the
+ *   document's own printed title). Requires an explicit separator around
+ *   the letter — pdf-parse's concatenated text layer is too noisy to guess
+ *   a bare letter-between-digits reliably (could be anything).
+ * - plain, separated: "EM 002 01", "EM-002-01", "JMS EM 002 1" (filenames,
+ *   clean text) — lax digit counts, the SMS is not typed consistently.
+ * - plain, concatenated: "EM00201" — pdf-parse loses the spaces in the SMS
+ *   PDFs' text layer ("FormEM00201EMERGENCYREPORT"), leaving dept + exactly
+ *   5 digits (3-digit group + 2-digit item). "EM002" alone is a SECTION
  *   heading, not a form — the item digits are required.
  */
 const CODE_RE = new RegExp(
@@ -26,21 +31,48 @@ const CODE_RE = new RegExp(
   // or the literal word "Form" glued to the code. The latter also keeps
   // lookalikes ("SYSTEM00201") out: a letter before the dept is only allowed
   // when that letter run is "Form".
-  `(?:(?<=[Ff]orm)|(?<![A-Za-z0-9]))(?:JMS[\\s.-]*)?${DEPT}(?:[\\s.-]+(\\d{1,3})[\\s.-]+(\\d{1,2})(?!\\d)|(\\d{3})(\\d{2})(?!\\d))`,
+  `(?:(?<=[Ff]orm)|(?<![A-Za-z0-9]))(?:JMS[\\s.-]*)?(` +
+    `${DEPT}(?:` +
+    `[\\s.-]+(\\d{1,3})[\\s.-]+([A-Za-z])[\\s.-]+(\\d{1,2})(?!\\d)` + // lettered, separated
+    `|[\\s.-]+(\\d{1,3})[\\s.-]+(\\d{1,2})(?!\\d)` + // plain, separated
+    `|(\\d{3})(\\d{2})(?!\\d)` + // plain, concatenated
+    `)` +
+    `)`,
   'gi',
 );
-
-function canonical(dept: string, group: string, item: string): string {
-  return `${dept.toUpperCase()} ${group.padStart(3, '0')} ${item.padStart(2, '0')}`;
-}
 
 /**
  * The document's OWN controlled code from its (file)name, or null.
  * "JMS yyyy-MM-dd AD 002 01 Monthly SMS Review V.3.0.xlsx" → "AD 002 01".
+ * "JMS yyyy-mm-dd AD 002 A 01 YCDS V.2.1.xlsx" → "AD 002 A 01".
+ *
+ * Group map: 1=code body, 2=dept, 3/4/5=group/letter/item (lettered,
+ * separated), 6/7=group/item (plain, separated), 8/9=group/item (plain,
+ * concatenated).
  */
 function matchToCode(match: RegExpExecArray | RegExpMatchArray): string {
-  // Groups 2+3 = separated shape, groups 4+5 = concatenated shape.
-  return canonical(match[1], match[2] ?? match[4], match[3] ?? match[5]);
+  const dept = match[2].toUpperCase();
+  if (match[4] !== undefined) {
+    // Lettered code: DELIBERATELY do not normalize the separator away like
+    // the plain shape does. If a procedure's text writes this code with a
+    // hyphen ("AD-002-A-01") but the form's own filename was typed with
+    // plain spaces ("AD 002 A 01") — or vice versa — the two canonical
+    // strings come out literally different and DON'T match, so the pair
+    // is not auto-linked. An inconsistent naming convention is a real
+    // signal to confirm the link by hand (KB edit modal) rather than trust
+    // a code match that only lines up after aggressive normalization.
+    const hyphenated = /-/.test(match[1]);
+    const sep = hyphenated ? '-' : ' ';
+    return [
+      dept,
+      match[3].padStart(3, '0'),
+      match[4].toUpperCase(),
+      match[5].padStart(2, '0'),
+    ].join(sep);
+  }
+  const group = match[6] ?? match[8];
+  const item = match[7] ?? match[9];
+  return `${dept} ${group.padStart(3, '0')} ${item.padStart(2, '0')}`;
 }
 
 export function parseDocCode(name: string | null | undefined): string | null {
