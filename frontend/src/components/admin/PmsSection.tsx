@@ -609,23 +609,41 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
   const performTask = (id: string) => {
     if (!token || !shipId) return;
     const t = tasks.find((x) => x.id === id);
+    // Optimistic: a ONE-OFF task drops from Active into History the instant
+    // you mark it done. A recurring task stays active (its due date just rolls
+    // forward server-side), so we leave it and let the silent refresh settle
+    // the new date — no add/remove flicker.
+    const recurring = Boolean(t?.repeatDate || t?.intervalHours != null);
+    const prev = tasks;
+    if (t && !recurring) {
+      setTasks((rows) =>
+        rows.map((x) =>
+          x.id === id ? { ...x, completedAt: new Date().toISOString() } : x,
+        ),
+      );
+    }
     void completePmsTask(token, shipId, id, {
       doneAtHours: t?.currentHours ?? undefined,
     })
       .then(refresh)
-      .catch((e) =>
+      .catch((e) => {
+        setTasks(prev);
         setImportNote(
           e instanceof Error ? e.message : "Failed to complete task",
-        ),
-      );
+        );
+      });
   };
 
   const reopenTask = (id: string) => {
     if (!token || !shipId) return;
-    // Reopening clears the completion: PATCH lastDoneAt back to null.
+    // Reopening clears the completion — the task returns to Active instantly.
+    const prev = tasks;
+    setTasks((rows) =>
+      rows.map((x) => (x.id === id ? { ...x, completedAt: null } : x)),
+    );
     void updatePmsTask(token, shipId, id, { completedAt: null })
       .then(refresh)
-      .catch(() => undefined);
+      .catch(() => setTasks(prev));
   };
 
   const postponeTask = (
@@ -645,11 +663,16 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
   const deleteTask = (id: string) => {
     if (!token || !shipId) return;
     setDetailId((d) => (d === id ? null : d));
+    // Optimistic: the row disappears immediately; restore it if the delete
+    // fails on the server.
+    const prev = tasks;
+    setTasks((rows) => rows.filter((x) => x.id !== id));
     void deletePmsTask(token, shipId, id)
       .then(refresh)
-      .catch((e) =>
-        setImportNote(e instanceof Error ? e.message : "Failed to delete task"),
-      );
+      .catch((e) => {
+        setTasks(prev);
+        setImportNote(e instanceof Error ? e.message : "Failed to delete task");
+      });
   };
 
   // ── Import (AI-mapped: PDF / XLSX / CSV / text) ───────────────────────

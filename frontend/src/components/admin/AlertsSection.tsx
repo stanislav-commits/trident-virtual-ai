@@ -85,10 +85,19 @@ export function AlertsSection({ token }: AlertsSectionProps) {
 
   const ack = async (a: Alert) => {
     if (!token || !shipId) return;
+    // Optimistic: mark it acknowledged instantly, reconcile in the background.
+    const prev = alerts;
+    setAlerts((rows) =>
+      rows.map((r) =>
+        r.id === a.id ? { ...r, ackedAt: new Date().toISOString() } : r,
+      ),
+    );
+    setNote("");
     try {
       await acknowledgeAlert(token, shipId, a.id);
-      await refresh();
+      void refresh();
     } catch (e) {
+      setAlerts(prev);
       setNote(e instanceof Error ? e.message : "Acknowledge failed");
     }
   };

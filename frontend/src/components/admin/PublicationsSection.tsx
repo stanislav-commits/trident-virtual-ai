@@ -162,12 +162,23 @@ export function PublicationsSection({ token }: PublicationsSectionProps) {
 
     setRemovingId(item.id);
     setFeedback(null);
+    // Optimistic: the row shows "no file" instantly; reconcile in the
+    // background, roll back on failure.
+    const prev = catalog;
+    setCatalog((rows) =>
+      rows.map((r) =>
+        r.id === item.id
+          ? { ...r, documentId: null, fileName: null, parseStatus: null }
+          : r,
+      ),
+    );
 
     try {
       await detachPublicationCatalogFile(token, item.id);
       setFeedback({ type: "success", message: `Removed file from "${item.title}".` });
-      await loadCatalog();
+      void loadCatalog();
     } catch (removeError) {
+      setCatalog(prev);
       setFeedback({
         type: "error",
         message:

@@ -368,12 +368,62 @@ export function InventorySection({ token }: InventorySectionProps) {
       assetIds: form.assets.map((a) => a.id),
       taskIds: form.tasks.map((t) => t.id),
     };
+    // Optimistic: apply the edit/insert to the table instantly and close the
+    // form; the create/update call runs in the background and a silent
+    // refetch reconciles server-computed fields (stock min/max, value, links).
+    const prev = items;
+    const savingId = editId;
+    if (savingId) {
+      setItems((rows) =>
+        rows.map((r) =>
+          r.id === savingId
+            ? {
+                ...r,
+                name: input.name,
+                category: input.category ?? r.category,
+                partNumber: input.partNumber ?? undefined,
+                location: input.location ?? undefined,
+                manufacturer: input.manufacturer ?? undefined,
+                supplier: input.supplier ?? undefined,
+                quantity: input.quantity ?? undefined,
+                unit: input.unit ?? undefined,
+                notes: input.notes ?? undefined,
+                assetIds: input.assetIds ?? [],
+                assets: form.assets,
+                taskIds: input.taskIds ?? [],
+                tasks: form.tasks,
+              }
+            : r,
+        ),
+      );
+    } else {
+      const optimistic: InventoryItem = {
+        id: `optimistic-${crypto.randomUUID()}`,
+        name: input.name,
+        category: input.category ?? "",
+        partNumber: input.partNumber ?? undefined,
+        location: input.location ?? undefined,
+        manufacturer: input.manufacturer ?? undefined,
+        supplier: input.supplier ?? undefined,
+        quantity: input.quantity ?? undefined,
+        unit: input.unit ?? undefined,
+        notes: input.notes ?? undefined,
+        assetIds: input.assetIds ?? [],
+        assets: form.assets,
+        taskIds: input.taskIds ?? [],
+        tasks: form.tasks,
+      };
+      setItems((rows) => [optimistic, ...rows]);
+    }
+    setShowForm(false);
+    setNote("");
     try {
-      if (editId) await updateInventoryItem(token, shipId, editId, input);
+      if (savingId) await updateInventoryItem(token, shipId, savingId, input);
       else await createInventoryItem(token, shipId, input);
-      setShowForm(false);
-      await refresh();
+      void refresh();
     } catch (e) {
+      setItems(prev);
+      setShowForm(true);
       setNote(e instanceof Error ? e.message : "Save failed");
     }
   };
@@ -381,10 +431,15 @@ export function InventorySection({ token }: InventorySectionProps) {
   const remove = async (i: InventoryItem) => {
     if (!token || !shipId) return;
     if (!window.confirm(`Remove "${i.name}" from inventory?`)) return;
+    // Optimistic: drop the row instantly, reconcile in the background.
+    const prev = items;
+    setItems((rows) => rows.filter((r) => r.id !== i.id));
+    setNote("");
     try {
       await deleteInventoryItem(token, shipId, i.id);
-      await refresh();
+      void refresh();
     } catch (e) {
+      setItems(prev);
       setNote(e instanceof Error ? e.message : "Delete failed");
     }
   };
@@ -393,12 +448,18 @@ export function InventorySection({ token }: InventorySectionProps) {
     if (!token || !shipId || selected.size === 0) return;
     if (!window.confirm(`Remove ${selected.size} selected item(s) from inventory?`))
       return;
+    const prev = items;
+    const ids = new Set(selected);
+    setItems((rows) => rows.filter((r) => !ids.has(r.id)));
+    setSelected(new Set());
+    setNote("");
     try {
       await Promise.all(
-        Array.from(selected).map((id) => deleteInventoryItem(token, shipId, id)),
+        Array.from(ids).map((id) => deleteInventoryItem(token, shipId, id)),
       );
-      await refresh();
+      void refresh();
     } catch (e) {
+      setItems(prev);
       setNote(e instanceof Error ? e.message : "Bulk delete failed");
     }
   };

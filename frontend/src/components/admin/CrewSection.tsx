@@ -192,10 +192,15 @@ export function CrewSection({ token }: CrewSectionProps) {
   const remove = async (c: CrewMemberDto) => {
     if (!token || !shipId) return;
     if (!window.confirm(`Remove ${c.name} from the crew roster?`)) return;
+    // Optimistic: drop the crew member instantly, reconcile in the background.
+    const prev = crew;
+    setCrew((rows) => rows.filter((r) => r.id !== c.id));
+    setNote("");
     try {
       await deleteCrew(token, shipId, c.id);
-      await refresh();
+      void refresh();
     } catch (e) {
+      setCrew(prev);
       setNote(e instanceof Error ? e.message : "Delete failed");
     }
   };
