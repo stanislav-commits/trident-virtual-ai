@@ -61,7 +61,16 @@ export function AssetsSection({ token }: AssetsSectionProps) {
   const effectiveShipId =
     selectedShipId ?? availableShips[0]?.id ?? null;
 
-  const { assets, loading, error, reload, setError } = useAssetsAdminData(
+  const {
+    assets,
+    loading,
+    error,
+    reload,
+    setError,
+    patchAssetLocal,
+    removeAssetLocal,
+    restoreAssets,
+  } = useAssetsAdminData(
     token,
     effectiveShipId,
     true,
@@ -310,17 +319,22 @@ export function AssetsSection({ token }: AssetsSectionProps) {
     async (assetId: string, patch: UpdateAssetInput) => {
       if (!token || !effectiveShipId) return;
       setSavingAssetId(assetId);
+      // Optimistic: the edited cell shows the new value instantly (the patch
+      // field names line up with the asset row); the update call runs in the
+      // background and a silent reload reconciles any server-derived fields.
+      const prev = patchAssetLocal(assetId, patch as Partial<AssetItem>);
       try {
         await updateAsset(token, effectiveShipId, assetId, patch);
-        await reload();
+        void reload();
       } catch (e) {
+        restoreAssets(prev);
         setError(e instanceof Error ? e.message : "Update failed");
         throw e;
       } finally {
         setSavingAssetId(null);
       }
     },
-    [token, effectiveShipId, reload, setError],
+    [token, effectiveShipId, reload, setError, patchAssetLocal, restoreAssets],
   );
   const makeFieldSaver = useCallback(
     (assetId: string, field: keyof UpdateAssetInput) =>
@@ -363,18 +377,30 @@ export function AssetsSection({ token }: AssetsSectionProps) {
     if (!token || !effectiveShipId || !selectedAssetId) return;
     setActionBusy(true);
     setActionError(null);
+    // Optimistic: drop the asset and close the drawer instantly; reconcile in
+    // the background, restore on failure.
+    const deletingId = selectedAssetId;
+    const prev = removeAssetLocal(deletingId);
+    setConfirmDelete(false);
+    setSelectedAssetId(null);
     try {
-      await deleteAsset(token, effectiveShipId, selectedAssetId);
-      setConfirmDelete(false);
-      setSelectedAssetId(null);
+      await deleteAsset(token, effectiveShipId, deletingId);
       setActionNotice("Asset deleted.");
-      await reload();
+      void reload();
     } catch (e) {
+      restoreAssets(prev);
       setActionError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setActionBusy(false);
     }
-  }, [token, effectiveShipId, selectedAssetId, reload]);
+  }, [
+    token,
+    effectiveShipId,
+    selectedAssetId,
+    reload,
+    removeAssetLocal,
+    restoreAssets,
+  ]);
 
   const handleClearAll = useCallback(async () => {
     if (!token || !effectiveShipId) return;

@@ -31,6 +31,42 @@ import { listCrew } from "../../api/crewApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { ComplianceTypeRow } from "./ComplianceTypeRow";
 
+/** Rebuild the overview tree with one record transformed (for optimistic
+ *  edits) — the section/type/record nesting is walked immutably. */
+function mapOverviewRecords(
+  overview: ComplianceOverview,
+  docId: string,
+  fn: (rec: ComplianceRecord) => ComplianceRecord,
+): ComplianceOverview {
+  return {
+    ...overview,
+    sections: overview.sections.map((section) => ({
+      ...section,
+      types: section.types.map((type) => ({
+        ...type,
+        records: type.records.map((rec) => (rec.id === docId ? fn(rec) : rec)),
+      })),
+    })),
+  };
+}
+
+/** Rebuild the overview tree with one record removed from its type. */
+function removeOverviewRecord(
+  overview: ComplianceOverview,
+  docId: string,
+): ComplianceOverview {
+  return {
+    ...overview,
+    sections: overview.sections.map((section) => ({
+      ...section,
+      types: section.types.map((type) => ({
+        ...type,
+        records: type.records.filter((rec) => rec.id !== docId),
+      })),
+    })),
+  };
+}
+
 /**
  * Compliance Docs (Shaun, 11 Jun 2026) — V2-mock layout: section
  * categories in a left rail, the selected section's document types in the
@@ -268,10 +304,20 @@ export function ComplianceSection({ token }: { token: string | null }) {
 
   const removeLink = async (docId: string, linkId: string) => {
     if (!token || !shipId) return;
+    // Optimistic: drop the link chip instantly by rebuilding the overview
+    // tree without it; reconcile in the background, roll back on failure.
+    const prev = overview;
+    setOverview((ov) =>
+      ov ? mapOverviewRecords(ov, docId, (rec) => ({
+        ...rec,
+        links: (rec.links ?? []).filter((l) => l.id !== linkId),
+      })) : ov,
+    );
     try {
       await removeComplianceDocLink(token, shipId, docId, linkId);
-      await reload();
+      void reload();
     } catch (e) {
+      setOverview(prev);
       setError(e instanceof Error ? e.message : "Failed to remove link");
     }
   };
@@ -495,10 +541,15 @@ export function ComplianceSection({ token }: { token: string | null }) {
 
   const removeRecord = async (docId: string) => {
     if (!token || !shipId) return;
+    // Optimistic: drop the record from its type instantly (section/type status
+    // counts settle on the silent reload); roll back on failure.
+    const prev = overview;
+    setOverview((ov) => (ov ? removeOverviewRecord(ov, docId) : ov));
     try {
       await deleteComplianceDoc(token, shipId, docId);
-      await reload();
+      void reload();
     } catch (e) {
+      setOverview(prev);
       setError(e instanceof Error ? e.message : "Failed to delete record");
     }
   };

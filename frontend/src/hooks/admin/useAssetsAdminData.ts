@@ -8,6 +8,13 @@ export interface AssetsAdminData {
   error: string;
   setError: (e: string) => void;
   reload: () => Promise<void>;
+  /** Optimistic in-place edit of one asset (returns the prior list so the
+   *  caller can roll back on a failed mutation). */
+  patchAssetLocal: (assetId: string, patch: Partial<AssetItem>) => AssetItem[];
+  /** Optimistic removal of one asset (returns the prior list for rollback). */
+  removeAssetLocal: (assetId: string) => AssetItem[];
+  /** Restore a previously-captured list after a failed optimistic change. */
+  restoreAssets: (prev: AssetItem[]) => void;
 }
 
 export function useAssetsAdminData(
@@ -44,10 +51,45 @@ export function useAssetsAdminData(
     }
   }, [shipId, token]);
 
+  const patchAssetLocal = useCallback(
+    (assetId: string, patch: Partial<AssetItem>): AssetItem[] => {
+      let prev: AssetItem[] = [];
+      setAssets((rows) => {
+        prev = rows;
+        return rows.map((a) => (a.id === assetId ? { ...a, ...patch } : a));
+      });
+      return prev;
+    },
+    [],
+  );
+
+  const removeAssetLocal = useCallback((assetId: string): AssetItem[] => {
+    let prev: AssetItem[] = [];
+    setAssets((rows) => {
+      prev = rows;
+      return rows.filter((a) => a.id !== assetId);
+    });
+    return prev;
+  }, []);
+
+  const restoreAssets = useCallback((prev: AssetItem[]) => {
+    setAssets(prev);
+  }, []);
+
   useEffect(() => {
     if (!enabled) return;
     void reload();
   }, [enabled, reload]);
 
-  return { assets, total, loading, error, setError, reload };
+  return {
+    assets,
+    total,
+    loading,
+    error,
+    setError,
+    reload,
+    patchAssetLocal,
+    removeAssetLocal,
+    restoreAssets,
+  };
 }
