@@ -47,10 +47,21 @@ export function useChatMessages(
   }, [sessionId, token, fetchMessages]);
 
   const addMessage = (message: ChatMessageDto) => {
-    setState((prev) => ({
-      ...prev,
-      messages: [...prev.messages, message],
-    }));
+    setState((prev) => {
+      // A background fetchMessages() triggered by a sessionId change (e.g.
+      // navigating into a brand-new session right before this call) can
+      // resolve after this append and already include the same persisted
+      // message — without this guard the two updates stack into a visible
+      // duplicate that only self-heals on reload (a fresh fetch replaces the
+      // whole list). Dedupe by id so a race never double-adds it.
+      if (prev.messages.some((existing) => existing.id === message.id)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        messages: [...prev.messages, message],
+      };
+    });
   };
 
   const updateLastMessage = (messageUpdates: Partial<ChatMessageDto>) => {
