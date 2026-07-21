@@ -224,6 +224,7 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     syncCatalog: syncCatalogPage,
     updateDescription,
     toggleMetrics,
+    applyBinding,
     refreshCatalog,
     analyzing: catalogAnalyzing,
     analyzeProgress: catalogAnalyzeProgress,
@@ -320,16 +321,27 @@ export function MetricsSection({ token }: MetricsSectionProps) {
     async (metricId: string) => {
       if (!token) return;
       setUnbindingMetricId(metricId);
+      // Optimistic: the binding chip clears instantly; reconcile in the
+      // background, restore on failure.
+      const prevMetric = catalogPage?.items.find((m) => m.id === metricId);
+      applyBinding(metricId, null, null);
       try {
         await updateMetricBinding(token, metricId, null);
-        await refreshCatalog();
+        void refreshCatalog();
       } catch (e) {
+        if (prevMetric) {
+          applyBinding(
+            metricId,
+            prevMetric.boundAssetId,
+            prevMetric.boundAsset,
+          );
+        }
         setCatalogError(e instanceof Error ? e.message : "Unbind failed");
       } finally {
         setUnbindingMetricId(null);
       }
     },
-    [token, refreshCatalog, setCatalogError],
+    [token, refreshCatalog, setCatalogError, applyBinding, catalogPage],
   );
 
   const activeError = (isCatalogView ? catalogError : semanticError) || shipsError || "";
@@ -841,9 +853,15 @@ export function MetricsSection({ token }: MetricsSectionProps) {
                                     metric.boundAssetIdInternal
                                   }
                                   onClose={() => setBindingMetricId(null)}
-                                  onBound={() => {
-                                    void refreshCatalog();
+                                  onBound={(asset) => {
+                                    // Optimistic: show the new binding chip
+                                    // instantly, reconcile in the background.
+                                    applyBinding(metric.id, asset.id, {
+                                      assetIdInternal: asset.assetIdInternal,
+                                      displayName: asset.displayName,
+                                    });
                                     setBindingMetricId(null);
+                                    void refreshCatalog();
                                   }}
                                 />
                               )}

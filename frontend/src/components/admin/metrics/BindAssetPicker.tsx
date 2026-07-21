@@ -12,7 +12,13 @@ interface BindAssetPickerProps {
   /** Currently bound asset's id_internal, if any — shown as disabled. */
   currentAssetIdInternal: string | null;
   onClose: () => void;
-  onBound: () => void;
+  /** Fires with the just-bound asset so the parent can update its list
+   *  optimistically instead of refetching. */
+  onBound: (asset: {
+    id: string;
+    assetIdInternal: string;
+    displayName: string;
+  }) => void;
 }
 
 /**
@@ -62,7 +68,11 @@ export function BindAssetPicker({
     setBindingId(asset.id);
     try {
       await updateMetricBinding(token, metricId, asset.id);
-      onBound();
+      onBound({
+        id: asset.id,
+        assetIdInternal: asset.assetIdInternal,
+        displayName: asset.displayName,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bind failed");
     } finally {

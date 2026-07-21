@@ -42,6 +42,13 @@ export interface ShipMetricsCatalogPageData {
     isEnabled: boolean,
     metricIds?: string[],
   ) => Promise<void>;
+  /** Optimistic in-place patch of one metric's asset binding (bind/unbind)
+   *  — avoids a full catalog refetch. */
+  applyBinding: (
+    metricId: string,
+    boundAssetId: string | null,
+    boundAsset: { assetIdInternal: string; displayName: string } | null,
+  ) => void;
   analyzing: boolean;
   analyzeProgress: { done: number; total: number } | null;
   analyzeCatalog: () => Promise<void>;
@@ -285,6 +292,28 @@ export function useShipMetricsCatalogPageData(
     [shipId, token],
   );
 
+  const applyBinding = useCallback(
+    (
+      metricId: string,
+      boundAssetId: string | null,
+      boundAsset: { assetIdInternal: string; displayName: string } | null,
+    ) => {
+      setCatalogPage((current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((metric) =>
+                metric.id === metricId
+                  ? { ...metric, boundAssetId, boundAsset }
+                  : metric,
+              ),
+            }
+          : current,
+      );
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!options.enabled || !token || !shipId) {
       setCatalogPage(null);
@@ -314,6 +343,7 @@ export function useShipMetricsCatalogPageData(
     syncCatalog,
     updateDescription,
     toggleMetrics,
+    applyBinding,
     analyzing,
     analyzeProgress,
     analyzeCatalog,
