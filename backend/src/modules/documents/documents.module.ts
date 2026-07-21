@@ -6,6 +6,7 @@ import { IntegrationsModule } from '../../integrations/integrations.module';
 import { AccessControlModule } from '../access-control/access-control.module';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { DocumentEntity } from './entities/document.entity';
+import { DocumentFormLinkEntity } from './entities/document-form-link.entity';
 import { PublicationCatalogEntity } from './entities/publication-catalog.entity';
 import { DocumentsController } from './documents.controller';
 import { DocumentsIngestionService } from './ingestion/documents-ingestion.service';
@@ -27,7 +28,7 @@ import { PublicationCatalogService } from './publications/publication-catalog.se
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DocumentEntity, PublicationCatalogEntity, ShipEntity, AssetEntity, AssetDocumentLinkEntity]),
+    TypeOrmModule.forFeature([DocumentEntity, DocumentFormLinkEntity, PublicationCatalogEntity, ShipEntity, AssetEntity, AssetDocumentLinkEntity]),
     IntegrationsModule,
     AccessControlModule,
   ],

@@ -28,6 +28,7 @@ import { SearchDocumentsDto } from './dto/search-documents.dto';
 import { UpdateDocumentClassificationDto } from './dto/update-document-classification.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentEntity } from './entities/document.entity';
+import { DocumentFormLinkEntity } from './entities/document-form-link.entity';
 import { DocumentParseStatus } from './enums/document-parse-status.enum';
 import { parseDocCode } from './doc-code.util';
 import { toDocumentResponse } from './mapping/documents.mapper';
@@ -89,6 +90,8 @@ export class DocumentsService {
     private readonly assetsRepository: Repository<AssetEntity>,
     @InjectRepository(AssetDocumentLinkEntity)
     private readonly assetDocLinkRepository: Repository<AssetDocumentLinkEntity>,
+    @InjectRepository(DocumentFormLinkEntity)
+    private readonly formLinkRepository: Repository<DocumentFormLinkEntity>,
     private readonly visionExtraction: VisionExtractionService,
     private readonly remoteIngestionDispatcher: DocumentsRemoteIngestionDispatcherService,
     private readonly documentsRetrievalService: DocumentsRetrievalService,
@@ -285,12 +288,16 @@ export class DocumentsService {
    * uploaded form whose doc_code is "EM 002 01"). This is the SMS↔forms
    * join: procedures carry form_refs (scanned at upload), forms carry
    * doc_code (parsed from the filename) — resolved here at read time, so
-   * upload order never matters.
+   * upload order never matters. The code match is a STARTING POINT, not the
+   * final word: an operator-excluded pair is dropped even if the code still
+   * textually matches, and an operator-added manual link is included even
+   * with no code match — see formLinksFor/addFormLink/removeFormLink, the
+   * KB edit-modal counterpart of this same join.
    */
   async referencedForms(
     shipId: string,
     documentIds: string[],
-  ): Promise<{ documentId: string; docCode: string; title: string }[]> {
+  ): Promise<{ documentId: string; docCode: string | null; title: string }[]> {
     if (!documentIds.length) return [];
     const sources = await this.documentsRepository.find({
       where: { id: In(documentIds) },
@@ -299,20 +306,273 @@ export class DocumentsService {
     const codes = [
       ...new Set(sources.flatMap((source) => source.formRefs ?? [])),
     ];
-    if (!codes.length) return [];
-    const forms = await this.documentsRepository.find({
-      where: {
-        shipId,
-        docClass: DocumentDocClass.FORM,
-        docCode: In(codes),
-      },
-      order: { docCode: 'ASC' },
+
+    const linkRows = await this.formLinkRepository.find({
+      where: { sourceDocumentId: In(documentIds) },
     });
-    return forms.map((form) => ({
-      documentId: form.id,
-      docCode: form.docCode as string,
-      title: form.originalFileName,
-    }));
+    const excludedFormIds = new Set(
+      linkRows
+        .filter((row) => row.linkType === 'excluded')
+        .map((row) => row.formDocumentId),
+    );
+    const manualFormIds = linkRows
+      .filter((row) => row.linkType === 'linked')
+      .map((row) => row.formDocumentId);
+
+    const [codeForms, manualForms] = await Promise.all([
+      codes.length
+        ? this.documentsRepository.find({
+            where: { shipId, docClass: DocumentDocClass.FORM, docCode: In(codes) },
+          })
+        : Promise.resolve([]),
+      manualFormIds.length
+        ? this.documentsRepository.find({ where: { id: In(manualFormIds) } })
+        : Promise.resolve([]),
+    ]);
+
+    const byId = new Map<string, DocumentEntity>();
+    for (const form of codeForms) {
+      if (!excludedFormIds.has(form.id)) byId.set(form.id, form);
+    }
+    for (const form of manualForms) {
+      byId.set(form.id, form);
+    }
+
+    return [...byId.values()]
+      .sort((a, b) => (a.docCode ?? a.originalFileName).localeCompare(b.docCode ?? b.originalFileName))
+      .map((form) => ({
+        documentId: form.id,
+        docCode: form.docCode,
+        title: form.originalFileName,
+      }));
+  }
+
+  /**
+   * The effective form links for ONE document, for the KB edit modal:
+   * merges the automatic code-scan match with explicit manual overrides and
+   * tags each item's origin so the operator can see what the code scan
+   * found vs what they added by hand — and can remove either (removing a
+   * code match records a suppression, it doesn't just hide it client-side).
+   * Works in both directions off the SAME table: editing a procedure/
+   * circular shows the forms it references; editing a FORM shows which
+   * procedures/circulars reference it back.
+   */
+  async formLinksFor(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<{
+    direction: 'forms' | 'referencedBy';
+    items: {
+      documentId: string;
+      title: string;
+      docCode: string | null;
+      docClass: DocumentDocClass;
+      origin: 'code' | 'manual';
+    }[];
+  }> {
+    const document = await this.findAccessibleDocument(id, user);
+    const isForm = document.docClass === DocumentDocClass.FORM;
+
+    const rows = await this.formLinkRepository.find({
+      where: isForm ? { formDocumentId: id } : { sourceDocumentId: id },
+    });
+    const otherIdOf = (row: DocumentFormLinkEntity) =>
+      isForm ? row.sourceDocumentId : row.formDocumentId;
+    const excludedIds = new Set(
+      rows.filter((row) => row.linkType === 'excluded').map(otherIdOf),
+    );
+    const manualIds = rows
+      .filter((row) => row.linkType === 'linked')
+      .map(otherIdOf);
+
+    let codeMatches: DocumentEntity[] = [];
+    if (isForm) {
+      if (document.docCode) {
+        codeMatches = await this.documentsRepository
+          .createQueryBuilder('d')
+          .where('d.ship_id = :shipId', { shipId: document.shipId })
+          .andWhere('d.doc_class IN (:...classes)', {
+            classes: [DocumentDocClass.PROCEDURE, DocumentDocClass.CIRCULAR],
+          })
+          .andWhere('d.form_refs ? :code', { code: document.docCode })
+          .getMany();
+      }
+    } else if (document.formRefs?.length) {
+      codeMatches = await this.documentsRepository.find({
+        where: {
+          shipId: document.shipId,
+          docClass: DocumentDocClass.FORM,
+          docCode: In(document.formRefs),
+        },
+      });
+    }
+
+    const byId = new Map<
+      string,
+      { documentId: string; title: string; docCode: string | null; docClass: DocumentDocClass; origin: 'code' | 'manual' }
+    >();
+    for (const match of codeMatches) {
+      if (excludedIds.has(match.id)) continue;
+      byId.set(match.id, {
+        documentId: match.id,
+        title: match.originalFileName,
+        docCode: match.docCode,
+        docClass: match.docClass,
+        origin: 'code',
+      });
+    }
+    if (manualIds.length) {
+      const manualDocs = await this.documentsRepository.find({
+        where: { id: In(manualIds) },
+      });
+      for (const doc of manualDocs) {
+        if (!byId.has(doc.id)) {
+          byId.set(doc.id, {
+            documentId: doc.id,
+            title: doc.originalFileName,
+            docCode: doc.docCode,
+            docClass: doc.docClass,
+            origin: 'manual',
+          });
+        }
+      }
+    }
+
+    return {
+      direction: isForm ? 'referencedBy' : 'forms',
+      items: [...byId.values()].sort((a, b) => a.title.localeCompare(b.title)),
+    };
+  }
+
+  /**
+   * Pin a manual form↔procedure/circular link (the operator adding what the
+   * code scan missed, or restoring a link they'd previously suppressed).
+   * Exactly one of the two documents must be class FORM — that one becomes
+   * form_document_id, the other source_document_id, regardless of which
+   * side of the edit modal the operator is working from.
+   *
+   * When the pair is ALREADY a code match, no 'linked' row is written (it's
+   * already showing via the scan) — only a prior suppression is cleared.
+   * Writing a redundant 'linked' row here would let a later removeFormLink
+   * just delete it and fall straight back to the still-matching scan,
+   * silently undoing the removal — see removeFormLink.
+   */
+  async addFormLink(
+    id: string,
+    otherId: string,
+    user: AuthenticatedUser,
+  ): Promise<void> {
+    const { sourceId, formId, isCodeMatch } = await this.resolveFormLinkPair(
+      id,
+      otherId,
+      user,
+    );
+    const existing = await this.formLinkRepository.findOne({
+      where: { sourceDocumentId: sourceId, formDocumentId: formId },
+    });
+    if (isCodeMatch) {
+      if (existing && existing.linkType === 'excluded') {
+        await this.formLinkRepository.delete(existing.id);
+      }
+      return;
+    }
+    if (existing) {
+      if (existing.linkType !== 'linked') {
+        existing.linkType = 'linked';
+        await this.formLinkRepository.save(existing);
+      }
+      return;
+    }
+    await this.formLinkRepository.save(
+      this.formLinkRepository.create({
+        sourceDocumentId: sourceId,
+        formDocumentId: formId,
+        linkType: 'linked',
+        createdByUserId: user.id,
+      }),
+    );
+  }
+
+  /**
+   * Remove a form↔procedure/circular link. If the pair is CURRENTLY a code
+   * match, this ALWAYS ends in a persisted 'excluded' row — regardless of
+   * whether a 'linked' row already existed — because a plain delete would
+   * leave the code scan free to surface it again on the very next read.
+   * Only when the pair is not a code match is a plain delete safe (nothing
+   * left to suppress it FROM).
+   */
+  async removeFormLink(
+    id: string,
+    otherId: string,
+    user: AuthenticatedUser,
+  ): Promise<void> {
+    const { sourceId, formId, isCodeMatch } = await this.resolveFormLinkPair(
+      id,
+      otherId,
+      user,
+    );
+    const existing = await this.formLinkRepository.findOne({
+      where: { sourceDocumentId: sourceId, formDocumentId: formId },
+    });
+    if (isCodeMatch) {
+      if (existing) {
+        if (existing.linkType !== 'excluded') {
+          existing.linkType = 'excluded';
+          await this.formLinkRepository.save(existing);
+        }
+      } else {
+        await this.formLinkRepository.save(
+          this.formLinkRepository.create({
+            sourceDocumentId: sourceId,
+            formDocumentId: formId,
+            linkType: 'excluded',
+            createdByUserId: user.id,
+          }),
+        );
+      }
+      return;
+    }
+    if (existing) {
+      await this.formLinkRepository.delete(existing.id);
+    }
+  }
+
+  private async resolveFormLinkPair(
+    id: string,
+    otherId: string,
+    user: AuthenticatedUser,
+  ): Promise<{ sourceId: string; formId: string; isCodeMatch: boolean }> {
+    if (id === otherId) {
+      throw new BadRequestException('A document cannot link to itself.');
+    }
+    const [a, b] = await Promise.all([
+      this.findAccessibleDocument(id, user),
+      this.findAccessibleDocument(otherId, user),
+    ]);
+    if (a.shipId !== b.shipId) {
+      throw new BadRequestException('Both documents must belong to the same ship.');
+    }
+    const aIsForm = a.docClass === DocumentDocClass.FORM;
+    const bIsForm = b.docClass === DocumentDocClass.FORM;
+    if (aIsForm === bIsForm) {
+      throw new BadRequestException(
+        'One document must be a form and the other a procedure or circular.',
+      );
+    }
+    const source = aIsForm ? b : a;
+    const form = aIsForm ? a : b;
+    if (
+      source.docClass !== DocumentDocClass.PROCEDURE &&
+      source.docClass !== DocumentDocClass.CIRCULAR
+    ) {
+      throw new BadRequestException(
+        'Forms can only be linked to a procedure or circular.',
+      );
+    }
+    const isCodeMatch = Boolean(
+      form.docCode && source.formRefs?.includes(form.docCode),
+    );
+    return { sourceId: source.id, formId: form.id, isCodeMatch };
   }
 
   /**

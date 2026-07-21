@@ -9582,6 +9582,35 @@
   overflow-y: auto;
 }
 
+/* SMS↔forms link chips: code-scan match vs manual override look distinct
+   so the operator can tell what to trust vs what they added themselves. */
+.documents-edit__form-links {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px;
+}
+.documents-edit__form-link-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+  border-radius: 12px; padding: 3px 6px 3px 10px; color: var(--chat-text);
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-3, var(--chat-surface-2));
+}
+.documents-edit__form-link-chip--manual {
+  border-color: var(--accent, #3b82f6);
+}
+.documents-edit__form-link-origin {
+  font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--chat-text-muted); cursor: help;
+}
+.documents-edit__form-link-chip--manual .documents-edit__form-link-origin {
+  color: var(--accent, #3b82f6);
+}
+.documents-edit__form-link-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; color: var(--chat-text-muted);
+  cursor: pointer; padding: 2px; border-radius: 50%; line-height: 0;
+}
+.documents-edit__form-link-remove:hover { color: var(--status-danger); }
+.documents-edit__form-link-remove svg { width: 11px; height: 11px; }
+
 /* One-button batch upload: files/folder picker menu. */
 .compliance__upload-wrap { position: relative; }
 .compliance__upload-menu {

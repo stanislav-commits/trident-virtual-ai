@@ -585,6 +585,77 @@ export async function fetchDocumentAssetLinks(
   return response.json();
 }
 
+export interface DocumentFormLinkItem {
+  documentId: string;
+  title: string;
+  docCode: string | null;
+  docClass: DocumentDocClass;
+  /** "code" = found automatically by scanning the procedure/circular text
+   *  for controlled-document codes; "manual" = pinned by an operator. */
+  origin: "code" | "manual";
+}
+
+export interface DocumentFormLinksResponse {
+  /** "forms" when editing a procedure/circular (what it references);
+   *  "referencedBy" when editing a form (who references it). */
+  direction: "forms" | "referencedBy";
+  items: DocumentFormLinkItem[];
+}
+
+/** SMS↔forms links (KB edit modal) — merges the automatic code-scan match
+ *  with manual overrides, tagged by origin so the operator can correct a
+ *  wrong AI match instead of just trusting it. */
+export async function fetchDocumentFormLinks(
+  token: string,
+  documentId: string,
+): Promise<DocumentFormLinksResponse> {
+  const response = await fetchWithAuth(`documents/${documentId}/form-links`, {
+    token,
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to load form links");
+  }
+  return response.json();
+}
+
+/** Pin a form↔procedure/circular link (or restore a previously-suppressed
+ *  code match). Order doesn't matter — the backend infers which side is
+ *  the form by docClass. */
+export async function linkDocumentForm(
+  token: string,
+  documentId: string,
+  otherDocumentId: string,
+): Promise<void> {
+  const response = await fetchWithAuth(`documents/${documentId}/form-links`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ otherDocumentId }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to link");
+  }
+}
+
+/** Remove a form link — if it came from the code scan, this suppresses the
+ *  match (it won't resurface, in the modal or in chat citations). */
+export async function unlinkDocumentForm(
+  token: string,
+  documentId: string,
+  otherDocumentId: string,
+): Promise<void> {
+  const response = await fetchWithAuth(
+    `documents/${documentId}/form-links/${otherDocumentId}`,
+    { token, method: "DELETE" },
+  );
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to unlink");
+  }
+}
+
 export async function reparseDocument(
   token: string,
   documentId: string,

@@ -87,6 +87,7 @@ import { RelaxExtrefUniqueForHistory20260720000200 } from './migrations/20260720
 import { AddPmsTaskPostpone20260720000300 } from './migrations/20260720000300-add-pms-task-postpone';
 import { AddCircularDocClass20260720000400 } from './migrations/20260720000400-add-circular-doc-class';
 import { AddDocumentDocCode20260720000500 } from './migrations/20260720000500-add-document-doc-code';
+import { AddDocumentFormLinks20260721000100 } from './migrations/20260721000100-add-document-form-links';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -194,6 +195,7 @@ const dataSource = new DataSource({
     AddPmsTaskPostpone20260720000300,
     AddCircularDocClass20260720000400,
     AddDocumentDocCode20260720000500,
+    AddDocumentFormLinks20260721000100,
   ],
   synchronize: false,
   ssl: db.ssl

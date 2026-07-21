@@ -229,12 +229,12 @@ export class ChatDocumentsResponderService {
         ),
         ...(groundedAnswer.groundingStatus === 'grounded'
           ? referencedForms.map((form) => ({
-              id: `form-${form.docCode}`,
+              id: `form-${form.documentId}`,
               sourceType: 'document',
               documentId: form.documentId,
               shipId,
               sourceTitle: form.title,
-              refCode: form.docCode,
+              refCode: form.docCode ?? undefined,
             }))
           : []),
       ],
@@ -246,7 +246,7 @@ export class ChatDocumentsResponderService {
   private async resolveReferencedForms(
     shipId: string,
     retrieval: DocumentRetrievalResponseDto,
-  ): Promise<{ documentId: string; docCode: string; title: string }[]> {
+  ): Promise<{ documentId: string; docCode: string | null; title: string }[]> {
     try {
       const documentIds = [
         ...new Set(
@@ -262,13 +262,15 @@ export class ChatDocumentsResponderService {
   }
 
   private buildReferencedFormsPromptBlock(
-    forms: { docCode: string; title: string }[],
+    forms: { docCode: string | null; title: string }[],
   ): string | null {
     if (!forms.length) return null;
     return [
       'CONTROLLED FORMS & CHECKLISTS referenced by these procedures (available on the platform):',
-      ...forms.map((form) => `- ${form.docCode} — ${form.title}`),
-      'When the answer instructs the user to fill in or follow a form/checklist, name it by its code and title from this list. Do not invent codes that are not listed here.',
+      ...forms.map((form) =>
+        form.docCode ? `- ${form.docCode} — ${form.title}` : `- ${form.title}`,
+      ),
+      'When the answer instructs the user to fill in or follow a form/checklist, name it by its code (and title) from this list. Do not invent codes that are not listed here.',
     ].join('\n');
   }
 

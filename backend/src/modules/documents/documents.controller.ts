@@ -182,6 +182,51 @@ export class DocumentsController {
     return this.documentsService.listAssetLinks(id, user);
   }
 
+  /**
+   * SMS↔forms links (KB edit modal): for a procedure/circular, the forms it
+   * references (code match + manual); for a form, the procedures/circulars
+   * that reference it back. Same endpoint works from either side.
+   */
+  @Get(':id/form-links')
+  listFormLinks(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentsService.formLinksFor(id, user);
+  }
+
+  /** Pin a form↔procedure/circular link the code scan missed (or restore
+   *  one previously suppressed). Admin-only — this is a correction to what
+   *  the AI code-scan found, not a routine read. */
+  @Post(':id/form-links')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  addFormLink(
+    @Param('id') id: string,
+    @Body() body: { otherDocumentId?: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentsService.addFormLink(
+      id,
+      body.otherDocumentId ?? '',
+      user,
+    );
+  }
+
+  /** Remove a form link. If it came from the code scan, this records a
+   *  suppression so the wrong match doesn't resurface (in the modal or in
+   *  chat citations) — it does not just hide it client-side. */
+  @Delete(':id/form-links/:otherId')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  removeFormLink(
+    @Param('id') id: string,
+    @Param('otherId') otherId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documentsService.removeFormLink(id, otherId, user);
+  }
+
   @Patch(':id/classification')
   updateClassification(
     @Param('id') id: string,
