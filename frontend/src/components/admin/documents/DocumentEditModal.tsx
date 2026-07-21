@@ -49,7 +49,6 @@ export function DocumentEditModal({
     pinned: DocumentAssetLink[];
   } | null>(null);
   const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
-  const [attaching, setAttaching] = useState(false);
 
   // SMS↔forms: a procedure/circular's linked forms, or (from the other
   // side) the procedures/circulars that reference a form — same UI, merges
@@ -62,10 +61,15 @@ export function DocumentEditModal({
     null,
   );
   const [formLinkCandidates, setFormLinkCandidates] = useState<
-    { id: string; label: string }[]
+    {
+      id: string;
+      label: string;
+      title: string;
+      docCode: string | null;
+      docClass: DocumentFormLinkItem["docClass"];
+    }[]
   >([]);
   const [formLinkPick, setFormLinkPick] = useState("");
-  const [formLinkBusy, setFormLinkBusy] = useState(false);
   const [formLinkError, setFormLinkError] = useState("");
 
   const refreshLinks = useCallback(async () => {
@@ -145,6 +149,9 @@ export function DocumentEditModal({
           candidates.map((d) => ({
             id: d.id,
             label: d.docCode ? `${d.docCode} — ${d.originalFileName}` : d.originalFileName,
+            title: d.originalFileName,
+            docCode: d.docCode,
+            docClass: d.docClass,
           })),
         );
       } catch {
@@ -161,18 +168,36 @@ export function DocumentEditModal({
     return formLinkCandidates.filter((c) => !linked.has(c.id));
   }, [formLinkCandidates, formLinks]);
 
+  // Optimistic: the chip appears/disappears the instant you click, the API
+  // call runs in the background, then a silent refetch reconciles exact
+  // server state (e.g. an added chip's real origin: code vs manual). On
+  // failure the local change is rolled back and the error shown.
   const addFormLinkPick = async (targetId: string) => {
     if (!token) return;
-    setFormLinkBusy(true);
+    const candidate = formLinkCandidates.find((c) => c.id === targetId);
+    if (!candidate || !formLinks) return;
+    const prev = formLinks;
     setFormLinkError("");
+    setFormLinkPick("");
+    setFormLinks({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          documentId: candidate.id,
+          title: candidate.title,
+          docCode: candidate.docCode,
+          docClass: candidate.docClass,
+          origin: "manual" as const,
+        },
+      ].sort((a, b) => a.title.localeCompare(b.title)),
+    });
     try {
       await linkDocumentForm(token, doc.id, targetId);
-      setFormLinkPick("");
       await refreshFormLinks();
     } catch (e) {
+      setFormLinks(prev);
       setFormLinkError(e instanceof Error ? e.message : "Link failed");
-    } finally {
-      setFormLinkBusy(false);
     }
   };
 
@@ -184,16 +209,19 @@ export function DocumentEditModal({
   };
 
   const removeFormLinkItem = async (targetId: string) => {
-    if (!token) return;
-    setFormLinkBusy(true);
+    if (!token || !formLinks) return;
+    const prev = formLinks;
     setFormLinkError("");
+    setFormLinks({
+      ...prev,
+      items: prev.items.filter((i) => i.documentId !== targetId),
+    });
     try {
       await unlinkDocumentForm(token, doc.id, targetId);
       await refreshFormLinks();
     } catch (e) {
+      setFormLinks(prev);
       setFormLinkError(e instanceof Error ? e.message : "Unlink failed");
-    } finally {
-      setFormLinkBusy(false);
     }
   };
 
@@ -214,7 +242,12 @@ export function DocumentEditModal({
     }
   };
 
-  /** Reconcile the linked-asset set: link new picks, unlink removed ones. */
+  /**
+   * Reconcile the linked-asset set: link new picks, unlink removed ones.
+   * Optimistic — the chips reflect the new selection instantly; the link/
+   * unlink calls run in the background, then a silent refetch reconciles and
+   * the parent table's Linked/Unlinked chip updates. Rolls back on failure.
+   */
   const setDocAssets = async (nextIds: string[]) => {
     if (!token || !links) return;
     const current = new Set(links.pinned.map((l) => l.id));
@@ -222,8 +255,23 @@ export function DocumentEditModal({
     const toAdd = nextIds.filter((id) => !current.has(id));
     const toRemove = [...current].filter((id) => !next.has(id));
     if (!toAdd.length && !toRemove.length) return;
-    setAttaching(true);
+    const prev = links;
     setError("");
+    // Optimistic pinned list in the new order: keep existing link rows, build
+    // placeholders for freshly-added ids from the asset options (only the id
+    // drives the multi-select value; names settle on the silent refetch).
+    setLinks({
+      pinned: nextIds.map((id) => {
+        const existing = prev.pinned.find((l) => l.id === id);
+        if (existing) return existing;
+        const opt = assetOptions.find((a) => a.id === id);
+        return {
+          id,
+          assetIdInternal: opt?.label.split(" — ")[0] ?? "",
+          displayName: opt?.label.split(" — ").slice(1).join(" — ") ?? opt?.label ?? "",
+        };
+      }),
+    });
     try {
       for (const id of toAdd) {
         await linkAssetDocument(token, doc.shipId, id, doc.id);
@@ -232,12 +280,10 @@ export function DocumentEditModal({
         await unlinkAssetDocument(token, doc.shipId, id, doc.id);
       }
       await refreshLinks();
-      // Refresh the parent table so its Linked/Unlinked chip updates live.
       await onSaved();
     } catch (e) {
+      setLinks(prev);
       setError(e instanceof Error ? e.message : "Update failed");
-    } finally {
-      setAttaching(false);
     }
   };
 
@@ -294,9 +340,6 @@ export function DocumentEditModal({
                   placeholder="Link asset(s)…"
                 />
               )}
-              {attaching && (
-                <div className="admin-panel__muted">Updating…</div>
-              )}
             </div>
           )}
 
@@ -336,7 +379,6 @@ export function DocumentEditModal({
                         <button
                           type="button"
                           className="documents-edit__form-link-remove"
-                          disabled={formLinkBusy}
                           title={
                             item.origin === "code"
                               ? "Remove — this code match won't be suggested again"
@@ -355,7 +397,6 @@ export function DocumentEditModal({
                       list={`formlink-candidates-${doc.id}`}
                       placeholder={isForm ? "Add a procedure or circular…" : "Add a form…"}
                       value={formLinkPick}
-                      disabled={formLinkBusy}
                       onChange={(e) => setFormLinkPick(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
@@ -372,7 +413,7 @@ export function DocumentEditModal({
                     <button
                       type="button"
                       className="admin-panel__btn"
-                      disabled={formLinkBusy || !formLinkPick.trim()}
+                      disabled={!formLinkPick.trim()}
                       onClick={commitFormLinkPick}
                     >
                       + Link
