@@ -315,6 +315,9 @@ export function AdminPanelPage() {
                 error={usersAdmin.error}
                 onLoadUsers={usersAdmin.loadUsers}
                 onError={usersAdmin.setError}
+                onRemoveUserLocal={usersAdmin.removeUserLocal}
+                onPatchUserLocal={usersAdmin.patchUserLocal}
+                onRestoreUsers={usersAdmin.restoreUsers}
               />
             )}
 
@@ -328,6 +331,8 @@ export function AdminPanelPage() {
                 error={shipsAdmin.error}
                 onLoadShips={shipsAdmin.loadShips}
                 onError={shipsAdmin.setError}
+                onRemoveShipLocal={shipsAdmin.removeShipLocal}
+                onRestoreShips={shipsAdmin.restoreShips}
               />
             )}
 

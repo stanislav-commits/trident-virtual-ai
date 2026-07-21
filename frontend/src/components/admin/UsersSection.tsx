@@ -103,6 +103,9 @@ interface UsersSectionProps {
   error: string;
   onLoadUsers: () => Promise<void>;
   onError: (error: string) => void;
+  onRemoveUserLocal: (userId: string) => UserListItem[];
+  onPatchUserLocal: (userId: string, patch: Partial<UserListItem>) => UserListItem[];
+  onRestoreUsers: (prev: UserListItem[]) => void;
 }
 
 interface DeleteConfirm {
@@ -122,6 +125,8 @@ export function UsersSection({
   error,
   onLoadUsers,
   onError,
+  onRemoveUserLocal,
+  onRestoreUsers,
 }: UsersSectionProps) {
   const accessSchema = useAccessSchema();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -220,14 +225,19 @@ export function UsersSection({
 
   const handleDeleteConfirm = async () => {
     if (!token || !deleteConfirm) return;
-    setDeletingId(deleteConfirm.id);
+    const deletingUserId = deleteConfirm.id;
+    setDeletingId(deletingUserId);
     onError("");
     setDeleteConfirm(null);
+    // Optimistic: drop the user row instantly; reconcile in the background,
+    // restore on failure.
+    const prev = onRemoveUserLocal(deletingUserId);
     try {
-      await deleteUser(deleteConfirm.id, token);
+      await deleteUser(deletingUserId, token);
       setResetResult(null);
-      await onLoadUsers();
+      void onLoadUsers();
     } catch (e) {
+      onRestoreUsers(prev);
       onError(e instanceof Error ? e.message : "Failed to delete user");
     } finally {
       setDeletingId(null);

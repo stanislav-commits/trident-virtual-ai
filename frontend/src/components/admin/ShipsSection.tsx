@@ -16,6 +16,8 @@ interface ShipsSectionProps {
   error: string;
   onLoadShips: () => Promise<void>;
   onError: (error: string) => void;
+  onRemoveShipLocal: (shipId: string) => ShipSummaryItem[];
+  onRestoreShips: (prev: ShipSummaryItem[]) => void;
 }
 
 /**
@@ -30,6 +32,8 @@ export function ShipsSection({
   error,
   onLoadShips,
   onError,
+  onRemoveShipLocal,
+  onRestoreShips,
 }: ShipsSectionProps) {
   const { refreshShips: refreshAdminShips } = useAdminShip();
   const [editingShip, setEditingShip] = useState<ShipSummaryItem | null>(null);
@@ -72,13 +76,19 @@ export function ShipsSection({
 
   const handleDeleteConfirm = async () => {
     if (!token || !shipPendingDelete) return;
-    setDeletingShipId(shipPendingDelete.id);
+    const deletingId = shipPendingDelete.id;
+    setDeletingShipId(deletingId);
     onError("");
+    // Optimistic: drop the vessel row instantly and close the dialog;
+    // reconcile (ships list + admin vessel switcher + crew counts) in the
+    // background, restore on failure.
+    const prev = onRemoveShipLocal(deletingId);
+    setShipPendingDelete(null);
     try {
-      await deleteShip(shipPendingDelete.id, token);
-      setShipPendingDelete(null);
-      await refreshAfterMutation();
+      await deleteShip(deletingId, token);
+      void refreshAfterMutation();
     } catch (deleteError) {
+      onRestoreShips(prev);
       onError(
         deleteError instanceof Error ? deleteError.message : "Failed to delete ship",
       );

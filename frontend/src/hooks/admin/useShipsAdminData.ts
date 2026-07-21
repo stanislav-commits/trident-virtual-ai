@@ -13,6 +13,9 @@ export interface ShipsAdminData {
   error: string;
   setError: (nextError: string) => void;
   loadShips: () => Promise<void>;
+  /** Optimistic removal of one ship (returns the prior list for rollback). */
+  removeShipLocal: (shipId: string) => ShipSummaryItem[];
+  restoreShips: (prev: ShipSummaryItem[]) => void;
 }
 
 export function useShipsAdminData(
@@ -74,6 +77,19 @@ export function useShipsAdminData(
     }
   }, [token]);
 
+  const removeShipLocal = useCallback((shipId: string): ShipSummaryItem[] => {
+    let prev: ShipSummaryItem[] = [];
+    setShips((rows) => {
+      prev = rows;
+      return rows.filter((s) => s.id !== shipId);
+    });
+    return prev;
+  }, []);
+
+  const restoreShips = useCallback((prev: ShipSummaryItem[]) => {
+    setShips(prev);
+  }, []);
+
   useEffect(() => {
     if (!enabled) {
       return;
@@ -90,5 +106,7 @@ export function useShipsAdminData(
     error,
     setError,
     loadShips,
+    removeShipLocal,
+    restoreShips,
   };
 }

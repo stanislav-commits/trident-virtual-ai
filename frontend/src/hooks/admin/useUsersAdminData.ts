@@ -7,6 +7,11 @@ export interface UsersAdminData {
   error: string;
   setError: (nextError: string) => void;
   loadUsers: () => Promise<void>;
+  /** Optimistic removal of one user (returns the prior list for rollback). */
+  removeUserLocal: (userId: string) => UserListItem[];
+  /** Optimistic in-place edit of one user (returns prior list for rollback). */
+  patchUserLocal: (userId: string, patch: Partial<UserListItem>) => UserListItem[];
+  restoreUsers: (prev: UserListItem[]) => void;
 }
 
 export function useUsersAdminData(token: string | null): UsersAdminData {
@@ -38,6 +43,31 @@ export function useUsersAdminData(token: string | null): UsersAdminData {
     }
   }, [token]);
 
+  const removeUserLocal = useCallback((userId: string): UserListItem[] => {
+    let prev: UserListItem[] = [];
+    setUsers((rows) => {
+      prev = rows;
+      return rows.filter((u) => u.id !== userId);
+    });
+    return prev;
+  }, []);
+
+  const patchUserLocal = useCallback(
+    (userId: string, patch: Partial<UserListItem>): UserListItem[] => {
+      let prev: UserListItem[] = [];
+      setUsers((rows) => {
+        prev = rows;
+        return rows.map((u) => (u.id === userId ? { ...u, ...patch } : u));
+      });
+      return prev;
+    },
+    [],
+  );
+
+  const restoreUsers = useCallback((prev: UserListItem[]) => {
+    setUsers(prev);
+  }, []);
+
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
@@ -48,5 +78,8 @@ export function useUsersAdminData(token: string | null): UsersAdminData {
     error,
     setError,
     loadUsers,
+    removeUserLocal,
+    patchUserLocal,
+    restoreUsers,
   };
 }
