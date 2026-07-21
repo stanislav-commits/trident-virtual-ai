@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getOrganizations,
   getShips,
@@ -27,6 +27,10 @@ export function useShipsAdminData(
   const [shipsLoading, setShipsLoading] = useState(false);
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [error, setError] = useState("");
+  // Mirrors the committed list so optimistic rollback captures the real prior
+  // state (a setState updater runs lazily — reading prev out of it is stale).
+  const shipsRef = useRef<ShipSummaryItem[]>(ships);
+  shipsRef.current = ships;
 
   const loadShips = useCallback(async () => {
     if (!token) {
@@ -78,11 +82,8 @@ export function useShipsAdminData(
   }, [token]);
 
   const removeShipLocal = useCallback((shipId: string): ShipSummaryItem[] => {
-    let prev: ShipSummaryItem[] = [];
-    setShips((rows) => {
-      prev = rows;
-      return rows.filter((s) => s.id !== shipId);
-    });
+    const prev = shipsRef.current;
+    setShips((rows) => rows.filter((s) => s.id !== shipId));
     return prev;
   }, []);
 

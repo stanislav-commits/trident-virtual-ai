@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listAssets, type AssetItem } from "../../api/assetsApi";
 
 export interface AssetsAdminData {
@@ -26,6 +26,11 @@ export function useAssetsAdminData(
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Always mirrors the committed list so optimistic helpers can capture the
+  // exact prior state for rollback (a setState updater runs lazily, so reading
+  // `prev` out of it synchronously would return a stale value).
+  const assetsRef = useRef<AssetItem[]>(assets);
+  assetsRef.current = assets;
 
   const reload = useCallback(async () => {
     if (!token || !shipId) {
@@ -53,22 +58,18 @@ export function useAssetsAdminData(
 
   const patchAssetLocal = useCallback(
     (assetId: string, patch: Partial<AssetItem>): AssetItem[] => {
-      let prev: AssetItem[] = [];
-      setAssets((rows) => {
-        prev = rows;
-        return rows.map((a) => (a.id === assetId ? { ...a, ...patch } : a));
-      });
+      const prev = assetsRef.current;
+      setAssets((rows) =>
+        rows.map((a) => (a.id === assetId ? { ...a, ...patch } : a)),
+      );
       return prev;
     },
     [],
   );
 
   const removeAssetLocal = useCallback((assetId: string): AssetItem[] => {
-    let prev: AssetItem[] = [];
-    setAssets((rows) => {
-      prev = rows;
-      return rows.filter((a) => a.id !== assetId);
-    });
+    const prev = assetsRef.current;
+    setAssets((rows) => rows.filter((a) => a.id !== assetId));
     return prev;
   }, []);
 

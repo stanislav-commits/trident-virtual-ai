@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getUsers, type UserListItem } from "../../api/usersApi";
 
 export interface UsersAdminData {
@@ -18,6 +18,10 @@ export function useUsersAdminData(token: string | null): UsersAdminData {
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  // Mirrors the committed list so optimistic rollback captures the real prior
+  // state (a setState updater runs lazily — reading prev out of it is stale).
+  const usersRef = useRef<UserListItem[]>(users);
+  usersRef.current = users;
 
   const loadUsers = useCallback(async () => {
     if (!token) {
@@ -44,21 +48,17 @@ export function useUsersAdminData(token: string | null): UsersAdminData {
   }, [token]);
 
   const removeUserLocal = useCallback((userId: string): UserListItem[] => {
-    let prev: UserListItem[] = [];
-    setUsers((rows) => {
-      prev = rows;
-      return rows.filter((u) => u.id !== userId);
-    });
+    const prev = usersRef.current;
+    setUsers((rows) => rows.filter((u) => u.id !== userId));
     return prev;
   }, []);
 
   const patchUserLocal = useCallback(
     (userId: string, patch: Partial<UserListItem>): UserListItem[] => {
-      let prev: UserListItem[] = [];
-      setUsers((rows) => {
-        prev = rows;
-        return rows.map((u) => (u.id === userId ? { ...u, ...patch } : u));
-      });
+      const prev = usersRef.current;
+      setUsers((rows) =>
+        rows.map((u) => (u.id === userId ? { ...u, ...patch } : u)),
+      );
       return prev;
     },
     [],
