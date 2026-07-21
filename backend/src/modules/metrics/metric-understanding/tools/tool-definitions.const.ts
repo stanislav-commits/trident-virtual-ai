@@ -562,6 +562,54 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'render_chart',
+      description:
+        'Draw a time-series chart INSIDE the chat for the user to see. Call this when the user asks to "show / plot / graph / draw / визуализируй / покажи график" a metric over time, or whenever a trend is clearly easier to grasp visually than as one number. First resolve each metric with find_metrics_by_intent to get the EXACT measurement + field, then call this. The chart is rendered to the user automatically — you do NOT need to list the data points; just write a one-line textual takeaway (peak, trend, total) alongside it. The server down-samples, so a wide range is fine. If the user names a specific step/bucket ("every 4 hours", "по дням", "hourly", "raw"/"без усреднения"), you MUST set `every` to that exact Flux duration — do not silently pick your own when the user asked for one.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Short human title for the chart, in the user\'s language, e.g. "Расход пресной воды — 30 дней" or "Fresh-water pump power (last 30 days)". Never put internal metric keys or asset codes here.',
+          },
+          series: {
+            type: 'array',
+            description: '1–4 metrics to plot. Multiple series overlay on one chart (use for comparisons). Each must resolve in the catalog.',
+            items: {
+              type: 'object',
+              properties: {
+                measurement: { type: 'string', description: 'Influx _measurement — copy verbatim from the catalog' },
+                field: { type: 'string', description: 'Influx _field — copy verbatim INCLUDING any (unit) parenthetical' },
+                label: { type: 'string', description: 'Plain-language series name shown in the legend, e.g. "Fresh water pump 1". Optional; defaults to a cleaned metric name.' },
+              },
+              required: ['measurement', 'field'],
+            },
+          },
+          range: {
+            type: 'object',
+            properties: {
+              start: { type: 'string', description: 'Flux start, e.g. -24h, -7d, -30d, or absolute ISO' },
+              stop: { type: 'string', description: 'Flux stop; default now()' },
+            },
+            required: ['start'],
+          },
+          every: {
+            type: 'string',
+            description: 'Down-sample bucket (Flux duration, e.g. 5m, 1h, 4h, 1d). Set this whenever the user specifies a step ("every 4 hours" → "4h", "по дням" → "1d"). Omit only when the user did not ask for a specific step — the server then picks a sensible bucket for the range.',
+          },
+          chart_type: {
+            type: 'string',
+            enum: ['line', 'bar'],
+            description: 'line (default) for continuous trends; bar for per-period totals.',
+          },
+        },
+        required: ['title', 'series', 'range'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'find_assets_by_function',
       description:
         'Keyword search over asset register → ranked shortlist with asset_id_internal.',

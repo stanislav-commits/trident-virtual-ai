@@ -69,6 +69,20 @@ export interface ChatMetricExecutionDto {
   result: ChatMetricExecutionResultDto;
 }
 
+/** A time-series chart drawn in the chat (from the metric analyzer's
+ *  render_chart tool). Mirrors the backend ChatChart. */
+export interface ChatChartSeriesDto {
+  name: string;
+  points: Array<{ t: string; v: number | null }>;
+}
+
+export interface ChatChartDto {
+  title: string;
+  unit?: string | null;
+  kind: "line" | "bar";
+  series: ChatChartSeriesDto[];
+}
+
 export interface ChatTurnAskResultDto {
   askId: string;
   intent: string;
@@ -81,6 +95,7 @@ export interface ChatTurnAskResultDto {
     execution?: ChatMetricExecutionDto;
     status?: string;
     error?: string;
+    charts?: ChatChartDto[];
   } | null;
   contextReferences?: ChatContextReferenceDto[];
 }

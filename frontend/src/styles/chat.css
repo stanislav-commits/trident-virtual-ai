@@ -3009,6 +3009,32 @@
   margin-top: 12px;
 }
 
+.chat-message__charts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.chat-chart {
+  border: 1px solid var(--chat-border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: var(--chat-bg-subtle);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chat-chart__canvas {
+  width: 100%;
+}
+
+.chat-chart--empty .chat-chart__empty {
+  font-size: 12px;
+  color: var(--chat-text-muted);
+  padding: 8px 0;
+}
+
 .chat-suggestion {
   display: inline-flex;
   align-items: center;

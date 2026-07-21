@@ -39,6 +39,7 @@ import { ShipMetricCatalogEntity } from '../entities/ship-metric-catalog.entity'
 import {
   AnalyzedCatalogItem,
   AnswerQuestionResult,
+  ChatChart,
   OtherToolCallAudit,
   ToolCallAudit,
 } from './metric-analyzer-responder.types';
@@ -235,6 +236,7 @@ export class MetricAnalyzerResponderService {
 
     const audit: ToolCallAudit[] = [];
     const otherAudit: OtherToolCallAudit[] = [];
+    const charts: ChatChart[] = [];
     let totalPromptTokens = 0;
     let totalCompletionTokens = 0;
     let totalCacheWriteTokens = 0;
@@ -335,6 +337,9 @@ export class MetricAnalyzerResponderService {
           } else if (r.otherCall) {
             otherAudit.push(r.otherCall);
           }
+          if (r.chart) {
+            charts.push(r.chart);
+          }
           messages.push({
             role: 'tool',
             tool_call_id: r.toolCallId,
@@ -394,6 +399,7 @@ export class MetricAnalyzerResponderService {
       answer: finalAnswer,
       toolCalls: audit,
       otherToolCalls: otherAudit,
+      charts,
       totalTokens:
         totalPromptTokens +
         totalCacheWriteTokens +
@@ -418,6 +424,7 @@ export class MetricAnalyzerResponderService {
     payload: Record<string, unknown>;
     metricCall?: ToolCallAudit;
     otherCall?: OtherToolCallAudit;
+    chart?: ChatChart;
   }> {
     let args: Record<string, unknown>;
     try {
@@ -452,6 +459,8 @@ export class MetricAnalyzerResponderService {
         return await this.toolFindConsumableConsumptionTotal(tc, args, orgName, catalogIndex, iteration);
       case 'find_metrics_by_intent':
         return await this.toolFindMetricsByIntent(tc, args, catalogIndex, iteration);
+      case 'render_chart':
+        return await this.toolRenderChart(tc, args, orgName, catalogIndex, iteration);
       case 'find_assets_by_function':
         return await this.toolFindAssetsByFunction(tc, args, shipId, iteration);
       case 'lookup_asset_fact':
@@ -1826,6 +1835,186 @@ export class MetricAnalyzerResponderService {
         })),
       },
     };
+  }
+
+  /**
+   * Builds a time-series chart for the user to SEE. Resolves each requested
+   * metric in the catalog, pulls down-sampled samples over the range, applies
+   * each metric's scaleFactor, and returns a `chart` (accumulated out-of-band
+   * and drawn client-side). The model gets only a compact per-series summary
+   * back — the full point arrays never re-enter the prompt.
+   */
+  private async toolRenderChart(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    orgName: string,
+    catalogIndex: Map<string, Map<string, AnalyzedCatalogItem>>,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+    chart?: ChatChart;
+  }> {
+    const t0 = Date.now();
+    const title = String(args.title ?? '').trim() || 'Chart';
+    const chartType = args.chart_type === 'bar' ? 'bar' : 'line';
+    const range = (args.range ?? {}) as { start?: string; stop?: string };
+    const rawSeries = Array.isArray(args.series) ? args.series.slice(0, 4) : [];
+    const callArgs = {
+      title,
+      chart_type: chartType,
+      range: { start: range.start ?? '-7d', stop: range.stop },
+      series: rawSeries,
+      every: typeof args.every === 'string' ? args.every : undefined,
+    };
+
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'render_chart', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+
+    if (rawSeries.length === 0) {
+      return fail('series is required (1–4 metrics)');
+    }
+    if (!range.start) {
+      return fail('range.start is required, e.g. "-30d"');
+    }
+
+    let start: Date;
+    let stop: Date;
+    try {
+      ({ start, stop } = parseRange({ start: range.start, stop: range.stop }));
+    } catch (err) {
+      return fail(formatError(err));
+    }
+
+    const spanMs = Math.max(1, stop.getTime() - start.getTime());
+    const every = this.pickChartEvery(spanMs, callArgs.every);
+
+    const chartSeries: ChatChart['series'] = [];
+    const units = new Set<string>();
+    const summaries: string[] = [];
+    const notFound: string[] = [];
+
+    for (const raw of rawSeries) {
+      const s = (raw ?? {}) as { measurement?: unknown; field?: unknown; label?: unknown };
+      const measurement = String(s.measurement ?? '');
+      const field = String(s.field ?? '');
+      const item = this.findCatalogItem(catalogIndex, measurement, field);
+      if (!item) {
+        notFound.push(`${measurement}::${field}`);
+        continue;
+      }
+      const sf =
+        typeof item.scaleFactor === 'number' && Number.isFinite(item.scaleFactor) && item.scaleFactor !== 0
+          ? item.scaleFactor
+          : 1;
+      const name =
+        (typeof s.label === 'string' && s.label.trim()) ||
+        item.boundAssetName ||
+        `${item.measurement} — ${item.field}`;
+      if (item.unit) units.add(item.unit);
+
+      try {
+        const samples = await this.influxService.queryMetricSamples(
+          orgName,
+          { bucket: item.bucket, measurement: item.measurement, field: item.field },
+          start,
+          stop,
+          every,
+        );
+        const points = samples.map((p) => ({ t: p.timestamp, v: p.value * sf }));
+        chartSeries.push({ name, points });
+
+        if (points.length === 0) {
+          summaries.push(`"${name}": no data in range`);
+        } else {
+          const vals = points.map((p) => p.v);
+          const min = Math.min(...vals);
+          const max = Math.max(...vals);
+          const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+          summaries.push(
+            `"${name}": ${points.length} pts, min ${this.fmtNum(min)}, max ${this.fmtNum(max)}, avg ${this.fmtNum(avg)}, last ${this.fmtNum(vals[vals.length - 1])}${item.unit ? ' ' + item.unit : ''}`,
+          );
+        }
+      } catch (err) {
+        summaries.push(`"${name}": query failed (${formatError(err)})`);
+      }
+    }
+
+    if (chartSeries.length === 0) {
+      return fail(
+        `none of the requested metrics resolved in the catalog${notFound.length ? ` (${notFound.join(', ')})` : ''} — use find_metrics_by_intent to get exact measurement+field`,
+      );
+    }
+
+    const unit = units.size === 1 ? [...units][0] : null;
+    const chart: ChatChart = { title, unit, kind: chartType, series: chartSeries };
+
+    const resultSummary = `chart "${title}" (${every} buckets): ${summaries.join('; ')}${
+      notFound.length ? `; unresolved: ${notFound.join(', ')}` : ''
+    }`;
+
+    return {
+      toolCallId: tc.id,
+      chart,
+      otherCall: {
+        iteration, tool: 'render_chart', args: callArgs, ok: true,
+        resultSummary, latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        chart_rendered: true,
+        title,
+        every,
+        series: summaries,
+        note: 'The chart is now displayed to the user. Do NOT list the data points; give a one-line takeaway.',
+      },
+    };
+  }
+
+  /**
+   * Picks a Flux down-sample bucket for a chart so the point count stays
+   * readable (~≤500). Honours a caller-supplied `every` when it is a valid
+   * Flux duration that would not blow past ~2000 points.
+   */
+  private pickChartEvery(spanMs: number, requested: string | undefined): string {
+    const ladder: Array<[string, number]> = [
+      ['1m', 60_000],
+      ['5m', 300_000],
+      ['15m', 900_000],
+      ['30m', 1_800_000],
+      ['1h', 3_600_000],
+      ['3h', 10_800_000],
+      ['6h', 21_600_000],
+      ['12h', 43_200_000],
+      ['1d', 86_400_000],
+      ['1w', 604_800_000],
+    ];
+    const single = requested?.trim().match(/^(\d+)(s|m|h|d|w)$/);
+    if (single) {
+      const mult: Record<string, number> = {
+        s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000,
+      };
+      const ms = parseInt(single[1], 10) * mult[single[2]];
+      if (ms > 0 && spanMs / ms <= 2000) return requested!.trim();
+    }
+    for (const [label, ms] of ladder) {
+      if (spanMs / ms <= 500) return label;
+    }
+    return '1w';
+  }
+
+  private fmtNum(v: number): string {
+    if (!Number.isFinite(v)) return 'n/a';
+    const abs = Math.abs(v);
+    if (abs !== 0 && abs < 0.01) return v.toExponential(2);
+    return (Math.round(v * 100) / 100).toString();
   }
 
   private async toolFindAssetsByFunction(

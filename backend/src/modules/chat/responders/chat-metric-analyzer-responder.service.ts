@@ -84,6 +84,10 @@ export class ChatMetricAnalyzerResponderService {
           status: 'ok',
           toolCalls: result.toolCalls,
           otherToolCalls: result.otherToolCalls,
+          // Time-series charts the analyzer built (render_chart). Ride to the
+          // client on the message ragflowContext (askResults[].data.charts)
+          // and are drawn by <ChatChartBlock>.
+          charts: result.charts,
           totalTokens: result.totalTokens,
           estimatedCostUsd: result.estimatedCostUsd,
           durationMs: result.durationMs,

@@ -3,11 +3,13 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import type {
+  ChatChartDto,
   ChatMessageDto,
   ChatContextReferenceDto,
   ChatSuggestionActionDto,
 } from "../../types/chat";
 import { useAuth } from "../../context/AuthContext";
+import ChatChartBlock from "./ChatChartBlock";
 import { SourceCitations } from "./SourceCitations";
 import {
   type ChatDocumentOpenTarget,
@@ -316,6 +318,20 @@ export function MessageBubble({
         )
         .map((value) => value.trim())
     : [];
+  // Charts the metric analyzer drew (render_chart) ride on the ask results.
+  const charts: ChatChartDto[] = Array.isArray(ragflowContext?.askResults)
+    ? ragflowContext.askResults.flatMap((ask) =>
+        Array.isArray(ask?.data?.charts)
+          ? ask.data.charts.filter(
+              (c): c is ChatChartDto =>
+                !!c &&
+                typeof c === "object" &&
+                typeof c.title === "string" &&
+                Array.isArray(c.series),
+            )
+          : [],
+      )
+    : [];
   const clarificationActions = Array.isArray(ragflowContext?.clarificationActions)
     ? ragflowContext.clarificationActions.filter(
         (action): action is ChatSuggestionActionDto =>
@@ -408,6 +424,14 @@ export function MessageBubble({
           <TaskMessageCard card={taskCard} />
         ) : (
           content.trim()
+        )}
+
+        {role === "assistant" && charts.length > 0 && (
+          <div className="chat-message__charts">
+            {charts.map((chart, index) => (
+              <ChatChartBlock key={`${chart.title}-${index}`} chart={chart} />
+            ))}
+          </div>
         )}
 
         {role === "assistant" && suggestionActions.length > 0 && (

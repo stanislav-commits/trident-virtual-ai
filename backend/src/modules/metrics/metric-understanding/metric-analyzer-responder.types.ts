@@ -25,12 +25,39 @@ export interface OtherToolCallAudit {
   latencyMs: number;
 }
 
+/**
+ * A time-series chart the analyzer built for the user to SEE (via the
+ * `render_chart` tool). Accumulated out-of-band like `otherToolCalls` — the
+ * series never goes back to the model (only a compact summary does), it rides
+ * to the chat client on the message's `ragflowContext` and is drawn by the
+ * frontend. One chart may overlay a few series (e.g. compare two metrics).
+ */
+export interface ChatChartSeriesPoint {
+  /** ISO timestamp of the down-sampled bucket. */
+  t: string;
+  /** Scaled value (raw × scaleFactor), or null for an empty bucket. */
+  v: number | null;
+}
+
+export interface ChatChartSeries {
+  name: string;
+  points: ChatChartSeriesPoint[];
+}
+
+export interface ChatChart {
+  title: string;
+  unit: string | null;
+  kind: 'line' | 'bar';
+  series: ChatChartSeries[];
+}
+
 export interface AnswerQuestionResult {
   shipId: string;
   question: string;
   answer: string;
   toolCalls: ToolCallAudit[];        // query_metric calls (kept verbatim)
   otherToolCalls: OtherToolCallAudit[]; // lookup_asset / find_asset_metrics / list_assets_by_sfi
+  charts: ChatChart[];               // render_chart output, drawn client-side
   totalTokens: number;
   estimatedCostUsd: number;
   durationMs: number;
