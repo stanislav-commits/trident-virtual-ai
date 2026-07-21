@@ -20,6 +20,7 @@ import { listAssets } from "../../api/assetsApi";
 import { AssetMultiSelect, type AssetOption } from "./AssetMultiSelect";
 import { listPmsTasks, type PmsTaskDto } from "../../api/pmsApi";
 import { useAdminShip } from "../../context/AdminShipContext";
+import { useAdminEvents } from "../../hooks/admin/adminEvents";
 
 interface InventorySectionProps {
   token: string | null;
@@ -192,6 +193,12 @@ export function InventorySection({ token }: InventorySectionProps) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Live-sync: another admin's inventory change on this ship → re-fetch. A
+  // silent reload (no spinner) so it doesn't fight this admin's own view.
+  useAdminEvents("inventory", (event) => {
+    if (event.shipId === shipId) void refresh();
+  });
 
   // Tasks are bounded per vessel — fine to preload for the modal select.
   // Assets are NOT preloaded (could be thousands) — the modal uses AssetPicker.

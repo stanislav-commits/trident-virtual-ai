@@ -13,6 +13,7 @@ import { InventoryItemTaskEntity } from './entities/inventory-item-task.entity';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { PmsTaskEntity } from '../pms/entities/pms-task.entity';
 import { LlmService } from '../../integrations/llm/llm.service';
+import { AdminEventBus } from '../admin-events/admin-event.bus';
 
 const CATEGORIES = ['part', 'tool', 'fluid', 'consumable', 'other'];
 
@@ -74,6 +75,7 @@ export class InventoryService {
     @InjectRepository(PmsTaskEntity)
     private readonly taskRepository: Repository<PmsTaskEntity>,
     private readonly llmService: LlmService,
+    private readonly adminEvents: AdminEventBus,
   ) {}
 
   async list(shipId: string) {
@@ -116,6 +118,12 @@ export class InventoryService {
     );
     await this.setAssetLinks(shipId, saved.id, input.assetIds ?? []);
     await this.setTaskLinks(shipId, saved.id, input.taskIds ?? []);
+    this.adminEvents.emit({
+      domain: 'inventory',
+      action: 'created',
+      shipId,
+      entityId: saved.id,
+    });
     return (await this.withLinks(shipId, [saved]))[0];
   }
 
@@ -130,6 +138,12 @@ export class InventoryService {
     if (input.taskIds !== undefined) {
       await this.setTaskLinks(shipId, saved.id, input.taskIds ?? []);
     }
+    this.adminEvents.emit({
+      domain: 'inventory',
+      action: 'updated',
+      shipId,
+      entityId: saved.id,
+    });
     return (await this.withLinks(shipId, [saved]))[0];
   }
 
@@ -137,6 +151,12 @@ export class InventoryService {
     const item = await this.itemRepository.findOne({ where: { id, shipId } });
     if (!item) throw new NotFoundException('Inventory item not found');
     await this.itemRepository.delete(id); // join rows cascade away
+    this.adminEvents.emit({
+      domain: 'inventory',
+      action: 'deleted',
+      shipId,
+      entityId: id,
+    });
   }
 
   async createMany(shipId: string, drafts: InventoryDraft[]): Promise<{ created: number }> {

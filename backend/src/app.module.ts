@@ -23,6 +23,7 @@ import { SfiModule } from './modules/sfi/sfi.module';
 import { ShipsModule } from './modules/ships/ships.module';
 import { UsersModule } from './modules/users/users.module';
 import { WebModule } from './modules/web/web.module';
+import { AdminEventsModule } from './modules/admin-events/admin-events.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -38,6 +39,7 @@ import { AppController } from './app.controller';
     LoggingModule,
     DatabaseModule,
     IntegrationsModule,
+    AdminEventsModule,
     AuthModule,
     HealthModule,
     UsersModule,

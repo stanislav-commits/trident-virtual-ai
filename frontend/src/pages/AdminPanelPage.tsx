@@ -33,6 +33,7 @@ import { UserAvatar } from "../components/layout/UserAvatar";
 import { getUserAvatarLabel } from "../components/layout/userAvatarUtils";
 import { useShipsAdminData } from "../hooks/admin/useShipsAdminData";
 import { useUsersAdminData } from "../hooks/admin/useUsersAdminData";
+import { AdminEventsProvider } from "../hooks/admin/AdminEventsProvider";
 import { Toast } from "../components/layout/Toast";
 import {
   appRoutes,
@@ -99,6 +100,7 @@ export function AdminPanelPage() {
   };
 
   return (
+    <AdminEventsProvider token={token}>
     <div className="admin-panel">
       {isSidebarOpen && (
         <div
@@ -366,5 +368,6 @@ export function AdminPanelPage() {
         onClose={clearActiveError}
       />
     </div>
+    </AdminEventsProvider>
   );
 }
