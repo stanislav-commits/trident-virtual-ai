@@ -3035,6 +3035,118 @@
   padding: 8px 0;
 }
 
+/* ── Vessel-track map (render_map) ── */
+.chat-map {
+  border: 1px solid var(--chat-border);
+  border-radius: 10px;
+  background: var(--chat-bg-subtle);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chat-map__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.chat-map__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--chat-text);
+}
+
+.chat-map__weather-btn {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface);
+  color: var(--chat-text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.chat-map__weather-btn:hover {
+  background: var(--chat-surface-2);
+  border-color: var(--chat-border-strong);
+  color: var(--chat-text);
+}
+
+.chat-map__canvas {
+  width: 100%;
+  height: 300px;
+}
+
+/* Leaflet controls/tiles are light by default — keep them readable. */
+.chat-map__canvas .leaflet-container {
+  background: var(--chat-bg-subtle);
+  font: inherit;
+}
+
+.chat-map--empty .chat-map__empty {
+  font-size: 12px;
+  color: var(--chat-text-muted);
+  padding: 12px;
+}
+
+.chat-map-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  animation: overlayFade 0.2s ease;
+}
+
+.chat-map-modal {
+  position: relative;
+  width: min(1200px, calc(100vw - 48px));
+  height: calc(100vh - 48px);
+  border-radius: var(--chat-radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--chat-border-strong);
+  box-shadow: var(--shadow-xl);
+  background: var(--chat-bg-subtle);
+  animation: modalSlideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.chat-map-modal__frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.chat-map-modal__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--chat-border-strong);
+  background: var(--chat-surface);
+  color: var(--chat-text);
+  cursor: pointer;
+}
+
+.chat-map-modal__close:hover {
+  background: var(--chat-surface-2);
+}
+
 .chat-suggestion {
   display: inline-flex;
   align-items: center;

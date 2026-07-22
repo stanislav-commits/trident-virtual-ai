@@ -96,6 +96,20 @@ export interface ChatChartDto {
   annotations?: ChatChartAnnotationDto[];
 }
 
+export interface ChatMapTrackPointDto {
+  t: string;
+  lat: number;
+  lon: number;
+}
+
+/** Vessel-track map (render_map), drawn client-side on Leaflet + Windy. */
+export interface ChatMapDto {
+  title: string;
+  track: ChatMapTrackPointDto[];
+  current: ChatMapTrackPointDto | null;
+  weatherLayer: string;
+}
+
 export interface ChatTurnAskResultDto {
   askId: string;
   intent: string;
@@ -109,6 +123,7 @@ export interface ChatTurnAskResultDto {
     status?: string;
     error?: string;
     charts?: ChatChartDto[];
+    maps?: ChatMapDto[];
   } | null;
   contextReferences?: ChatContextReferenceDto[];
 }

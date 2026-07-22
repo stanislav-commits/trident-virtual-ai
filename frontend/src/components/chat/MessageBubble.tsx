@@ -4,12 +4,14 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import type {
   ChatChartDto,
+  ChatMapDto,
   ChatMessageDto,
   ChatContextReferenceDto,
   ChatSuggestionActionDto,
 } from "../../types/chat";
 import { useAuth } from "../../context/AuthContext";
 import ChatChartBlock from "./ChatChartBlock";
+import ChatMapBlock from "./ChatMapBlock";
 import { SourceCitations } from "./SourceCitations";
 import {
   type ChatDocumentOpenTarget,
@@ -332,6 +334,20 @@ export function MessageBubble({
           : [],
       )
     : [];
+  // Vessel-track maps the analyzer drew (render_map) ride on the ask results.
+  const maps: ChatMapDto[] = Array.isArray(ragflowContext?.askResults)
+    ? ragflowContext.askResults.flatMap((ask) =>
+        Array.isArray(ask?.data?.maps)
+          ? ask.data.maps.filter(
+              (m): m is ChatMapDto =>
+                !!m &&
+                typeof m === "object" &&
+                typeof m.title === "string" &&
+                Array.isArray(m.track),
+            )
+          : [],
+      )
+    : [];
   const clarificationActions = Array.isArray(ragflowContext?.clarificationActions)
     ? ragflowContext.clarificationActions.filter(
         (action): action is ChatSuggestionActionDto =>
@@ -430,6 +446,14 @@ export function MessageBubble({
           <div className="chat-message__charts">
             {charts.map((chart, index) => (
               <ChatChartBlock key={`${chart.title}-${index}`} chart={chart} />
+            ))}
+          </div>
+        )}
+
+        {role === "assistant" && maps.length > 0 && (
+          <div className="chat-message__charts">
+            {maps.map((m, index) => (
+              <ChatMapBlock key={`${m.title}-${index}`} chart={m} />
             ))}
           </div>
         )}
