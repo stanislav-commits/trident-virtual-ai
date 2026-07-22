@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { ChatChartDto } from "../../types/chat";
+import type { ChatChartDto, ChatChartLabelsDto } from "../../types/chat";
 
 /** Minimal shape of the state recharts (v3) passes to chart mouse handlers.
  *  On click the active fields are cleared, so we capture the hovered index on
@@ -59,42 +59,44 @@ function formatTick(ms: number, spanMs: number): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-const T = {
-  ru: {
-    askPoint: "Что здесь было?",
-    askInterval: "Что было в этот интервал?",
-    questionPoint: (title: string, when: string, vals: string) =>
-      `На графике «${title}»: ${when}${vals ? ` — ${vals}` : ""}. ` +
-      "Что происходило в это время? Проверь другие метрики, события и алармы в этом окне и объясни причину.",
-    questionInterval: (title: string, from: string, to: string) =>
-      `На графике «${title}»: интервал с ${from} по ${to}. ` +
-      "Что происходило в это время и что вызвало изменение? Проверь другие метрики, события и алармы в этом окне и объясни причину.",
-  },
-  en: {
-    askPoint: "What happened here?",
-    askInterval: "What happened in this window?",
-    questionPoint: (title: string, when: string, vals: string) =>
-      `On the "${title}" chart: ${when}${vals ? ` — ${vals}` : ""}. ` +
-      "What was going on at that time? Check other metrics, events and alarms in that window and explain the cause.",
-    questionInterval: (title: string, from: string, to: string) =>
-      `On the "${title}" chart: the interval from ${from} to ${to}. ` +
-      "What was going on and what drove the change? Check other metrics, events and alarms in that window and explain the cause.",
-  },
-} as const;
+// Fallback when the server hasn't supplied translated labels yet (e.g. an
+// older cached message) — English, same shape the backend's ChatUiLabelsService
+// falls back to.
+const ENGLISH_LABELS: ChatChartLabelsDto = {
+  askPoint: "What happened here?",
+  askInterval: "What happened in this window?",
+  questionPointTemplate:
+    'On the "{title}" chart: {when}. What was going on at that time? ' +
+    "Check other metrics, events and alarms in that window and explain the cause.",
+  questionIntervalTemplate:
+    'On the "{title}" chart: the interval from {from} to {to}. ' +
+    "What was going on and what drove the change? Check other metrics, " +
+    "events and alarms in that window and explain the cause.",
+};
+
+/** Fills `{token}` placeholders in a translated template. Any token the
+ *  vars map doesn't have is left as-is rather than silently vanishing, so a
+ *  mistranslation is visible instead of producing garbled prose. */
+function fillTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
+    Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : match,
+  );
+}
 
 export default function ChatChartBlock({
   chart,
   onAsk,
-  lang = "en",
+  labels,
 }: {
   chart: ChatChartDto;
   /** Send a follow-up question to the chat (click-a-point → "what happened
    *  here?"). Usually the message input's send handler. */
   onAsk?: (text: string) => void;
-  /** Chat language for the click-to-ask labels + composed question. */
-  lang?: "ru" | "en";
+  /** Click-to-ask UI strings, translated server-side into the chat's
+   *  language (any language). Falls back to English if absent. */
+  labels?: ChatChartLabelsDto;
 }) {
-  const t = T[lang];
+  const t = labels ?? ENGLISH_LABELS;
   const [selected, setSelected] = useState<SelectedPoint | null>(null);
   const [selectedInterval, setSelectedInterval] = useState<{
     t1: number;
@@ -223,18 +225,21 @@ export default function ChatChartBlock({
   const roundVal = (v: number) => Math.round(v * 100) / 100;
   const askAboutSelected = () => {
     if (!onAsk || !selected) return;
-    const when = new Date(selected.t).toLocaleString();
+    const whenStr = new Date(selected.t).toLocaleString();
     const vals = selected.items
       .map((i) => `${i.name} = ${roundVal(i.value)}${unit ? ` ${unit}` : ""}`)
       .join(", ");
-    onAsk(t.questionPoint(chart.title, when, vals));
+    const when = vals ? `${whenStr} — ${vals}` : whenStr;
+    onAsk(fillTemplate(t.questionPointTemplate, { title: chart.title, when }));
     setSelected(null);
   };
   const askAboutInterval = () => {
     if (!onAsk || !selectedInterval) return;
     const from = new Date(selectedInterval.t1).toLocaleString();
     const to = new Date(selectedInterval.t2).toLocaleString();
-    onAsk(t.questionInterval(chart.title, from, to));
+    onAsk(
+      fillTemplate(t.questionIntervalTemplate, { title: chart.title, from, to }),
+    );
     setSelectedInterval(null);
   };
 

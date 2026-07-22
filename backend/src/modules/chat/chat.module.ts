@@ -11,6 +11,7 @@ import { WebModule } from '../web/web.module';
 import { ChatController } from './chat.controller';
 import { ChatLlmService } from './chat-llm.service';
 import { ChatMessagesService } from './chat-messages.service';
+import { ChatUiLabelsService } from './chat-ui-labels.service';
 import { ChatSessionsService } from './chat-sessions.service';
 import { ChatConversationContextService } from './context/chat-conversation-context.service';
 import { ChatContextMemoryService } from './context/chat-context-memory.service';
@@ -59,6 +60,7 @@ import { ChatVoiceTranscriptionService } from './voice/chat-voice-transcription.
     ChatSessionsService,
     ChatMessagesService,
     ChatLlmService,
+    ChatUiLabelsService,
     ChatContextMemoryService,
     ChatConversationContextService,
     ChatContextQueryResolverService,

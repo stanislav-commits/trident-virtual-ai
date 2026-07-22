@@ -32,6 +32,7 @@ import {
 } from './chat-source-result-composition';
 import { buildDocumentFallbackWebQuery } from './chat-document-web-query';
 import { ChatProgressBus } from '../progress/chat-progress.bus';
+import { ChatUiLabelsService } from '../chat-ui-labels.service';
 import {
   buildDocumentsWebFallbackSearchQuestion,
   DocumentsWebFallbackDiagnostics,
@@ -68,6 +69,7 @@ export class ChatTurnOrchestratorService {
     private readonly chatFilesResponderService: ChatFilesResponderService,
     private readonly chatInDevelopmentResponderService: ChatInDevelopmentResponderService,
     private readonly chatProgressBus: ChatProgressBus,
+    private readonly chatUiLabelsService: ChatUiLabelsService,
   ) {}
 
   async respond(input: {
@@ -79,6 +81,34 @@ export class ChatTurnOrchestratorService {
     ragflowContext: Record<string, unknown> | null;
   }> {
     const plan = await this.chatTurnPlannerService.plan(input.context);
+    // Chart click-to-ask UI strings (button labels + composed question),
+    // translated into whatever language this turn is answering in — kicked
+    // off in parallel with the rest of the turn so it never adds latency
+    // (translation only runs once per distinct language; cached after).
+    const chartLabelsPromise = this.chatUiLabelsService.getChartLabels(
+      plan.responseLanguage,
+    );
+    const result = await this.respondForPlan(input, plan);
+    const chartLabels = await chartLabelsPromise;
+    return {
+      content: result.content,
+      ragflowContext: result.ragflowContext
+        ? { ...result.ragflowContext, chartLabels }
+        : { chartLabels },
+    };
+  }
+
+  private async respondForPlan(
+    input: {
+      session: ChatSessionEntity;
+      messages: ChatMessageEntity[];
+      context: ChatConversationContext;
+    },
+    plan: ChatTurnPlan,
+  ): Promise<{
+    content: string;
+    ragflowContext: Record<string, unknown> | null;
+  }> {
     const asks = plan.asks;
 
     if (

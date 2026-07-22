@@ -96,6 +96,16 @@ export interface ChatChartDto {
   annotations?: ChatChartAnnotationDto[];
 }
 
+/** Chart click-to-ask UI strings, translated server-side into whatever
+ *  language this turn answered in (any language — not a fixed RU/EN pair).
+ *  Templates carry {title}/{when} or {title}/{from}/{to} placeholders. */
+export interface ChatChartLabelsDto {
+  askPoint: string;
+  askInterval: string;
+  questionPointTemplate: string;
+  questionIntervalTemplate: string;
+}
+
 export interface ChatMapTrackPointDto {
   t: string;
   lat: number;
@@ -137,6 +147,7 @@ export interface ChatRagflowContextDto {
   clarificationActions?: ChatSuggestionActionDto[];
   resolvedSubjectQuery?: string;
   askResults?: ChatTurnAskResultDto[];
+  chartLabels?: ChatChartLabelsDto;
 }
 
 // Message from backend ChatMessage

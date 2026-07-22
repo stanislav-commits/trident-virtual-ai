@@ -312,14 +312,10 @@ export function MessageBubble({
     () => refs.filter(isDisplayableChatSourceReference),
     [refs],
   );
-  // Language of this turn (for chart click-to-ask labels + composed questions)
-  // — Cyrillic-heavy answer → Russian, otherwise English. Keeps the crew's
-  // follow-up in the language they're chatting in so the reply matches.
-  const chatLang: "ru" | "en" = useMemo(() => {
-    const cyr = (content.match(/[Ѐ-ӿ]/g) || []).length;
-    const lat = (content.match(/[A-Za-z]/g) || []).length;
-    return cyr > lat ? "ru" : "en";
-  }, [content]);
+  // Chart click-to-ask UI strings (button labels + composed question),
+  // translated server-side into whatever language this turn answered in —
+  // works for any language the crew chats in, not a fixed pair.
+  const chartLabels = ragflowContext?.chartLabels;
   const telemetryShips = Array.isArray(ragflowContext?.telemetryShips)
     ? ragflowContext.telemetryShips
         .filter(
@@ -457,7 +453,7 @@ export function MessageBubble({
                 key={`${chart.title}-${index}`}
                 chart={chart}
                 onAsk={onSendMessage}
-                lang={chatLang}
+                labels={chartLabels}
               />
             ))}
           </div>
