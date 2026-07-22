@@ -564,7 +564,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'render_chart',
       description:
-        'Draw a time-series chart INSIDE the chat for the user to see. Call this when the user asks to "show / plot / graph / draw / визуализируй / покажи график" a metric over time, or whenever a trend is clearly easier to grasp visually than as one number. First resolve each metric with find_metrics_by_intent to get the EXACT measurement + field, then call this. The chart is rendered to the user automatically — you do NOT need to list the data points; just write a one-line textual takeaway (peak, trend, total) alongside it. The server down-samples, so a wide range is fine. If the user names a specific step/bucket ("every 4 hours", "по дням", "hourly", "raw"/"без усреднения"), you MUST set `every` to that exact Flux duration — do not silently pick your own when the user asked for one.',
+        'Draw a time-series chart INSIDE the chat for the user to see. Call this when the user asks to "show / plot / graph / draw / визуализируй / покажи график" a metric over time, or whenever a trend is clearly easier to grasp visually than as one number. First resolve each metric with find_metrics_by_intent to get the EXACT measurement + field, then call this. The chart is rendered to the user automatically — you do NOT need to list the data points; just write a one-line textual takeaway (peak, trend, total) alongside it. The server down-samples, so a wide range is fine. If the user names a specific step/bucket ("every 4 hours", "по дням", "hourly", "raw"/"без усреднения"), you MUST set `every` to that exact Flux duration — do not silently pick your own when the user asked for one. TOTALS: when the user wants ONE combined line across several metrics ("total water across all tanks", "суммарный уровень топлива", "combined", "в сумме"), pass ALL the contributing metrics in `series` AND set combine:"sum" — the server adds them into a single trend. NEVER fake a total by passing one metric and labelling it as the sum, and NEVER leave N separate lines when the user asked for the total.',
       parameters: {
         type: 'object',
         properties: {
@@ -601,6 +601,15 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             type: 'string',
             enum: ['line', 'bar'],
             description: 'line (default) for continuous trends; bar for per-period totals.',
+          },
+          combine: {
+            type: 'string',
+            enum: ['none', 'sum'],
+            description: 'none (default) = plot each series as its own line. "sum" = add all the series together per time bucket into ONE line (use for "total across all tanks / combined / суммарно"). Only valid when the series share a unit.',
+          },
+          combined_label: {
+            type: 'string',
+            description: 'Legend/label for the single line produced by combine:"sum", e.g. "Total fresh water" / "Суммарный уровень топлива". Optional.',
           },
         },
         required: ['title', 'series', 'range'],

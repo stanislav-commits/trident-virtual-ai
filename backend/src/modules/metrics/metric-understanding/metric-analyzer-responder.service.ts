@@ -1859,11 +1859,18 @@ export class MetricAnalyzerResponderService {
     const t0 = Date.now();
     const title = String(args.title ?? '').trim() || 'Chart';
     const chartType = args.chart_type === 'bar' ? 'bar' : 'line';
+    const combine = args.combine === 'sum' ? 'sum' : 'none';
+    const combinedLabel =
+      typeof args.combined_label === 'string' && args.combined_label.trim()
+        ? args.combined_label.trim()
+        : null;
     const range = (args.range ?? {}) as { start?: string; stop?: string };
     const rawSeries = Array.isArray(args.series) ? args.series.slice(0, 4) : [];
     const callArgs = {
       title,
       chart_type: chartType,
+      combine,
+      combined_label: combinedLabel,
       range: { start: range.start ?? '-7d', stop: range.stop },
       series: rawSeries,
       every: typeof args.every === 'string' ? args.every : undefined,
@@ -1896,9 +1903,9 @@ export class MetricAnalyzerResponderService {
     const spanMs = Math.max(1, stop.getTime() - start.getTime());
     const every = this.pickChartEvery(spanMs, callArgs.every);
 
-    const chartSeries: ChatChart['series'] = [];
+    let chartSeries: ChatChart['series'] = [];
     const units = new Set<string>();
-    const summaries: string[] = [];
+    let summaries: string[] = [];
     const notFound: string[] = [];
 
     for (const raw of rawSeries) {
@@ -1954,6 +1961,44 @@ export class MetricAnalyzerResponderService {
     }
 
     const unit = units.size === 1 ? [...units][0] : null;
+
+    // combine:'sum' → collapse every resolved series into ONE line by adding
+    // values per aligned bucket. All series share the same range+every so the
+    // aggregateWindow timestamps line up exactly; a bucket a given series is
+    // missing (createEmpty:false dropped it) simply doesn't add to that
+    // total. This is what "total X across all tanks" means — one summed
+    // trend, not N overlaid lines (and never a single metric mislabelled as
+    // the total). Only meaningful for a shared unit; if the units differ we
+    // refuse to sum apples and oranges and keep the separate lines.
+    if (combine === 'sum' && chartSeries.length > 1 && units.size <= 1) {
+      const byTs = new Map<string, number>();
+      for (const series of chartSeries) {
+        for (const point of series.points) {
+          if (point.v == null || !Number.isFinite(point.v)) continue;
+          byTs.set(point.t, (byTs.get(point.t) ?? 0) + point.v);
+        }
+      }
+      const summedPoints = [...byTs.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([t, v]) => ({ t, v }));
+      const summedName =
+        combinedLabel || (unit ? `Total (${unit})` : 'Total');
+      const summedCount = chartSeries.length;
+      chartSeries = [{ name: summedName, points: summedPoints }];
+
+      if (summedPoints.length === 0) {
+        summaries = [`"${summedName}": no data in range`];
+      } else {
+        const vals = summedPoints.map((p) => p.v);
+        const min = Math.min(...vals);
+        const max = Math.max(...vals);
+        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+        summaries = [
+          `"${summedName}" (sum of ${summedCount} series): ${summedPoints.length} pts, min ${this.fmtNum(min)}, max ${this.fmtNum(max)}, avg ${this.fmtNum(avg)}, last ${this.fmtNum(vals[vals.length - 1])}${unit ? ' ' + unit : ''}`,
+        ];
+      }
+    }
+
     const chart: ChatChart = { title, unit, kind: chartType, series: chartSeries };
 
     const resultSummary = `chart "${title}" (${every} buckets): ${summaries.join('; ')}${
