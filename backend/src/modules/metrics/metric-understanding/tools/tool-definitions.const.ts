@@ -564,7 +564,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'render_chart',
       description:
-        'Draw a time-series chart INSIDE the chat for the user to see. Call this when the user asks to "show / plot / graph / draw / визуализируй / покажи график" a metric over time, or whenever a trend is clearly easier to grasp visually than as one number. First resolve each metric with find_metrics_by_intent to get the EXACT measurement + field, then call THIS tool directly — you do NOT need to fetch, align, downsample, sum or stack the data yourself first. NEVER use run_flux_query to build a chart and NEVER dump raw data rows into the answer; render_chart pulls, down-samples, sums (combine:"sum") and stacks (chart_type:"area") server-side. The chart is rendered to the user automatically — you do NOT list the data points; just write a one-line textual takeaway (peak, trend, total) alongside it. The server down-samples, so a wide range is fine. If the user names a specific step/bucket ("every 4 hours", "по дням", "hourly", "raw"/"без усреднения"), you MUST set `every` to that exact Flux duration — do not silently pick your own when the user asked for one. TOTALS: when the user wants ONE combined line across several metrics ("total water across all tanks", "суммарный уровень топлива", "combined", "в сумме"), pass ALL the contributing metrics in `series` AND set combine:"sum" — the server adds them into a single trend. NEVER fake a total by passing one metric and labelling it as the sum, and NEVER leave N separate lines when the user asked for the total.',
+        'Draw a time-series chart INSIDE the chat for the user to see. Call this when the user asks to "show / plot / graph / draw / визуализируй / покажи график" a metric over time, or whenever a trend is clearly easier to grasp visually than as one number. First resolve each metric with find_metrics_by_intent to get the EXACT measurement + field, then call THIS tool directly — you do NOT need to fetch, align, downsample, sum or stack the data yourself first. NEVER use run_flux_query to build a chart and NEVER dump raw data rows into the answer; render_chart pulls, down-samples, sums (combine:"sum") and stacks (chart_type:"area") server-side. The chart is rendered to the user automatically — you do NOT list the data points; just write a one-line textual takeaway (peak, trend, total) alongside it. The server down-samples, so a wide range is fine. If the user names a specific step/bucket ("every 4 hours", "по дням", "hourly", "raw"/"без усреднения"), you MUST set `every` to that exact Flux duration — do not silently pick your own when the user asked for one. TOTALS: when the user wants ONE combined line across several metrics ("total water across all tanks", "суммарный уровень топлива", "combined", "в сумме"), pass ALL the contributing metrics in `series` AND set combine:"sum" — the server adds them into a single trend. NEVER fake a total by passing one metric and labelling it as the sum, and NEVER leave N separate lines when the user asked for the total. FORECAST: when the user asks to project/forecast/"when will it run out / run empty / hit X / когда закончится / хватит ли / прогноз", set forecast:true (and forecast_to to the target — 0 for "run empty", or the threshold) so the projection is DRAWN on the chart with an ETA marker — do NOT just describe the projection in prose. Also: never write placeholder tokens like {{CHART}} in your answer — the chart renders on its own.',
       parameters: {
         type: 'object',
         properties: {
@@ -614,6 +614,18 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           mark_events: {
             type: 'boolean',
             description: 'Set true to mark significant step changes (refills/bunkering as step-ups, big draws as step-downs) as dashed vertical lines on the chart. Use when the user asks "when did we bunker / refill / отметь события / заправки / резкие изменения". Only applies to a single-metric line.',
+          },
+          forecast: {
+            type: 'boolean',
+            description: 'Set true to project the recent trend forward as a dashed estimate line (linear fit). Use for "forecast / projection / when will it run out / прогноз / когда закончится / хватит ли". Only for a single-metric line.',
+          },
+          forecast_to: {
+            type: 'number',
+            description: 'Target value the forecast should run to, in DISPLAY units (e.g. 0 for "when does the tank run empty", or a low reserve threshold). When set and the trend heads toward it, the chart marks the ETA date. Omit for a plain look-ahead.',
+          },
+          forecast_label: {
+            type: 'string',
+            description: 'Legend label for the dashed forecast line in the user\'s language, e.g. "Прогноз" / "Forecast". Optional.',
           },
         },
         required: ['title', 'series', 'range'],

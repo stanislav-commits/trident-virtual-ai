@@ -77,6 +77,8 @@ export interface ChatChartSeriesDto {
   /** AI-analysed typical range (p5–p95, display units); shaded as a "normal
    *  range" band on single-series charts. */
   band?: { p5: number | null; p95: number | null } | null;
+  /** Rendered dashed — the projected (forecast) trend. */
+  dashed?: boolean;
 }
 
 export interface ChatChartAnnotationDto {

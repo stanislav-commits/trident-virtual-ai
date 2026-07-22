@@ -239,6 +239,7 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
                   type="monotone"
                   dataKey={name}
                   stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+                  strokeDasharray={chart.series[i]?.dashed ? "6 4" : undefined}
                   dot={false}
                   strokeWidth={2}
                   connectNulls

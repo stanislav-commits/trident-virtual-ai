@@ -41,6 +41,8 @@ import {
   AnswerQuestionResult,
   ChatChart,
   ChatChartAnnotation,
+  ChatChartSeries,
+  ChatChartSeriesPoint,
   OtherToolCallAudit,
   ToolCallAudit,
 } from './metric-analyzer-responder.types';
@@ -1867,6 +1869,15 @@ export class MetricAnalyzerResponderService {
           : 'line';
     const combine = args.combine === 'sum' ? 'sum' : 'none';
     const markEvents = args.mark_events === true;
+    const forecast = args.forecast === true;
+    const forecastTo =
+      typeof args.forecast_to === 'number' && Number.isFinite(args.forecast_to)
+        ? args.forecast_to
+        : null;
+    const forecastLabel =
+      typeof args.forecast_label === 'string' && args.forecast_label.trim()
+        ? args.forecast_label.trim()
+        : 'Forecast';
     const combinedLabel =
       typeof args.combined_label === 'string' && args.combined_label.trim()
         ? args.combined_label.trim()
@@ -1879,6 +1890,8 @@ export class MetricAnalyzerResponderService {
       combine,
       combined_label: combinedLabel,
       mark_events: markEvents,
+      forecast,
+      forecast_to: forecastTo,
       range: { start: range.start ?? '-7d', stop: range.stop },
       series: rawSeries,
       every: typeof args.every === 'string' ? args.every : undefined,
@@ -2055,6 +2068,28 @@ export class MetricAnalyzerResponderService {
       );
     }
 
+    // forecast → fit a linear trend on the single plotted line and project it
+    // forward as a dashed "estimate" series that extends the time axis; when a
+    // target is set (forecast_to, e.g. 0 = empty) and the trend heads toward
+    // it, mark the ETA date. Not for bar/area or multi-series.
+    let forecastNote = '';
+    if (forecast && chartType !== 'bar' && chartSeries.length === 1) {
+      const fc = this.buildForecast(
+        chartSeries[0].points,
+        every,
+        forecastTo,
+        forecastLabel,
+        unit,
+      );
+      if (fc) {
+        chartSeries.push(fc.series);
+        if (fc.annotation) {
+          annotations = [...(annotations ?? []), fc.annotation];
+        }
+        forecastNote = ` [forecast: ${fc.summary}]`;
+      }
+    }
+
     const chart: ChatChart = {
       title,
       unit,
@@ -2065,11 +2100,11 @@ export class MetricAnalyzerResponderService {
 
     const eventNote =
       annotations && annotations.length
-        ? ` [${annotations.length} event marker(s): ${annotations
+        ? ` [${annotations.length} marker(s): ${annotations
             .map((a) => `${a.label}@${a.t.slice(0, 10)}`)
             .join(', ')}]`
         : '';
-    const resultSummary = `chart "${title}" (${every} buckets): ${summaries.join('; ')}${eventNote}${
+    const resultSummary = `chart "${title}" (${every} buckets): ${summaries.join('; ')}${eventNote}${forecastNote}${
       notFound.length ? `; unresolved: ${notFound.join(', ')}` : ''
     }`;
 
@@ -2142,6 +2177,113 @@ export class MetricAnalyzerResponderService {
     } catch {
       return [];
     }
+  }
+
+  /** Flux single-unit duration ("1h", "4h", "1d") → milliseconds, or null. */
+  private fluxDurationMs(d: string): number | null {
+    const m = d.trim().match(/^(\d+)(s|m|h|d|w)$/);
+    if (!m) return null;
+    const mult: Record<string, number> = {
+      s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000,
+    };
+    return parseInt(m[1], 10) * mult[m[2]];
+  }
+
+  /**
+   * Fits a least-squares linear trend on the plotted (scaled) points and
+   * projects it forward as a dashed "estimate" series. If a target value is
+   * given (forecast_to, e.g. 0 = empty) and the trend is heading toward it,
+   * the horizon runs to that ETA (capped) and an annotation marks the date;
+   * otherwise it projects a modest window ahead. The forecast line starts AT
+   * the last real point so it visually continues the actual line. Returns
+   * null when there is too little data or the trend can't be projected.
+   */
+  private buildForecast(
+    points: Array<{ t: string; v: number | null }>,
+    every: string,
+    forecastTo: number | null,
+    forecastLabel: string,
+    unit: string | null,
+  ): {
+    series: ChatChartSeries;
+    annotation?: ChatChartAnnotation;
+    summary: string;
+  } | null {
+    const pts = points
+      .map((p) => ({ t: Date.parse(p.t), v: p.v }))
+      .filter(
+        (p): p is { t: number; v: number } =>
+          Number.isFinite(p.t) && typeof p.v === 'number' && Number.isFinite(p.v),
+      );
+    if (pts.length < 4) return null;
+
+    const n = pts.length;
+    const meanT = pts.reduce((a, p) => a + p.t, 0) / n;
+    const meanV = pts.reduce((a, p) => a + p.v, 0) / n;
+    let num = 0;
+    let den = 0;
+    for (const p of pts) {
+      num += (p.t - meanT) * (p.v - meanV);
+      den += (p.t - meanT) ** 2;
+    }
+    const slope = den !== 0 ? num / den : 0; // value per ms
+    const last = pts[pts.length - 1];
+    const windowMs = Math.max(1, last.t - pts[0].t);
+    const everyMs =
+      this.fluxDurationMs(every) ??
+      Math.max(60_000, Math.round(windowMs / Math.max(2, n - 1)));
+
+    const MAX_HORIZON = 180 * 86_400_000; // 180 days
+    const SLOPE_EPS = 1e-15;
+    let horizonMs = Math.min(windowMs * 0.4, 90 * 86_400_000); // default look-ahead
+    let etaMs: number | null = null;
+    if (forecastTo != null && Math.abs(slope) > SLOPE_EPS) {
+      const dtMs = (forecastTo - last.v) / slope; // ms from last point to target
+      if (dtMs > 0) {
+        etaMs = last.t + dtMs;
+        horizonMs = Math.min(Math.max(dtMs, everyMs), MAX_HORIZON);
+      }
+    }
+    horizonMs = Math.min(horizonMs, MAX_HORIZON);
+    if (horizonMs < everyMs) return null;
+
+    const steps = Math.min(300, Math.ceil(horizonMs / everyMs));
+    const fcPoints: ChatChartSeriesPoint[] = [
+      { t: new Date(last.t).toISOString(), v: last.v },
+    ];
+    for (let i = 1; i <= steps; i++) {
+      const t = last.t + i * everyMs;
+      let v = last.v + slope * (t - last.t);
+      // Don't let the projection shoot past the target (a tank doesn't go
+      // negative); clamp at forecast_to in the direction of travel.
+      if (forecastTo != null) {
+        if (slope < 0) v = Math.max(v, forecastTo);
+        else if (slope > 0) v = Math.min(v, forecastTo);
+      }
+      fcPoints.push({ t: new Date(t).toISOString(), v });
+    }
+
+    const ratePerDay = slope * 86_400_000;
+    const unitSuffix = unit ? ` ${unit}` : '';
+    let annotation: ChatChartAnnotation | undefined;
+    let etaText = '';
+    if (etaMs != null && etaMs - last.t <= MAX_HORIZON) {
+      const days = Math.round(((etaMs - last.t) / 86_400_000) * 10) / 10;
+      const dateStr = new Date(etaMs).toISOString().slice(0, 10);
+      annotation = {
+        t: new Date(etaMs).toISOString(),
+        label: `≈ ${this.fmtNum(forecastTo as number)}${unitSuffix} · ${dateStr}`,
+        kind: 'event',
+      };
+      etaText = `reaches ${this.fmtNum(forecastTo as number)}${unitSuffix} ≈ ${dateStr} (~${days}d)`;
+    }
+    const summary = `rate ${this.fmtNum(ratePerDay)}${unitSuffix}/day${etaText ? '; ' + etaText : ''}`;
+
+    return {
+      series: { name: forecastLabel, points: fcPoints, dashed: true },
+      annotation,
+      summary,
+    };
   }
 
   /**

@@ -42,6 +42,9 @@ export interface ChatChartSeriesPoint {
 export interface ChatChartSeries {
   name: string;
   points: ChatChartSeriesPoint[];
+  /** Rendered as a dashed line — used for the projected (forecast) trend so
+   *  it reads as "estimate", not measured data. */
+  dashed?: boolean;
   /**
    * The metric's "typical range" (AI-analysed p5–p95 percentiles, already
    * scaled to display units). The frontend draws it as a faint shaded band
