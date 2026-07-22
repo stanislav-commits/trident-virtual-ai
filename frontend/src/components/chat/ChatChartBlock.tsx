@@ -5,6 +5,8 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -91,12 +93,56 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
   // carry the hover feedback, so drop the cursor overlay entirely.
   const cursor = false;
 
+  // "Normal range" band (AI-analysed p5–p95) — shaded behind the line so a
+  // value reads as normal/high/low at a glance. Only for a SINGLE series (or
+  // a combine:"sum" line); with several metrics overlaid the bands would
+  // differ and clutter, so we skip it. ifOverflow="extendDomain" keeps the
+  // band visible even when current values sit entirely outside it (the whole
+  // point of "am I below normal?").
+  const singleBand = seriesNames.length === 1 ? chart.series[0].band : null;
+  const bandP5 = singleBand?.p5 ?? null;
+  const bandP95 = singleBand?.p95 ?? null;
+  const renderNormalBand = () => {
+    if (bandP5 != null && bandP95 != null && bandP5 !== bandP95) {
+      return (
+        <ReferenceArea
+          y1={Math.min(bandP5, bandP95)}
+          y2={Math.max(bandP5, bandP95)}
+          fill="var(--chat-text-muted)"
+          fillOpacity={0.12}
+          stroke="none"
+          ifOverflow="extendDomain"
+          label={{
+            value: "typical range",
+            position: "insideTopRight",
+            fontSize: 10,
+            fill: "var(--chat-text-muted)",
+          }}
+        />
+      );
+    }
+    const single = bandP5 ?? bandP95;
+    if (single != null) {
+      return (
+        <ReferenceLine
+          y={single}
+          stroke="var(--chat-text-muted)"
+          strokeDasharray="4 4"
+          strokeOpacity={0.5}
+          ifOverflow="extendDomain"
+        />
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="chat-chart">
       <div className="chat-chart__canvas">
         <ResponsiveContainer width="100%" height={260}>
           {chart.kind === "bar" ? (
             <BarChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+              {renderNormalBand()}
               <XAxis
                 dataKey="t"
                 type="number"
@@ -119,6 +165,7 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
             </BarChart>
           ) : (
             <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+              {renderNormalBand()}
               <XAxis
                 dataKey="t"
                 type="number"

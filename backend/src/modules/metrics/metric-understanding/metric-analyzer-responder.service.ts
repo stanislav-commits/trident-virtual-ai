@@ -1936,7 +1936,13 @@ export class MetricAnalyzerResponderService {
           every,
         );
         const points = samples.map((p) => ({ t: p.timestamp, v: p.value * sf }));
-        chartSeries.push({ name, points });
+        // Typical p5–p95 range (already scaled in AnalyzedCatalogItem) rides
+        // along so the client can shade a "normal range" band.
+        const band =
+          item.typicalP5 != null || item.typicalP95 != null
+            ? { p5: item.typicalP5, p95: item.typicalP95 }
+            : null;
+        chartSeries.push({ name, points, band });
 
         if (points.length === 0) {
           summaries.push(`"${name}": no data in range`);
@@ -1984,7 +1990,18 @@ export class MetricAnalyzerResponderService {
       const summedName =
         combinedLabel || (unit ? `Total (${unit})` : 'Total');
       const summedCount = chartSeries.length;
-      chartSeries = [{ name: summedName, points: summedPoints }];
+      // The combined "normal range" is the sum of the contributing metrics'
+      // percentiles (only when every one has a band, else omit).
+      const bands = chartSeries.map((s) => s.band);
+      const sumBand = (pick: (b: { p5: number | null; p95: number | null }) => number | null): number | null =>
+        bands.every((b) => b != null && pick(b) != null)
+          ? bands.reduce((acc, b) => acc + (pick(b!) as number), 0)
+          : null;
+      const summedBand =
+        bands.every((b) => b != null)
+          ? { p5: sumBand((b) => b.p5), p95: sumBand((b) => b.p95) }
+          : null;
+      chartSeries = [{ name: summedName, points: summedPoints, band: summedBand }];
 
       if (summedPoints.length === 0) {
         summaries = [`"${summedName}": no data in range`];

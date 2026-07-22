@@ -42,6 +42,14 @@ export interface ChatChartSeriesPoint {
 export interface ChatChartSeries {
   name: string;
   points: ChatChartSeriesPoint[];
+  /**
+   * The metric's "typical range" (AI-analysed p5–p95 percentiles, already
+   * scaled to display units). The frontend draws it as a faint shaded band
+   * so a value reads as normal/high/low at a glance. Only rendered for a
+   * single-series chart (or a combine:'sum' line, where the band is the sum
+   * of the contributing metrics' percentiles). null when unavailable.
+   */
+  band?: { p5: number | null; p95: number | null } | null;
 }
 
 export interface ChatChart {

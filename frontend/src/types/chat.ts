@@ -74,6 +74,9 @@ export interface ChatMetricExecutionDto {
 export interface ChatChartSeriesDto {
   name: string;
   points: Array<{ t: string; v: number | null }>;
+  /** AI-analysed typical range (p5–p95, display units); shaded as a "normal
+   *  range" band on single-series charts. */
+  band?: { p5: number | null; p95: number | null } | null;
 }
 
 export interface ChatChartDto {
