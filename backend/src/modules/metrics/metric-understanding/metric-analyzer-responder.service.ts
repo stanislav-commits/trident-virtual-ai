@@ -1858,7 +1858,12 @@ export class MetricAnalyzerResponderService {
   }> {
     const t0 = Date.now();
     const title = String(args.title ?? '').trim() || 'Chart';
-    const chartType = args.chart_type === 'bar' ? 'bar' : 'line';
+    const chartType =
+      args.chart_type === 'bar'
+        ? 'bar'
+        : args.chart_type === 'area'
+          ? 'area'
+          : 'line';
     const combine = args.combine === 'sum' ? 'sum' : 'none';
     const combinedLabel =
       typeof args.combined_label === 'string' && args.combined_label.trim()
@@ -1976,7 +1981,7 @@ export class MetricAnalyzerResponderService {
     // trend, not N overlaid lines (and never a single metric mislabelled as
     // the total). Only meaningful for a shared unit; if the units differ we
     // refuse to sum apples and oranges and keep the separate lines.
-    if (combine === 'sum' && chartSeries.length > 1 && units.size <= 1) {
+    if (combine === 'sum' && chartType !== 'area' && chartSeries.length > 1 && units.size <= 1) {
       const byTs = new Map<string, number>();
       for (const series of chartSeries) {
         for (const point of series.points) {

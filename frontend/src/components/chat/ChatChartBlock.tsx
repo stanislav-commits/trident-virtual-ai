@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   Legend,
@@ -136,25 +138,58 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
     return null;
   };
 
+  // Axes/tooltip/legend are identical across chart types — build once and
+  // spread into whichever chart wrapper renders (recharts flattens arrays of
+  // children and detects each by type).
+  const margin = { top: 8, right: 12, bottom: 4, left: 4 };
+  const bandEl = renderNormalBand();
+  const axisEls = [
+    <XAxis
+      key="x"
+      dataKey="t"
+      type="number"
+      scale="time"
+      domain={["dataMin", "dataMax"]}
+      tickFormatter={tickFormatter}
+      tick={axisTick}
+      minTickGap={24}
+    />,
+    <YAxis key="y" tickFormatter={yTickFormatter} tick={axisTick} width={64} />,
+    <Tooltip key="tt" cursor={cursor} labelFormatter={labelFormatter} contentStyle={tooltipStyle} />,
+    seriesNames.length > 1 ? (
+      <Legend key="lg" wrapperStyle={{ fontSize: 11 }} />
+    ) : null,
+  ];
+
   return (
     <div className="chat-chart">
       <div className="chat-chart__canvas">
         <ResponsiveContainer width="100%" height={260}>
-          {chart.kind === "bar" ? (
-            <BarChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
-              {renderNormalBand()}
-              <XAxis
-                dataKey="t"
-                type="number"
-                scale="time"
-                domain={["dataMin", "dataMax"]}
-                tickFormatter={tickFormatter}
-                tick={axisTick}
-                minTickGap={24}
-              />
-              <YAxis tickFormatter={yTickFormatter} tick={axisTick} width={64} />
-              <Tooltip cursor={cursor} labelFormatter={labelFormatter} contentStyle={tooltipStyle} />
-              {seriesNames.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
+          {chart.kind === "area" ? (
+            <AreaChart data={rows} margin={margin}>
+              {bandEl}
+              {axisEls}
+              {seriesNames.map((name, i) => {
+                const color = SERIES_COLORS[i % SERIES_COLORS.length];
+                return (
+                  <Area
+                    key={name}
+                    type="monotone"
+                    dataKey={name}
+                    stackId="1"
+                    stroke={color}
+                    fill={color}
+                    fillOpacity={0.45}
+                    connectNulls
+                    isAnimationActive={false}
+                  />
+                );
+              })}
+            </AreaChart>
+          ) : chart.kind === "bar" ? (
+            <BarChart data={rows} margin={margin}>
+              {bandEl}
+              {axisEls}
               {seriesNames.map((name, i) => (
                 <Bar
                   key={name}
@@ -164,20 +199,9 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
               ))}
             </BarChart>
           ) : (
-            <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
-              {renderNormalBand()}
-              <XAxis
-                dataKey="t"
-                type="number"
-                scale="time"
-                domain={["dataMin", "dataMax"]}
-                tickFormatter={tickFormatter}
-                tick={axisTick}
-                minTickGap={24}
-              />
-              <YAxis tickFormatter={yTickFormatter} tick={axisTick} width={64} />
-              <Tooltip cursor={cursor} labelFormatter={labelFormatter} contentStyle={tooltipStyle} />
-              {seriesNames.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
+            <LineChart data={rows} margin={margin}>
+              {bandEl}
+              {axisEls}
               {seriesNames.map((name, i) => (
                 <Line
                   key={name}

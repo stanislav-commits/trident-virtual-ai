@@ -82,7 +82,7 @@ export interface ChatChartSeriesDto {
 export interface ChatChartDto {
   title: string;
   unit?: string | null;
-  kind: "line" | "bar";
+  kind: "line" | "bar" | "area";
   series: ChatChartSeriesDto[];
 }
 

@@ -55,7 +55,9 @@ export interface ChatChartSeries {
 export interface ChatChart {
   title: string;
   unit: string | null;
-  kind: 'line' | 'bar';
+  /** line = trends; bar = per-period totals; area = STACKED composition
+   *  (each series stacks, the top of the stack is the total). */
+  kind: 'line' | 'bar' | 'area';
   series: ChatChartSeries[];
 }
 
