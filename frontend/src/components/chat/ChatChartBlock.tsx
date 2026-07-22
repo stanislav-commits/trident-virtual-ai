@@ -59,15 +59,42 @@ function formatTick(ms: number, spanMs: number): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+const T = {
+  ru: {
+    askPoint: "Что здесь было?",
+    askInterval: "Что было в этот интервал?",
+    questionPoint: (title: string, when: string, vals: string) =>
+      `На графике «${title}»: ${when}${vals ? ` — ${vals}` : ""}. ` +
+      "Что происходило в это время? Проверь другие метрики, события и алармы в этом окне и объясни причину.",
+    questionInterval: (title: string, from: string, to: string) =>
+      `На графике «${title}»: интервал с ${from} по ${to}. ` +
+      "Что происходило в это время и что вызвало изменение? Проверь другие метрики, события и алармы в этом окне и объясни причину.",
+  },
+  en: {
+    askPoint: "What happened here?",
+    askInterval: "What happened in this window?",
+    questionPoint: (title: string, when: string, vals: string) =>
+      `On the "${title}" chart: ${when}${vals ? ` — ${vals}` : ""}. ` +
+      "What was going on at that time? Check other metrics, events and alarms in that window and explain the cause.",
+    questionInterval: (title: string, from: string, to: string) =>
+      `On the "${title}" chart: the interval from ${from} to ${to}. ` +
+      "What was going on and what drove the change? Check other metrics, events and alarms in that window and explain the cause.",
+  },
+} as const;
+
 export default function ChatChartBlock({
   chart,
   onAsk,
+  lang = "en",
 }: {
   chart: ChatChartDto;
   /** Send a follow-up question to the chat (click-a-point → "what happened
    *  here?"). Usually the message input's send handler. */
   onAsk?: (text: string) => void;
+  /** Chat language for the click-to-ask labels + composed question. */
+  lang?: "ru" | "en";
 }) {
+  const t = T[lang];
   const [selected, setSelected] = useState<SelectedPoint | null>(null);
   const [selectedInterval, setSelectedInterval] = useState<{
     t1: number;
@@ -200,20 +227,14 @@ export default function ChatChartBlock({
     const vals = selected.items
       .map((i) => `${i.name} = ${roundVal(i.value)}${unit ? ` ${unit}` : ""}`)
       .join(", ");
-    const question =
-      `На графике «${chart.title}»: ${when}${vals ? ` — ${vals}` : ""}. ` +
-      "Что происходило в это время? Проверь другие метрики, события и алармы в этом окне и объясни причину.";
-    onAsk(question);
+    onAsk(t.questionPoint(chart.title, when, vals));
     setSelected(null);
   };
   const askAboutInterval = () => {
     if (!onAsk || !selectedInterval) return;
     const from = new Date(selectedInterval.t1).toLocaleString();
     const to = new Date(selectedInterval.t2).toLocaleString();
-    const question =
-      `На графике «${chart.title}»: интервал с ${from} по ${to}. ` +
-      "Что происходило в это время и что вызвало изменение? Проверь другие метрики, события и алармы в этом окне и объясни причину.";
-    onAsk(question);
+    onAsk(t.questionInterval(chart.title, from, to));
     setSelectedInterval(null);
   };
 
@@ -404,7 +425,7 @@ export default function ChatChartBlock({
             className="chat-chart__ask-btn"
             onClick={askAboutSelected}
           >
-            Что здесь было?
+            {t.askPoint}
           </button>
           <button
             type="button"
@@ -428,7 +449,7 @@ export default function ChatChartBlock({
             className="chat-chart__ask-btn"
             onClick={askAboutInterval}
           >
-            Что было в этот интервал?
+            {t.askInterval}
           </button>
           <button
             type="button"
