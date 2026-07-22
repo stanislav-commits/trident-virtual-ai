@@ -3027,6 +3027,8 @@
 
 .chat-chart__canvas {
   width: 100%;
+  /* Interval drag-select shouldn't highlight page text. */
+  user-select: none;
 }
 
 .chat-chart--empty .chat-chart__empty {

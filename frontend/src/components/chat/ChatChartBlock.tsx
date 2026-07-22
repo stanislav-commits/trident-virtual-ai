@@ -69,9 +69,21 @@ export default function ChatChartBlock({
   onAsk?: (text: string) => void;
 }) {
   const [selected, setSelected] = useState<SelectedPoint | null>(null);
-  // Hovered bucket index (recharts clears it on click — see handleChartClick).
-  // Declared before any early return to satisfy the rules of hooks.
+  const [selectedInterval, setSelectedInterval] = useState<{
+    t1: number;
+    t2: number;
+  } | null>(null);
+  // Live drag highlight (epoch-ms x-range) while selecting an interval.
+  const [dragHighlight, setDragHighlight] = useState<{
+    x1: number;
+    x2: number;
+  } | null>(null);
+  // Hovered bucket index (recharts clears it on click — see the mouse
+  // handlers). Refs declared before any early return to satisfy rules of hooks.
   const hoverIndexRef = useRef<number | null>(null);
+  const draggingRef = useRef(false);
+  const dragStartRef = useRef<number | null>(null);
+  const dragEndRef = useRef<number | null>(null);
   const { rows, spanMs } = useMemo(() => {
     const byTs = new Map<number, ChartRow>();
     for (const series of chart.series) {
@@ -121,29 +133,64 @@ export default function ChatChartBlock({
   // carry the hover feedback, so drop the cursor overlay entirely.
   const cursor = false;
 
-  // Click-a-point → "what happened here?". recharts v3 clears the active
-  // point on click, so we track the hovered bucket index on mouse-move and
-  // read it on click, then compose a context-rich question from that row.
+  // Click a point → "what happened here?"; drag → "what happened over this
+  // interval?". recharts v3 clears the active point on click, so we track the
+  // hovered bucket index on mouse-move and read it on mouse-up. A quick
+  // press-release on one bucket is a point; a drag across buckets is an
+  // interval.
   const normIndex = (v: number | string | null | undefined): number | null => {
     const n = typeof v === "string" ? Number(v) : v;
     return typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : null;
   };
-  const handleChartMouseMove = (state: ChartMouseState) => {
-    hoverIndexRef.current =
-      normIndex(state?.activeTooltipIndex) ?? normIndex(state?.activeIndex);
-  };
-  const handleChartClick = () => {
+  const idxFromState = (state: ChartMouseState): number | null =>
+    normIndex(state?.activeTooltipIndex) ?? normIndex(state?.activeIndex);
+
+  const handleChartMouseDown = (state: ChartMouseState) => {
     if (!onAsk) return;
-    const idx = hoverIndexRef.current;
-    if (idx == null || !rows[idx]) return;
-    const row = rows[idx];
-    const items = seriesNames
-      .map((name) => ({ name, value: row[name] }))
-      .filter(
-        (i): i is { name: string; value: number } =>
-          typeof i.value === "number" && Number.isFinite(i.value),
-      );
-    setSelected({ t: row.t, items });
+    const idx = idxFromState(state);
+    if (idx == null) return;
+    draggingRef.current = true;
+    dragStartRef.current = idx;
+    dragEndRef.current = idx;
+    setSelected(null);
+    setSelectedInterval(null);
+    setDragHighlight({ x1: rows[idx].t, x2: rows[idx].t });
+  };
+  const handleChartMouseMove = (state: ChartMouseState) => {
+    const idx = idxFromState(state);
+    hoverIndexRef.current = idx;
+    if (draggingRef.current && idx != null) {
+      dragEndRef.current = idx;
+      const lo = Math.min(dragStartRef.current ?? idx, idx);
+      const hi = Math.max(dragStartRef.current ?? idx, idx);
+      setDragHighlight({ x1: rows[lo].t, x2: rows[hi].t });
+    }
+  };
+  const cancelDrag = () => {
+    draggingRef.current = false;
+    setDragHighlight(null);
+  };
+  const handleChartMouseUp = () => {
+    if (!onAsk || !draggingRef.current) return;
+    draggingRef.current = false;
+    setDragHighlight(null);
+    const a = dragStartRef.current;
+    const b = dragEndRef.current;
+    if (a == null || b == null || !rows[a] || !rows[b]) return;
+    if (a === b) {
+      const row = rows[a];
+      const items = seriesNames
+        .map((name) => ({ name, value: row[name] }))
+        .filter(
+          (i): i is { name: string; value: number } =>
+            typeof i.value === "number" && Number.isFinite(i.value),
+        );
+      setSelected({ t: row.t, items });
+    } else {
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      setSelectedInterval({ t1: rows[lo].t, t2: rows[hi].t });
+    }
   };
 
   const roundVal = (v: number) => Math.round(v * 100) / 100;
@@ -158,6 +205,16 @@ export default function ChatChartBlock({
       "Что происходило в это время? Проверь другие метрики, события и алармы в этом окне и объясни причину.";
     onAsk(question);
     setSelected(null);
+  };
+  const askAboutInterval = () => {
+    if (!onAsk || !selectedInterval) return;
+    const from = new Date(selectedInterval.t1).toLocaleString();
+    const to = new Date(selectedInterval.t2).toLocaleString();
+    const question =
+      `На графике «${chart.title}»: интервал с ${from} по ${to}. ` +
+      "Что происходило в это время и что вызвало изменение? Проверь другие метрики, события и алармы в этом окне и объясни причину.";
+    onAsk(question);
+    setSelectedInterval(null);
   };
 
   // "Normal range" band (AI-analysed p5–p95) — shaded behind the line so a
@@ -208,6 +265,16 @@ export default function ChatChartBlock({
   // children and detects each by type).
   const margin = { top: 8, right: 12, bottom: 4, left: 4 };
   const bandEl = renderNormalBand();
+  // Live interval-drag highlight (a vertical band across the picked x-range).
+  const dragEl = dragHighlight ? (
+    <ReferenceArea
+      x1={dragHighlight.x1}
+      x2={dragHighlight.x2}
+      fill="var(--chat-accent, #3b82f6)"
+      fillOpacity={0.15}
+      stroke="none"
+    />
+  ) : null;
   const axisEls = [
     <XAxis
       key="x"
@@ -259,8 +326,9 @@ export default function ChatChartBlock({
       <div className="chat-chart__canvas">
         <ResponsiveContainer width="100%" height={260}>
           {chart.kind === "area" ? (
-            <AreaChart data={rows} margin={margin} onClick={handleChartClick} onMouseMove={handleChartMouseMove}>
+            <AreaChart data={rows} margin={margin} onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp} onMouseLeave={cancelDrag}>
               {bandEl}
+              {dragEl}
               {axisEls}
               {annotationEls}
               {seriesNames.map((name, i) => {
@@ -281,8 +349,9 @@ export default function ChatChartBlock({
               })}
             </AreaChart>
           ) : chart.kind === "bar" ? (
-            <BarChart data={rows} margin={margin} onClick={handleChartClick} onMouseMove={handleChartMouseMove}>
+            <BarChart data={rows} margin={margin} onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp} onMouseLeave={cancelDrag}>
               {bandEl}
+              {dragEl}
               {axisEls}
               {annotationEls}
               {seriesNames.map((name, i) => (
@@ -294,8 +363,9 @@ export default function ChatChartBlock({
               ))}
             </BarChart>
           ) : (
-            <LineChart data={rows} margin={margin} onClick={handleChartClick} onMouseMove={handleChartMouseMove}>
+            <LineChart data={rows} margin={margin} onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp} onMouseLeave={cancelDrag}>
               {bandEl}
+              {dragEl}
               {axisEls}
               {annotationEls}
               {seriesNames.map((name, i) => (
@@ -340,6 +410,30 @@ export default function ChatChartBlock({
             type="button"
             className="chat-chart__ask-dismiss"
             onClick={() => setSelected(null)}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {onAsk && selectedInterval && (
+        <div className="chat-chart__ask">
+          <span className="chat-chart__ask-label">
+            {new Date(selectedInterval.t1).toLocaleString()} —{" "}
+            {new Date(selectedInterval.t2).toLocaleString()}
+          </span>
+          <button
+            type="button"
+            className="chat-chart__ask-btn"
+            onClick={askAboutInterval}
+          >
+            Что было в этот интервал?
+          </button>
+          <button
+            type="button"
+            className="chat-chart__ask-dismiss"
+            onClick={() => setSelectedInterval(null)}
             aria-label="Dismiss"
           >
             ×
