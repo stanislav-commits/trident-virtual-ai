@@ -445,7 +445,11 @@ export function MessageBubble({
         {role === "assistant" && charts.length > 0 && (
           <div className="chat-message__charts">
             {charts.map((chart, index) => (
-              <ChatChartBlock key={`${chart.title}-${index}`} chart={chart} />
+              <ChatChartBlock
+                key={`${chart.title}-${index}`}
+                chart={chart}
+                onAsk={onSendMessage}
+              />
             ))}
           </div>
         )}

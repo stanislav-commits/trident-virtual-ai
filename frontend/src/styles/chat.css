@@ -3035,6 +3035,54 @@
   padding: 8px 0;
 }
 
+/* Click-a-point → "what happened here?" action row. */
+.chat-chart__ask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 4px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.chat-chart__ask-label {
+  color: var(--chat-text-muted);
+}
+
+.chat-chart__ask-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--chat-accent, var(--accent));
+  background: var(--accent-dim, rgba(59, 130, 246, 0.18));
+  color: var(--chat-text);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.chat-chart__ask-btn:hover {
+  background: var(--accent-glow, rgba(59, 130, 246, 0.35));
+}
+
+.chat-chart__ask-dismiss {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--chat-text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.chat-chart__ask-dismiss:hover {
+  color: var(--chat-text);
+  background: var(--chat-surface-2);
+}
+
 /* ── Vessel-track map (render_map) ── */
 .chat-map {
   border: 1px solid var(--chat-border);

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -15,6 +15,20 @@ import {
   YAxis,
 } from "recharts";
 import type { ChatChartDto } from "../../types/chat";
+
+/** Minimal shape of the state recharts (v3) passes to chart mouse handlers.
+ *  On click the active fields are cleared, so we capture the hovered index on
+ *  mouse-move and read it on click. */
+interface ChartMouseState {
+  activeIndex?: number | string | null;
+  activeTooltipIndex?: number | string | null;
+  activeLabel?: string | number;
+}
+
+interface SelectedPoint {
+  t: number;
+  items: Array<{ name: string; value: number }>;
+}
 
 /**
  * Draws a time-series chart the metric analyzer produced (via the
@@ -45,7 +59,19 @@ function formatTick(ms: number, spanMs: number): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
+export default function ChatChartBlock({
+  chart,
+  onAsk,
+}: {
+  chart: ChatChartDto;
+  /** Send a follow-up question to the chat (click-a-point → "what happened
+   *  here?"). Usually the message input's send handler. */
+  onAsk?: (text: string) => void;
+}) {
+  const [selected, setSelected] = useState<SelectedPoint | null>(null);
+  // Hovered bucket index (recharts clears it on click — see handleChartClick).
+  // Declared before any early return to satisfy the rules of hooks.
+  const hoverIndexRef = useRef<number | null>(null);
   const { rows, spanMs } = useMemo(() => {
     const byTs = new Map<number, ChartRow>();
     for (const series of chart.series) {
@@ -94,6 +120,45 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
   // white line against the dark theme — the point marker + tooltip already
   // carry the hover feedback, so drop the cursor overlay entirely.
   const cursor = false;
+
+  // Click-a-point → "what happened here?". recharts v3 clears the active
+  // point on click, so we track the hovered bucket index on mouse-move and
+  // read it on click, then compose a context-rich question from that row.
+  const normIndex = (v: number | string | null | undefined): number | null => {
+    const n = typeof v === "string" ? Number(v) : v;
+    return typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : null;
+  };
+  const handleChartMouseMove = (state: ChartMouseState) => {
+    hoverIndexRef.current =
+      normIndex(state?.activeTooltipIndex) ?? normIndex(state?.activeIndex);
+  };
+  const handleChartClick = () => {
+    if (!onAsk) return;
+    const idx = hoverIndexRef.current;
+    if (idx == null || !rows[idx]) return;
+    const row = rows[idx];
+    const items = seriesNames
+      .map((name) => ({ name, value: row[name] }))
+      .filter(
+        (i): i is { name: string; value: number } =>
+          typeof i.value === "number" && Number.isFinite(i.value),
+      );
+    setSelected({ t: row.t, items });
+  };
+
+  const roundVal = (v: number) => Math.round(v * 100) / 100;
+  const askAboutSelected = () => {
+    if (!onAsk || !selected) return;
+    const when = new Date(selected.t).toLocaleString();
+    const vals = selected.items
+      .map((i) => `${i.name} = ${roundVal(i.value)}${unit ? ` ${unit}` : ""}`)
+      .join(", ");
+    const question =
+      `На графике «${chart.title}»: ${when}${vals ? ` — ${vals}` : ""}. ` +
+      "Что происходило в это время? Проверь другие метрики, события и алармы в этом окне и объясни причину.";
+    onAsk(question);
+    setSelected(null);
+  };
 
   // "Normal range" band (AI-analysed p5–p95) — shaded behind the line so a
   // value reads as normal/high/low at a glance. Only for a SINGLE series (or
@@ -194,7 +259,7 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
       <div className="chat-chart__canvas">
         <ResponsiveContainer width="100%" height={260}>
           {chart.kind === "area" ? (
-            <AreaChart data={rows} margin={margin}>
+            <AreaChart data={rows} margin={margin} onClick={handleChartClick} onMouseMove={handleChartMouseMove}>
               {bandEl}
               {axisEls}
               {annotationEls}
@@ -216,7 +281,7 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
               })}
             </AreaChart>
           ) : chart.kind === "bar" ? (
-            <BarChart data={rows} margin={margin}>
+            <BarChart data={rows} margin={margin} onClick={handleChartClick} onMouseMove={handleChartMouseMove}>
               {bandEl}
               {axisEls}
               {annotationEls}
@@ -229,7 +294,7 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
               ))}
             </BarChart>
           ) : (
-            <LineChart data={rows} margin={margin}>
+            <LineChart data={rows} margin={margin} onClick={handleChartClick} onMouseMove={handleChartMouseMove}>
               {bandEl}
               {axisEls}
               {annotationEls}
@@ -250,6 +315,37 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
           )}
         </ResponsiveContainer>
       </div>
+
+      {onAsk && selected && (
+        <div className="chat-chart__ask">
+          <span className="chat-chart__ask-label">
+            {new Date(selected.t).toLocaleString()}
+            {selected.items.length > 0 && (
+              <>
+                {" — "}
+                {selected.items
+                  .map((i) => `${roundVal(i.value)}${unit ? ` ${unit}` : ""}`)
+                  .join(", ")}
+              </>
+            )}
+          </span>
+          <button
+            type="button"
+            className="chat-chart__ask-btn"
+            onClick={askAboutSelected}
+          >
+            Что здесь было?
+          </button>
+          <button
+            type="button"
+            className="chat-chart__ask-dismiss"
+            onClick={() => setSelected(null)}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }
