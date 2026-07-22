@@ -88,6 +88,9 @@ export class ChatMetricAnalyzerResponderService {
           // client on the message ragflowContext (askResults[].data.charts)
           // and are drawn by <ChatChartBlock>.
           charts: result.charts,
+          // Vessel-track maps (render_map) — ride the same way, drawn by
+          // <ChatMapBlock> on a Windy map.
+          maps: result.maps,
           totalTokens: result.totalTokens,
           estimatedCostUsd: result.estimatedCostUsd,
           durationMs: result.durationMs,

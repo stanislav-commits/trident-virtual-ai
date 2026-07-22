@@ -635,6 +635,37 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'render_map',
+      description:
+        'Draw an interactive MAP of the vessel in the chat: its GPS track over a period plus its current position, on a Windy weather map. Call this when the user asks "where is the ship / where has she been / show the route / track / map / где судно / покажи трек / маршрут / карту / на карте". Call render_map DIRECTLY — do NOT paste raw coordinates into the answer; the map renders on its own. Give a short plain takeaway alongside it (rough area, distance covered, current position in words).',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Short human title in the user\'s language, e.g. "Маршрут SeaWolf X — 7 дней" or "Vessel track (last week)".',
+          },
+          range: {
+            type: 'object',
+            properties: {
+              start: { type: 'string', description: 'Flux start of the track window, e.g. -24h, -7d, -30d, or absolute ISO. For "where is she now" use a short window like -24h.' },
+              stop: { type: 'string', description: 'Flux stop; default now().' },
+            },
+            required: ['start'],
+          },
+          weather_layer: {
+            type: 'string',
+            enum: ['wind', 'waves', 'currents', 'pressure', 'temp', 'rain', 'gust', 'swell'],
+            description: 'Default Windy weather overlay to show. Default "wind". Pick "waves"/"swell" for sea-state questions, "currents" for drift, etc.',
+          },
+        },
+        required: ['title', 'range'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'find_assets_by_function',
       description:
         'Keyword search over asset register → ranked shortlist with asset_id_internal.',

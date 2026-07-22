@@ -76,6 +76,31 @@ export interface ChatChart {
   annotations?: ChatChartAnnotation[];
 }
 
+/** One point of the vessel's GPS track. */
+export interface ChatMapTrackPoint {
+  /** ISO timestamp. */
+  t: string;
+  lat: number;
+  lon: number;
+}
+
+/**
+ * A map the analyzer built for the user to SEE (render_map): the vessel's
+ * GPS track over a period + current position, drawn client-side on an
+ * interactive Windy map with weather layers. Rides on `ragflowContext` like
+ * charts do.
+ */
+export interface ChatMap {
+  title: string;
+  /** Chronological track points (down-sampled). May be empty if no fix. */
+  track: ChatMapTrackPoint[];
+  /** Most recent fix (usually the last track point), or null. */
+  current: ChatMapTrackPoint | null;
+  /** Default Windy weather overlay, e.g. 'wind' | 'waves' | 'currents' |
+   *  'pressure' | 'temp' | 'rain'. */
+  weatherLayer: string;
+}
+
 export interface AnswerQuestionResult {
   shipId: string;
   question: string;
@@ -83,6 +108,7 @@ export interface AnswerQuestionResult {
   toolCalls: ToolCallAudit[];        // query_metric calls (kept verbatim)
   otherToolCalls: OtherToolCallAudit[]; // lookup_asset / find_asset_metrics / list_assets_by_sfi
   charts: ChatChart[];               // render_chart output, drawn client-side
+  maps: ChatMap[];                   // render_map output, drawn client-side
   totalTokens: number;
   estimatedCostUsd: number;
   durationMs: number;

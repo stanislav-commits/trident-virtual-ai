@@ -43,6 +43,8 @@ import {
   ChatChartAnnotation,
   ChatChartSeries,
   ChatChartSeriesPoint,
+  ChatMap,
+  ChatMapTrackPoint,
   OtherToolCallAudit,
   ToolCallAudit,
 } from './metric-analyzer-responder.types';
@@ -240,6 +242,7 @@ export class MetricAnalyzerResponderService {
     const audit: ToolCallAudit[] = [];
     const otherAudit: OtherToolCallAudit[] = [];
     const charts: ChatChart[] = [];
+    const maps: ChatMap[] = [];
     let totalPromptTokens = 0;
     let totalCompletionTokens = 0;
     let totalCacheWriteTokens = 0;
@@ -343,6 +346,9 @@ export class MetricAnalyzerResponderService {
           if (r.chart) {
             charts.push(r.chart);
           }
+          if (r.map) {
+            maps.push(r.map);
+          }
           messages.push({
             role: 'tool',
             tool_call_id: r.toolCallId,
@@ -403,6 +409,7 @@ export class MetricAnalyzerResponderService {
       toolCalls: audit,
       otherToolCalls: otherAudit,
       charts,
+      maps,
       totalTokens:
         totalPromptTokens +
         totalCacheWriteTokens +
@@ -428,6 +435,7 @@ export class MetricAnalyzerResponderService {
     metricCall?: ToolCallAudit;
     otherCall?: OtherToolCallAudit;
     chart?: ChatChart;
+    map?: ChatMap;
   }> {
     let args: Record<string, unknown>;
     try {
@@ -464,6 +472,8 @@ export class MetricAnalyzerResponderService {
         return await this.toolFindMetricsByIntent(tc, args, catalogIndex, iteration);
       case 'render_chart':
         return await this.toolRenderChart(tc, args, orgName, catalogIndex, iteration);
+      case 'render_map':
+        return await this.toolRenderMap(tc, args, orgName, catalogIndex, iteration);
       case 'find_assets_by_function':
         return await this.toolFindAssetsByFunction(tc, args, shipId, iteration);
       case 'lookup_asset_fact':
@@ -2323,6 +2333,137 @@ export class MetricAnalyzerResponderService {
     const abs = Math.abs(v);
     if (abs !== 0 && abs < 0.01) return v.toExponential(2);
     return (Math.round(v * 100) / 100).toString();
+  }
+
+  /**
+   * Builds a map of the vessel's GPS track over a period (+ current position)
+   * for the client to draw on an interactive Windy map. Pulls
+   * navigation.position lat & lon, down-samples, joins them by timestamp, and
+   * returns a `map` accumulated out-of-band like charts. Weather layers are a
+   * client-side Windy concern — the backend only supplies track + a default
+   * layer name.
+   */
+  private async toolRenderMap(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    orgName: string,
+    catalogIndex: Map<string, Map<string, AnalyzedCatalogItem>>,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+    map?: ChatMap;
+  }> {
+    const t0 = Date.now();
+    const title = String(args.title ?? '').trim() || 'Vessel track';
+    const range = (args.range ?? {}) as { start?: string; stop?: string };
+    const ALLOWED_LAYERS = new Set([
+      'wind', 'waves', 'currents', 'pressure', 'temp', 'rain', 'gust', 'swell',
+    ]);
+    const weatherLayer =
+      typeof args.weather_layer === 'string' && ALLOWED_LAYERS.has(args.weather_layer)
+        ? args.weather_layer
+        : 'wind';
+    const callArgs = {
+      title,
+      weather_layer: weatherLayer,
+      range: { start: range.start ?? '-7d', stop: range.stop },
+    };
+
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'render_map', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+
+    const latItem = this.findCatalogItem(catalogIndex, 'navigation.position', 'lat');
+    const lonItem = this.findCatalogItem(catalogIndex, 'navigation.position', 'lon');
+    const bucket = latItem?.bucket ?? lonItem?.bucket ?? 'NMEA';
+
+    let start: Date;
+    let stop: Date;
+    try {
+      ({ start, stop } = parseRange({ start: range.start ?? '-7d', stop: range.stop }));
+    } catch (err) {
+      return fail(formatError(err));
+    }
+
+    const spanMs = Math.max(1, stop.getTime() - start.getTime());
+    const every = this.pickChartEvery(spanMs, undefined);
+
+    let latSamples: Array<{ timestamp: string; value: number }>;
+    let lonSamples: Array<{ timestamp: string; value: number }>;
+    try {
+      [latSamples, lonSamples] = await Promise.all([
+        this.influxService.queryMetricSamples(
+          orgName,
+          { bucket, measurement: 'navigation.position', field: 'lat' },
+          start, stop, every,
+        ),
+        this.influxService.queryMetricSamples(
+          orgName,
+          { bucket, measurement: 'navigation.position', field: 'lon' },
+          start, stop, every,
+        ),
+      ]);
+    } catch (err) {
+      return fail(`Failed to read vessel position: ${formatError(err)}`);
+    }
+
+    const lonByTs = new Map(lonSamples.map((s) => [s.timestamp, s.value]));
+    const track: ChatMapTrackPoint[] = [];
+    for (const s of latSamples) {
+      const lat = s.value;
+      const lon = lonByTs.get(s.timestamp);
+      if (
+        typeof lon === 'number' &&
+        Number.isFinite(lat) && Number.isFinite(lon) &&
+        Math.abs(lat) <= 90 && Math.abs(lon) <= 180 &&
+        !(lat === 0 && lon === 0) // drop null-island garbage fixes
+      ) {
+        track.push({ t: s.timestamp, lat, lon });
+      }
+    }
+    track.sort((a, b) => a.t.localeCompare(b.t));
+
+    if (track.length === 0) {
+      return fail(
+        'No GPS position fixes for this period — the vessel may not have reported navigation.position in that window.',
+      );
+    }
+
+    const current = track[track.length - 1];
+    const map: ChatMap = { title, track, current, weatherLayer };
+
+    const lats = track.map((p) => p.lat);
+    const lons = track.map((p) => p.lon);
+    const resultSummary =
+      `map "${title}": ${track.length} track pts (${every}), ` +
+      `current ${this.fmtNum(current.lat)},${this.fmtNum(current.lon)}, ` +
+      `bbox [${this.fmtNum(Math.min(...lats))},${this.fmtNum(Math.min(...lons))} → ` +
+      `${this.fmtNum(Math.max(...lats))},${this.fmtNum(Math.max(...lons))}]`;
+
+    return {
+      toolCallId: tc.id,
+      map,
+      otherCall: {
+        iteration, tool: 'render_map', args: callArgs, ok: true,
+        resultSummary, latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        map_rendered: true,
+        title,
+        weather_layer: weatherLayer,
+        track_points: track.length,
+        current: { lat: current.lat, lon: current.lon, at: current.t },
+        note: 'The map is now displayed to the user with the vessel track and weather. Do NOT paste coordinate lists; give a short takeaway (area, distance covered, current position in plain terms).',
+      },
+    };
   }
 
   private async toolFindAssetsByFunction(
