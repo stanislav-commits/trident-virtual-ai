@@ -3,6 +3,12 @@ import { createPortal } from "react-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { ChatMapDto } from "../../types/chat";
+import {
+  drawTrackOnWindy,
+  initWindy,
+  windyKey,
+  type WindyApi,
+} from "./windyMap";
 
 /**
  * Draws the vessel's GPS track (render_map) on a self-contained Leaflet map —
@@ -129,6 +135,62 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [weatherOpen]);
 
+  const overlay = WINDY_OVERLAY[chart.weatherLayer] ?? "wind";
+
+  // Windy weather modal: prefer the Map-Forecast API (draws the track ON the
+  // weather map, uses the operator's key). On no-key / blocked-domain / load
+  // failure, fall back to the keyless Windy embed. The Windy instance is a
+  // page-wide singleton reparented into whichever modal is open.
+  const [windyMode, setWindyMode] = useState<"loading" | "windy" | "embed">(
+    windyKey() ? "loading" : "embed",
+  );
+  const windyMountRef = useRef<HTMLDivElement | null>(null);
+  const windyHandleRef = useRef<{
+    el: HTMLElement;
+    holder: HTMLElement;
+    group: unknown;
+    api: WindyApi;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!weatherOpen || !windyKey()) return;
+    let cancelled = false;
+    initWindy()
+      .then(({ api, el, holder }) => {
+        if (cancelled) return;
+        const mount = windyMountRef.current;
+        if (!mount) return;
+        mount.appendChild(el);
+        const group = drawTrackOnWindy(api, points, overlay);
+        windyHandleRef.current = { el, holder, group, api };
+        setWindyMode("windy");
+      })
+      .catch(() => {
+        if (!cancelled) setWindyMode("embed");
+      });
+    return () => {
+      cancelled = true;
+      const h = windyHandleRef.current;
+      if (h) {
+        if (h.group) {
+          try {
+            h.api.map.removeLayer(h.group);
+          } catch {
+            // ignore
+          }
+        }
+        // Return the singleton element to its off-screen holder so Windy
+        // stays alive for the next open.
+        try {
+          h.holder.appendChild(h.el);
+        } catch {
+          // ignore
+        }
+        windyHandleRef.current = null;
+      }
+    };
+  }, [weatherOpen, points, overlay]);
+
   if (points.length === 0) {
     return (
       <div className="chat-map chat-map--empty">
@@ -138,7 +200,6 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
   }
 
   const cur = chart.current;
-  const overlay = WINDY_OVERLAY[chart.weatherLayer] ?? "wind";
   const windyUrl =
     cur &&
     `https://embed.windy.com/embed2.html?lat=${cur.lat}&lon=${cur.lon}` +
@@ -197,13 +258,24 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
-              <iframe
-                title="Windy weather map"
-                className="chat-map-modal__frame"
-                src={windyUrl}
-                frameBorder={0}
-                loading="lazy"
-              />
+              {windyMode === "embed" ? (
+                <iframe
+                  title="Windy weather map"
+                  className="chat-map-modal__frame"
+                  src={windyUrl}
+                  frameBorder={0}
+                  loading="lazy"
+                />
+              ) : (
+                <>
+                  <div ref={windyMountRef} className="chat-map-modal__frame" />
+                  {windyMode === "loading" && (
+                    <div className="chat-map-modal__loading">
+                      Загрузка карты Windy…
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>,
           document.body,
