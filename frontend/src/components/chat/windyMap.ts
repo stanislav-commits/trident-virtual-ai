@@ -109,7 +109,10 @@ export function initWindy(): Promise<{
         20000,
       );
       w.windyInit!(
-        { key, verbose: false, lat: 43, lon: 16, zoom: 6 },
+        // Windy otherwise auto-detects UI language from the browser locale
+        // (navigator.language) — force English regardless of the crew
+        // member's OS/browser setting, matching the app's own default.
+        { key, lang: "en", verbose: false, lat: 43, lon: 16, zoom: 6 },
         (a: WindyApi) => {
           window.clearTimeout(to);
           resolve(a);

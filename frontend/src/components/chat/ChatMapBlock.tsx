@@ -205,7 +205,9 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
     `https://embed.windy.com/embed2.html?lat=${cur.lat}&lon=${cur.lon}` +
       `&detailLat=${cur.lat}&detailLon=${cur.lon}&zoom=8&level=surface` +
       `&overlay=${overlay}&menu=&message=&marker=true&calendar=now` +
-      `&type=map&location=coordinates&metricWind=kt&metricTemp=%C2%B0C&radarRange=-1`;
+      // Force English Windy UI chrome regardless of the browser's locale —
+      // Windy otherwise auto-detects from navigator.language.
+      `&type=map&location=coordinates&metricWind=kt&metricTemp=%C2%B0C&radarRange=-1&lang=en`;
 
   return (
     <>
