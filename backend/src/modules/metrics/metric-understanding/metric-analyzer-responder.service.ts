@@ -40,6 +40,7 @@ import {
   AnalyzedCatalogItem,
   AnswerQuestionResult,
   ChatChart,
+  ChatChartAnnotation,
   OtherToolCallAudit,
   ToolCallAudit,
 } from './metric-analyzer-responder.types';
@@ -1865,6 +1866,7 @@ export class MetricAnalyzerResponderService {
           ? 'area'
           : 'line';
     const combine = args.combine === 'sum' ? 'sum' : 'none';
+    const markEvents = args.mark_events === true;
     const combinedLabel =
       typeof args.combined_label === 'string' && args.combined_label.trim()
         ? args.combined_label.trim()
@@ -1876,6 +1878,7 @@ export class MetricAnalyzerResponderService {
       chart_type: chartType,
       combine,
       combined_label: combinedLabel,
+      mark_events: markEvents,
       range: { start: range.start ?? '-7d', stop: range.stop },
       series: rawSeries,
       every: typeof args.every === 'string' ? args.every : undefined,
@@ -1912,6 +1915,11 @@ export class MetricAnalyzerResponderService {
     const units = new Set<string>();
     let summaries: string[] = [];
     const notFound: string[] = [];
+    // For mark_events: the single resolved metric's selector + scale, so we
+    // can run step-change detection on it after the series is built.
+    let eventSource:
+      | { selector: InfluxMetricSelector; sf: number; unit: string | null }
+      | null = null;
 
     for (const raw of rawSeries) {
       const s = (raw ?? {}) as { measurement?: unknown; field?: unknown; label?: unknown };
@@ -1932,10 +1940,19 @@ export class MetricAnalyzerResponderService {
         `${item.measurement} — ${item.field}`;
       if (item.unit) units.add(item.unit);
 
+      const selector: InfluxMetricSelector = {
+        bucket: item.bucket,
+        measurement: item.measurement,
+        field: item.field,
+      };
+      if (rawSeries.length === 1) {
+        eventSource = { selector, sf, unit: item.unit };
+      }
+
       try {
         const samples = await this.influxService.queryMetricSamples(
           orgName,
-          { bucket: item.bucket, measurement: item.measurement, field: item.field },
+          selector,
           start,
           stop,
           every,
@@ -2021,9 +2038,38 @@ export class MetricAnalyzerResponderService {
       }
     }
 
-    const chart: ChatChart = { title, unit, kind: chartType, series: chartSeries };
+    // mark_events → detect significant step changes (refills = step-up, big
+    // draws = step-down) on the single plotted metric and mark them on the
+    // time axis. Threshold scales off the metric's own value range so it
+    // adapts per metric (a 200 L jump matters on a daily tank, not on a
+    // 10 000 L one). Only for a single line — meaningless across N series.
+    let annotations: ChatChartAnnotation[] | undefined;
+    if (markEvents && eventSource && chartSeries.length === 1) {
+      annotations = await this.detectChartEvents(
+        orgName,
+        eventSource,
+        start,
+        stop,
+        every,
+        chartSeries[0].points,
+      );
+    }
 
-    const resultSummary = `chart "${title}" (${every} buckets): ${summaries.join('; ')}${
+    const chart: ChatChart = {
+      title,
+      unit,
+      kind: chartType,
+      series: chartSeries,
+      ...(annotations && annotations.length ? { annotations } : {}),
+    };
+
+    const eventNote =
+      annotations && annotations.length
+        ? ` [${annotations.length} event marker(s): ${annotations
+            .map((a) => `${a.label}@${a.t.slice(0, 10)}`)
+            .join(', ')}]`
+        : '';
+    const resultSummary = `chart "${title}" (${every} buckets): ${summaries.join('; ')}${eventNote}${
       notFound.length ? `; unresolved: ${notFound.join(', ')}` : ''
     }`;
 
@@ -2040,9 +2086,62 @@ export class MetricAnalyzerResponderService {
         title,
         every,
         series: summaries,
-        note: 'The chart is now displayed to the user. Do NOT list the data points; give a one-line takeaway.',
+        events:
+          annotations && annotations.length
+            ? annotations.map((a) => ({ when: a.t, change: a.label, kind: a.kind }))
+            : undefined,
+        note: 'The chart is now displayed to the user. Do NOT list the data points; give a one-line takeaway. If events were marked, you may reference them (e.g. a refill on <date>).',
       },
     };
+  }
+
+  /**
+   * Finds significant step changes on a single metric over the chart window
+   * and turns them into time-axis markers. The minimum step is derived from
+   * the plotted series' own value spread (so the threshold is meaningful for
+   * both a small daily tank and a large storage tank); best-effort — any
+   * Influx error just yields no markers rather than failing the chart.
+   */
+  private async detectChartEvents(
+    orgName: string,
+    source: { selector: InfluxMetricSelector; sf: number; unit: string | null },
+    start: Date,
+    stop: Date,
+    every: string,
+    points: Array<{ t: string; v: number | null }>,
+  ): Promise<ChatChartAnnotation[]> {
+    const vals = points
+      .map((p) => p.v)
+      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+    if (vals.length < 3) return [];
+    const range = Math.max(...vals) - Math.min(...vals);
+    if (!(range > 0)) return [];
+    // A "significant" step is ≥30% of the observed range. minDelta is in RAW
+    // units (queryStepChanges compares raw values), so divide by the scale.
+    const minDeltaScaled = range * 0.3;
+    const minDeltaRaw = minDeltaScaled / (source.sf || 1);
+
+    try {
+      const steps = await this.influxService.queryStepChanges(
+        orgName,
+        source.selector,
+        start,
+        stop,
+        { every, kind: 'both', minDelta: minDeltaRaw, limit: 8 },
+      );
+      const unitSuffix = source.unit ? ` ${source.unit}` : '';
+      return steps.map((s) => {
+        const deltaScaled = s.delta * (source.sf || 1);
+        const sign = deltaScaled > 0 ? '+' : '';
+        return {
+          t: s.timestamp,
+          label: `${sign}${this.fmtNum(deltaScaled)}${unitSuffix}`,
+          kind: deltaScaled >= 0 ? ('up' as const) : ('down' as const),
+        };
+      });
+    } catch {
+      return [];
+    }
   }
 
   /**

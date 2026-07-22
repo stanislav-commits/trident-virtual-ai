@@ -79,11 +79,19 @@ export interface ChatChartSeriesDto {
   band?: { p5: number | null; p95: number | null } | null;
 }
 
+export interface ChatChartAnnotationDto {
+  t: string;
+  label: string;
+  kind?: "up" | "down" | "event";
+}
+
 export interface ChatChartDto {
   title: string;
   unit?: string | null;
   kind: "line" | "bar" | "area";
   series: ChatChartSeriesDto[];
+  /** Event markers (mark_events) drawn as dashed vertical lines. */
+  annotations?: ChatChartAnnotationDto[];
 }
 
 export interface ChatTurnAskResultDto {

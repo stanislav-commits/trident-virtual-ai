@@ -611,6 +611,10 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             type: 'string',
             description: 'Legend/label for the single line produced by combine:"sum", e.g. "Total fresh water" / "Суммарный уровень топлива". Optional.',
           },
+          mark_events: {
+            type: 'boolean',
+            description: 'Set true to mark significant step changes (refills/bunkering as step-ups, big draws as step-downs) as dashed vertical lines on the chart. Use when the user asks "when did we bunker / refill / отметь события / заправки / резкие изменения". Only applies to a single-metric line.',
+          },
         },
         required: ['title', 'series', 'range'],
       },

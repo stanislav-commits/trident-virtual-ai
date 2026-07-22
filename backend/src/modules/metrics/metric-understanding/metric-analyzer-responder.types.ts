@@ -52,6 +52,16 @@ export interface ChatChartSeries {
   band?: { p5: number | null; p95: number | null } | null;
 }
 
+/** A vertical event marker on the time axis (e.g. a bunkering / refill spotted
+ *  as a step-up, or a large draw as a step-down). */
+export interface ChatChartAnnotation {
+  /** ISO timestamp on the X axis. */
+  t: string;
+  /** Short caption, e.g. "+3 200 L" (a refill) or "−1 100 L". */
+  label: string;
+  kind?: 'up' | 'down' | 'event';
+}
+
 export interface ChatChart {
   title: string;
   unit: string | null;
@@ -59,6 +69,8 @@ export interface ChatChart {
    *  (each series stacks, the top of the stack is the total). */
   kind: 'line' | 'bar' | 'area';
   series: ChatChartSeries[];
+  /** Event markers drawn as dashed vertical lines (mark_events). */
+  annotations?: ChatChartAnnotation[];
 }
 
 export interface AnswerQuestionResult {

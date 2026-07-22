@@ -161,6 +161,34 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
     ) : null,
   ];
 
+  // Event markers (mark_events): dashed vertical lines at each step change —
+  // green for a refill/step-up, red for a big draw/step-down.
+  const annotationEls = (chart.annotations ?? [])
+    .map((a, i) => {
+      const x = Date.parse(a.t);
+      if (Number.isNaN(x)) return null;
+      const color =
+        a.kind === "down"
+          ? "var(--color-error, #f87171)"
+          : "var(--color-success, #4ade80)";
+      return (
+        <ReferenceLine
+          key={`ann-${i}`}
+          x={x}
+          stroke={color}
+          strokeDasharray="3 3"
+          strokeOpacity={0.7}
+          label={{
+            value: a.label,
+            position: "insideTop",
+            fontSize: 9,
+            fill: color,
+          }}
+        />
+      );
+    })
+    .filter(Boolean);
+
   return (
     <div className="chat-chart">
       <div className="chat-chart__canvas">
@@ -169,6 +197,7 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
             <AreaChart data={rows} margin={margin}>
               {bandEl}
               {axisEls}
+              {annotationEls}
               {seriesNames.map((name, i) => {
                 const color = SERIES_COLORS[i % SERIES_COLORS.length];
                 return (
@@ -190,6 +219,7 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
             <BarChart data={rows} margin={margin}>
               {bandEl}
               {axisEls}
+              {annotationEls}
               {seriesNames.map((name, i) => (
                 <Bar
                   key={name}
@@ -202,6 +232,7 @@ export default function ChatChartBlock({ chart }: { chart: ChatChartDto }) {
             <LineChart data={rows} margin={margin}>
               {bandEl}
               {axisEls}
+              {annotationEls}
               {seriesNames.map((name, i) => (
                 <Line
                   key={name}
