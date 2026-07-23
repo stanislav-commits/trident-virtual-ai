@@ -41,6 +41,9 @@ export default function configuration() {
       jwtSecret: process.env.JWT_SECRET ?? 'change-me-in-production',
       jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
     },
+    alerts: {
+      autoAnalyzeSeverity: process.env.ALERT_AUTO_ANALYZE_SEVERITY ?? 'critical,high',
+    },
     chat: {
       documentsResponderEnabled: parseBoolean(
         process.env.CHAT_DOCUMENTS_RESPONDER_ENABLED,

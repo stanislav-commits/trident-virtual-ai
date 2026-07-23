@@ -165,7 +165,7 @@ export function TopBar({ title }: { title?: string | null } = {}) {
           onClick={() =>
             window.dispatchEvent(new CustomEvent("trident:toggle-alerts"))
           }
-          aria-label="Toggle alerts panel"
+          aria-label="Toggle notifications panel"
           title="Alerts"
         >
           <svg

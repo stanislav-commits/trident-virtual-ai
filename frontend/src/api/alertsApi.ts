@@ -24,6 +24,9 @@ export interface Alert {
   resolvedAt: string | null;
   lastSeenAt: string;
   pmsTaskId: string | null;
+  /** AI root-cause analysis auto-run for critical/high alarms (markdown-ish text). */
+  aiAnalysis?: string | null;
+  aiAnalyzedAt?: string | null;
   ackedAt: string | null;
   ackedByUserId: string | null;
 }

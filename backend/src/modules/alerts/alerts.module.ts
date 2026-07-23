@@ -10,6 +10,8 @@ import { AlertsSchedulerService } from './alerts-scheduler.service';
 import { GrafanaRulesService } from './grafana-rules.service';
 import { AlertsController, AlertsWebhookController } from './alerts.controller';
 import { PmsModule } from '../pms/pms.module';
+import { MetricsModule } from '../metrics/metrics.module';
+import { AlertAutoAnalysisService } from './alert-auto-analysis.service';
 import { ComplianceModule } from '../compliance/compliance.module';
 import { AccessControlModule } from '../access-control/access-control.module';
 
@@ -23,11 +25,17 @@ import { AccessControlModule } from '../access-control/access-control.module';
       ShipEntity,
     ]),
     PmsModule,
+    MetricsModule,
     ComplianceModule,
     AccessControlModule,
   ],
   controllers: [AlertsWebhookController, AlertsController],
-  providers: [AlertsService, AlertsSchedulerService, GrafanaRulesService],
+  providers: [
+    AlertAutoAnalysisService,
+    AlertsService,
+    AlertsSchedulerService,
+    GrafanaRulesService,
+  ],
   exports: [AlertsService],
 })
 export class AlertsModule {}

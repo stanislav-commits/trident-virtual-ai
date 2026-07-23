@@ -21,6 +21,7 @@ import { ChatSessionMemoryEntity } from './context/entities/chat-session-memory.
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ChatSessionEntity } from './entities/chat-session.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
+import { AlertEntity } from '../alerts/entities/alert.entity';
 import { UserEntity } from '../users/entities/user.entity';
 import { ChatTurnOrchestratorService } from './orchestration/chat-turn-orchestrator.service';
 import { ChatProgressBus } from './progress/chat-progress.bus';
@@ -58,6 +59,7 @@ import { ChatVoiceTranscriptionService } from './voice/chat-voice-transcription.
       ChatSessionMemoryEntity,
       ShipEntity,
       UserEntity,
+      AlertEntity,
     ]),
   ],
   controllers: [ChatController, ChatVoiceController],

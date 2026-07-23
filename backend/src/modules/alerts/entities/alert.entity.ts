@@ -90,6 +90,13 @@ export class AlertEntity {
   @Column({ name: 'pms_task_id', type: 'uuid', nullable: true })
   pmsTaskId!: string | null;
 
+  /** AI root-cause analysis (markdown) auto-run for critical/high alarms. */
+  @Column({ name: 'ai_analysis', type: 'text', nullable: true })
+  aiAnalysis!: string | null;
+
+  @Column({ name: 'ai_analyzed_at', type: 'timestamptz', nullable: true })
+  aiAnalyzedAt!: Date | null;
+
   @Column({ name: 'acked_at', type: 'timestamptz', nullable: true })
   ackedAt!: Date | null;
 

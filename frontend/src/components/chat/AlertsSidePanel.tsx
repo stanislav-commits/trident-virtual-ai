@@ -123,12 +123,15 @@ function AlarmCard({
             {alarm.source === "certificate" && (
               <span className="alarm-badge alarm-badge--cert">Certificate</span>
             )}
+            {alarm.source === "daily_brief" && (
+              <span className="alarm-badge alarm-badge--cert">Brief</span>
+            )}
           </div>
 
           <h3 className="alarm-card__title">{alarm.title}</h3>
           {alarm.assetName && <p className="alarm-card__source">{alarm.assetName}</p>}
 
-          {alarm.message && (
+          {(alarm.message || alarm.aiAnalysis) && (
             <>
               <button
                 type="button"
@@ -138,7 +141,18 @@ function AlarmCard({
                 <IconChevron up={expanded} />
                 {expanded ? "Less" : "Details"}
               </button>
-              {expanded && <p className="alarm-card__desc">{alarm.message}</p>}
+              {expanded && alarm.message && (
+                <p className="alarm-card__desc">{alarm.message}</p>
+              )}
+              {expanded && alarm.aiAnalysis && (
+                <div className="alarm-card__ai">
+                  <div className="alarm-card__ai-label">AI analysis</div>
+                  <p className="alarm-card__desc alarm-card__desc--ai">
+                    {/* compact plain-text panel — strip md bold/rule noise */}
+                    {alarm.aiAnalysis.replace(/\*\*/g, "").replace(/^---$/gm, "").trim()}
+                  </p>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -280,14 +294,14 @@ export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi }: Ale
   return (
     <aside
       className={`chat-pms-panel${closing ? " chat-pms-panel--closing" : ""}${noAnim ? " chat-pms-panel--noanim" : ""}`}
-      aria-label="Alarms"
+      aria-label="Notifications"
     >
       <div className="chat-pms-panel__inner alarm-panel">
         {/* Header */}
         <div className="alarm-panel__header">
           <div className="alarm-panel__heading">
             <div>
-              <div className="alarm-panel__title">Alarm Notifications</div>
+              <div className="alarm-panel__title">Notifications</div>
               {counts.critical > 0 ? (
                 <div className="alarm-panel__sub alarm-panel__sub--crit">
                   {counts.critical} critical alarm{counts.critical > 1 ? "s" : ""} need attention

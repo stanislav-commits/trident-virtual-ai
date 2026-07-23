@@ -1,4 +1,5 @@
 import { formatError } from '../../../common/utils/error.utils';
+import { nextTaskCode } from '../../pms/pms-task-code.util';
 import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import {
   BadRequestException,
@@ -504,6 +505,8 @@ export class MetricAnalyzerResponderService {
         return this.toolRenderTable(tc, args, iteration);
       case 'render_kpi':
         return this.toolRenderKpi(tc, args, iteration);
+      case 'create_maintenance_task':
+        return await this.toolCreateMaintenanceTask(tc, args, shipId, iteration);
       case 'find_assets_by_function':
         return await this.toolFindAssetsByFunction(tc, args, shipId, iteration);
       case 'lookup_asset_fact':
@@ -2492,6 +2495,112 @@ export class MetricAnalyzerResponderService {
         track_points: track.length,
         current: { lat: current.lat, lon: current.lon, at: current.t },
         note: 'The map is now displayed to the user with the vessel track and weather. Do NOT paste coordinate lists; give a short takeaway (area, distance covered, current position in plain terms).',
+      },
+    };
+  }
+
+
+  /**
+   * WRITE tool (the only one): creates a PMS task from the conversation.
+   * Confirmation-gated at the tool contract level — refuses without
+   * confirmed:true, and the tool description requires an explicit user "yes"
+   * in the current conversation before the model may set it. Direct
+   * repository write (same pattern as the read tools) to avoid the
+   * PmsService/PmsModule DI cycle.
+   */
+  private async toolCreateMaintenanceTask(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const task = String(args.task ?? '').trim();
+    const description =
+      typeof args.description === 'string' && args.description.trim()
+        ? args.description.trim()
+        : null;
+    const priority =
+      args.priority === 'low' || args.priority === 'high' || args.priority === 'critical'
+        ? args.priority
+        : 'medium';
+    const dueDate =
+      typeof args.due_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.due_date)
+        ? args.due_date
+        : null;
+    const assetIdInternal =
+      typeof args.asset_id_internal === 'string' && args.asset_id_internal.trim()
+        ? args.asset_id_internal.trim()
+        : null;
+    const callArgs = { task, priority, due_date: dueDate, asset_id_internal: assetIdInternal, confirmed: args.confirmed === true };
+
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'create_maintenance_task', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+
+    if (args.confirmed !== true) {
+      return fail(
+        'NOT CREATED: confirmed must be true, and only after the user explicitly confirmed this exact task in the conversation. State what you would create and ask the user to confirm first.',
+      );
+    }
+    if (!task) return fail('task title is required');
+
+    let asset: AssetEntity | null = null;
+    if (assetIdInternal) {
+      asset = await this.assetRepository.findOne({
+        where: { shipId, assetIdInternal },
+      });
+      if (!asset) {
+        return fail(
+          `asset "${assetIdInternal}" not found in the register — resolve it via lookup_asset / find_assets_by_function first, or omit the asset`,
+        );
+      }
+    }
+
+    const saved = await this.pmsTaskRepository.save(
+      this.pmsTaskRepository.create({
+        shipId,
+        task: task.slice(0, 200),
+        category: 'General',
+        planning: 'unplanned',
+        priority,
+        description:
+          (description ?? '') +
+          (description ? '\n\n' : '') +
+          'Created from the chat assistant on crew request.',
+        dueDate,
+        source: 'chat',
+        taskCode: await nextTaskCode(
+          this.pmsTaskRepository.manager,
+          shipId,
+          'maintenance',
+        ),
+        assets: asset ? [asset] : [],
+      }),
+    );
+
+    const resultSummary = `created PMS task "${task}" (${priority}${dueDate ? ', due ' + dueDate : ''}${asset ? ', asset ' + (asset.displayName ?? assetIdInternal) : ''})`;
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration, tool: 'create_maintenance_task', args: callArgs, ok: true,
+        resultSummary, latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        task_created: true,
+        task_id: saved.id,
+        task_code: saved.taskCode,
+        note: 'Task created in the PMS register. Confirm to the user with the task title and code; do not invent extra details.',
       },
     };
   }

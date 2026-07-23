@@ -746,6 +746,26 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'create_maintenance_task',
+      description:
+        'CREATE a task in the vessel\'s PMS (maintenance) register from the conversation — e.g. "создай задачу долить DEF", "add a task to check the bilge pump". This WRITES to the live register, so it is STRICTLY confirmation-gated: NEVER call it proactively or bundle it into an answer. Flow: (1) the user asks to create a task (or you propose one and they agree); (2) you state exactly what will be created — title, priority, due date, linked equipment — and ask for confirmation; (3) ONLY after the user explicitly confirms you call this tool with confirmed:true. A confirmation counts when the user said it in this conversation OR when the question itself states the user has already confirmed (e.g. "Пользователь явно подтвердил: создай задачу..." — the confirmation happened in a previous turn and was carried into this ask). If neither holds, do not call the tool — propose and ask instead. One call per confirmed task.',
+      parameters: {
+        type: 'object',
+        properties: {
+          task: { type: 'string', description: 'Short task title, in the user\'s language, e.g. "Долить DEF в танк 27P" / "Replace watermaker filter cartridges".' },
+          description: { type: 'string', description: 'Optional details: why the task exists, what triggered it, target values. Mention it was created from the chat.' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Default medium.' },
+          due_date: { type: 'string', description: 'Optional due date YYYY-MM-DD.' },
+          asset_id_internal: { type: 'string', description: 'Optional asset to link — resolve via lookup_asset / find_assets_by_function FIRST and use its asset_id_internal.' },
+          confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed creating this exact task in this conversation.' },
+        },
+        required: ['task', 'confirmed'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'find_assets_by_function',
       description:
         'Keyword search over asset register → ranked shortlist with asset_id_internal.',

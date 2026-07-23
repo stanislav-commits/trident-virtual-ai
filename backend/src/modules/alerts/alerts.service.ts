@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AlertEntity } from './entities/alert.entity';
+import { AlertAutoAnalysisService } from './alert-auto-analysis.service';
 import { AlertAssetBindingEntity } from './entities/alert-asset-binding.entity';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { AssetEntity } from '../assets/entities/asset.entity';
@@ -75,6 +76,7 @@ export class AlertsService {
     private readonly configService: ConfigService,
     private readonly grafanaRulesService: GrafanaRulesService,
     private readonly adminEvents: AdminEventBus,
+    private readonly alertAutoAnalysisService: AlertAutoAnalysisService,
   ) {}
 
   /** Ingest one Grafana webhook batch; returns how many alerts were applied. */
@@ -174,6 +176,10 @@ export class AlertsService {
     if (shipId && this.shouldSpawnTask(severity)) {
       await this.spawnTask(saved);
     }
+
+    // Proactive root-cause annotation for serious alarms (fire-and-forget —
+    // the webhook response must not wait for the analyzer).
+    this.alertAutoAnalysisService.maybeAnalyze(saved);
   }
 
   /**
