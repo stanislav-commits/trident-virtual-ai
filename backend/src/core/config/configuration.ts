@@ -43,6 +43,10 @@ export default function configuration() {
     },
     alerts: {
       autoAnalyzeSeverity: process.env.ALERT_AUTO_ANALYZE_SEVERITY ?? 'critical,high',
+      // Max characters kept for the auto-analysis text — the Notifications
+      // panel needs a short, factual annotation, not a full report; the
+      // prompt asks for that but the cut is enforced deterministically too.
+      autoAnalyzeMaxChars: 420,
     },
     chat: {
       documentsResponderEnabled: parseBoolean(
@@ -56,7 +60,7 @@ export default function configuration() {
       // Proactive morning brief (off by default — one analyzer run per ship
       // per day; enable deliberately on prod).
       dailyBriefEnabled: parseBoolean(process.env.DAILY_BRIEF_ENABLED, false),
-      dailyBriefLanguage: process.env.DAILY_BRIEF_LANGUAGE ?? 'ru',
+      dailyBriefLanguage: process.env.DAILY_BRIEF_LANGUAGE ?? 'en',
       voice: {
         maxUploadBytes: parsePositiveInteger(
           process.env.CHAT_VOICE_MAX_UPLOAD_BYTES,

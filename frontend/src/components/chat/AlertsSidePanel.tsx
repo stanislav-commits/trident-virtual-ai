@@ -20,6 +20,19 @@ interface AlertsSidePanelProps {
   onAskAi: (alert: Alert) => void;
 }
 
+/** The auto-analysis prompt asks for "Cause: …" / "Immediate action: …" on
+ *  two lines — parse that into distinct rows; fall back to plain text (still
+ *  length-clamped server-side) for anything that doesn't match. */
+function parseAiAnalysis(text: string): { cause: string; action: string } | null {
+  const causeMatch = text.match(/Cause:\s*(.+)/i);
+  const actionMatch = text.match(/Immediate action:\s*(.+)/i);
+  if (!causeMatch && !actionMatch) return null;
+  return {
+    cause: causeMatch?.[1]?.trim() ?? "",
+    action: actionMatch?.[1]?.trim() ?? "",
+  };
+}
+
 type Sev = "critical" | "high" | "warning" | "info";
 type DisplayStatus = "active" | "acknowledged" | "cleared";
 type FilterTab = "all" | "active" | "acknowledged";
@@ -144,15 +157,35 @@ function AlarmCard({
               {expanded && alarm.message && (
                 <p className="alarm-card__desc">{alarm.message}</p>
               )}
-              {expanded && alarm.aiAnalysis && (
-                <div className="alarm-card__ai">
-                  <div className="alarm-card__ai-label">AI analysis</div>
-                  <p className="alarm-card__desc alarm-card__desc--ai">
-                    {/* compact plain-text panel — strip md bold/rule noise */}
-                    {alarm.aiAnalysis.replace(/\*\*/g, "").replace(/^---$/gm, "").trim()}
-                  </p>
-                </div>
-              )}
+              {expanded && alarm.aiAnalysis && (() => {
+                const parsed = parseAiAnalysis(alarm.aiAnalysis);
+                return (
+                  <div className="alarm-card__ai">
+                    <div className="alarm-card__ai-label">AI analysis</div>
+                    {parsed ? (
+                      <dl className="alarm-card__ai-rows">
+                        {parsed.cause && (
+                          <div className="alarm-card__ai-row">
+                            <dt>Cause</dt>
+                            <dd>{parsed.cause}</dd>
+                          </div>
+                        )}
+                        {parsed.action && (
+                          <div className="alarm-card__ai-row alarm-card__ai-row--action">
+                            <dt>Immediate action</dt>
+                            <dd>{parsed.action}</dd>
+                          </div>
+                        )}
+                      </dl>
+                    ) : (
+                      <p className="alarm-card__desc alarm-card__desc--ai">
+                        {/* compact plain-text fallback — strip md bold/rule noise */}
+                        {alarm.aiAnalysis.replace(/\*\*/g, "").replace(/^---$/gm, "").trim()}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>

@@ -13,6 +13,7 @@ import { useChatMessages } from "../hooks/useChatMessages";
 import { useChatProgress } from "../hooks/useChatProgress";
 import {
   getChatSession,
+  getChatSessions,
   regenerateChatResponse,
   sendChatMessage,
 } from "../api/chatApi";
@@ -427,6 +428,33 @@ export function ChatPage() {
       setAlertsClosing(false);
       setShowAlerts(false);
 
+      // The morning brief already has its full write-up (with KPI/table
+      // blocks) sitting in its own standing chat session — opening it beats
+      // re-asking the assistant to explain a "daily_brief" notification as
+      // if it were a metric alarm.
+      if (alert.source === "daily_brief") {
+        if (!token) return;
+        // The standing session is "Morning Brief" (default) or
+        // "Утренний брифинг" when DAILY_BRIEF_LANGUAGE=ru — try both.
+        void getChatSessions(token, { search: "Morning Brief", limit: 1 })
+          .then((res) =>
+            res.sessions[0]
+              ? res.sessions
+              : getChatSessions(token, {
+                  search: "Утренний брифинг",
+                  limit: 1,
+                }).then((r) => r.sessions),
+          )
+          .then((sessionsFound) => {
+            const target = sessionsFound[0];
+            if (target) navigate(appRoutes.chatSession(target.id));
+          })
+          .catch(() => {
+            /* ignore — the bell entry itself still shows the verdict */
+          });
+        return;
+      }
+
       const subject = alert.assetName ?? "the affected equipment";
       // Encode the alert as a marker the chat renders as a card; the text that
       // follows is the (hidden) instruction the assistant actually answers.
@@ -444,7 +472,7 @@ export function ChatPage() {
         `practical — only mention related tasks or parts if they are clearly relevant.`;
       void handleSend(prompt);
     },
-    [handleSend],
+    [handleSend, token, navigate],
   );
 
   // "Ask AI" on a maintenance task: close the PMS panel and send a

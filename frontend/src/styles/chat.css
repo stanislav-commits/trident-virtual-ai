@@ -2691,7 +2691,16 @@
 
 .alarm-card__ai { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--chat-bg-subtle); border: 1px solid var(--chat-border); }
 .alarm-card__ai-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--chat-accent, #2f81f7); margin-bottom: 4px; }
-.alarm-card__desc--ai { margin: 0; padding-top: 0; border-top: none; white-space: pre-wrap; }
+/* Deterministic safety cap: the backend already clamps aiAnalysis length, but
+   this is a second line of defence so the panel can never show a wall of text
+   regardless of what the model returned. */
+.alarm-card__desc--ai { margin: 0; padding-top: 0; border-top: none; white-space: pre-wrap; max-height: 160px; overflow-y: auto; }
+
+.alarm-card__ai-rows { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.alarm-card__ai-row { display: flex; flex-direction: column; gap: 1px; }
+.alarm-card__ai-row dt { font-size: 10.5px; font-weight: 600; color: var(--chat-text-muted); }
+.alarm-card__ai-row dd { margin: 0; font-size: 12.5px; color: var(--chat-text-muted); line-height: 1.45; }
+.alarm-card__ai-row--action dd { color: var(--chat-text); font-weight: 500; }
 
 .alarm-card__actions { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-top: 1px solid var(--chat-border); }
 .alarm-btn {

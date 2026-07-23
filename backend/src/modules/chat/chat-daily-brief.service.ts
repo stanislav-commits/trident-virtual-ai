@@ -87,11 +87,17 @@ export class ChatDailyBriefService {
     }
   }
 
+  private lang(): string {
+    // The whole interface is English; the assistant only happens to be
+    // spoken to in Russian in some sessions. Default English throughout —
+    // DAILY_BRIEF_LANGUAGE=ru switches the brief (not the rest of the UI).
+    return this.configService.get<string>('chat.dailyBriefLanguage', 'en');
+  }
+
   private briefQuestion(): string {
-    // The analyzer mirrors the question's language, so the env var flips the
-    // whole brief. Default Russian — the crew's chat language today.
-    const lang = this.configService.get<string>('chat.dailyBriefLanguage', 'ru');
-    if (lang === 'en') {
+    // The analyzer mirrors the question's language, so this env var flips
+    // the whole brief.
+    if (this.lang() !== 'ru') {
       return (
         'Morning brief for the crew. Compile a short vessel status report: ' +
         '1) alarms and faults over the last 24 hours (find_active_alarms with include_resolved) — or say the night was quiet; ' +
@@ -166,12 +172,16 @@ export class ChatDailyBriefService {
     return delivered;
   }
 
+  private briefTitle(): string {
+    return this.lang() === 'ru' ? 'Утренний брифинг' : 'Morning Brief';
+  }
+
   /**
    * Surfaces the brief in the bell "Notifications" panel: one info-severity
    * entry per ship per day (fingerprint-deduped), active until the crew
    * acknowledges it — an unread brief is exactly an unread notification.
    * The panel entry carries the verdict; the full brief with its KPI/table
-   * blocks lives in the "Утренний брифинг" chat session.
+   * blocks lives in the brief chat session (see briefTitle()).
    */
   private async upsertBriefNotification(
     shipId: string,
@@ -182,6 +192,7 @@ export class ChatDailyBriefService {
     const existing = await this.alertRepository.findOne({
       where: { fingerprint, source: 'daily_brief' },
     });
+    const isRu = this.lang() === 'ru';
     // The verdict is steered to be the first non-empty line of the brief.
     const verdict =
       answer
@@ -189,9 +200,13 @@ export class ChatDailyBriefService {
         .map((l) => l.trim())
         .filter((l) => l && !l.startsWith('#'))[0]
         ?.replace(/\*\*/g, '')
-        .slice(0, 500) ?? 'Утренний брифинг готов.';
+        .slice(0, 500) ??
+      (isRu ? 'Утренний брифинг готов.' : 'Morning brief is ready.');
     const message =
-      verdict + '\n\nПолный брифинг — в чате «Утренний брифинг».';
+      verdict +
+      (isRu
+        ? `\n\nПолный брифинг — в чате «${this.briefTitle()}».`
+        : `\n\nFull brief in the "${this.briefTitle()}" chat.`);
     const now = new Date();
     if (existing) {
       existing.message = message;
@@ -206,7 +221,7 @@ export class ChatDailyBriefService {
         ruleName: 'daily-brief',
         severity: 'info',
         status: 'firing',
-        title: `Утренний брифинг — ${today}`,
+        title: `${this.briefTitle()} — ${today}`,
         message,
         fingerprint,
         startedAt: now,
@@ -217,21 +232,16 @@ export class ChatDailyBriefService {
 
   private datedHeader(): string {
     const today = new Date().toISOString().slice(0, 10);
-    return `**Утренний брифинг — ${today}**\n\n`;
+    return `**${this.briefTitle()} — ${today}**\n\n`;
   }
-
-  private static readonly BRIEF_TITLE = 'Утренний брифинг';
 
   private async findOrCreateBriefSession(
     userId: string,
     shipId: string,
   ): Promise<ChatSessionEntity> {
+    const title = this.briefTitle();
     const existing = await this.sessionRepository.findOne({
-      where: {
-        userId,
-        shipId,
-        title: ChatDailyBriefService.BRIEF_TITLE,
-      },
+      where: { userId, shipId, title },
       order: { createdAt: 'DESC' },
     });
     if (existing && !existing.deletedAt) {
@@ -241,7 +251,7 @@ export class ChatDailyBriefService {
       this.sessionRepository.create({
         userId,
         shipId,
-        title: ChatDailyBriefService.BRIEF_TITLE,
+        title,
         // Manual title: the auto-titler must never rename the standing
         // brief session based on its content.
         titleStatus: ChatSessionTitleStatus.MANUAL,
