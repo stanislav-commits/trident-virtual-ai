@@ -5,6 +5,7 @@ import { PmsService } from '../../pms/pms.service';
 import { AssetHoursService } from '../../pms/asset-hours.service';
 import { AuthenticatedUser } from '../../../core/auth/auth.types';
 import { MetricWatchEntity } from '../entities/metric-watch.entity';
+import { DefectEntity } from '../../pms/entities/defect.entity';
 import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import {
   BadRequestException,
@@ -144,6 +145,8 @@ export class MetricAnalyzerResponderService {
     private readonly moduleRef: ModuleRef,
     @InjectRepository(MetricWatchEntity)
     private readonly watchRepository: Repository<MetricWatchEntity>,
+    @InjectRepository(DefectEntity)
+    private readonly defectRepository: Repository<DefectEntity>,
     private readonly llmService: LlmService,
     private readonly ragService: RagService,
     private readonly webSearchService: WebSearchService,
@@ -529,6 +532,12 @@ export class MetricAnalyzerResponderService {
         return await this.toolListMetricWatches(tc, shipId, iteration);
       case 'remove_metric_watch':
         return await this.toolRemoveMetricWatch(tc, args, shipId, iteration);
+      case 'log_defect':
+        return await this.toolLogDefect(tc, args, shipId, iteration, actorUserId);
+      case 'close_defect':
+        return await this.toolCloseDefect(tc, args, shipId, iteration);
+      case 'find_defects':
+        return await this.toolFindDefects(tc, args, shipId, iteration);
       case 'find_assets_by_function':
         return await this.toolFindAssetsByFunction(tc, args, shipId, iteration);
       case 'lookup_asset_fact':
@@ -2828,6 +2837,229 @@ export class MetricAnalyzerResponderService {
     };
   }
 
+
+  /** WRITE tool: records a defect/failure. Confirmation-gated. */
+  private async toolLogDefect(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+    actorUserId: string | null,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const title = String(args.title ?? '').trim().slice(0, 300);
+    const str = (v: unknown): string | null =>
+      typeof v === 'string' && v.trim() ? v.trim() : null;
+    const occurredOn =
+      typeof args.occurred_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.occurred_on)
+        ? args.occurred_on
+        : new Date().toISOString().slice(0, 10);
+    const assetIdInternal = str(args.asset_id_internal);
+    const callArgs = { title, asset_id_internal: assetIdInternal, occurred_on: occurredOn, confirmed: args.confirmed === true };
+
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'log_defect', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+
+    if (args.confirmed !== true) {
+      return fail(
+        'NOT LOGGED: confirmed must be true, and only after the user explicitly confirmed logging this exact defect. State title + equipment + date and ask first.',
+      );
+    }
+    if (!title) return fail('title is required');
+
+    let asset: AssetEntity | null = null;
+    if (assetIdInternal) {
+      asset = await this.assetRepository.findOne({
+        where: { shipId, assetIdInternal },
+      });
+      if (!asset) {
+        return fail(
+          `asset "${assetIdInternal}" not found — resolve via lookup_asset / find_assets_by_function first, or omit`,
+        );
+      }
+    }
+
+    const saved = await this.defectRepository.save(
+      this.defectRepository.create({
+        shipId,
+        assetId: asset?.id ?? null,
+        title,
+        description: str(args.description),
+        cause: str(args.cause),
+        actionTaken: str(args.action_taken),
+        partsUsed: str(args.parts_used),
+        status: str(args.action_taken) ? 'closed' : 'open',
+        closedAt: str(args.action_taken) ? new Date() : null,
+        reportedOn: occurredOn,
+        reportedByUserId: actorUserId,
+        source: 'chat',
+      }),
+    );
+    const resultSummary = `logged defect "${title}"${asset ? ' on ' + (asset.displayName ?? assetIdInternal) : ''} (${saved.status})`;
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration, tool: 'log_defect', args: callArgs, ok: true,
+        resultSummary, latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        defect_logged: true,
+        title,
+        status: saved.status,
+        note: 'Defect recorded. Confirm briefly; if the cause/fix is known later, it can be closed with close_defect.',
+      },
+    };
+  }
+
+  /** WRITE tool: closes an open defect with cause/action. Confirmation-gated. */
+  private async toolCloseDefect(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const titleQuery = String(args.title_query ?? '').trim();
+    const str = (v: unknown): string | null =>
+      typeof v === 'string' && v.trim() ? v.trim() : null;
+    const callArgs = { title_query: titleQuery, confirmed: args.confirmed === true };
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'close_defect', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+    if (args.confirmed !== true) {
+      return fail(
+        'NOT CLOSED: confirmed must be true, and only after the user explicitly confirmed closing this exact defect.',
+      );
+    }
+    if (!titleQuery) return fail('title_query is required');
+    const matches = await this.defectRepository
+      .createQueryBuilder('d')
+      .where('d.ship_id = :shipId', { shipId })
+      .andWhere("d.status = 'open'")
+      .andWhere('d.title ILIKE :q', { q: `%${titleQuery}%` })
+      .getMany();
+    if (matches.length === 0) return fail(`no open defect matches "${titleQuery}"`);
+    if (matches.length > 1) {
+      return fail(
+        'ambiguous — matches: ' + matches.map((m) => `"${m.title}"`).join('; ') +
+          '. Ask the user which one.',
+      );
+    }
+    const defect = matches[0];
+    defect.status = 'closed';
+    defect.closedAt = new Date();
+    if (str(args.cause)) defect.cause = str(args.cause);
+    if (str(args.action_taken)) defect.actionTaken = str(args.action_taken);
+    if (str(args.parts_used)) defect.partsUsed = str(args.parts_used);
+    await this.defectRepository.save(defect);
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration, tool: 'close_defect', args: callArgs, ok: true,
+        resultSummary: `closed defect "${defect.title}"`, latencyMs: Date.now() - t0,
+      },
+      payload: { ok: true, defect_closed: true, title: defect.title },
+    };
+  }
+
+  /** Read-only defect search + per-equipment recurrence counts. */
+  private async toolFindDefects(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const query = typeof args.query === 'string' ? args.query.trim() : '';
+    const assetQuery =
+      typeof args.asset_query === 'string' ? args.asset_query.trim() : '';
+    const includeClosed = args.include_closed !== false;
+
+    let qb = this.defectRepository
+      .createQueryBuilder('d')
+      .leftJoinAndSelect('d.asset', 'asset')
+      .where('d.ship_id = :shipId', { shipId })
+      .orderBy('d.reportedOn', 'DESC')
+      .take(30);
+    if (!includeClosed) qb = qb.andWhere("d.status = 'open'");
+    if (query) {
+      qb = qb.andWhere(
+        "(d.title ILIKE :q OR COALESCE(d.description,'') ILIKE :q OR COALESCE(d.cause,'') ILIKE :q)",
+        { q: `%${query}%` },
+      );
+    }
+    if (assetQuery) {
+      qb = qb.andWhere('asset.display_name ILIKE :aq', { aq: `%${assetQuery}%` });
+    }
+    const rows = await qb.getMany();
+
+    // Recurrence: defect counts per equipment across the WHOLE register
+    // (not just the filtered rows) so "what keeps failing" is honest.
+    const recurrence = await this.defectRepository
+      .createQueryBuilder('d')
+      .leftJoin('d.asset', 'asset')
+      .select('COALESCE(asset.display_name, \'(no equipment)\')', 'equipment')
+      .addSelect('COUNT(*)', 'defect_count')
+      .addSelect('MAX(d.reported_on)', 'last_reported')
+      .where('d.ship_id = :shipId', { shipId })
+      .groupBy('asset.display_name')
+      .orderBy('COUNT(*)', 'DESC')
+      .limit(10)
+      .getRawMany();
+
+    const resultSummary = `${rows.length} defect(s)${query ? ` for "${query}"` : ''}; top recurrence: ${recurrence
+      .slice(0, 3)
+      .map((r) => `${r.equipment}×${r.defect_count}`)
+      .join(', ') || 'none'}`;
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration, tool: 'find_defects', args: { query, asset_query: assetQuery, include_closed: includeClosed }, ok: true,
+        resultSummary, latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        defects: rows.map((d) => ({
+          title: d.title,
+          equipment: d.asset?.displayName ?? null,
+          status: d.status,
+          reported_on: d.reportedOn,
+          closed_at: d.closedAt,
+          description: d.description,
+          cause: d.cause,
+          action_taken: d.actionTaken,
+          parts_used: d.partsUsed,
+        })),
+        recurrence_by_equipment: recurrence,
+        note: 'Empty defects list = nothing recorded — say so plainly; never invent failure history.',
+      },
+    };
+  }
+
   /**
    * PmsService/AssetHoursService live in PmsModule, which cannot be imported
    * here (module cycle: Metrics → Pms → Crew → Users → Ships → Metrics).
@@ -2910,7 +3142,7 @@ export class MetricAnalyzerResponderService {
         .where('t.ship_id = :shipId', { shipId })
         .andWhere('t.completed_at IS NULL')
         .andWhere('t.task ILIKE :q', { q: `%${taskQuery}%` })
-        .orderBy('t.updated_at', 'DESC')
+        .orderBy('t.updatedAt', 'DESC')
         .take(6)
         .getMany();
       if (candidates.length === 0) {

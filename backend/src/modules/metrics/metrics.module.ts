@@ -17,6 +17,7 @@ import { MetricConceptEntity } from './entities/metric-concept.entity';
 import { MetricConceptMemberEntity } from './entities/metric-concept-member.entity';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricWatchEntity } from './entities/metric-watch.entity';
+import { DefectEntity } from '../pms/entities/defect.entity';
 import { AlertEntity } from '../alerts/entities/alert.entity';
 import { MetricWatchCheckerService } from './metric-watch-checker.service';
 import { TrendWarningService } from './trend-warning.service';
@@ -51,6 +52,7 @@ import { MetricsService } from './metrics.service';
       InventoryItemAssetEntity,
       MetricWatchEntity,
       AlertEntity,
+      DefectEntity,
     ]),
   ],
   controllers: [MetricsController],

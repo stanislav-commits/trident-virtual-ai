@@ -851,6 +851,63 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'log_defect',
+      description:
+        'Record a DEFECT / equipment failure in the vessel\'s defect register — "порвался ремень на компрессоре", "hydraulic hose on the crane started leaking", "запиши дефект: …". WRITE tool, confirmation-gated like the others: resolve the equipment when named (lookup_asset / find_assets_by_function → asset_id_internal), state title + equipment + date and ask; call with confirmed:true only after an explicit user yes (in this conversation or stated as already-confirmed in the question). Include cause/action/parts only if the user already knows them — they are usually added later when the defect is closed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short failure title in the user\'s language, e.g. "Порван приводной ремень компрессора".' },
+          description: { type: 'string', description: 'Optional details: symptoms, circumstances, what was observed.' },
+          asset_id_internal: { type: 'string', description: 'Optional failed equipment — resolve via lookup_asset / find_assets_by_function first.' },
+          occurred_on: { type: 'string', description: 'Failure date YYYY-MM-DD. Default today.' },
+          cause: { type: 'string', description: 'Root cause, if already known.' },
+          action_taken: { type: 'string', description: 'Fix applied, if already done.' },
+          parts_used: { type: 'string', description: 'Parts/consumables used, if any.' },
+          confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed logging this exact defect.' },
+        },
+        required: ['title', 'confirmed'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'close_defect',
+      description:
+        'Close an open defect, recording how it was fixed — "дефект по компрессору устранён: заменили ремень, причина — износ". WRITE tool, confirmation-gated: resolve WHICH defect via find_defects (title fragment must match exactly one open defect), state it + the cause/action, get an explicit yes, then confirmed:true.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title_query: { type: 'string', description: 'Fragment of the defect title — must match exactly one OPEN defect (use find_defects when unsure).' },
+          cause: { type: 'string', description: 'Root cause found.' },
+          action_taken: { type: 'string', description: 'What was done to fix it.' },
+          parts_used: { type: 'string', description: 'Parts/consumables used.' },
+          confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed closing this exact defect.' },
+        },
+        required: ['title_query', 'confirmed'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_defects',
+      description:
+        'Search the defect / failure register (read-only): "какие поломки повторяются", "what keeps failing on the crane", "что было причиной в прошлый раз", "открытые дефекты". Returns matching defects (title, equipment, status, dates, cause/action when closed) plus per-equipment recurrence counts — use those to answer "most frequent failures" honestly. An empty result means no defects are recorded — say so; never invent failure history.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Free-text filter over titles/descriptions/causes. Omit to list recent.' },
+          asset_query: { type: 'string', description: 'Filter by equipment name fragment.' },
+          include_closed: { type: 'boolean', description: 'Default true — history matters for recurrence; set false for "current open defects".' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'find_assets_by_function',
       description:
         'Keyword search over asset register → ranked shortlist with asset_id_internal.',
