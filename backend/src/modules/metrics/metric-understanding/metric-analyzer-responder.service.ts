@@ -14,6 +14,12 @@ import {
 import { AccessPosition, DEPARTMENTS } from '../../access-control/access-positions';
 import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import {
+  claimsRegisterWriteSuccess,
+  WRITE_CLAIM_CORRECTION_NOTE,
+  WRITE_CLAIM_UNVERIFIED_DISCLAIMER,
+  WRITE_TOOL_NAMES,
+} from './write-claim-guard.util';
+import {
   BadRequestException,
   Injectable,
   Logger,
@@ -279,6 +285,7 @@ export class MetricAnalyzerResponderService {
     let iteration = 0;
     let finalAnswer: string | null = null;
     let hitTurnLimit = false;
+    let writeClaimGuardTriggered = false;
 
     while (iteration < MAX_ITERATIONS) {
       iteration++;
@@ -406,8 +413,39 @@ export class MetricAnalyzerResponderService {
         continue;
       }
 
-      // No tool calls → final answer
-      finalAnswer = round.content ?? '';
+      // No tool calls → candidate final answer. Honesty guard first: the
+      // model has been observed claiming "Задача создана ✅" without ever
+      // calling the write tool — nothing reaches the register. A final
+      // answer may claim a completed write ONLY if a write tool actually
+      // succeeded this turn; otherwise withhold the answer and give the
+      // model one corrective round to perform the write for real or restate
+      // without the false claim (see write-claim-guard.util.ts).
+      const candidateAnswer = round.content ?? '';
+      const hasSuccessfulWrite = otherAudit.some(
+        (call) => WRITE_TOOL_NAMES.has(call.tool) && call.ok,
+      );
+      if (!hasSuccessfulWrite && claimsRegisterWriteSuccess(candidateAnswer)) {
+        if (!writeClaimGuardTriggered) {
+          writeClaimGuardTriggered = true;
+          this.logger.warn(
+            `Write-claim guard: answer claims a register write but no write tool succeeded — forcing a corrective round (answer: "${candidateAnswer.slice(0, 160)}")`,
+          );
+          messages.push({ role: 'assistant', content: candidateAnswer });
+          messages.push({ role: 'user', content: WRITE_CLAIM_CORRECTION_NOTE });
+          opts?.onProgress?.('verifying register write');
+          continue;
+        }
+        // Repeat violation after the corrective round — stop trusting the
+        // model and make the truth visible deterministically instead of
+        // burning more rounds.
+        this.logger.warn(
+          'Write-claim guard: corrective round STILL claims a write with no successful write tool — appending a deterministic disclaimer',
+        );
+        finalAnswer =
+          candidateAnswer + '\n\n' + WRITE_CLAIM_UNVERIFIED_DISCLAIMER;
+        break;
+      }
+      finalAnswer = candidateAnswer;
       break;
     }
 
