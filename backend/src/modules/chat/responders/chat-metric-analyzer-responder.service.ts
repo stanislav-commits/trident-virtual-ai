@@ -69,6 +69,9 @@ export class ChatMetricAnalyzerResponderService {
               text,
             }),
           onTextDelta: this.createBatchedDeltaForwarder(input.session.id),
+          // Write tools (complete_maintenance_task) snapshot WHO acted —
+          // the chat session's owner is the acting crew member.
+          actorUserId: input.session.userId,
         },
       );
 

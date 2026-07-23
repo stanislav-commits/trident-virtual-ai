@@ -32,6 +32,6 @@ import { InventoryModule } from '../inventory/inventory.module';
   ],
   controllers: [PmsController],
   providers: [PmsService, AssetHoursService, PmsImportService],
-  exports: [PmsService],
+  exports: [PmsService, AssetHoursService],
 })
 export class PmsModule {}

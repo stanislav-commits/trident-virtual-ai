@@ -1,5 +1,9 @@
 import { formatError } from '../../../common/utils/error.utils';
+import { ModuleRef } from '@nestjs/core';
 import { nextTaskCode } from '../../pms/pms-task-code.util';
+import { PmsService } from '../../pms/pms.service';
+import { AssetHoursService } from '../../pms/asset-hours.service';
+import { AuthenticatedUser } from '../../../core/auth/auth.types';
 import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import {
   BadRequestException,
@@ -136,6 +140,7 @@ export class MetricAnalyzerResponderService {
     @InjectRepository(InventoryItemAssetEntity)
     private readonly inventoryAssetLinkRepository: Repository<InventoryItemAssetEntity>,
     private readonly influxService: InfluxService,
+    private readonly moduleRef: ModuleRef,
     private readonly llmService: LlmService,
     private readonly ragService: RagService,
     private readonly webSearchService: WebSearchService,
@@ -153,6 +158,8 @@ export class MetricAnalyzerResponderService {
        * (reset signal — the previous round's text was tool-call preamble,
        * not the final answer), then with text chunks as they stream. */
       onTextDelta?: (delta: string | null) => void;
+      /** The chat user on whose behalf write tools act (completion history). */
+      actorUserId?: string;
     },
   ): Promise<AnswerQuestionResult> {
     const t0 = Date.now();
@@ -341,6 +348,7 @@ export class MetricAnalyzerResponderService {
               ship.organizationName!,
               catalogIndex,
               iteration,
+              opts?.actorUserId ?? null,
             ),
           ),
         );
@@ -454,6 +462,7 @@ export class MetricAnalyzerResponderService {
     orgName: string,
     catalogIndex: Map<string, Map<string, AnalyzedCatalogItem>>,
     iteration: number,
+    actorUserId: string | null = null,
   ): Promise<{
     toolCallId: string;
     payload: Record<string, unknown>;
@@ -507,6 +516,10 @@ export class MetricAnalyzerResponderService {
         return this.toolRenderKpi(tc, args, iteration);
       case 'create_maintenance_task':
         return await this.toolCreateMaintenanceTask(tc, args, shipId, iteration);
+      case 'complete_maintenance_task':
+        return await this.toolCompleteMaintenanceTask(tc, args, shipId, iteration, actorUserId);
+      case 'log_hours_reading':
+        return await this.toolLogHoursReading(tc, args, shipId, iteration);
       case 'find_assets_by_function':
         return await this.toolFindAssetsByFunction(tc, args, shipId, iteration);
       case 'lookup_asset_fact':
@@ -2605,6 +2618,214 @@ export class MetricAnalyzerResponderService {
     };
   }
 
+
+  /**
+   * PmsService/AssetHoursService live in PmsModule, which cannot be imported
+   * here (module cycle: Metrics → Pms → Crew → Users → Ships → Metrics).
+   * They are resolved lazily from the global container instead — PmsModule is
+   * always instantiated (chat/alerts import it), so the providers exist.
+   */
+  private get pmsService(): PmsService {
+    return this.moduleRef.get(PmsService, { strict: false });
+  }
+
+  private get assetHoursService(): AssetHoursService {
+    return this.moduleRef.get(AssetHoursService, { strict: false });
+  }
+
+  /**
+   * WRITE tool: marks a PMS task done via PmsService.complete — the real
+   * business logic (recurring roll-forward, postpone reset, completed-by
+   * snapshot, admin-event emit), not a raw repository poke. Confirmation-
+   * gated like create_maintenance_task.
+   */
+  private async toolCompleteMaintenanceTask(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+    actorUserId: string | null,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const taskCode =
+      typeof args.task_code === 'string' && args.task_code.trim()
+        ? args.task_code.trim()
+        : null;
+    const taskQuery =
+      typeof args.task_query === 'string' && args.task_query.trim()
+        ? args.task_query.trim()
+        : null;
+    const doneOn =
+      typeof args.done_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.done_on)
+        ? args.done_on
+        : null;
+    const doneAtHours =
+      typeof args.done_at_hours === 'number' && Number.isFinite(args.done_at_hours)
+        ? args.done_at_hours
+        : null;
+    const notes =
+      typeof args.notes === 'string' && args.notes.trim() ? args.notes.trim() : null;
+    const callArgs = { task_code: taskCode, task_query: taskQuery, done_on: doneOn, confirmed: args.confirmed === true };
+
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'complete_maintenance_task', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+
+    if (args.confirmed !== true) {
+      return fail(
+        'NOT COMPLETED: confirmed must be true, and only after the user explicitly confirmed completing this exact task. State the task title + code and ask the user first.',
+      );
+    }
+    if (!taskCode && !taskQuery) {
+      return fail('task_code or task_query is required to pick the task');
+    }
+
+    let task: PmsTaskEntity | null;
+    if (taskCode) {
+      task = await this.pmsTaskRepository.findOne({
+        where: { shipId, taskCode },
+      });
+      if (!task) return fail(`no task with code "${taskCode}" on this ship`);
+    } else {
+      const candidates = await this.pmsTaskRepository
+        .createQueryBuilder('t')
+        .where('t.ship_id = :shipId', { shipId })
+        .andWhere('t.completed_at IS NULL')
+        .andWhere('t.task ILIKE :q', { q: `%${taskQuery}%` })
+        .orderBy('t.updated_at', 'DESC')
+        .take(6)
+        .getMany();
+      if (candidates.length === 0) {
+        return fail(`no open task matches "${taskQuery}"`);
+      }
+      if (candidates.length > 1) {
+        return fail(
+          'ambiguous — multiple open tasks match: ' +
+            candidates
+              .map((c) => `"${c.task}" (${c.taskCode ?? 'no code'})`)
+              .join('; ') +
+            '. Ask the user which one, then retry with its task_code.',
+        );
+      }
+      task = candidates[0];
+    }
+
+    const actor = actorUserId
+      ? ({ id: actorUserId, userId: '', role: 'user', shipId: null, name: null } as AuthenticatedUser)
+      : undefined;
+    await this.pmsService.complete(
+      shipId,
+      task.id,
+      { doneOn, doneAtHours, notes },
+      actor,
+    );
+
+    const resultSummary = `completed task "${task.task}" (${task.taskCode ?? 'no code'})${doneOn ? ' on ' + doneOn : ''}`;
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration, tool: 'complete_maintenance_task', args: callArgs, ok: true,
+        resultSummary, latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        task_completed: true,
+        task: task.task,
+        task_code: task.taskCode,
+        note: 'Task marked done. Recurring tasks roll forward to their next due date automatically — report the completion (title + code) to the user briefly.',
+      },
+    };
+  }
+
+  /**
+   * WRITE tool: logs a manual running-hours reading via AssetHoursService
+   * (also completes this month's reading-reminder task). Confirmation-gated.
+   */
+  private async toolLogHoursReading(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const assetIdInternal =
+      typeof args.asset_id_internal === 'string' && args.asset_id_internal.trim()
+        ? args.asset_id_internal.trim()
+        : null;
+    const hours =
+      typeof args.hours === 'number' && Number.isFinite(args.hours) && args.hours >= 0
+        ? args.hours
+        : null;
+    const readOn =
+      typeof args.read_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.read_on)
+        ? args.read_on
+        : undefined;
+    const note =
+      typeof args.note === 'string' && args.note.trim() ? args.note.trim() : null;
+    const callArgs = { asset_id_internal: assetIdInternal, hours, read_on: readOn ?? null, confirmed: args.confirmed === true };
+
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'log_hours_reading', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+
+    if (args.confirmed !== true) {
+      return fail(
+        'NOT LOGGED: confirmed must be true, and only after the user explicitly confirmed logging this exact reading. State the asset + hours and ask first.',
+      );
+    }
+    if (!assetIdInternal) return fail('asset_id_internal is required — resolve the asset first');
+    if (hours === null) return fail('hours must be a non-negative number');
+
+    const asset = await this.assetRepository.findOne({
+      where: { shipId, assetIdInternal },
+    });
+    if (!asset) {
+      return fail(
+        `asset "${assetIdInternal}" not found in the register — resolve it via lookup_asset / find_assets_by_function first`,
+      );
+    }
+
+    await this.assetHoursService.addReading(shipId, asset.id, {
+      hours,
+      readOn,
+      note,
+    });
+
+    const resultSummary = `logged ${hours} h for "${asset.displayName ?? assetIdInternal}"${readOn ? ' (read on ' + readOn + ')' : ''}`;
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration, tool: 'log_hours_reading', args: callArgs, ok: true,
+        resultSummary, latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        reading_logged: true,
+        asset: asset.displayName ?? assetIdInternal,
+        hours,
+        note: 'Reading logged in the hours journal (and this month\'s reading reminder, if any, is marked done). Confirm briefly to the user.',
+      },
+    };
+  }
+
   /**
    * Presentation-only tool: unlike render_chart/render_map, this never
    * queries Influx itself — the model already gathered every value with its
@@ -4217,6 +4438,10 @@ export class MetricAnalyzerResponderService {
       });
       return {
         task: task.task,
+        // Register code (e.g. SWX-M0510) — needed to target a specific task
+        // with complete_maintenance_task; internal, never shown to the user
+        // per the hygiene rule unless the user used the code themselves.
+        task_code: task.taskCode,
         status,
         due,
         equipment: (task.assets ?? []).map((a) => a.displayName).filter(Boolean),

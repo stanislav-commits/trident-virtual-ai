@@ -766,6 +766,45 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'complete_maintenance_task',
+      description:
+        'Mark a PMS (maintenance) task as DONE from the conversation — "отметь задачу выполненной", "mark the drill as completed", "we did the fire drill today". WRITE tool, STRICTLY confirmation-gated exactly like create_maintenance_task: (1) resolve WHICH task (by task_code when the user gives one, else task_query — if several match you will get a candidate list back; ask the user to pick); (2) state the task title + code and ask for confirmation; (3) call with confirmed:true ONLY after an explicit user "yes" — either said in this conversation or when the question itself states the user already confirmed. Recurring tasks roll forward to their next due date; one-offs move to history.',
+      parameters: {
+        type: 'object',
+        properties: {
+          task_code: { type: 'string', description: 'Exact task code, e.g. "SWX-M0510" — the most reliable way to pick the task.' },
+          task_query: { type: 'string', description: 'Free-text fragment of the task title when the user did not give a code, e.g. "abandon ship drill". Must match exactly one open task.' },
+          done_on: { type: 'string', description: 'Completion date YYYY-MM-DD. Default today.' },
+          done_at_hours: { type: 'number', description: 'Running-hours counter reading at completion — only for hours-based tasks when the user states it.' },
+          notes: { type: 'string', description: 'Optional completion notes from the user.' },
+          confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed completing this exact task.' },
+        },
+        required: ['confirmed'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'log_hours_reading',
+      description:
+        'Log a manual RUNNING-HOURS counter reading for an asset — "запиши моточасы генератора: 1046", "log 1046 h on the port genset". WRITE tool, confirmation-gated like the other write tools: resolve the asset FIRST (lookup_asset / find_assets_by_function → asset_id_internal), state asset + hours and ask, then call with confirmed:true only after an explicit user yes (in this conversation, or stated as already-confirmed in the question). The reading lands in the asset\'s hours journal and completes this month\'s reading-reminder task if one exists.',
+      parameters: {
+        type: 'object',
+        properties: {
+          asset_id_internal: { type: 'string', description: 'The asset\'s register id — resolve via lookup_asset / find_assets_by_function first.' },
+          hours: { type: 'number', description: 'The counter reading in hours (as read from the gauge).' },
+          read_on: { type: 'string', description: 'Reading date YYYY-MM-DD. Default today.' },
+          note: { type: 'string', description: 'Optional note, e.g. "read during morning rounds".' },
+          confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed logging this exact reading.' },
+        },
+        required: ['asset_id_internal', 'hours', 'confirmed'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'find_assets_by_function',
       description:
         'Keyword search over asset register → ranked shortlist with asset_id_internal.',
