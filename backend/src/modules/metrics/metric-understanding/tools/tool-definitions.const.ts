@@ -666,6 +666,86 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'render_table',
+      description:
+        'Render a STRUCTURED, sortable table INSIDE the chat instead of hand-writing a markdown table in your answer. Call this whenever you are about to present a list of comparable items with several columns — e.g. "all tanks: capacity / current level / % full / days to empty", "all generators: running hours / last service / status". You must already have every value BEFORE calling this — gather it first with your other tools (query_metric, lookup_asset_fact, forecast_metric, etc.); render_table only presents the rows you hand it, it does not fetch or compute anything itself. Your final answer text must contain NO pipe characters (|) and NO per-row bullet list repeating these values — every row is already visible in the rendered table. Write ONE short takeaway sentence and stop.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Short table title in the user\'s language, e.g. "Пресная вода по танкам" or "Generators overview". Never put internal metric keys or asset codes here.',
+          },
+          columns: {
+            type: 'array',
+            description: '1–8 columns, in the order they should display.',
+            items: {
+              type: 'object',
+              properties: {
+                key: { type: 'string', description: 'Matches this column\'s field name in every row object below.' },
+                label: { type: 'string', description: 'Column header, in the user\'s language.' },
+                align: { type: 'string', enum: ['left', 'right', 'center'], description: 'Default left; use right for numbers.' },
+                unit: { type: 'string', description: 'Optional unit suffix shown after each value in this column, e.g. "L", "%", "h". Omit if the label already implies it or values are text.' },
+              },
+              required: ['key', 'label'],
+            },
+          },
+          rows: {
+            type: 'array',
+            description: 'Up to 50 rows. Each is a flat object whose keys match the columns\' keys above; values must be plain strings, numbers, booleans or null (no nested objects/arrays).',
+            items: { type: 'object' },
+          },
+        },
+        required: ['title', 'columns', 'rows'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'render_kpi',
+      description:
+        'Render one or a few KPI gauge/stat cards INSIDE the chat — a quick-glance status view of a value against its range (e.g. "fuel tank 5P: 62%", "generator 1 load: 78%", "battery SoC: 41%"). Call this for "quick status / at a glance / how are we doing" questions about one or a few values, instead of just stating the number in prose. You must already have the value(s) — query them with your other tools FIRST; this tool only presents what you hand it. Use format:"percent" (min 0 / max 100 implied) for a share-of-total value, or format:"number" with your own min/max for a plain-unit stat (hours, °C, bar, etc.). The cards render every value, label and status on their own. Your final answer text must contain NO pipe characters (|) and NO per-item bullet list repeating these values — every card is already visible. Write ONE short takeaway sentence (e.g. which item needs attention) and stop; do not group or re-explain the items one by one.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Optional short title above the card(s), in the user\'s language. Omit for a single standalone KPI.',
+          },
+          items: {
+            type: 'array',
+            description: '1–6 KPI items.',
+            items: {
+              type: 'object',
+              properties: {
+                label: { type: 'string', description: 'Short label, in the user\'s language, e.g. "Fuel tank 5P" / "Генератор 1, нагрузка". Never an internal metric key or asset code.' },
+                value: { type: 'number', description: 'The current value, in display units.' },
+                unit: { type: 'string', description: 'e.g. "%", "L", "h", "°C", "bar". Optional.' },
+                format: {
+                  type: 'string',
+                  enum: ['percent', 'number'],
+                  description: '"percent" (default) draws a 0–100 ring gauge; "number" draws a plain stat with the min/max range you provide.',
+                },
+                min: { type: 'number', description: 'Gauge range minimum. Default 0.' },
+                max: { type: 'number', description: 'Gauge range maximum. Required (and meaningful) for format:"number"; percent defaults to 100.' },
+                status: {
+                  type: 'string',
+                  enum: ['ok', 'warn', 'critical'],
+                  description: 'Explicit color override. Omit for a percent gauge to auto-color by share (high=ok, low=warn/critical) — set this explicitly whenever the "good" direction is inverted (e.g. a high temperature or high engine-hours-since-service is bad) or for format:"number".',
+                },
+              },
+              required: ['label', 'value'],
+            },
+          },
+        },
+        required: ['items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'find_assets_by_function',
       description:
         'Keyword search over asset register → ranked shortlist with asset_id_internal.',

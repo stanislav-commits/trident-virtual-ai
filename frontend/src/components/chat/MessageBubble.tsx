@@ -5,6 +5,8 @@ import rehypeRaw from "rehype-raw";
 import type {
   ChatChartDto,
   ChatMapDto,
+  ChatTableDto,
+  ChatKpiBlockDto,
   ChatMessageDto,
   ChatContextReferenceDto,
   ChatSuggestionActionDto,
@@ -12,6 +14,8 @@ import type {
 import { useAuth } from "../../context/AuthContext";
 import ChatChartBlock from "./ChatChartBlock";
 import ChatMapBlock from "./ChatMapBlock";
+import ChatTableBlock from "./ChatTableBlock";
+import ChatKpiBlock from "./ChatKpiBlock";
 import { SourceCitations } from "./SourceCitations";
 import {
   type ChatDocumentOpenTarget,
@@ -352,6 +356,32 @@ export function MessageBubble({
           : [],
       )
     : [];
+  // Structured tables (render_table) ride the same way as charts/maps.
+  const tables: ChatTableDto[] = Array.isArray(ragflowContext?.askResults)
+    ? ragflowContext.askResults.flatMap((ask) =>
+        Array.isArray(ask?.data?.tables)
+          ? ask.data.tables.filter(
+              (t): t is ChatTableDto =>
+                !!t &&
+                typeof t === "object" &&
+                typeof t.title === "string" &&
+                Array.isArray(t.columns) &&
+                Array.isArray(t.rows),
+            )
+          : [],
+      )
+    : [];
+  // KPI gauge/stat cards (render_kpi) ride the same way.
+  const kpis: ChatKpiBlockDto[] = Array.isArray(ragflowContext?.askResults)
+    ? ragflowContext.askResults.flatMap((ask) =>
+        Array.isArray(ask?.data?.kpis)
+          ? ask.data.kpis.filter(
+              (k): k is ChatKpiBlockDto =>
+                !!k && typeof k === "object" && Array.isArray(k.items),
+            )
+          : [],
+      )
+    : [];
   const clarificationActions = Array.isArray(ragflowContext?.clarificationActions)
     ? ragflowContext.clarificationActions.filter(
         (action): action is ChatSuggestionActionDto =>
@@ -463,6 +493,22 @@ export function MessageBubble({
           <div className="chat-message__charts">
             {maps.map((m, index) => (
               <ChatMapBlock key={`${m.title}-${index}`} chart={m} />
+            ))}
+          </div>
+        )}
+
+        {role === "assistant" && kpis.length > 0 && (
+          <div className="chat-message__charts">
+            {kpis.map((k, index) => (
+              <ChatKpiBlock key={`${k.title}-${index}`} kpi={k} />
+            ))}
+          </div>
+        )}
+
+        {role === "assistant" && tables.length > 0 && (
+          <div className="chat-message__charts">
+            {tables.map((t, index) => (
+              <ChatTableBlock key={`${t.title}-${index}`} table={t} />
             ))}
           </div>
         )}

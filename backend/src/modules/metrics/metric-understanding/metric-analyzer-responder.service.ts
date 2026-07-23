@@ -1,4 +1,5 @@
 import { formatError } from '../../../common/utils/error.utils';
+import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import {
   BadRequestException,
   Injectable,
@@ -45,6 +46,10 @@ import {
   ChatChartSeriesPoint,
   ChatMap,
   ChatMapTrackPoint,
+  ChatTable,
+  ChatTableColumn,
+  ChatKpiBlock,
+  ChatKpiItem,
   OtherToolCallAudit,
   ToolCallAudit,
 } from './metric-analyzer-responder.types';
@@ -243,6 +248,8 @@ export class MetricAnalyzerResponderService {
     const otherAudit: OtherToolCallAudit[] = [];
     const charts: ChatChart[] = [];
     const maps: ChatMap[] = [];
+    const tables: ChatTable[] = [];
+    const kpis: ChatKpiBlock[] = [];
     let totalPromptTokens = 0;
     let totalCompletionTokens = 0;
     let totalCacheWriteTokens = 0;
@@ -349,6 +356,12 @@ export class MetricAnalyzerResponderService {
           if (r.map) {
             maps.push(r.map);
           }
+          if (r.table) {
+            tables.push(r.table);
+          }
+          if (r.kpi) {
+            kpis.push(r.kpi);
+          }
           messages.push({
             role: 'tool',
             tool_call_id: r.toolCallId,
@@ -381,6 +394,15 @@ export class MetricAnalyzerResponderService {
         'Sorry, I could not gather a complete answer within the allowed number of tool calls. Try a more focused question.';
     }
 
+    // render_table/render_kpi already display every value — but despite the
+    // tool description forbidding it, the model sometimes ALSO writes a
+    // markdown table restating the same data. Prompt-only steering didn't
+    // reliably stop this, so strip any markdown-table block deterministically
+    // whenever this turn rendered one of these presentation blocks.
+    if (tables.length > 0 || kpis.length > 0) {
+      finalAnswer = stripDuplicateMarkdownTables(finalAnswer);
+    }
+
     // Anthropic prompt-cache economics: cache writes bill at 1.25× input,
     // cache reads at 0.1× input. promptTokens from the Anthropic adapter is
     // ONLY the uncached remainder — the three buckets are disjoint. For
@@ -410,6 +432,8 @@ export class MetricAnalyzerResponderService {
       otherToolCalls: otherAudit,
       charts,
       maps,
+      tables,
+      kpis,
       totalTokens:
         totalPromptTokens +
         totalCacheWriteTokens +
@@ -436,6 +460,8 @@ export class MetricAnalyzerResponderService {
     otherCall?: OtherToolCallAudit;
     chart?: ChatChart;
     map?: ChatMap;
+    table?: ChatTable;
+    kpi?: ChatKpiBlock;
   }> {
     let args: Record<string, unknown>;
     try {
@@ -474,6 +500,10 @@ export class MetricAnalyzerResponderService {
         return await this.toolRenderChart(tc, args, orgName, catalogIndex, iteration);
       case 'render_map':
         return await this.toolRenderMap(tc, args, orgName, catalogIndex, iteration);
+      case 'render_table':
+        return this.toolRenderTable(tc, args, iteration);
+      case 'render_kpi':
+        return this.toolRenderKpi(tc, args, iteration);
       case 'find_assets_by_function':
         return await this.toolFindAssetsByFunction(tc, args, shipId, iteration);
       case 'lookup_asset_fact':
@@ -2462,6 +2492,176 @@ export class MetricAnalyzerResponderService {
         track_points: track.length,
         current: { lat: current.lat, lon: current.lon, at: current.t },
         note: 'The map is now displayed to the user with the vessel track and weather. Do NOT paste coordinate lists; give a short takeaway (area, distance covered, current position in plain terms).',
+      },
+    };
+  }
+
+  /**
+   * Presentation-only tool: unlike render_chart/render_map, this never
+   * queries Influx itself — the model already gathered every value with its
+   * other tools and just hands over rows to display as a structured,
+   * sortable table instead of a hand-typed markdown table.
+   */
+  private toolRenderTable(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    iteration: number,
+  ): {
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+    table?: ChatTable;
+  } {
+    const t0 = Date.now();
+    const title = String(args.title ?? '').trim() || 'Table';
+    const rawColumns = Array.isArray(args.columns) ? args.columns.slice(0, 8) : [];
+    const rawRows = Array.isArray(args.rows) ? args.rows.slice(0, 50) : [];
+    const callArgs = { title, columns: rawColumns, rows: rawRows };
+
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'render_table', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+
+    if (rawColumns.length === 0) {
+      return fail('columns is required (1–8 columns)');
+    }
+    if (rawRows.length === 0) {
+      return fail('rows is required (at least 1 row)');
+    }
+
+    const columns: ChatTableColumn[] = [];
+    for (const raw of rawColumns) {
+      const c = (raw ?? {}) as { key?: unknown; label?: unknown; align?: unknown; unit?: unknown };
+      const key = String(c.key ?? '').trim();
+      const label = String(c.label ?? '').trim();
+      if (!key || !label) {
+        return fail('each column needs a non-empty key and label');
+      }
+      columns.push({
+        key,
+        label,
+        align: c.align === 'right' || c.align === 'center' ? c.align : 'left',
+        unit: typeof c.unit === 'string' && c.unit.trim() ? c.unit.trim() : null,
+      });
+    }
+
+    const columnKeys = new Set(columns.map((c) => c.key));
+    const rows: Array<Record<string, string | number | boolean | null>> = [];
+    for (const raw of rawRows) {
+      if (!raw || typeof raw !== 'object') continue;
+      const row: Record<string, string | number | boolean | null> = {};
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (!columnKeys.has(k)) continue;
+        row[k] =
+          v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+            ? v
+            : String(v);
+      }
+      rows.push(row);
+    }
+    if (rows.length === 0) {
+      return fail('no valid rows — each row\'s keys must match the columns\' keys');
+    }
+
+    const table: ChatTable = { title, columns, rows };
+    const resultSummary = `table "${title}": ${columns.length} columns × ${rows.length} rows`;
+
+    return {
+      toolCallId: tc.id,
+      table,
+      otherCall: {
+        iteration, tool: 'render_table', args: callArgs, ok: true,
+        resultSummary, latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        table_rendered: true,
+        title,
+        rows: rows.length,
+        note: 'The table is now displayed to the user, sortable by column. Do NOT also write a markdown table with the same data — just a one-line takeaway.',
+      },
+    };
+  }
+
+  /**
+   * Presentation-only tool (same nature as render_table): the model already
+   * has the value(s) from its other tools; this just draws gauge/stat cards.
+   */
+  private toolRenderKpi(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    iteration: number,
+  ): {
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+    kpi?: ChatKpiBlock;
+  } {
+    const t0 = Date.now();
+    const title = typeof args.title === 'string' ? args.title.trim() : '';
+    const rawItems = Array.isArray(args.items) ? args.items.slice(0, 6) : [];
+    const callArgs = { title, items: rawItems };
+
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'render_kpi', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+
+    if (rawItems.length === 0) {
+      return fail('items is required (1–6 KPI items)');
+    }
+
+    const items: ChatKpiItem[] = [];
+    for (const raw of rawItems) {
+      const it = (raw ?? {}) as Record<string, unknown>;
+      const label = String(it.label ?? '').trim();
+      const value =
+        typeof it.value === 'number' && Number.isFinite(it.value) ? it.value : null;
+      if (!label || value === null) continue;
+      const format = it.format === 'number' ? 'number' : 'percent';
+      const min = typeof it.min === 'number' && Number.isFinite(it.min) ? it.min : 0;
+      const max =
+        typeof it.max === 'number' && Number.isFinite(it.max) && it.max > min
+          ? it.max
+          : format === 'percent'
+            ? 100
+            : Math.max(min + 1, value);
+      const status =
+        it.status === 'ok' || it.status === 'warn' || it.status === 'critical'
+          ? it.status
+          : null;
+      const unit = typeof it.unit === 'string' && it.unit.trim() ? it.unit.trim() : null;
+      items.push({ label, value, unit, format, min, max, status });
+    }
+    if (items.length === 0) {
+      return fail('no valid items — each needs a label and a numeric value');
+    }
+
+    const kpi: ChatKpiBlock = { title, items };
+    const resultSummary = `kpi${title ? ` "${title}"` : ''}: ${items
+      .map((i) => `${i.label}=${i.value}${i.unit ?? ''}`)
+      .join(', ')}`;
+
+    return {
+      toolCallId: tc.id,
+      kpi,
+      otherCall: {
+        iteration, tool: 'render_kpi', args: callArgs, ok: true,
+        resultSummary, latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        kpi_rendered: true,
+        note: 'The KPI card(s) are now displayed to the user. Give one short takeaway; do not restate every number in prose.',
       },
     };
   }

@@ -101,6 +101,50 @@ export interface ChatMap {
   weatherLayer: string;
 }
 
+/** One column of a structured table (`render_table`). */
+export interface ChatTableColumn {
+  /** Matches the key each row uses for this column's value. */
+  key: string;
+  label: string;
+  align?: 'left' | 'right' | 'center';
+  /** Unit suffix shown after numeric values in this column, e.g. "L", "%". */
+  unit?: string | null;
+}
+
+/**
+ * A structured, sortable table the analyzer built for the user to SEE
+ * (`render_table`) instead of hand-writing a markdown table in prose. Unlike
+ * charts/maps this is a pure PRESENTATION tool — the model already computed
+ * every value via its other tools and just hands over the rows; nothing here
+ * queries Influx. Rides on `ragflowContext` like charts/maps.
+ */
+export interface ChatTable {
+  title: string;
+  columns: ChatTableColumn[];
+  rows: Array<Record<string, string | number | boolean | null>>;
+}
+
+/** One KPI gauge/stat item (`render_kpi`). */
+export interface ChatKpiItem {
+  label: string;
+  value: number;
+  unit?: string | null;
+  /** percent = 0–100 ring gauge; number = plain stat with its own min/max arc. */
+  format: 'percent' | 'number';
+  min: number;
+  max: number;
+  /** Explicit color override — set when the "good" direction is inverted
+   *  (e.g. high temperature is bad) or omit to auto-color a percent gauge. */
+  status: 'ok' | 'warn' | 'critical' | null;
+}
+
+/** One or more KPI cards the analyzer built for the user to SEE (`render_kpi`) —
+ *  a quick-glance status view, same presentation-only nature as ChatTable. */
+export interface ChatKpiBlock {
+  title: string;
+  items: ChatKpiItem[];
+}
+
 export interface AnswerQuestionResult {
   shipId: string;
   question: string;
@@ -109,6 +153,8 @@ export interface AnswerQuestionResult {
   otherToolCalls: OtherToolCallAudit[]; // lookup_asset / find_asset_metrics / list_assets_by_sfi
   charts: ChatChart[];               // render_chart output, drawn client-side
   maps: ChatMap[];                   // render_map output, drawn client-side
+  tables: ChatTable[];                // render_table output, drawn client-side
+  kpis: ChatKpiBlock[];               // render_kpi output, drawn client-side
   totalTokens: number;
   estimatedCostUsd: number;
   durationMs: number;

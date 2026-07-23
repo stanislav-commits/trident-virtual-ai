@@ -91,6 +91,10 @@ export class ChatMetricAnalyzerResponderService {
           // Vessel-track maps (render_map) — ride the same way, drawn by
           // <ChatMapBlock> on a Windy map.
           maps: result.maps,
+          // Structured tables (render_table) and KPI gauge cards (render_kpi)
+          // — same out-of-band ride, drawn by <ChatTableBlock>/<ChatKpiBlock>.
+          tables: result.tables,
+          kpis: result.kpis,
           totalTokens: result.totalTokens,
           estimatedCostUsd: result.estimatedCostUsd,
           durationMs: result.durationMs,

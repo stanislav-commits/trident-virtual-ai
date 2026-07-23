@@ -3171,7 +3171,17 @@
   text-decoration: none;
   font-size: 18px;
   font-weight: 700;
+  /* Leaflet's own rule sets line-height:30px on the inner <span> — taller
+     than this 26px button, which pushes the glyph down off-centre. */
+  line-height: 1 !important;
   backdrop-filter: blur(4px);
+}
+
+.chat-map__canvas .leaflet-bar a.leaflet-control-zoom-in span,
+.chat-map__canvas .leaflet-bar a.leaflet-control-zoom-out span {
+  line-height: 1 !important;
+  /* The +/− glyphs sit slightly below optical centre in this font — nudge up. */
+  transform: translateY(-2px);
 }
 
 .chat-map__canvas .leaflet-bar a.leaflet-control-zoom-in:hover,
@@ -3330,6 +3340,157 @@
    API key. Kept as its own rule so it is trivial to revert if needed. */
 .chat-map-modal #logo-wrapper {
   display: none !important;
+}
+
+/* ── Structured table (render_table) ── */
+
+.chat-table {
+  border: 1px solid var(--chat-border);
+  border-radius: 10px;
+  background: var(--chat-bg-subtle);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chat-table__header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+}
+
+.chat-table__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--chat-text);
+}
+
+.chat-table__scroll {
+  overflow-x: auto;
+  border-top: 1px solid var(--chat-border);
+}
+
+.chat-table__grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.chat-table__th {
+  padding: 7px 12px;
+  font-weight: 600;
+  color: var(--chat-text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--chat-border);
+}
+
+.chat-table__th:hover {
+  color: var(--chat-text);
+}
+
+.chat-table__th--left {
+  text-align: left;
+}
+
+.chat-table__th--right {
+  text-align: right;
+}
+
+.chat-table__th--center {
+  text-align: center;
+}
+
+.chat-table__sort-arrow {
+  font-size: 9px;
+  color: var(--chat-accent, #2f81f7);
+}
+
+.chat-table__td {
+  padding: 6px 12px;
+  color: var(--chat-text);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--chat-border);
+}
+
+.chat-table__td--left {
+  text-align: left;
+}
+
+.chat-table__td--right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-table__td--center {
+  text-align: center;
+}
+
+.chat-table__grid tbody tr:last-child .chat-table__td {
+  border-bottom: none;
+}
+
+.chat-table--empty .chat-table__empty {
+  font-size: 12px;
+  color: var(--chat-text-muted);
+  padding: 12px;
+}
+
+/* ── KPI gauge cards (render_kpi) ── */
+
+.chat-kpi {
+  padding: 8px 0 12px;
+  max-width: 100%;
+}
+
+.chat-kpi__header {
+  padding: 0 0 4px;
+}
+
+.chat-kpi__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--chat-text);
+}
+
+.chat-kpi__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.chat-kpi__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 88px;
+}
+
+.chat-kpi__ring-track {
+  stroke: var(--chat-border-strong);
+  opacity: 0.5;
+}
+
+.chat-kpi__ring-value {
+  fill: var(--chat-text);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-kpi__ring-sub {
+  fill: var(--chat-text-muted);
+  font-size: 8px;
+}
+
+.chat-kpi__label {
+  font-size: 11.5px;
+  color: var(--chat-text-muted);
+  text-align: center;
+  max-width: 100px;
 }
 
 .chat-suggestion {

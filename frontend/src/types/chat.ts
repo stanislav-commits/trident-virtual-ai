@@ -120,6 +120,37 @@ export interface ChatMapDto {
   weatherLayer: string;
 }
 
+/** Structured, sortable table (render_table) — a presentation-only block;
+ *  the analyzer already computed every value, this just displays the rows. */
+export interface ChatTableColumnDto {
+  key: string;
+  label: string;
+  align?: "left" | "right" | "center";
+  unit?: string | null;
+}
+
+export interface ChatTableDto {
+  title: string;
+  columns: ChatTableColumnDto[];
+  rows: Array<Record<string, string | number | boolean | null>>;
+}
+
+/** One KPI gauge/stat card (render_kpi). */
+export interface ChatKpiItemDto {
+  label: string;
+  value: number;
+  unit?: string | null;
+  format: "percent" | "number";
+  min: number;
+  max: number;
+  status: "ok" | "warn" | "critical" | null;
+}
+
+export interface ChatKpiBlockDto {
+  title: string;
+  items: ChatKpiItemDto[];
+}
+
 export interface ChatTurnAskResultDto {
   askId: string;
   intent: string;
@@ -134,6 +165,8 @@ export interface ChatTurnAskResultDto {
     error?: string;
     charts?: ChatChartDto[];
     maps?: ChatMapDto[];
+    tables?: ChatTableDto[];
+    kpis?: ChatKpiBlockDto[];
   } | null;
   contextReferences?: ChatContextReferenceDto[];
 }

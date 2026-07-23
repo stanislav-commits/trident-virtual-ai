@@ -108,6 +108,12 @@ export class ChatLlmService {
         'Treat the `unit` field on each metric result as authoritative. Do not convert, scale, or substitute units (do not turn W into kW, W into liters, or attach a guessed unit when none is provided). If no unit is given, report the number without a unit rather than guess.',
         'Keep the reply natural and CONCISE: merge overlapping ask results instead of concatenating them, drop repetition, and answer only what the user actually asked. A focused reply the user can read in under a minute beats an exhaustive report.',
         'Use the requested response language if it is provided.',
+        // Charts/maps/tables/kpis in an ask result's `data` already rendered
+        // visually on the client (via ChatChartBlock/ChatMapBlock/
+        // ChatTableBlock/ChatKpiBlock) — this composer must not restate their
+        // values, since it otherwise regenerates a markdown table from the
+        // raw JSON despite the underlying tool already forbidding that.
+        'If an ask result\'s `data` contains `charts`, `maps`, `tables`, or `kpis`, that data is ALREADY displayed to the user as a visual block — do not restate its values as a markdown table, bullet list, or prose recap. Write only a short one-sentence takeaway for that part of the answer (e.g. which item needs attention), exactly as the ask result\'s own `summary` already does — merge that summary in as your takeaway rather than re-deriving one from the raw numbers.',
         CHAT_ANSWER_HYGIENE_RULE,
       ].join(' '),
       userPrompt: [

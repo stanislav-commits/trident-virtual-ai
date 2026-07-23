@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import { ChatLlmService } from '../chat-llm.service';
 import { ChatConversationContext } from '../context/chat-conversation-context.types';
 import { ChatMessageEntity } from '../entities/chat-message.entity';
@@ -225,11 +226,27 @@ export class ChatTurnOrchestratorService {
       };
     }
 
-    const content = await this.chatLlmService.composeAskResultsReply({
+    const composedContent = await this.chatLlmService.composeAskResultsReply({
       context: input.context,
       responseLanguage: plan.responseLanguage,
       askResults,
     });
+    // Charts/maps/tables/kpis already render as visual blocks — the composer
+    // prompt asks it not to restate them, but that alone didn't reliably
+    // stop the model regenerating a markdown table from the raw JSON, so
+    // strip any leftover table deterministically (mirrors the same fix in
+    // the metric-analyzer's own single-ask path).
+    const hasPresentationBlock = askResults.some((result) => {
+      const data = result.data;
+      return (
+        Array.isArray(data?.tables) && data.tables.length > 0
+      ) || (
+        Array.isArray(data?.kpis) && data.kpis.length > 0
+      );
+    });
+    const content = hasPresentationBlock
+      ? stripDuplicateMarkdownTables(composedContent)
+      : composedContent;
     const contextReferences = filterContextReferencesForAnswer(
       content,
       askResults.flatMap((result) => result.contextReferences ?? []),
