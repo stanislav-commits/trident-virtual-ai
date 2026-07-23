@@ -12,9 +12,10 @@ import {
 
 /**
  * Draws the vessel's GPS track (render_map) on a self-contained Leaflet map —
- * track polyline + start/current markers, fit to bounds. A "Weather (Windy)"
- * button opens the vessel's location on an interactive Windy weather map in a
- * modal (single instance, so multiple in-chat maps never conflict).
+ * track polyline + start/current markers, fit to bounds. An expand button
+ * opens the vessel's location on an interactive Windy weather map in a modal
+ * (single instance, so multiple in-chat maps never conflict), with a layer
+ * switcher for wind/waves/rain/etc.
  *
  * Plain imperative Leaflet (not react-leaflet) so it's robust under React 19
  * and lets several map blocks coexist in one conversation.
@@ -32,13 +33,18 @@ const WINDY_OVERLAY: Record<string, string> = {
   swell: "swell1",
 };
 
-function isDarkTheme(): boolean {
-  const root = document.documentElement;
-  const attr = root.getAttribute("data-theme");
-  if (attr === "dark") return true;
-  if (attr === "light") return false;
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true;
-}
+// Selectable layers for the in-modal weather-layer switcher (label is
+// English-only, matching the rest of this file's hardcoded UI strings).
+const WEATHER_LAYERS: Array<{ overlay: string; label: string }> = [
+  { overlay: "wind", label: "Wind" },
+  { overlay: "waves", label: "Waves" },
+  { overlay: "currents", label: "Currents" },
+  { overlay: "pressure", label: "Pressure" },
+  { overlay: "temp", label: "Temp" },
+  { overlay: "rain", label: "Rain" },
+  { overlay: "gust", label: "Gusts" },
+  { overlay: "swell1", label: "Swell" },
+];
 
 export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -62,19 +68,24 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
     const el = containerRef.current;
     if (!el || points.length === 0) return;
 
-    const dark = isDarkTheme();
-    const tileUrl = dark
-      ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-      : "https://{s}.basemaps.cartocdn.com/voyager/{z}/{x}/{y}{r}.png";
+    // CARTO "Voyager" basemap — colourful and readable (the dark CARTO tiles
+    // render almost pure black in the compact card). NOTE: Voyager lives under
+    // the `rastertiles/` path; without it CARTO returns 404 and the card shows
+    // a blank grey map.
+    const tileUrl =
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 
     const map = L.map(el, {
-      attributionControl: true,
-      scrollWheelZoom: false,
+      // Attribution box hidden at the operator's request for a cleaner card.
+      // (OSM data is ODbL — "© OpenStreetMap contributors" is normally
+      // expected; re-enable if that attribution needs to be shown.)
+      attributionControl: false,
+      // Let the crew zoom the inline card with the wheel (not only once the
+      // full-screen modal is open).
+      scrollWheelZoom: true,
       zoomControl: true,
     });
     L.tileLayer(tileUrl, {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxZoom: 19,
     }).addTo(map);
 
@@ -135,7 +146,9 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [weatherOpen]);
 
-  const overlay = WINDY_OVERLAY[chart.weatherLayer] ?? "wind";
+  const [activeOverlay, setActiveOverlay] = useState(
+    WINDY_OVERLAY[chart.weatherLayer] ?? "wind",
+  );
 
   // Windy weather modal: prefer the Map-Forecast API (draws the track ON the
   // weather map, uses the operator's key). On no-key / blocked-domain / load
@@ -161,9 +174,22 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
         const mount = windyMountRef.current;
         if (!mount) return;
         mount.appendChild(el);
-        const group = drawTrackOnWindy(api, points, overlay);
+        const group = drawTrackOnWindy(api, points, activeOverlay);
         windyHandleRef.current = { el, holder, group, api };
         setWindyMode("windy");
+        // Windy sizes its own chrome (zoom control, layer badge) off the
+        // container's dimensions at the moment it's read — reparenting
+        // happens before the modal has finished layout, so those controls
+        // end up positioned for the off-screen holder's original 1200x800,
+        // not our modal. Re-measure once the modal has actually painted.
+        window.setTimeout(() => {
+          try {
+            api.map.invalidateSize();
+          } catch {
+            // ignore
+          }
+          window.dispatchEvent(new Event("resize"));
+        }, 100);
       })
       .catch(() => {
         if (!cancelled) setWindyMode("embed");
@@ -189,7 +215,15 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
         windyHandleRef.current = null;
       }
     };
-  }, [weatherOpen, points, overlay]);
+  }, [weatherOpen, points, activeOverlay]);
+
+  // Drive Windy's (visually hidden) native zoom by clicking its own controls —
+  // robust across Windy versions and avoids reaching into its Leaflet API.
+  const zoomWindy = (dir: 1 | -1) => {
+    const sel = dir > 0 ? ".zoom-plus" : ".zoom-minus";
+    const btn = document.querySelector<HTMLElement>(`#embed-zoom ${sel}`);
+    btn?.click();
+  };
 
   if (points.length === 0) {
     return (
@@ -204,7 +238,7 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
     cur &&
     `https://embed.windy.com/embed2.html?lat=${cur.lat}&lon=${cur.lon}` +
       `&detailLat=${cur.lat}&detailLon=${cur.lon}&zoom=8&level=surface` +
-      `&overlay=${overlay}&menu=&message=&marker=true&calendar=now` +
+      `&overlay=${activeOverlay}&menu=&message=&marker=true&calendar=now` +
       // Force English Windy UI chrome regardless of the browser's locale —
       // Windy otherwise auto-detects from navigator.language.
       `&type=map&location=coordinates&metricWind=kt&metricTemp=%C2%B0C&radarRange=-1&lang=en`;
@@ -217,11 +251,27 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
           {windyUrl && (
             <button
               type="button"
-              className="chat-map__weather-btn"
+              className="chat-map__expand-btn"
               onClick={() => setWeatherOpen(true)}
-              title="Открыть карту погоды Windy"
+              title="Expand"
+              aria-label="Expand map"
             >
-              Погода Windy
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
             </button>
           )}
         </div>
@@ -239,27 +289,8 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
               className="chat-map-modal"
               onClick={(e) => e.stopPropagation()}
             >
-              <button
-                type="button"
-                className="chat-map-modal__close"
-                onClick={() => setWeatherOpen(false)}
-                aria-label="Close"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+              {/* No close button — click outside the map (or press Escape) to
+                  close. The X used to sit behind Windy's chrome anyway. */}
               {windyMode === "embed" ? (
                 <iframe
                   title="Windy weather map"
@@ -277,6 +308,43 @@ export default function ChatMapBlock({ chart }: { chart: ChatMapDto }) {
                     </div>
                   )}
                 </>
+              )}
+              {windyMode !== "loading" && (
+                <div className="chat-map-modal__layers">
+                  {WEATHER_LAYERS.map((l) => (
+                    <button
+                      key={l.overlay}
+                      type="button"
+                      className={
+                        "chat-map-modal__layer-btn" +
+                        (l.overlay === activeOverlay
+                          ? " chat-map-modal__layer-btn--active"
+                          : "")
+                      }
+                      onClick={() => setActiveOverlay(l.overlay)}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {windyMode === "windy" && (
+                <div className="chat-map-modal__zoom">
+                  <button
+                    type="button"
+                    onClick={() => zoomWindy(1)}
+                    aria-label="Zoom in"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => zoomWindy(-1)}
+                    aria-label="Zoom out"
+                  >
+                    −
+                  </button>
+                </div>
               )}
             </div>
           </div>,

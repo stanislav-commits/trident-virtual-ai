@@ -3108,10 +3108,14 @@
   color: var(--chat-text);
 }
 
-.chat-map__weather-btn {
+.chat-map__expand-btn {
   flex-shrink: 0;
-  font-size: 12px;
-  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid var(--chat-border);
   background: var(--chat-surface);
@@ -3120,7 +3124,7 @@
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.chat-map__weather-btn:hover {
+.chat-map__expand-btn:hover {
   background: var(--chat-surface-2);
   border-color: var(--chat-border-strong);
   color: var(--chat-text);
@@ -3135,6 +3139,45 @@
 .chat-map__canvas .leaflet-container {
   background: var(--chat-bg-subtle);
   font: inherit;
+}
+
+/* Compact dark round zoom buttons on the inline card — no container frame,
+   just two free-floating circles. !important overrides Leaflet's
+   .leaflet-touch .leaflet-bar border/shadow which otherwise draws a frame. */
+.chat-map__canvas .leaflet-control-zoom {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px;
+}
+
+.chat-map__canvas .leaflet-bar a.leaflet-control-zoom-in,
+.chat-map__canvas .leaflet-bar a.leaflet-control-zoom-out {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  /* !important: Leaflet's .leaflet-touch rules square off the first/last
+     button's outer corners — force a full circle on both. */
+  border-radius: 50% !important;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(20, 22, 28, 0.82);
+  color: #fff;
+  /* These are <a> tags — kill the default link underline under the +/−. */
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: 700;
+  backdrop-filter: blur(4px);
+}
+
+.chat-map__canvas .leaflet-bar a.leaflet-control-zoom-in:hover,
+.chat-map__canvas .leaflet-bar a.leaflet-control-zoom-out:hover {
+  background: rgba(40, 44, 52, 0.92);
+  color: #fff;
 }
 
 .chat-map--empty .chat-map__empty {
@@ -3158,8 +3201,8 @@
 
 .chat-map-modal {
   position: relative;
-  width: min(1200px, calc(100vw - 48px));
-  height: calc(100vh - 48px);
+  width: min(1100px, calc(100vw - 120px));
+  height: min(560px, calc(100vh - 160px));
   border-radius: var(--chat-radius-lg);
   overflow: hidden;
   border: 1px solid var(--chat-border-strong);
@@ -3186,26 +3229,107 @@
   pointer-events: none;
 }
 
-.chat-map-modal__close {
+.chat-map-modal__layers {
   position: absolute;
+  left: 12px;
   top: 12px;
+  /* Windy's own Leaflet panes (tiles/overlay/markers) use z-index up to
+     ~700-1000 internally — go well above that so our switcher always wins
+     the stacking fight against whatever Windy renders inside #windy. */
+  z-index: 5000;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100% - 60px);
+}
+
+.chat-map-modal__layer-btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--chat-border-strong);
+  background: rgba(20, 22, 28, 0.72);
+  color: var(--chat-text-muted);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.chat-map-modal__layer-btn:hover {
+  color: var(--chat-text);
+  border-color: var(--chat-border-strong);
+}
+
+.chat-map-modal__layer-btn--active {
+  background: var(--chat-accent, #2f81f7);
+  border-color: var(--chat-accent, #2f81f7);
+  color: #fff;
+}
+
+/* Windy's own forecast-timeline scrubber (play/pause, calendar, time label) —
+   we only show current conditions, not the forecast timeline, and this bar
+   is sized/positioned for Windy's full-page layout so it spills outside our
+   compact modal. Safe to hide: it's a UI plugin, not the required logo. */
+.chat-map-modal #bottom {
+  display: none !important;
+}
+
+/* Redundant Windy chrome inside the modal: the overlay-select badge (#mobile-
+   ovr-select) just duplicates our own layer switcher, and #plugins is an empty
+   container. Hiding them leaves a clean map (the zoom control is kept). */
+.chat-map-modal #mobile-ovr-select,
+.chat-map-modal #plugins {
+  display: none !important;
+}
+
+/* Windy's native zoom control is a tiny faint icon-font widget that blends
+   into the map — hide it and use our own buttons (below) instead. */
+.chat-map-modal #embed-zoom {
+  display: none !important;
+}
+
+/* Our own zoom buttons for the modal — round, dark, high-contrast, matching
+   the inline card. They drive Windy's (now hidden) native zoom. */
+.chat-map-modal__zoom {
+  position: absolute;
   right: 12px;
-  z-index: 2;
+  bottom: 12px;
+  z-index: 5000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-map-modal__zoom button {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
-  padding: 0;
-  border-radius: 8px;
-  border: 1px solid var(--chat-border-strong);
-  background: var(--chat-surface);
-  color: var(--chat-text);
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(20, 22, 28, 0.9);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
   cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s ease;
 }
 
-.chat-map-modal__close:hover {
-  background: var(--chat-surface-2);
+.chat-map-modal__zoom button:hover {
+  background: rgba(40, 44, 52, 0.95);
+}
+
+/* Hide the Windy attribution logo, per operator request.
+   ⚠️ Windy's Map-Forecast API Terms of Use require this logo to remain
+   visible; concealing it breaches that agreement and Windy may revoke the
+   API key. Kept as its own rule so it is trivial to revert if needed. */
+.chat-map-modal #logo-wrapper {
+  display: none !important;
 }
 
 .chat-suggestion {
