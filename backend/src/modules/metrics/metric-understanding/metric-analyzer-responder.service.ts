@@ -4,6 +4,7 @@ import { nextTaskCode } from '../../pms/pms-task-code.util';
 import { PmsService } from '../../pms/pms.service';
 import { AssetHoursService } from '../../pms/asset-hours.service';
 import { AuthenticatedUser } from '../../../core/auth/auth.types';
+import { MetricWatchEntity } from '../entities/metric-watch.entity';
 import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import {
   BadRequestException,
@@ -141,6 +142,8 @@ export class MetricAnalyzerResponderService {
     private readonly inventoryAssetLinkRepository: Repository<InventoryItemAssetEntity>,
     private readonly influxService: InfluxService,
     private readonly moduleRef: ModuleRef,
+    @InjectRepository(MetricWatchEntity)
+    private readonly watchRepository: Repository<MetricWatchEntity>,
     private readonly llmService: LlmService,
     private readonly ragService: RagService,
     private readonly webSearchService: WebSearchService,
@@ -520,6 +523,12 @@ export class MetricAnalyzerResponderService {
         return await this.toolCompleteMaintenanceTask(tc, args, shipId, iteration, actorUserId);
       case 'log_hours_reading':
         return await this.toolLogHoursReading(tc, args, shipId, iteration);
+      case 'create_metric_watch':
+        return await this.toolCreateMetricWatch(tc, args, shipId, catalogIndex, iteration, actorUserId);
+      case 'list_metric_watches':
+        return await this.toolListMetricWatches(tc, shipId, iteration);
+      case 'remove_metric_watch':
+        return await this.toolRemoveMetricWatch(tc, args, shipId, iteration);
       case 'find_assets_by_function':
         return await this.toolFindAssetsByFunction(tc, args, shipId, iteration);
       case 'lookup_asset_fact':
@@ -2618,6 +2627,206 @@ export class MetricAnalyzerResponderService {
     };
   }
 
+
+
+  /**
+   * WRITE tool: creates a standing metric watch (checked every 5 min by
+   * MetricWatchCheckerService → Notifications entry on trigger).
+   * Confirmation-gated like the other write tools.
+   */
+  private async toolCreateMetricWatch(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    catalogIndex: Map<string, Map<string, AnalyzedCatalogItem>>,
+    iteration: number,
+    actorUserId: string | null,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const measurement = String(args.measurement ?? '');
+    const field = String(args.field ?? '');
+    const condition = args.condition === 'above' ? 'above' : 'below';
+    const threshold =
+      typeof args.threshold === 'number' && Number.isFinite(args.threshold)
+        ? args.threshold
+        : null;
+    const label = String(args.label ?? '').trim().slice(0, 200);
+    const unit =
+      typeof args.unit === 'string' && args.unit.trim() ? args.unit.trim().slice(0, 32) : null;
+    const callArgs = { measurement, field, condition, threshold, label, confirmed: args.confirmed === true };
+
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'create_metric_watch', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+
+    if (args.confirmed !== true) {
+      return fail(
+        'NOT CREATED: confirmed must be true, and only after the user explicitly confirmed this exact watch. State the metric, condition and threshold and ask first.',
+      );
+    }
+    if (threshold === null) return fail('threshold must be a number (display units)');
+    if (!label) return fail('label is required');
+    const item = this.findCatalogItem(catalogIndex, measurement, field);
+    if (!item) {
+      return fail(
+        `metric ${measurement}::${field} not found in the catalog — resolve it via find_metrics_by_intent first`,
+      );
+    }
+
+    // One active watch per metric+condition — replace rather than stack.
+    const existing = await this.watchRepository.findOne({
+      where: {
+        shipId,
+        metricCatalogId: item.metricId,
+        condition,
+        isActive: true,
+      },
+    });
+    if (existing) {
+      existing.threshold = threshold;
+      existing.label = label;
+      existing.unit = unit;
+      existing.state = 'ok';
+      await this.watchRepository.save(existing);
+      return {
+        toolCallId: tc.id,
+        otherCall: {
+          iteration, tool: 'create_metric_watch', args: callArgs, ok: true,
+          resultSummary: `updated existing watch "${label}" (${condition} ${threshold})`,
+          latencyMs: Date.now() - t0,
+        },
+        payload: {
+          ok: true,
+          watch_updated: true,
+          label,
+          note: 'An active watch for this metric+condition already existed — its threshold/label were updated. Tell the user briefly.',
+        },
+      };
+    }
+
+    await this.watchRepository.save(
+      this.watchRepository.create({
+        shipId,
+        createdByUserId: actorUserId,
+        metricCatalogId: item.metricId,
+        label,
+        condition,
+        threshold,
+        unit,
+        state: 'ok',
+        isActive: true,
+      }),
+    );
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration, tool: 'create_metric_watch', args: callArgs, ok: true,
+        resultSummary: `created watch "${label}" (${condition} ${threshold}${unit ?? ''})`,
+        latencyMs: Date.now() - t0,
+      },
+      payload: {
+        ok: true,
+        watch_created: true,
+        label,
+        note: 'Watch armed — checked every ~5 minutes; a Notifications entry appears when it trips and auto-clears on recovery. Confirm briefly to the user.',
+      },
+    };
+  }
+
+  private async toolListMetricWatches(
+    tc: OpenAiToolCall,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const watches = await this.watchRepository.find({
+      where: { shipId, isActive: true },
+      order: { createdAt: 'DESC' },
+    });
+    const rows = watches.map((w) => ({
+      label: w.label,
+      condition: w.condition,
+      threshold: w.threshold,
+      unit: w.unit,
+      state: w.state,
+      last_value: w.lastValue,
+      last_checked_at: w.lastCheckedAt,
+    }));
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration, tool: 'list_metric_watches', args: {}, ok: true,
+        resultSummary: `${rows.length} active watch(es)`, latencyMs: Date.now() - t0,
+      },
+      payload: { ok: true, watches: rows },
+    };
+  }
+
+  private async toolRemoveMetricWatch(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const labelQuery = String(args.label_query ?? '').trim();
+    const callArgs = { label_query: labelQuery, confirmed: args.confirmed === true };
+    const fail = (error: string) => ({
+      toolCallId: tc.id,
+      payload: { ok: false, error },
+      otherCall: {
+        iteration, tool: 'remove_metric_watch', args: callArgs, ok: false,
+        resultSummary: error, errorMessage: error, latencyMs: Date.now() - t0,
+      },
+    });
+    if (args.confirmed !== true) {
+      return fail(
+        'NOT REMOVED: confirmed must be true, and only after the user explicitly confirmed removing this exact watch.',
+      );
+    }
+    if (!labelQuery) return fail('label_query is required');
+    const matches = await this.watchRepository
+      .createQueryBuilder('w')
+      .where('w.ship_id = :shipId', { shipId })
+      .andWhere('w.is_active = true')
+      .andWhere('w.label ILIKE :q', { q: `%${labelQuery}%` })
+      .getMany();
+    if (matches.length === 0) return fail(`no active watch matches "${labelQuery}"`);
+    if (matches.length > 1) {
+      return fail(
+        'ambiguous — matches: ' + matches.map((m) => `"${m.label}"`).join('; ') +
+          '. Ask the user which one.',
+      );
+    }
+    const watch = matches[0];
+    watch.isActive = false;
+    await this.watchRepository.save(watch);
+    return {
+      toolCallId: tc.id,
+      otherCall: {
+        iteration, tool: 'remove_metric_watch', args: callArgs, ok: true,
+        resultSummary: `removed watch "${watch.label}"`, latencyMs: Date.now() - t0,
+      },
+      payload: { ok: true, watch_removed: true, label: watch.label },
+    };
+  }
 
   /**
    * PmsService/AssetHoursService live in PmsModule, which cannot be imported

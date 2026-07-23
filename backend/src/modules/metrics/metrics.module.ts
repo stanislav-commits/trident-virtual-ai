@@ -16,6 +16,9 @@ import { MetricConceptAliasEntity } from './entities/metric-concept-alias.entity
 import { MetricConceptEntity } from './entities/metric-concept.entity';
 import { MetricConceptMemberEntity } from './entities/metric-concept-member.entity';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
+import { MetricWatchEntity } from './entities/metric-watch.entity';
+import { AlertEntity } from '../alerts/entities/alert.entity';
+import { MetricWatchCheckerService } from './metric-watch-checker.service';
 import { MetricDescriptionBackfillService } from './metric-description-backfill.service';
 import { MetricDescriptionService } from './metric-description.service';
 import { MetricAnalyzerResponderService } from './metric-understanding/metric-analyzer-responder.service';
@@ -45,6 +48,8 @@ import { MetricsService } from './metrics.service';
       ComplianceDocTypeEntity,
       InventoryItemEntity,
       InventoryItemAssetEntity,
+      MetricWatchEntity,
+      AlertEntity,
     ]),
   ],
   controllers: [MetricsController],
@@ -59,6 +64,7 @@ import { MetricsService } from './metrics.service';
     MetricDescriptionBackfillService,
     MetricUnderstandingService,
     MetricAnalyzerResponderService,
+    MetricWatchCheckerService,
     MetricQualityDetectorService,
   ],
   exports: [

@@ -805,6 +805,52 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'create_metric_watch',
+      description:
+        'Create a standing WATCH on a metric — "следи за баком 5P, скажи когда меньше 15%", "watch the stbd genset coolant and tell me when it goes above 90". The system then checks the metric every few minutes and posts a Notifications-panel entry when the condition trips (auto-clears on recovery, stays armed). WRITE tool, confirmation-gated like the others: (1) resolve the metric via find_metrics_by_intent / find_asset_metrics; (2) convert the user\'s wording into the metric\'s own display units when needed (e.g. "15%" of a litres tank → look up capacity via aggregate_asset_facts and compute the litre threshold); (3) state metric + condition + threshold and ask; (4) call with confirmed:true only after an explicit user yes (in this conversation or stated as already-confirmed in the question).',
+      parameters: {
+        type: 'object',
+        properties: {
+          measurement: { type: 'string', description: 'Influx _measurement — copy verbatim from the catalog.' },
+          field: { type: 'string', description: 'Influx _field — copy verbatim INCLUDING any (unit) parenthetical.' },
+          condition: { type: 'string', enum: ['below', 'above'], description: 'Trigger direction.' },
+          threshold: { type: 'number', description: 'Trigger threshold in the metric\'s DISPLAY units (post-scale, same units the crew sees in answers).' },
+          label: { type: 'string', description: 'Short human label for notifications, in the user\'s language, e.g. "Fuel Tank 5P below 15% (504 L)". No internal metric keys or asset codes.' },
+          unit: { type: 'string', description: 'Display unit for messages, e.g. "L", "%", "°C". Optional.' },
+          confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed this exact watch.' },
+        },
+        required: ['measurement', 'field', 'condition', 'threshold', 'label', 'confirmed'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_metric_watches',
+      description:
+        'List the active metric watches on this vessel ("what are you watching / какие вотчи стоят / что отслеживаешь"). Read-only. Returns label, condition, threshold, current state and last value — report them plainly.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'remove_metric_watch',
+      description:
+        'Deactivate a metric watch ("перестань следить за баком 5P", "remove the coolant watch"). WRITE tool, confirmation-gated: list/resolve which watch (by label fragment — must match exactly one), state it, get an explicit yes, then call with confirmed:true.',
+      parameters: {
+        type: 'object',
+        properties: {
+          label_query: { type: 'string', description: 'Fragment of the watch label — must match exactly one active watch (use list_metric_watches when unsure).' },
+          confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed removing this exact watch.' },
+        },
+        required: ['label_query', 'confirmed'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'find_assets_by_function',
       description:
         'Keyword search over asset register → ranked shortlist with asset_id_internal.',
