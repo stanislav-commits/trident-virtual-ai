@@ -47,6 +47,8 @@ export default function configuration() {
       // panel needs a short, factual annotation, not a full report; the
       // prompt asks for that but the cut is enforced deterministically too.
       autoAnalyzeMaxChars: 420,
+      // Daily deterministic trend scan → Notifications (off by default).
+      trendWarningsEnabled: parseBoolean(process.env.TREND_WARNINGS_ENABLED, false),
     },
     chat: {
       documentsResponderEnabled: parseBoolean(

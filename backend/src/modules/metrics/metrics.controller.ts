@@ -32,6 +32,7 @@ import { MetricsSemanticBootstrapService } from './metrics-semantic-bootstrap.se
 import { MetricsSemanticClusterService } from './metrics-semantic-cluster.service';
 import { MetricsSemanticCatalogService } from './metrics-semantic-catalog.service';
 import { MetricsService } from './metrics.service';
+import { TrendWarningService } from './trend-warning.service';
 import { MetricAnalyzerResponderService } from './metric-understanding/metric-analyzer-responder.service';
 import {
   IssueSeverity,
@@ -53,6 +54,7 @@ export class MetricsController {
     private readonly metricUnderstandingService: MetricUnderstandingService,
     private readonly metricAnalyzerResponderService: MetricAnalyzerResponderService,
     private readonly metricQualityDetectorService: MetricQualityDetectorService,
+    private readonly trendWarningService: TrendWarningService,
   ) {}
 
   @Get('catalog')
@@ -75,6 +77,14 @@ export class MetricsController {
     @Query() query: ListShipMetricCatalogQueryDto,
   ) {
     return this.metricsCatalogService.listShipCatalogPage(shipId, query);
+  }
+
+  /** Manually run the daily trend scan (admin) — same job the cron runs. */
+  @Post('trend-scan/run')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  runTrendScan() {
+    return this.trendWarningService.scanAllShips();
   }
 
   @Post('ships/:shipId/sync')
