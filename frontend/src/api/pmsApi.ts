@@ -292,9 +292,6 @@ export interface AssetHoursConfig {
   baselineHours: number | null;
   baselineAt: string | null;
   runningThreshold: number;
-  /** True when no one explicitly configured this — the source is an
-   *  hours-shaped metric already bound to this asset in the register. */
-  autoDerived: boolean;
   currentHours: number | null;
   readings: { id: string; hours: number; readOn: string; note: string | null }[];
 }

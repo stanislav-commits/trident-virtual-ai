@@ -25,16 +25,6 @@ interface EffectiveHoursConfig {
   baselineHours: number | null;
   baselineAt: Date | null;
   runningThreshold: number;
-  /** True when this config was NOT explicitly set — it was derived from an
-   *  hours-shaped metric already bound to this asset in the register. */
-  autoDerived: boolean;
-}
-
-/** Metric units that name running hours outright. */
-const HOURS_UNITS = ['h', 'hr', 'hrs', 'hour', 'hours'];
-
-function hasHoursUnit(unit: string | null): boolean {
-  return HOURS_UNITS.includes((unit ?? '').trim().toLowerCase());
 }
 
 @Injectable()
@@ -70,7 +60,6 @@ export class AssetHoursService {
       baselineHours: effective.baselineHours,
       baselineAt: effective.baselineAt ? effective.baselineAt.toISOString() : null,
       runningThreshold: effective.runningThreshold,
-      autoDerived: effective.autoDerived,
       currentHours: await this.currentHoursFor(effective, shipId, assetId),
       readings: readings.map((r) => ({
         id: r.id,
@@ -125,14 +114,11 @@ export class AssetHoursService {
   }
 
   /**
-   * Resolve the config that actually drives currentHours: an explicit
-   * asset_hours_config row if one exists with a real source, otherwise an
-   * hours-shaped metric already bound to this asset in the register
-   * (ship_metric_catalog.bound_asset_id) — so binding a metric to an asset
-   * once, in the register, is enough; no separate PMS-side step is needed.
-   * Only `metric_direct` is auto-derivable: `metric_derived` needs a
-   * human-entered baseline that can't be invented, and `manual` is
-   * inherently a human process.
+   * Resolve the config that drives currentHours: whatever was explicitly
+   * saved in asset_hours_config, or "none" if nothing was ever set. No more
+   * auto-derivation from register-bound metrics — that made an explicit
+   * "Not tracked" choice indistinguishable from "never configured", so
+   * picking "Not tracked" always reverted back to the derived metric.
    */
   private async resolveEffective(
     shipId: string,
@@ -141,26 +127,13 @@ export class AssetHoursService {
     const cfg = await this.configRepository.findOne({
       where: { assetId, shipId },
     });
-    if (cfg && cfg.source !== 'none') {
+    if (cfg) {
       return {
         source: cfg.source,
         metricCatalogId: cfg.metricCatalogId,
         baselineHours: cfg.baselineHours != null ? Number(cfg.baselineHours) : null,
         baselineAt: cfg.baselineAt,
         runningThreshold: Number(cfg.runningThreshold),
-        autoDerived: false,
-      };
-    }
-
-    const derived = await this.autoDerivedMetric(shipId, assetId);
-    if (derived) {
-      return {
-        source: 'metric_direct',
-        metricCatalogId: derived.id,
-        baselineHours: null,
-        baselineAt: null,
-        runningThreshold: 0,
-        autoDerived: true,
       };
     }
 
@@ -170,46 +143,7 @@ export class AssetHoursService {
       baselineHours: null,
       baselineAt: null,
       runningThreshold: 0,
-      autoDerived: false,
     };
-  }
-
-  /** The best hours-shaped metric already bound to this asset, or null. */
-  private async autoDerivedMetric(
-    shipId: string,
-    assetId: string,
-  ): Promise<ShipMetricCatalogEntity | null> {
-    const candidates = await this.catalogRepository.find({
-      where: { shipId, boundAssetId: assetId, isEnabled: true },
-    });
-    const hoursCandidates = candidates.filter((m) => this.isHoursMetric(m));
-    if (hoursCandidates.length === 0) return null;
-    // Deterministic pick when more than one hours-shaped metric is bound to
-    // the same asset: prefer an explicit hours unit, then a counter kind,
-    // then stable id order.
-    hoursCandidates.sort((a, b) => {
-      const aUnit = hasHoursUnit(a.aiUnit) ? 0 : 1;
-      const bUnit = hasHoursUnit(b.aiUnit) ? 0 : 1;
-      if (aUnit !== bUnit) return aUnit - bUnit;
-      const aKind = a.aiKind === 'counter' ? 0 : 1;
-      const bKind = b.aiKind === 'counter' ? 0 : 1;
-      if (aKind !== bKind) return aKind - bKind;
-      return a.id.localeCompare(b.id);
-    });
-    return hoursCandidates[0];
-  }
-
-  /** Does this catalog row look like a running-hours counter? */
-  private isHoursMetric(m: ShipMetricCatalogEntity): boolean {
-    if (hasHoursUnit(m.aiUnit)) return true;
-    const HOURS_RE =
-      /(^|[^a-z])(hours?|hrs?|run_?time|running_?hours?|operating_?hours?|engine_?hours?|moto_?hours?)([^a-z]|$)/i;
-    return (
-      HOURS_RE.test(m.field) ||
-      HOURS_RE.test(m.key) ||
-      HOURS_RE.test(m.description ?? '') ||
-      HOURS_RE.test(m.aiDescription ?? '')
-    );
   }
 
   // ── monthly hours-reading reminder (auto task) ──
