@@ -50,6 +50,10 @@ export default function configuration() {
         process.env.CHAT_METRIC_ANALYZER_ENABLED,
         true,
       ),
+      // Proactive morning brief (off by default — one analyzer run per ship
+      // per day; enable deliberately on prod).
+      dailyBriefEnabled: parseBoolean(process.env.DAILY_BRIEF_ENABLED, false),
+      dailyBriefLanguage: process.env.DAILY_BRIEF_LANGUAGE ?? 'ru',
       voice: {
         maxUploadBytes: parsePositiveInteger(
           process.env.CHAT_VOICE_MAX_UPLOAD_BYTES,

@@ -12,9 +12,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Observable, map } from 'rxjs';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
+import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
+import { ChatDailyBriefService } from './chat-daily-brief.service';
 import { ChatMessagesService } from './chat-messages.service';
 import { ChatProgressBus } from './progress/chat-progress.bus';
 import { ChatSessionsService } from './chat-sessions.service';
@@ -31,7 +35,17 @@ export class ChatController {
     private readonly chatSessionsService: ChatSessionsService,
     private readonly chatMessagesService: ChatMessagesService,
     private readonly chatProgressBus: ChatProgressBus,
+    private readonly chatDailyBriefService: ChatDailyBriefService,
   ) {}
+
+  /** Manually trigger the morning brief (admin only) — same job the cron
+   *  runs; useful for testing and for an on-demand refresh. */
+  @Post('daily-brief/run')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  runDailyBrief() {
+    return this.chatDailyBriefService.runForAllShips();
+  }
 
   /**
    * Live progress stream for the assistant reply being generated in this

@@ -9,6 +9,7 @@ import { PmsModule } from '../pms/pms.module';
 import { ShipsModule } from '../ships/ships.module';
 import { WebModule } from '../web/web.module';
 import { ChatController } from './chat.controller';
+import { ChatDailyBriefService } from './chat-daily-brief.service';
 import { ChatLlmService } from './chat-llm.service';
 import { ChatMessagesService } from './chat-messages.service';
 import { ChatUiLabelsService } from './chat-ui-labels.service';
@@ -19,6 +20,8 @@ import { ChatContextQueryResolverService } from './context/chat-context-query-re
 import { ChatSessionMemoryEntity } from './context/entities/chat-session-memory.entity';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ChatSessionEntity } from './entities/chat-session.entity';
+import { ShipEntity } from '../ships/entities/ship.entity';
+import { UserEntity } from '../users/entities/user.entity';
 import { ChatTurnOrchestratorService } from './orchestration/chat-turn-orchestrator.service';
 import { ChatProgressBus } from './progress/chat-progress.bus';
 import { ChatCapabilityRegistryService } from './planning/chat-capability-registry.service';
@@ -53,6 +56,8 @@ import { ChatVoiceTranscriptionService } from './voice/chat-voice-transcription.
       ChatSessionEntity,
       ChatMessageEntity,
       ChatSessionMemoryEntity,
+      ShipEntity,
+      UserEntity,
     ]),
   ],
   controllers: [ChatController, ChatVoiceController],
@@ -81,6 +86,7 @@ import { ChatVoiceTranscriptionService } from './voice/chat-voice-transcription.
     ChatFilesResponderService,
     ChatInDevelopmentResponderService,
     ChatVoiceTranscriptionService,
+    ChatDailyBriefService,
     ChatProgressBus,
   ],
   exports: [ChatSessionsService, ChatMessagesService],
