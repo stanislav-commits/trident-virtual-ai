@@ -91,6 +91,7 @@ import { AddDocumentFormLinks20260721000100 } from './migrations/20260721000100-
 import { AddAlertAiAnalysis20260723000100 } from './migrations/20260723000100-add-alert-ai-analysis';
 import { AddMetricWatches20260724000100 } from './migrations/20260724000100-add-metric-watches';
 import { AddDefects20260724000200 } from './migrations/20260724000200-add-defects';
+import { AddDefectDepartmentTaskLink20260724000300 } from './migrations/20260724000300-add-defect-department-task-link';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -202,6 +203,7 @@ const dataSource = new DataSource({
     AddAlertAiAnalysis20260723000100,
     AddMetricWatches20260724000100,
     AddDefects20260724000200,
+    AddDefectDepartmentTaskLink20260724000300,
   ],
   synchronize: false,
   ssl: db.ssl

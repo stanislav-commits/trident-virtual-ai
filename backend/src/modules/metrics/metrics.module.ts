@@ -19,6 +19,7 @@ import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricWatchEntity } from './entities/metric-watch.entity';
 import { DefectEntity } from '../pms/entities/defect.entity';
 import { AlertEntity } from '../alerts/entities/alert.entity';
+import { UserEntity } from '../users/entities/user.entity';
 import { MetricWatchCheckerService } from './metric-watch-checker.service';
 import { TrendWarningService } from './trend-warning.service';
 import { MetricDescriptionBackfillService } from './metric-description-backfill.service';
@@ -53,6 +54,7 @@ import { MetricsService } from './metrics.service';
       MetricWatchEntity,
       AlertEntity,
       DefectEntity,
+      UserEntity,
     ]),
   ],
   controllers: [MetricsController],

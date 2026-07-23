@@ -748,7 +748,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'create_maintenance_task',
       description:
-        'CREATE a task in the vessel\'s PMS (maintenance) register from the conversation — e.g. "создай задачу долить DEF", "add a task to check the bilge pump". This WRITES to the live register, so it is STRICTLY confirmation-gated: NEVER call it proactively or bundle it into an answer. Flow: (1) the user asks to create a task (or you propose one and they agree); (2) you state exactly what will be created — title, priority, due date, linked equipment — and ask for confirmation; (3) ONLY after the user explicitly confirms you call this tool with confirmed:true. A confirmation counts when the user said it in this conversation OR when the question itself states the user has already confirmed (e.g. "Пользователь явно подтвердил: создай задачу..." — the confirmation happened in a previous turn and was carried into this ask). If neither holds, do not call the tool — propose and ask instead. One call per confirmed task.',
+        'CREATE a task in the vessel\'s PMS (maintenance) register from the conversation — e.g. "создай задачу долить DEF", "add a task to check the bilge pump". This WRITES to the live register, so it is STRICTLY confirmation-gated: NEVER call it proactively or bundle it into an answer. Flow: (1) the user asks to create a task (or you propose one and they agree); (2) you state exactly what will be created — title, priority, due date, linked equipment, department — and ask for confirmation; (3) ONLY after the user explicitly confirms you call this tool with confirmed:true. A confirmation counts when the user said it in this conversation OR when the question itself states the user has already confirmed (e.g. "Пользователь явно подтвердил: создай задачу..." — the confirmation happened in a previous turn and was carried into this ask). If neither holds, do not call the tool — propose and ask instead. One call per confirmed task. NOTE: this is POSITION-GATED — the acting account can only write into ITS OWN department (Master/Superintendent may write to any); a mismatched department is refused with an explanation, which you must relay to the user plainly, not paper over.',
       parameters: {
         type: 'object',
         properties: {
@@ -757,6 +757,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Default medium.' },
           due_date: { type: 'string', description: 'Optional due date YYYY-MM-DD.' },
           asset_id_internal: { type: 'string', description: 'Optional asset to link — resolve via lookup_asset / find_assets_by_function FIRST and use its asset_id_internal.' },
+          department: { type: 'string', enum: ['deck', 'engine', 'interior', 'galley'], description: 'Which department this task belongs to — infer from the equipment/context when possible (e.g. a genset/engine-room task is "engine"). Omit for a general task open to everyone.' },
           confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed creating this exact task in this conversation.' },
         },
         required: ['task', 'confirmed'],
@@ -853,7 +854,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'log_defect',
       description:
-        'Record a DEFECT / equipment failure in the vessel\'s defect register — "порвался ремень на компрессоре", "hydraulic hose on the crane started leaking", "запиши дефект: …". WRITE tool, confirmation-gated like the others: resolve the equipment when named (lookup_asset / find_assets_by_function → asset_id_internal), state title + equipment + date and ask; call with confirmed:true only after an explicit user yes (in this conversation or stated as already-confirmed in the question). Include cause/action/parts only if the user already knows them — they are usually added later when the defect is closed.',
+        'Record a DEFECT / equipment failure in the vessel\'s defect register — "порвался ремень на компрессоре", "hydraulic hose on the crane started leaking", "запиши дефект: …". WRITE tool, confirmation-gated like the others: resolve the equipment when named (lookup_asset / find_assets_by_function → asset_id_internal), state title + equipment + date and ask; call with confirmed:true only after an explicit user yes (in this conversation or stated as already-confirmed in the question). Include cause/action/parts only if the user already knows them — they are usually added later when the defect is closed. This also auto-creates a linked UNPLANNED task in the maintenance register, so infer department and category (failure type, e.g. "Mechanical"/"Electrical"/"Hydraulic") from where and what failed — mention both when asking for confirmation. NOTE: this is POSITION-GATED — the acting account can only log defects for ITS OWN department (Master/Superintendent may log for any); a mismatched department is refused with an explanation, which you must relay to the user plainly.',
       parameters: {
         type: 'object',
         properties: {
@@ -864,6 +865,8 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           cause: { type: 'string', description: 'Root cause, if already known.' },
           action_taken: { type: 'string', description: 'Fix applied, if already done.' },
           parts_used: { type: 'string', description: 'Parts/consumables used, if any.' },
+          department: { type: 'string', enum: ['deck', 'engine', 'interior', 'galley'], description: 'Which department the failure belongs to — infer from the equipment/context (e.g. a genset failure is "engine"). Drives write-authorization and where the auto-created task lands.' },
+          category: { type: 'string', description: 'Failure type, e.g. "Mechanical", "Electrical", "Hydraulic", "Plumbing" — becomes the auto-created task\'s category. Default "Repair" if unclear.' },
           confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed logging this exact defect.' },
         },
         required: ['title', 'confirmed'],

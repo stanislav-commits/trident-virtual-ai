@@ -72,6 +72,21 @@ export class DefectEntity {
   @Column({ type: 'varchar', length: 16, default: 'chat' })
   source!: string;
 
+  /** deck | engine | interior | galley — set at logging time (same taxonomy
+   *  as PmsTaskEntity.department); drives write-authorization + which PMS
+   *  section the auto-created task lands in. Null = general/unassigned. */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  department!: string | null;
+
+  /** Failure type, e.g. "Mechanical" / "Electrical" / "Hydraulic" — becomes
+   *  the auto-created task's category. */
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  category!: string | null;
+
+  /** The unplanned PMS task auto-created alongside this defect. */
+  @Column({ name: 'pms_task_id', type: 'uuid', nullable: true })
+  pmsTaskId!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

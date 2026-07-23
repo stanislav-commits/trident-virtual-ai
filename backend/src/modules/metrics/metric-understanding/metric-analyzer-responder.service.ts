@@ -1,11 +1,17 @@
 import { formatError } from '../../../common/utils/error.utils';
 import { ModuleRef } from '@nestjs/core';
-import { nextTaskCode } from '../../pms/pms-task-code.util';
 import { PmsService } from '../../pms/pms.service';
 import { AssetHoursService } from '../../pms/asset-hours.service';
 import { AuthenticatedUser } from '../../../core/auth/auth.types';
 import { MetricWatchEntity } from '../entities/metric-watch.entity';
 import { DefectEntity } from '../../pms/entities/defect.entity';
+import { UserEntity } from '../../users/entities/user.entity';
+import { UserRole } from '../../../common/enums/user-role.enum';
+import {
+  checkBasicWriteAccess,
+  checkDepartmentWriteAccess,
+} from '../../access-control/chat-write-authorization.util';
+import { AccessPosition, DEPARTMENTS } from '../../access-control/access-positions';
 import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import {
   BadRequestException,
@@ -147,6 +153,8 @@ export class MetricAnalyzerResponderService {
     private readonly watchRepository: Repository<MetricWatchEntity>,
     @InjectRepository(DefectEntity)
     private readonly defectRepository: Repository<DefectEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepository: Repository<UserEntity>,
     private readonly llmService: LlmService,
     private readonly ragService: RagService,
     private readonly webSearchService: WebSearchService,
@@ -521,21 +529,21 @@ export class MetricAnalyzerResponderService {
       case 'render_kpi':
         return this.toolRenderKpi(tc, args, iteration);
       case 'create_maintenance_task':
-        return await this.toolCreateMaintenanceTask(tc, args, shipId, iteration);
+        return await this.toolCreateMaintenanceTask(tc, args, shipId, iteration, actorUserId);
       case 'complete_maintenance_task':
         return await this.toolCompleteMaintenanceTask(tc, args, shipId, iteration, actorUserId);
       case 'log_hours_reading':
-        return await this.toolLogHoursReading(tc, args, shipId, iteration);
+        return await this.toolLogHoursReading(tc, args, shipId, iteration, actorUserId);
       case 'create_metric_watch':
         return await this.toolCreateMetricWatch(tc, args, shipId, catalogIndex, iteration, actorUserId);
       case 'list_metric_watches':
         return await this.toolListMetricWatches(tc, shipId, iteration);
       case 'remove_metric_watch':
-        return await this.toolRemoveMetricWatch(tc, args, shipId, iteration);
+        return await this.toolRemoveMetricWatch(tc, args, shipId, iteration, actorUserId);
       case 'log_defect':
         return await this.toolLogDefect(tc, args, shipId, iteration, actorUserId);
       case 'close_defect':
-        return await this.toolCloseDefect(tc, args, shipId, iteration);
+        return await this.toolCloseDefect(tc, args, shipId, iteration, actorUserId);
       case 'find_defects':
         return await this.toolFindDefects(tc, args, shipId, iteration);
       case 'find_assets_by_function':
@@ -2544,6 +2552,7 @@ export class MetricAnalyzerResponderService {
     args: Record<string, unknown>,
     shipId: string,
     iteration: number,
+    actorUserId: string | null,
   ): Promise<{
     toolCallId: string;
     payload: Record<string, unknown>;
@@ -2567,7 +2576,12 @@ export class MetricAnalyzerResponderService {
       typeof args.asset_id_internal === 'string' && args.asset_id_internal.trim()
         ? args.asset_id_internal.trim()
         : null;
-    const callArgs = { task, priority, due_date: dueDate, asset_id_internal: assetIdInternal, confirmed: args.confirmed === true };
+    const requestedDepartment =
+      typeof args.department === 'string' &&
+      DEPARTMENTS.some((d) => d.key === args.department)
+        ? args.department
+        : null;
+    const callArgs = { task, priority, due_date: dueDate, asset_id_internal: assetIdInternal, department: requestedDepartment, confirmed: args.confirmed === true };
 
     const fail = (error: string) => ({
       toolCallId: tc.id,
@@ -2597,28 +2611,29 @@ export class MetricAnalyzerResponderService {
       }
     }
 
-    const saved = await this.pmsTaskRepository.save(
-      this.pmsTaskRepository.create({
-        shipId,
-        task: task.slice(0, 200),
-        category: 'General',
-        planning: 'unplanned',
-        priority,
-        description:
-          (description ?? '') +
-          (description ? '\n\n' : '') +
-          'Created from the chat assistant on crew request.',
-        dueDate,
-        source: 'chat',
-        taskCode: await nextTaskCode(
-          this.pmsTaskRepository.manager,
-          shipId,
-          'maintenance',
-        ),
-        assets: asset ? [asset] : [],
-      }),
-    );
+    // Position-based write gating: an explicit department the actor doesn't
+    // belong to is refused (Master/Superintendent exempt); no department
+    // given/inferable is open to any recognized non-guest crew member.
+    const actorPosition = await this.resolveActorPosition(actorUserId);
+    const auth = checkDepartmentWriteAccess(actorPosition, requestedDepartment);
+    if (!auth.allowed) return fail(`NOT CREATED: ${auth.reason}`);
 
+    const saved = await this.pmsService.create(shipId, {
+      task: task.slice(0, 200),
+      category: 'General',
+      planning: 'unplanned',
+      priority,
+      department: requestedDepartment,
+      description:
+        (description ?? '') +
+        (description ? '\n\n' : '') +
+        'Created from the chat assistant on crew request.',
+      dueDate,
+      source: 'chat',
+      assetIds: asset ? [asset.id] : [],
+    });
+
+    if (!saved) return fail('task created but could not be reloaded — check the register');
     const resultSummary = `created PMS task "${task}" (${priority}${dueDate ? ', due ' + dueDate : ''}${asset ? ', asset ' + (asset.displayName ?? assetIdInternal) : ''})`;
     return {
       toolCallId: tc.id,
@@ -2684,6 +2699,9 @@ export class MetricAnalyzerResponderService {
     }
     if (threshold === null) return fail('threshold must be a number (display units)');
     if (!label) return fail('label is required');
+    const actorPosition = await this.resolveActorPosition(actorUserId);
+    const auth = checkBasicWriteAccess(actorPosition);
+    if (!auth.allowed) return fail(`NOT CREATED: ${auth.reason}`);
     const item = this.findCatalogItem(catalogIndex, measurement, field);
     if (!item) {
       return fail(
@@ -2789,6 +2807,7 @@ export class MetricAnalyzerResponderService {
     args: Record<string, unknown>,
     shipId: string,
     iteration: number,
+    actorUserId: string | null,
   ): Promise<{
     toolCallId: string;
     payload: Record<string, unknown>;
@@ -2811,6 +2830,9 @@ export class MetricAnalyzerResponderService {
       );
     }
     if (!labelQuery) return fail('label_query is required');
+    const actorPosition = await this.resolveActorPosition(actorUserId);
+    const auth = checkBasicWriteAccess(actorPosition);
+    if (!auth.allowed) return fail(`NOT REMOVED: ${auth.reason}`);
     const matches = await this.watchRepository
       .createQueryBuilder('w')
       .where('w.ship_id = :shipId', { shipId })
@@ -2859,7 +2881,13 @@ export class MetricAnalyzerResponderService {
         ? args.occurred_on
         : new Date().toISOString().slice(0, 10);
     const assetIdInternal = str(args.asset_id_internal);
-    const callArgs = { title, asset_id_internal: assetIdInternal, occurred_on: occurredOn, confirmed: args.confirmed === true };
+    const requestedDepartment =
+      typeof args.department === 'string' &&
+      DEPARTMENTS.some((d) => d.key === args.department)
+        ? args.department
+        : null;
+    const category = str(args.category) ?? 'Repair';
+    const callArgs = { title, asset_id_internal: assetIdInternal, occurred_on: occurredOn, department: requestedDepartment, category, confirmed: args.confirmed === true };
 
     const fail = (error: string) => ({
       toolCallId: tc.id,
@@ -2889,6 +2917,11 @@ export class MetricAnalyzerResponderService {
       }
     }
 
+    const actorPosition = await this.resolveActorPosition(actorUserId);
+    const auth = checkDepartmentWriteAccess(actorPosition, requestedDepartment);
+    if (!auth.allowed) return fail(`NOT LOGGED: ${auth.reason}`);
+
+    const isClosed = str(args.action_taken) != null;
     const saved = await this.defectRepository.save(
       this.defectRepository.create({
         shipId,
@@ -2898,14 +2931,50 @@ export class MetricAnalyzerResponderService {
         cause: str(args.cause),
         actionTaken: str(args.action_taken),
         partsUsed: str(args.parts_used),
-        status: str(args.action_taken) ? 'closed' : 'open',
-        closedAt: str(args.action_taken) ? new Date() : null,
+        status: isClosed ? 'closed' : 'open',
+        closedAt: isClosed ? new Date() : null,
         reportedOn: occurredOn,
         reportedByUserId: actorUserId,
         source: 'chat',
+        department: requestedDepartment,
+        category,
       }),
     );
-    const resultSummary = `logged defect "${title}"${asset ? ' on ' + (asset.displayName ?? assetIdInternal) : ''} (${saved.status})`;
+
+    // A defect is unplanned work by definition — mirror it into the PMS
+    // register as an unplanned task (same category/department, linked back)
+    // so it shows up alongside the rest of the maintenance plan. Isolated in
+    // its own try/catch: the defect row above is already committed, so a
+    // failure here must not make the whole log_defect call look failed (the
+    // LLM/user would otherwise be told "not logged" and retry, duplicating
+    // the defect) — degrade to an untracked defect instead.
+    let linkedTask: Awaited<ReturnType<PmsService['create']>> | null = null;
+    try {
+      linkedTask = await this.pmsService.create(shipId, {
+        task: `Defect: ${title}`.slice(0, 200),
+        category,
+        planning: 'unplanned',
+        priority: 'medium',
+        department: requestedDepartment,
+        description:
+          (str(args.description) ?? '') +
+          (str(args.description) ? '\n\n' : '') +
+          'Auto-created from a defect logged in the chat.',
+        source: 'defect',
+        assetIds: asset ? [asset.id] : [],
+        completedAt: isClosed ? new Date().toISOString() : null,
+      });
+      if (linkedTask) {
+        saved.pmsTaskId = linkedTask.id;
+        await this.defectRepository.save(saved);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `log_defect: failed to mirror defect ${saved.id} as a PMS task: ${formatError(err)}`,
+      );
+    }
+
+    const resultSummary = `logged defect "${title}"${asset ? ' on ' + (asset.displayName ?? assetIdInternal) : ''} (${saved.status}) + unplanned task ${linkedTask?.taskCode ?? '(untracked)'}`;
     return {
       toolCallId: tc.id,
       otherCall: {
@@ -2917,7 +2986,8 @@ export class MetricAnalyzerResponderService {
         defect_logged: true,
         title,
         status: saved.status,
-        note: 'Defect recorded. Confirm briefly; if the cause/fix is known later, it can be closed with close_defect.',
+        task_code: linkedTask?.taskCode ?? null,
+        note: 'Defect recorded and mirrored as an unplanned task in the maintenance plan. Confirm briefly; if the cause/fix is known later, it can be closed with close_defect.',
       },
     };
   }
@@ -2928,6 +2998,7 @@ export class MetricAnalyzerResponderService {
     args: Record<string, unknown>,
     shipId: string,
     iteration: number,
+    actorUserId: string | null,
   ): Promise<{
     toolCallId: string;
     payload: Record<string, unknown>;
@@ -2966,12 +3037,41 @@ export class MetricAnalyzerResponderService {
       );
     }
     const defect = matches[0];
+    const actorPosition = await this.resolveActorPosition(actorUserId);
+    const auth = checkDepartmentWriteAccess(actorPosition, defect.department);
+    if (!auth.allowed) return fail(`NOT CLOSED: ${auth.reason}`);
+
     defect.status = 'closed';
     defect.closedAt = new Date();
     if (str(args.cause)) defect.cause = str(args.cause);
     if (str(args.action_taken)) defect.actionTaken = str(args.action_taken);
     if (str(args.parts_used)) defect.partsUsed = str(args.parts_used);
     await this.defectRepository.save(defect);
+    // Close the linked unplanned task alongside the defect, if one exists.
+    if (defect.pmsTaskId) {
+      try {
+        await this.pmsService.complete(
+          shipId,
+          defect.pmsTaskId,
+          {
+            notes:
+              [defect.cause, defect.actionTaken, defect.partsUsed]
+                .filter(Boolean)
+                .join(' — ') || undefined,
+          },
+          actorUserId
+            ? ({ id: actorUserId, userId: '', role: 'user', shipId: null, name: null } as AuthenticatedUser)
+            : undefined,
+        );
+      } catch (err) {
+        // The task may already be completed/deleted independently — the
+        // defect closure itself is authoritative either way, but still log
+        // so a genuine linking bug doesn't fail silently.
+        this.logger.warn(
+          `close_defect: failed to complete linked task ${defect.pmsTaskId} for defect ${defect.id}: ${formatError(err)}`,
+        );
+      }
+    }
     return {
       toolCallId: tc.id,
       otherCall: {
@@ -3058,6 +3158,28 @@ export class MetricAnalyzerResponderService {
         note: 'Empty defects list = nothing recorded — say so plainly; never invent failure history.',
       },
     };
+  }
+
+  /**
+   * The acting crew member's RBAC position (UserEntity.accessPosition —
+   * already stored, no crew-record lookup needed). Null when unresolvable
+   * (no actor threaded through, e.g. a system-triggered call) — write tools
+   * treat that as "deny", not "allow everything". Platform admins (UserRole
+   * .ADMIN) are operators, not crew, and are exempt from the crew RBAC model
+   * the same way they're exempt from ship-scoping elsewhere (pms.controller
+   * .ts, metrics.controller.ts) — they resolve to SUPERINTENDENT, which
+   * checkDepartmentWriteAccess already treats as "any department".
+   */
+  private async resolveActorPosition(
+    actorUserId: string | null,
+  ): Promise<string | null> {
+    if (!actorUserId) return null;
+    const user = await this.userRepository.findOne({
+      where: { id: actorUserId },
+    });
+    if (!user) return null;
+    if (user.role === UserRole.ADMIN) return AccessPosition.SUPERINTENDENT;
+    return user.accessPosition ?? null;
   }
 
   /**
@@ -3160,6 +3282,10 @@ export class MetricAnalyzerResponderService {
       task = candidates[0];
     }
 
+    const actorPosition = await this.resolveActorPosition(actorUserId);
+    const auth = checkDepartmentWriteAccess(actorPosition, task.department);
+    if (!auth.allowed) return fail(`NOT COMPLETED: ${auth.reason}`);
+
     const actor = actorUserId
       ? ({ id: actorUserId, userId: '', role: 'user', shipId: null, name: null } as AuthenticatedUser)
       : undefined;
@@ -3196,6 +3322,7 @@ export class MetricAnalyzerResponderService {
     args: Record<string, unknown>,
     shipId: string,
     iteration: number,
+    actorUserId: string | null,
   ): Promise<{
     toolCallId: string;
     payload: Record<string, unknown>;
@@ -3234,6 +3361,9 @@ export class MetricAnalyzerResponderService {
     }
     if (!assetIdInternal) return fail('asset_id_internal is required — resolve the asset first');
     if (hours === null) return fail('hours must be a non-negative number');
+    const actorPosition = await this.resolveActorPosition(actorUserId);
+    const auth = checkBasicWriteAccess(actorPosition);
+    if (!auth.allowed) return fail(`NOT LOGGED: ${auth.reason}`);
 
     const asset = await this.assetRepository.findOne({
       where: { shipId, assetIdInternal },
