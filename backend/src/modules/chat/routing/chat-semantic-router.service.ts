@@ -42,6 +42,32 @@ const MAX_DOCUMENT_COMPOSITE_COMPONENTS = 3;
 export class ChatSemanticRouterService {
   constructor(private readonly chatLlmService: ChatLlmService) {}
 
+  /**
+   * A forced METRICS decision, bypassing the LLM routing call entirely.
+   * Used by the planner for a bare confirmation reply ("Да, подтверждаю")
+   * to a pending write-action proposal — that question has no content for
+   * this (or the intent classifier) to route from, so the planner detects
+   * the pending-confirmation case deterministically and asks for this
+   * pre-built decision instead of a fresh (unreliable) routing call.
+   */
+  buildForcedMetricsRouteDecision(
+    shipId: string | null,
+    question: string,
+  ): ChatSemanticRouteDecision {
+    return {
+      route: ChatSemanticRoute.METRICS,
+      confidence: 1,
+      requiresClarification: false,
+      clarificationQuestion: null,
+      sourcePolicy: this.buildSourcePolicy(ChatSemanticRoute.METRICS),
+      documents: this.buildDefaultDocumentsRoute(shipId, question),
+      metrics: this.buildDefaultMetricsRoute(),
+      web: this.buildDefaultWebRoute(),
+      internalDebugNote:
+        'Deterministic override: bare confirmation reply to a pending write-action proposal.',
+    };
+  }
+
   async route(input: ChatSemanticRouterInput): Promise<ChatSemanticRouteDecision> {
     const question = input.question.trim();
 

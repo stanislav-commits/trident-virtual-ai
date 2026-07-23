@@ -1,11 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { ChatConversationContext } from '../context/chat-conversation-context.types';
+import { ChatMessageRole } from '../enums/chat-message-role.enum';
 import { ChatCapabilityRegistryService } from './chat-capability-registry.service';
 import { ChatTurnClassifierService } from './chat-turn-classifier.service';
 import { ChatTurnDecomposerService } from './chat-turn-decomposer.service';
 import { ChatMetricsTimeNormalizerService } from './chat-metrics-time-normalizer.service';
 import { ChatTurnIntent } from './chat-turn-intent.enum';
+import { ChatTurnResponderKind } from './chat-turn-responder-kind.enum';
 import { ChatTurnPlan } from './chat-turn-plan.types';
+import {
+  isBareConfirmationReply,
+  looksLikePendingWriteProposal,
+} from './chat-pending-write-confirmation.util';
 import {
   ChatSemanticRoute,
   ChatSemanticRouteDecision,
@@ -24,6 +30,15 @@ export class ChatTurnPlannerService {
 
   async plan(context: ChatConversationContext): Promise<ChatTurnPlan> {
     const decomposition = await this.chatTurnDecomposerService.decompose(context);
+
+    const pendingConfirmationPlan = this.buildPendingWriteConfirmationPlan(
+      context,
+      decomposition.responseLanguage,
+    );
+    if (pendingConfirmationPlan) {
+      return pendingConfirmationPlan;
+    }
+
     const classifiedAsks = await Promise.all(
       decomposition.asks.map((ask) =>
         this.chatTurnClassifierService.classifyAsk({
@@ -147,5 +162,63 @@ export class ChatTurnPlannerService {
       route.documents.mode === 'composite' &&
       route.documents.components.length >= 2
     );
+  }
+
+  /**
+   * Deterministic override for a bare confirmation reply to a pending
+   * write-action proposal — see chat-pending-write-confirmation.util.ts for
+   * why the classifier/semantic router can't reliably route this on their
+   * own. Only fires for a content-free "yes"-style reply directly following
+   * an assistant message that reads like a write-tool confirmation ask;
+   * anything else (a fresh question, a confirmation that restates real
+   * content) falls through to the normal classify+route pipeline, which
+   * already handles those correctly.
+   */
+  private buildPendingWriteConfirmationPlan(
+    context: ChatConversationContext,
+    responseLanguage: string | null,
+  ): ChatTurnPlan | null {
+    const question = context.latestUserMessage?.content?.trim();
+    if (!question || !isBareConfirmationReply(question)) {
+      return null;
+    }
+
+    const messages = context.allMessages;
+    const userIndex = context.latestUserMessage
+      ? messages.indexOf(context.latestUserMessage)
+      : -1;
+    const previousMessage = userIndex > 0 ? messages[userIndex - 1] : null;
+
+    if (
+      !previousMessage ||
+      previousMessage.role !== ChatMessageRole.ASSISTANT ||
+      !looksLikePendingWriteProposal(previousMessage.content)
+    ) {
+      return null;
+    }
+
+    return {
+      asks: [
+        {
+          id: 'ask-1',
+          intent: ChatTurnIntent.LIVE_METRICS,
+          responder: ChatTurnResponderKind.METRICS,
+          question,
+          capabilityEnabled: true,
+          capabilityLabel: 'live metrics',
+          timeMode: null,
+          timestamp: null,
+          rangeStart: null,
+          rangeEnd: null,
+          semanticRoute: this.chatSemanticRouterService.buildForcedMetricsRouteDecision(
+            context.session.shipId,
+            question,
+          ),
+        },
+      ],
+      responseLanguage,
+      reasoning:
+        'Deterministic override: bare confirmation reply following a pending write-action proposal — routed straight to metrics/write-tools.',
+    };
   }
 }

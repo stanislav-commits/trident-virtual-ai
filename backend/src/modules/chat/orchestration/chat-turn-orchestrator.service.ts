@@ -118,7 +118,8 @@ export class ChatTurnOrchestratorService {
       !this.shouldUseDocumentsResponder(asks[0]) &&
       !this.shouldUsePmsResponder(asks[0]) &&
       !this.shouldUseComplianceResponder(asks[0]) &&
-      !this.shouldUseFilesResponder(asks[0])
+      !this.shouldUseFilesResponder(asks[0]) &&
+      !this.shouldUseMetricsRoute(asks[0])
     ) {
       const singleResult = await this.chatSmallTalkResponderService.respond({
         plan,
@@ -273,6 +274,25 @@ export class ChatTurnOrchestratorService {
       type: 'ask_started',
       text: this.describeAskForProgress(input.ask),
     });
+
+    if (this.shouldUseMetricsRoute(input.ask)) {
+      // The metric responders stamp their reply's `responder` field from
+      // `input.ask.responder` verbatim (they historically only ever ran
+      // when it already equalled METRICS, coming from the intent-driven
+      // capability registry). Now that semanticRoute can route here even
+      // when the first-pass intent classifier picked something else (e.g.
+      // small_talk on a bare confirmation reply), correct it so the reply
+      // is tagged METRICS — otherwise the single-ask pass-through check
+      // above (`askResults[0].responder === ChatTurnResponderKind.METRICS`)
+      // would miss it and needlessly re-compose an already-good answer.
+      const metricsInput =
+        input.ask.responder === ChatTurnResponderKind.METRICS
+          ? input
+          : { ...input, ask: { ...input.ask, responder: ChatTurnResponderKind.METRICS } };
+      return this.shouldUseMetricAnalyzerResponder()
+        ? this.chatMetricAnalyzerResponderService.respond(metricsInput)
+        : this.chatMetricsResponderService.respond(metricsInput);
+    }
 
     if (this.shouldUsePmsResponder(input.ask)) {
       return this.chatPmsResponderService.respond(input);
@@ -533,6 +553,21 @@ export class ChatTurnOrchestratorService {
       (ask.semanticRoute.route === ChatSemanticRoute.DOCUMENTS ||
         isDocumentsWebFallbackRoute(ask))
     );
+  }
+
+  /**
+   * The semantic router (a second, more detailed classifier that explicitly
+   * knows about write/action requests — "создай задачу", "закрой дефект",
+   * "следи за баком 5P" — and about confirmation replies that continue a
+   * pending one) is the authoritative signal for the metrics/write-tools
+   * route, same as PMS/COMPLIANCE/FILES/DOCUMENTS below. Without this check,
+   * a bare confirmation like "Да, подтверждаю" could get misclassified as
+   * small_talk by the FIRST, lighter classifier and dead-end at
+   * ChatSmallTalkResponderService — which has no tool access and would
+   * happily fabricate "task created" text with nothing actually written.
+   */
+  private shouldUseMetricsRoute(ask: ChatTurnPlanAsk): boolean {
+    return ask.semanticRoute.route === ChatSemanticRoute.METRICS;
   }
 
   /**
