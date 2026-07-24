@@ -65,14 +65,40 @@ const SUCCESS_VERB_PATTERN = new RegExp(
 );
 
 /**
+ * Sentence-level negation cue. The verb pattern's lookbehinds only catch
+ * negation immediately before the verb ("not created", "wasn't logged"),
+ * but a denial can just as easily attach to the SUBJECT several words
+ * earlier — "No tasks, defects or watches were claimed or created" is a
+ * denial, not a claim, yet contains every trigger word. Observed live
+ * 2026-07-24: the model's own honest corrective reply ("nothing was
+ * created") kept re-tripping the guard for exactly this reason, burying a
+ * pure read-only chart answer under the disclaimer. Any of these words
+ * anywhere in the same sentence marks it as a denial, not a claim.
+ */
+const SENTENCE_NEGATION_PATTERN =
+  /\b(no|not|nothing|none|never|isn't|wasn't|weren't|didn't|hasn't|haven't)\b|(?:^|\s)(?:не|ни|нет)(?=\s|$)/iu;
+
+/** Split into sentences on terminal punctuation/newlines (rough but enough
+ *  to localise a negation to "its" claim rather than the whole answer). */
+function splitSentences(text: string): string[] {
+  return text.split(/(?<=[.!?\n])\s+/).filter((s) => s.trim().length > 0);
+}
+
+/**
  * Does this final answer claim that a register write has been completed?
- * Requires a write-register noun plus a success verb form. A bare "✅" is
+ * Requires a write-register noun plus a success verb form IN THE SAME
+ * SENTENCE, with no sentence-level negation cue — a bare "✅" is
  * deliberately NOT a signal on its own — honest status listings (morning
  * brief, task checklists) use ✅ markers routinely, and every observed
  * fabrication matches the verb pattern anyway.
  */
 export function claimsRegisterWriteSuccess(answer: string): boolean {
-  return WRITE_NOUN_PATTERN.test(answer) && SUCCESS_VERB_PATTERN.test(answer);
+  return splitSentences(answer).some(
+    (sentence) =>
+      WRITE_NOUN_PATTERN.test(sentence) &&
+      SUCCESS_VERB_PATTERN.test(sentence) &&
+      !SENTENCE_NEGATION_PATTERN.test(sentence),
+  );
 }
 
 /**
