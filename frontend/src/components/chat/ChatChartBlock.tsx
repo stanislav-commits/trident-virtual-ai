@@ -97,6 +97,10 @@ export default function ChatChartBlock({
   labels?: ChatChartLabelsDto;
 }) {
   const t = labels ?? ENGLISH_LABELS;
+  // Tap a legend entry to ISOLATE it (hide every other series, rescale the
+  // axis to it); tap the isolated one again to bring all series back — same
+  // contract as the mobile chart's legend (chartHtml.ts draw()/visible set).
+  const [isolated, setIsolated] = useState<string | null>(null);
   const [selected, setSelected] = useState<SelectedPoint | null>(null);
   const [selectedInterval, setSelectedInterval] = useState<{
     t1: number;
@@ -142,6 +146,12 @@ export default function ChatChartBlock({
   }
 
   const seriesNames = chart.series.map((s) => s.name);
+  const visibleNames = isolated ? [isolated] : seriesNames;
+  const handleLegendClick = (o: { dataKey?: unknown }) => {
+    const name = typeof o.dataKey === "string" ? o.dataKey : null;
+    if (!name) return;
+    setIsolated((prev) => (prev === name ? null : name));
+  };
   const unit = chart.unit ?? "";
   const tickFormatter = (ms: number) => formatTick(ms, spanMs);
   const yTickFormatter = (v: number) => (unit ? `${v} ${unit}` : `${v}`);
@@ -208,7 +218,7 @@ export default function ChatChartBlock({
     if (a == null || b == null || !rows[a] || !rows[b]) return;
     if (a === b) {
       const row = rows[a];
-      const items = seriesNames
+      const items = visibleNames
         .map((name) => ({ name, value: row[name] }))
         .filter(
           (i): i is { name: string; value: number } =>
@@ -249,7 +259,13 @@ export default function ChatChartBlock({
   // differ and clutter, so we skip it. ifOverflow="extendDomain" keeps the
   // band visible even when current values sit entirely outside it (the whole
   // point of "am I below normal?").
-  const singleBand = seriesNames.length === 1 ? chart.series[0].band : null;
+  // Same rule as mobile: the "typical range" band shows whenever exactly one
+  // series is currently ON SCREEN — either the chart only ever had one, or
+  // the crew isolated one out of several via the legend.
+  const singleBand =
+    visibleNames.length === 1
+      ? chart.series.find((s) => s.name === visibleNames[0])?.band ?? null
+      : null;
   const bandP5 = singleBand?.p5 ?? null;
   const bandP95 = singleBand?.p95 ?? null;
   const renderNormalBand = () => {
@@ -315,7 +331,24 @@ export default function ChatChartBlock({
     <YAxis key="y" tickFormatter={yTickFormatter} tick={axisTick} width={64} />,
     <Tooltip key="tt" cursor={cursor} labelFormatter={labelFormatter} contentStyle={tooltipStyle} />,
     seriesNames.length > 1 ? (
-      <Legend key="lg" wrapperStyle={{ fontSize: 11 }} />
+      <Legend
+        key="lg"
+        wrapperStyle={{ fontSize: 11, cursor: "pointer" }}
+        onClick={handleLegendClick}
+        formatter={(value, entry) => {
+          const dimmed = isolated != null && isolated !== value;
+          return (
+            <span
+              style={{
+                opacity: dimmed ? 0.4 : 1,
+                color: dimmed ? "var(--chat-text-muted)" : (entry?.color as string | undefined),
+              }}
+            >
+              {value}
+            </span>
+          );
+        }}
+      />
     ) : null,
   ];
 
@@ -357,7 +390,8 @@ export default function ChatChartBlock({
               {dragEl}
               {axisEls}
               {annotationEls}
-              {seriesNames.map((name, i) => {
+              {visibleNames.map((name) => {
+                const i = seriesNames.indexOf(name);
                 const color = SERIES_COLORS[i % SERIES_COLORS.length];
                 return (
                   <Area
@@ -380,13 +414,16 @@ export default function ChatChartBlock({
               {dragEl}
               {axisEls}
               {annotationEls}
-              {seriesNames.map((name, i) => (
-                <Bar
-                  key={name}
-                  dataKey={name}
-                  fill={SERIES_COLORS[i % SERIES_COLORS.length]}
-                />
-              ))}
+              {visibleNames.map((name) => {
+                const i = seriesNames.indexOf(name);
+                return (
+                  <Bar
+                    key={name}
+                    dataKey={name}
+                    fill={SERIES_COLORS[i % SERIES_COLORS.length]}
+                  />
+                );
+              })}
             </BarChart>
           ) : (
             <LineChart data={rows} margin={margin} onMouseDown={handleChartMouseDown} onMouseMove={handleChartMouseMove} onMouseUp={handleChartMouseUp} onMouseLeave={cancelDrag}>
@@ -394,19 +431,22 @@ export default function ChatChartBlock({
               {dragEl}
               {axisEls}
               {annotationEls}
-              {seriesNames.map((name, i) => (
-                <Line
-                  key={name}
-                  type="monotone"
-                  dataKey={name}
-                  stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                  strokeDasharray={chart.series[i]?.dashed ? "6 4" : undefined}
-                  dot={false}
-                  strokeWidth={2}
-                  connectNulls
-                  isAnimationActive={false}
-                />
-              ))}
+              {visibleNames.map((name) => {
+                const i = seriesNames.indexOf(name);
+                return (
+                  <Line
+                    key={name}
+                    type="monotone"
+                    dataKey={name}
+                    stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+                    strokeDasharray={chart.series[i]?.dashed ? "6 4" : undefined}
+                    dot={false}
+                    strokeWidth={2}
+                    connectNulls
+                    isAnimationActive={false}
+                  />
+                );
+              })}
             </LineChart>
           )}
         </ResponsiveContainer>
