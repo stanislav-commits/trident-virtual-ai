@@ -145,6 +145,38 @@ export class PmsController {
   }
 
   /**
+   * Quick defect/incident report (the chat "+" flow): creates the defect
+   * register row + mirrored unplanned task in one call; the client then
+   * attaches photos to the returned task. Open to crew — reporting a
+   * breakage is every crew member's duty.
+   */
+  @Post('defects/report')
+  reportDefect(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Body()
+    body: {
+      type?: string;
+      title?: string;
+      description?: string | null;
+      department?: string | null;
+      assetId?: string | null;
+    },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.pmsService.reportDefect(
+      shipId,
+      {
+        type: body.type === 'incident' ? 'incident' : 'defect',
+        title: body.title ?? '',
+        description: body.description ?? null,
+        department: body.department ?? null,
+        assetId: body.assetId ?? null,
+      },
+      user,
+    );
+  }
+
+  /**
    * Task photos — the "saw it → photographed it → assigned it" flow:
    * kind=issue documents the breakage, kind=completion the finished work.
    * Open to crew like postpone: attaching evidence to a job you can see is

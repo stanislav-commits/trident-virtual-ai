@@ -296,6 +296,29 @@ export async function deletePmsTask(
   await ok(r, "Delete task");
 }
 
+// ── Quick defect/incident report (chat "+" flow) ─────────────────────────
+
+export async function reportDefect(
+  token: string,
+  shipId: string,
+  input: {
+    type: "defect" | "incident";
+    title: string;
+    description?: string | null;
+    department?: string | null;
+    assetId?: string | null;
+  },
+): Promise<{ taskId: string; taskCode: string | null; defectId: string | null }> {
+  const r = await fetchWithAuth(`ships/${shipId}/pms/defects/report`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  await ok(r, "Report defect");
+  return r.json();
+}
+
 // ── Task photos ──────────────────────────────────────────────────────────
 
 export async function uploadTaskPhoto(

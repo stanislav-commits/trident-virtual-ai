@@ -10,6 +10,7 @@ import { In, Repository } from 'typeorm';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { UserEntity } from '../users/entities/user.entity';
 import { PmsTaskEntity, TaskPhoto } from './entities/pms-task.entity';
+import { DefectEntity } from './entities/defect.entity';
 import { AssetHoursService } from './asset-hours.service';
 import { TaskPhotoStorageService } from './task-photo-storage.service';
 import { randomUUID } from 'crypto';
@@ -558,6 +559,81 @@ export class PmsService {
     return this.assetRepository.find({
       where: { id: In(assetIds), shipId },
     });
+  }
+
+  // ── Defect / incident reporting (the "+" quick-report flow) ────────────
+
+  /**
+   * One-tap crew report: "saw it → photographed it → it becomes work".
+   * Creates a defect-register row and mirrors it into an unplanned task
+   * (same shape as the chat log_defect tool), returning the task so the
+   * caller can attach photos to it. `incident` type skips the defect
+   * register (nothing broke — but it still needs a follow-up task).
+   */
+  async reportDefect(
+    shipId: string,
+    input: {
+      type: 'defect' | 'incident';
+      title: string;
+      description?: string | null;
+      department?: string | null;
+      assetId?: string | null;
+    },
+    user?: AuthenticatedUser,
+  ): Promise<{ taskId: string; taskCode: string | null; defectId: string | null }> {
+    const title = (input.title ?? '').trim().slice(0, 200);
+    if (!title) throw new BadRequestException('title is required');
+    const description =
+      typeof input.description === 'string' && input.description.trim()
+        ? input.description.trim()
+        : null;
+    const department = input.department ?? null;
+
+    let defectId: string | null = null;
+    if (input.type === 'defect') {
+      const defect = await this.taskRepository.manager
+        .getRepository(DefectEntity)
+        .save(
+          this.taskRepository.manager.getRepository(DefectEntity).create({
+            shipId,
+            assetId: input.assetId ?? null,
+            title,
+            description,
+            status: 'open',
+            reportedOn: new Date().toISOString().slice(0, 10),
+            reportedByUserId: user?.id ?? null,
+            source: 'manual',
+            department,
+            category: 'Repair',
+          }),
+        );
+      defectId = defect.id;
+    }
+
+    const task = await this.create(shipId, {
+      task: input.type === 'defect' ? `Defect: ${title}`.slice(0, 200) : title,
+      category: 'Repair',
+      planning: 'unplanned',
+      priority: 'medium',
+      department,
+      description:
+        (description ?? '') +
+        (description ? '\n\n' : '') +
+        (input.type === 'defect'
+          ? 'Reported as a defect via quick report.'
+          : 'Reported as an incident via quick report.'),
+      source: input.type === 'defect' ? 'defect' : 'chat',
+      board: 'maintenance',
+      assetIds: input.assetId ? [input.assetId] : [],
+    });
+    if (!task) throw new BadRequestException('task could not be created');
+
+    if (defectId) {
+      await this.taskRepository.manager
+        .getRepository(DefectEntity)
+        .update(defectId, { pmsTaskId: task.id });
+    }
+    return { taskId: task.id, taskCode: task.taskCode ?? null, defectId };
   }
 
   // ── Task photos (issue = the breakage/finding, completion = the work) ──

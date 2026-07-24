@@ -3,6 +3,7 @@ import sendIcon from '../../assets/Vector.svg';
 import { useVoiceCaptureSession } from '../../hooks/useVoiceCaptureSession';
 import { VoiceInputButton } from './VoiceInputButton';
 import { VoiceInputSessionPanel } from './VoiceInputSessionPanel';
+import { QuickReportButton } from './QuickReportButton';
 
 interface MessageInputProps {
   value: string;
@@ -10,6 +11,8 @@ interface MessageInputProps {
   onSend: () => void;
   token: string | null;
   sessionId?: string | null;
+  /** Enables the "+" quick-report (defect/incident) entry. */
+  shipId?: string | null;
   disabled?: boolean;
   placeholder?: string;
 }
@@ -20,6 +23,7 @@ export function MessageInput({
   onSend,
   token,
   sessionId,
+  shipId,
   disabled = false,
   placeholder = 'Type a message...',
 }: MessageInputProps) {
@@ -47,6 +51,7 @@ export function MessageInput({
   return (
     <form className="chat-main__input-row" onSubmit={handleSubmit}>
       <div className="chat-main__capsule">
+        <QuickReportButton token={token} shipId={shipId} disabled={disabled} />
         <input
           type="text"
           className="chat-main__input"

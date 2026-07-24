@@ -656,6 +656,7 @@ export function ChatPage() {
                 onSend={() => handleSend()}
                 token={token}
                 sessionId={activeSessionId}
+                shipId={sessionShipId}
                 disabled={isDisabled}
                 placeholder="Type a message..."
               />
@@ -712,6 +713,7 @@ export function ChatPage() {
                 onSend={() => handleSend()}
                 token={token}
                 sessionId={activeSessionId}
+                shipId={sessionShipId}
                 disabled={isDisabled}
                 placeholder="Start a new conversation..."
               />
