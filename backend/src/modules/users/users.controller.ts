@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
@@ -31,6 +41,18 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   create(@Body() body: CreateUserDto) {
+    // The crew roster is the single source of truth for vessel people:
+    // vessel (role=user) logins are provisioned ONLY from the Crew tab
+    // (crew/:id/login), which links the account to its roster row. Creating
+    // one here would bypass that link — the account would be invisible in
+    // the roster and impossible to manage from it (observed on prod
+    // 2026-07-24). This endpoint keeps creating platform admins only;
+    // crew.createLogin calls the service directly, not this route.
+    if (body.role !== UserRole.ADMIN) {
+      throw new BadRequestException(
+        'Vessel logins are created from the Crew tab (roster → key icon), not here.',
+      );
+    }
     return this.usersService.create(body);
   }
 

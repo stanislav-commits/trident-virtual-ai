@@ -143,7 +143,6 @@ export function UsersSection({
     password: string;
   } | null>(null);
   const [ships, setShips] = useState<{ id: string; name: string }[]>([]);
-  const [shipsLoading, setShipsLoading] = useState(false);
   const [selectedShipId, setSelectedShipId] = useState<string | undefined>(
     undefined,
   );
@@ -157,7 +156,9 @@ export function UsersSection({
 
   const openCreateModal = () => {
     setCreateName("");
-    setCreateRole("user");
+    // Users tab creates platform ADMINS only — vessel crew logins are
+    // provisioned from the Crew roster so every account stays crew-linked.
+    setCreateRole("admin");
     setCreatePosition("master");
     setSelectedShipId(ships.length === 1 ? ships[0].id : undefined);
     onError("");
@@ -197,7 +198,6 @@ export function UsersSection({
 
   useEffect(() => {
     if (!token) return;
-    setShipsLoading(true);
     getShips(token)
       .then((list) => {
         setShips(list.map((s) => ({ id: s.id, name: s.name })));
@@ -205,8 +205,7 @@ export function UsersSection({
       })
       .catch((err) =>
         onError(err instanceof Error ? err.message : "Failed to load ships"),
-      )
-      .finally(() => setShipsLoading(false));
+      );
   }, [token]);
 
   const handleResetPassword = async (id: string) => {
@@ -356,7 +355,8 @@ export function UsersSection({
           <div>
             <h2 className="admin-panel__section-title">Users</h2>
             <p className="admin-panel__section-subtitle">
-              Platform staff and per-vessel user accounts.
+              Platform staff and per-vessel user accounts. Vessel logins are
+              managed from the Crew tab — the roster is the source of truth.
             </p>
           </div>
           <button
@@ -364,7 +364,7 @@ export function UsersSection({
             className="admin-panel__btn admin-panel__btn--primary"
             onClick={openCreateModal}
           >
-            <PlusIcon /> Add user
+            <PlusIcon /> Add admin
           </button>
         </div>
 
@@ -397,9 +397,9 @@ export function UsersSection({
               renderGroup(
                 ship.id,
                 ship.name,
-                "Vessel users",
+                "Vessel users — managed from the Crew tab",
                 usersByShip[ship.id] ?? [],
-                "No users assigned to this vessel yet.",
+                "No crew logins on this vessel yet — issue them from the Crew roster.",
               ),
             )}
             {orphanShipIds.map((id) =>
@@ -451,11 +451,12 @@ export function UsersSection({
                 id="ap-create-user-title"
                 className="admin-panel__modal-title"
               >
-                Create new user
+                Create new admin
               </h2>
               <p className="admin-panel__modal-desc">
-                Fill in the details below. Credentials will be generated
-                automatically.
+                Platform admins only. Vessel crew logins are created from the
+                Crew tab (roster → key icon), so every account stays linked to
+                its roster entry. Credentials are generated automatically.
               </p>
               <form onSubmit={handleCreate} className="admin-panel__modal-form">
                 <div className="admin-panel__modal-field">
@@ -474,85 +475,6 @@ export function UsersSection({
                     autoFocus
                   />
                 </div>
-                <div className="admin-panel__modal-field-row">
-                  <div className="admin-panel__modal-field">
-                    <label
-                      className="admin-panel__field-label"
-                      htmlFor="mu-role"
-                    >
-                      Role
-                    </label>
-                    <select
-                      id="mu-role"
-                      className="admin-panel__select admin-panel__input--full"
-                      value={createRole}
-                      onChange={(e) =>
-                        setCreateRole(e.target.value as "user" | "admin")
-                      }
-                      disabled={creating}
-                    >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-                  {createRole === "user" && (
-                    <div className="admin-panel__modal-field">
-                      <label
-                        className="admin-panel__field-label"
-                        htmlFor="mu-ship"
-                      >
-                        Assign to ship
-                      </label>
-                      {shipsLoading ? (
-                        <div className="admin-panel__input admin-panel__input--full admin-panel__input--disabled-placeholder">
-                          Loading ships…
-                        </div>
-                      ) : ships.length === 0 ? (
-                        <div className="admin-panel__input admin-panel__input--full admin-panel__input--disabled-placeholder">
-                          Create a ship first
-                        </div>
-                      ) : (
-                        <select
-                          id="mu-ship"
-                          className="admin-panel__select admin-panel__input--full"
-                          value={selectedShipId ?? ""}
-                          onChange={(e) => setSelectedShipId(e.target.value)}
-                          disabled={creating}
-                        >
-                          <option value="">— select ship —</option>
-                          {ships.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  )}
-                  {createRole === "user" && (
-                    <div className="admin-panel__modal-field">
-                      <label
-                        className="admin-panel__field-label"
-                        htmlFor="mu-position"
-                      >
-                        Access position
-                      </label>
-                      <select
-                        id="mu-position"
-                        className="admin-panel__select admin-panel__input--full"
-                        value={createPosition}
-                        onChange={(e) => setCreatePosition(e.target.value)}
-                        disabled={creating}
-                      >
-                        {(accessSchema?.positions ?? []).map((p) => (
-                          <option key={p.value} value={p.value}>
-                            {p.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
                 <div className="admin-panel__modal-actions">
                   <button
                     type="button"
@@ -565,14 +487,9 @@ export function UsersSection({
                   <button
                     type="submit"
                     className="admin-panel__btn admin-panel__btn--primary"
-                    disabled={
-                      creating ||
-                      !createName.trim() ||
-                      (createRole === "user" &&
-                        (shipsLoading || ships.length === 0 || !selectedShipId))
-                    }
+                    disabled={creating || !createName.trim()}
                   >
-                    {creating ? "Creating…" : "Create user"}
+                    {creating ? "Creating…" : "Create admin"}
                   </button>
                 </div>
               </form>

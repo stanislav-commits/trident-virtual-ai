@@ -178,6 +178,16 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    // Reverse sync with the crew roster: deleting a login must unlink the
+    // crew member, or their row keeps a dangling user_id and the roster can
+    // never issue them a new login ("already has a login" forever — observed
+    // live on prod 2026-07-24). Raw query: CrewModule imports UsersModule,
+    // so importing the crew repo here would create a module cycle.
+    await this.usersRepository.manager.query(
+      'UPDATE crew_members SET user_id = NULL WHERE user_id = $1',
+      [id],
+    );
+
     await this.usersRepository.remove(user);
     this.emitChange('deleted');
   }
