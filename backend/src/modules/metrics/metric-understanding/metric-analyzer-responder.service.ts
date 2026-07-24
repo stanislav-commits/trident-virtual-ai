@@ -278,6 +278,12 @@ export class MetricAnalyzerResponderService {
     const maps: ChatMap[] = [];
     const tables: ChatTable[] = [];
     const kpis: ChatKpiBlock[] = [];
+    // render_chart calls that drew several SEPARATE lines (combine !=
+    // "sum") — candidates for the total-intent guard below. Stacked area
+    // charts are excluded: the stack's top already reads as the total, so
+    // there's nothing to correct there.
+    const ambiguousTotalCandidates: { title: string; seriesNames: string[] }[] =
+      [];
     let totalPromptTokens = 0;
     let totalCompletionTokens = 0;
     let totalCacheWriteTokens = 0;
@@ -286,6 +292,7 @@ export class MetricAnalyzerResponderService {
     let finalAnswer: string | null = null;
     let hitTurnLimit = false;
     let writeClaimGuardTriggered = false;
+    let totalIntentGuardTriggered = false;
 
     while (iteration < MAX_ITERATIONS) {
       iteration++;
@@ -382,6 +389,19 @@ export class MetricAnalyzerResponderService {
           }
           if (r.chart) {
             charts.push(r.chart);
+            const combineUsed = (
+              r.otherCall?.args as Record<string, unknown> | undefined
+            )?.combine;
+            if (
+              r.chart.kind !== 'area' &&
+              r.chart.series.length > 1 &&
+              combineUsed !== 'sum'
+            ) {
+              ambiguousTotalCandidates.push({
+                title: r.chart.title,
+                seriesNames: r.chart.series.map((s) => s.name),
+              });
+            }
           }
           if (r.map) {
             maps.push(r.map);
@@ -445,6 +465,36 @@ export class MetricAnalyzerResponderService {
           candidateAnswer + '\n\n' + WRITE_CLAIM_UNVERIFIED_DISCLAIMER;
         break;
       }
+
+      // Total-intent guard: the model sometimes draws N separate lines when
+      // the question actually asked for one combined/total trend (prompt
+      // instructions alone don't reliably catch this — same lesson as the
+      // write-claim guard). Unlike that guard, "did they want a total" isn't
+      // a fixed phrase in any one language, so a keyword regex would miss
+      // most real phrasings — a cheap classifier call judges intent instead.
+      // One-shot per turn regardless of outcome, to bound the extra latency.
+      if (!totalIntentGuardTriggered && ambiguousTotalCandidates.length > 0) {
+        totalIntentGuardTriggered = true;
+        const wantsTotal = await this.chartsWantCombinedTotal(
+          question,
+          ambiguousTotalCandidates,
+        );
+        if (wantsTotal) {
+          this.logger.warn(
+            `Total-intent guard: question implies a combined total but render_chart used separate lines — forcing a corrective round (charts: ${ambiguousTotalCandidates.map((c) => c.title).join(', ')})`,
+          );
+          messages.push({ role: 'assistant', content: candidateAnswer });
+          messages.push({
+            role: 'user',
+            content: this.buildTotalIntentCorrectionNote(
+              ambiguousTotalCandidates,
+            ),
+          });
+          opts?.onProgress?.('checking chart total intent');
+          continue;
+        }
+      }
+
       finalAnswer = candidateAnswer;
       break;
     }
@@ -1967,6 +2017,64 @@ export class MetricAnalyzerResponderService {
    * and drawn client-side). The model gets only a compact per-series summary
    * back — the full point arrays never re-enter the prompt.
    */
+  /**
+   * Cheap-sub-model judgment call for the total-intent guard: given the
+   * user's actual question and the chart(s) drawn with separate lines, does
+   * the question ask for ONE combined/total trend across them? Any language,
+   * any phrasing — this is exactly the kind of fuzzy classification a regex
+   * can't cover, so it's routed to the same fast sub-model the turn
+   * classifier / session-title generator already use (preferMainModel left
+   * unset). Fails closed (false) on any LLM error so a transient hiccup
+   * never blocks a normal answer.
+   */
+  private async chartsWantCombinedTotal(
+    question: string,
+    candidates: { title: string; seriesNames: string[] }[],
+  ): Promise<boolean> {
+    if (candidates.length === 0) return false;
+    const listing = candidates
+      .map((c, i) => `${i + 1}. "${c.title}" — series: ${c.seriesNames.join(', ')}`)
+      .join('\n');
+    const systemPrompt =
+      'You judge chart intent for a yacht telemetry chat assistant. The ' +
+      "assistant just drew a chart with SEPARATE lines for several metrics. " +
+      "Given the user's question, decide: did they ask for ONE combined/" +
+      'total trend across all of them (e.g. "total fuel across all tanks", ' +
+      '"combined", "суммарно", "в сумме", "overall", "added together", or ' +
+      'any other phrasing in any language meaning "add them up"), or did ' +
+      'they want the metrics shown separately for comparison (e.g. ' +
+      '"compare X and Y", "each tank", "по отдельности", or no total wording ' +
+      'at all)? Reply with EXACTLY one word: TOTAL or SEPARATE.';
+    const userPrompt = `User question: "${question}"\n\nChart(s) drawn with separate lines:\n${listing}`;
+    try {
+      const raw = await this.llmService.createChatCompletion({
+        systemPrompt,
+        userPrompt,
+        temperature: 0,
+        maxTokens: 10,
+      });
+      return typeof raw === 'string' && /\btotal\b/i.test(raw);
+    } catch (error) {
+      this.logger.warn(`Total-intent guard: classifier call failed — skipping (${String(error)})`);
+      return false;
+    }
+  }
+
+  private buildTotalIntentCorrectionNote(
+    candidates: { title: string; seriesNames: string[] }[],
+  ): string {
+    const titles = candidates.map((c) => `"${c.title}"`).join(', ');
+    return (
+      `[system note] Your question analysis suggests the user wanted ONE ` +
+      `combined/total trend, but ${titles} ${candidates.length > 1 ? 'were' : 'was'} drawn with separate lines ` +
+      `(combine was not set to "sum"). Re-call render_chart for the affected ` +
+      `chart(s) with ALL the same series passed in \`series\` and ` +
+      `combine:"sum" set, so they collapse into a single combined line. If, ` +
+      `on reflection, the user genuinely wanted them separate, restate your ` +
+      `answer unchanged.`
+    );
+  }
+
   private async toolRenderChart(
     tc: OpenAiToolCall,
     args: Record<string, unknown>,
