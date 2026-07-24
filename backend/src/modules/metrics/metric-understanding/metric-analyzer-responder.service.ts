@@ -2727,7 +2727,11 @@ export class MetricAnalyzerResponderService {
       DEPARTMENTS.some((d) => d.key === args.department)
         ? args.department
         : null;
-    const callArgs = { task, priority, due_date: dueDate, asset_id_internal: assetIdInternal, department: requestedDepartment, confirmed: args.confirmed === true };
+    const requestedBoard =
+      args.board === 'maintenance' || args.board === 'general'
+        ? args.board
+        : null;
+    const callArgs = { task, board: requestedBoard, priority, due_date: dueDate, asset_id_internal: assetIdInternal, department: requestedDepartment, confirmed: args.confirmed === true };
 
     const fail = (error: string) => ({
       toolCallId: tc.id,
@@ -2757,6 +2761,20 @@ export class MetricAnalyzerResponderService {
       }
     }
 
+    // Board routing: the Maintenance Plan holds ONLY equipment/asset work;
+    // people-directed chores (cleaning, provisioning, paperwork) go to the
+    // Tasks board. Asset-linked = asset work by definition; otherwise the
+    // model must have decided — an omitted board fails with instructions so
+    // the next round self-corrects instead of silently polluting the plan.
+    const board: 'maintenance' | 'general' | null = asset
+      ? 'maintenance'
+      : requestedBoard;
+    if (!board) {
+      return fail(
+        'NOT CREATED: board is required — pass board:"maintenance" for equipment/asset work (Maintenance Plan) or board:"general" for a people-directed chore/assignment (Tasks board, e.g. cleaning, provisioning, paperwork).',
+      );
+    }
+
     // Position-based write gating: an explicit department the actor doesn't
     // belong to is refused (Master/Superintendent exempt); no department
     // given/inferable is open to any recognized non-guest crew member.
@@ -2766,7 +2784,9 @@ export class MetricAnalyzerResponderService {
 
     const saved = await this.pmsService.create(shipId, {
       task: task.slice(0, 200),
-      category: 'General',
+      // The general board folds unknown categories to 'Certificate' — a chore
+      // is an Assignment there; maintenance keeps the loose 'General'.
+      category: board === 'general' ? 'Assignment' : 'General',
       planning: 'unplanned',
       priority,
       department: requestedDepartment,
@@ -2776,11 +2796,12 @@ export class MetricAnalyzerResponderService {
         'Created from the chat assistant on crew request.',
       dueDate,
       source: 'chat',
+      board,
       assetIds: asset ? [asset.id] : [],
     });
 
     if (!saved) return fail('task created but could not be reloaded — check the register');
-    const resultSummary = `created PMS task "${task}" (${priority}${dueDate ? ', due ' + dueDate : ''}${asset ? ', asset ' + (asset.displayName ?? assetIdInternal) : ''})`;
+    const resultSummary = `created ${board === 'general' ? 'Tasks-board assignment' : 'PMS task'} "${task}" (${priority}${dueDate ? ', due ' + dueDate : ''}${asset ? ', asset ' + (asset.displayName ?? assetIdInternal) : ''})`;
     return {
       toolCallId: tc.id,
       otherCall: {
@@ -2792,7 +2813,8 @@ export class MetricAnalyzerResponderService {
         task_created: true,
         task_id: saved.id,
         task_code: saved.taskCode,
-        note: 'Task created in the PMS register. Confirm to the user with the task title and code; do not invent extra details.',
+        board,
+        note: `Task created on the ${board === 'general' ? 'Tasks board (people-directed assignment)' : 'Maintenance Plan'}. Confirm to the user with the task title and code; do not invent extra details.`,
       },
     };
   }
