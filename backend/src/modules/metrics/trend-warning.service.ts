@@ -93,6 +93,11 @@ export class TrendWarningService {
     const candidates = metrics.filter(
       (m) =>
         m.aiIsMonotonic !== true &&
+        // Cumulative counters (e.g. total energy delivered/received) drift by
+        // design — even when their per-vessel monotonicity is imperfect
+        // (aiIsMonotonic=false), a p5-p95 band-drift check on a running
+        // total is meaningless and just spams the crew.
+        m.aiKind !== 'counter' &&
         (m.aiNonZeroSharePct == null || m.aiNonZeroSharePct >= 30) &&
         m.aiTypicalP95! > m.aiTypicalP5!,
     );

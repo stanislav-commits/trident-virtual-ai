@@ -94,13 +94,51 @@ export class ChatDailyBriefService {
     return this.configService.get<string>('chat.dailyBriefLanguage', 'en');
   }
 
-  private briefQuestion(): string {
+  /**
+   * Ground-truth alarm log for the last 24h, straight from the `alerts`
+   * table — the same source of truth the Notifications bell reads. The
+   * brief previously asked the LLM to re-derive alarms itself via the
+   * find_active_alarms tool (which scans raw Influx field names for a
+   * fault/warning/alarm regex and defaults to active-only), so a real
+   * Grafana-fired-and-resolved alert could be entirely missed. Handing the
+   * model a deterministic list removes that guesswork.
+   */
+  private async alarmsLast24h(shipId: string): Promise<string> {
+    const since = new Date(Date.now() - 24 * 3_600_000);
+    const alerts = await this.alertRepository
+      .createQueryBuilder('a')
+      .where('a.shipId = :shipId', { shipId })
+      .andWhere('a.source != :daily', { daily: 'daily_brief' })
+      .andWhere('(a.startedAt >= :since OR a.resolvedAt >= :since)', {
+        since,
+      })
+      .orderBy('a.startedAt', 'DESC')
+      .getMany();
+
+    if (alerts.length === 0) {
+      return this.lang() === 'ru'
+        ? 'Данные системы (источник истины): за последние 24 часа алармов не зафиксировано.'
+        : 'Ground truth from the alerts system: no alarms recorded in the last 24 hours.';
+    }
+    const lines = alerts.map((a) => {
+      const status = a.status === 'resolved' ? 'resolved' : 'firing';
+      return `- [${a.severity}/${status}] ${a.title}${a.message ? ` — ${a.message}` : ''} (started ${a.startedAt.toISOString()}${a.resolvedAt ? `, resolved ${a.resolvedAt.toISOString()}` : ''})`;
+    });
+    const header =
+      this.lang() === 'ru'
+        ? `Данные системы (источник истины) — ${alerts.length} аларм(ов) за последние 24 часа:`
+        : `Ground truth from the alerts system — ${alerts.length} alarm(s) in the last 24 hours:`;
+    return [header, ...lines].join('\n');
+  }
+
+  private briefQuestion(alarmsGroundTruth: string): string {
     // The analyzer mirrors the question's language, so this env var flips
     // the whole brief.
     if (this.lang() !== 'ru') {
       return (
         'Morning brief for the crew. Compile a short vessel status report: ' +
-        '1) alarms and faults over the last 24 hours (find_active_alarms with include_resolved) — or say the night was quiet; ' +
+        `1) alarms and faults over the last 24 hours — use this authoritative list, do not re-derive it yourself:\n${alarmsGroundTruth}\n` +
+        'Summarize it in your own words (or say the night was quiet if it is empty) — do not call find_active_alarms, this list is already ground truth; ' +
         '2) current critical reserves — fuel, fresh water, DEF — as ONE render_kpi block, flagging anything low; ' +
         '3) maintenance due today or overdue (get_maintenance_tasks) — only the important ones, max 5; ' +
         '4) current position and whether today\'s weather window is workable (get_vessel_state + get_marine_forecast); ' +
@@ -111,7 +149,8 @@ export class ChatDailyBriefService {
     }
     return (
       'Утренний брифинг для экипажа. Составь короткую сводку по судну: ' +
-      '1) алармы и неисправности за последние 24 часа (find_active_alarms с include_resolved) — либо скажи, что ночь прошла спокойно; ' +
+      `1) алармы и неисправности за последние 24 часа — используй этот авторитетный список, не выводи его заново сам:\n${alarmsGroundTruth}\n` +
+      'Перескажи своими словами (или скажи, что ночь прошла спокойно, если список пуст) — НЕ вызывай find_active_alarms, этот список уже является источником истины; ' +
       '2) текущие критические запасы — топливо, пресная вода, DEF — одним блоком render_kpi, отметь низкие; ' +
       '3) задачи ТО на сегодня и просроченные (get_maintenance_tasks) — только важные, максимум 5; ' +
       '4) текущая позиция и пригодно ли сегодняшнее погодное окно (get_vessel_state + get_marine_forecast); ' +
@@ -122,9 +161,10 @@ export class ChatDailyBriefService {
   }
 
   private async runForShip(ship: ShipEntity): Promise<number> {
+    const alarmsGroundTruth = await this.alarmsLast24h(ship.id);
     const result = await this.metricAnalyzerResponderService.answer(
       ship.id,
-      this.briefQuestion(),
+      this.briefQuestion(alarmsGroundTruth),
     );
 
     // Same shape the chat responder produces, so MessageBubble renders the
