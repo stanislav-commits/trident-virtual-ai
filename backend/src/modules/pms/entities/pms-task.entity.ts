@@ -10,6 +10,20 @@ import {
 } from 'typeorm';
 import { AssetEntity } from '../../assets/entities/asset.entity';
 
+/** One attached task photo. `provider` is captured at upload time so old
+ *  photos stay readable after a storage-provider switch. */
+export interface TaskPhoto {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  provider: 'local' | 'spaces';
+  /** 'issue' = the breakage/finding; 'completion' = the finished work. */
+  kind: 'issue' | 'completion';
+  uploadedByName: string | null;
+  uploadedAt: string;
+}
+
 /**
  * A planned-maintenance task. Schedules can be calendar-based (dueDate +
  * interval) and/or running-hours-based (intervalHours). Linked to one or
@@ -157,6 +171,15 @@ export class PmsTaskEntity {
     inverseJoinColumn: { name: 'asset_id', referencedColumnName: 'id' },
   })
   assets!: AssetEntity[];
+
+  /**
+   * Attached photos ("officer saw it → photographed it → assigned it"):
+   * kind 'issue' documents the breakage/finding, 'completion' the finished
+   * work at sign-off. Binaries live in TaskPhotoStorageService (Spaces /
+   * local spool); this jsonb metadata is the only DB record.
+   */
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  photos!: TaskPhoto[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

@@ -1,6 +1,17 @@
-import { fetchWithAuth, ok } from "./core";
+import { fetchWithAuth, getApiUrl, ok } from "./core";
 
 export type PmsStatus = "overdue" | "due-soon" | "ok";
+
+/** One attached task photo ('issue' = the breakage, 'completion' = the work). */
+export interface TaskPhotoMeta {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  kind: "issue" | "completion";
+  uploadedByName: string | null;
+  uploadedAt: string;
+}
 
 export interface PmsTaskDto {
   id: string;
@@ -44,6 +55,7 @@ export interface PmsTaskDto {
   postponedAt: string | null;
   postponeCount: number;
   assets: { id: string; name: string }[];
+  photos: TaskPhotoMeta[];
 }
 
 export interface UpsertPmsTaskInput {
@@ -282,6 +294,57 @@ export async function deletePmsTask(
     method: "DELETE",
   });
   await ok(r, "Delete task");
+}
+
+// ── Task photos ──────────────────────────────────────────────────────────
+
+export async function uploadTaskPhoto(
+  token: string,
+  shipId: string,
+  taskId: string,
+  file: File,
+  kind: "issue" | "completion",
+): Promise<PmsTaskDto> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("kind", kind);
+  const r = await fetchWithAuth(`ships/${shipId}/pms/tasks/${taskId}/photos`, {
+    token,
+    method: "POST",
+    body: form,
+  });
+  await ok(r, "Upload photo");
+  return r.json();
+}
+
+export async function deleteTaskPhoto(
+  token: string,
+  shipId: string,
+  taskId: string,
+  photoId: string,
+): Promise<PmsTaskDto> {
+  const r = await fetchWithAuth(
+    `ships/${shipId}/pms/tasks/${taskId}/photos/${photoId}`,
+    { token, method: "DELETE" },
+  );
+  await ok(r, "Delete photo");
+  return r.json();
+}
+
+/** Photos need the bearer header — fetch as a blob and hand back an object
+ *  URL (caller revokes it on unmount). */
+export async function fetchTaskPhotoObjectUrl(
+  token: string,
+  shipId: string,
+  taskId: string,
+  photoId: string,
+): Promise<string> {
+  const r = await fetch(
+    getApiUrl(`ships/${shipId}/pms/tasks/${taskId}/photos/${photoId}`),
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  await ok(r, "Load photo");
+  return URL.createObjectURL(await r.blob());
 }
 
 // ── Asset running-hours ──────────────────────────────────────────────────

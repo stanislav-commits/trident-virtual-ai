@@ -1101,6 +1101,9 @@ export function PmsSection({ token, board = "maintenance" }: PmsSectionProps) {
           task={detailTask}
           parts={partsByTask.get(detailTask.id) ?? []}
           deptLabel={deptLabel}
+          token={token}
+          shipId={shipId}
+          onPhotosChanged={() => void refresh()}
           onClose={() => setDetailId(null)}
           onEdit={() => startEdit(detailTask)}
           onPerform={() => performTask(detailTask.id)}

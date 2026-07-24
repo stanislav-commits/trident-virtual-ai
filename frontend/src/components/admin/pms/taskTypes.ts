@@ -2,6 +2,8 @@
 // (PmsSection) and the task detail drawer. Extracted from PmsSection so the
 // god-file shrinks instead of growing (see CLAUDE.md).
 
+import type { TaskPhotoMeta } from "../../../api/pmsApi";
+
 export type PmsStatus = "overdue" | "due-soon" | "ok";
 export type PmsPriority = "low" | "medium" | "high" | "critical";
 export type PmsPlanning = "planned" | "unplanned";
@@ -92,6 +94,8 @@ export interface PmsTask {
   postponedByName: string | null;
   postponedAt: string | null;
   postponeCount: number;
+  // Attached photos ('issue' = breakage, 'completion' = finished work).
+  photos?: TaskPhotoMeta[];
 }
 
 export const STATUS_LABEL: Record<PmsStatus, string> = {

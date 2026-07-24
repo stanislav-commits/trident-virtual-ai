@@ -10,11 +10,13 @@ import {
   Patch,
   Post,
   Put,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
@@ -140,6 +142,56 @@ export class PmsController {
       user,
       await this.viewerDept(shipId, user),
     );
+  }
+
+  /**
+   * Task photos — the "saw it → photographed it → assigned it" flow:
+   * kind=issue documents the breakage, kind=completion the finished work.
+   * Open to crew like postpone: attaching evidence to a job you can see is
+   * a normal operational action.
+   */
+  @Post('tasks/:id/photos')
+  @UseInterceptors(FileInterceptor('file'))
+  addTaskPhoto(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { kind?: string },
+    @UploadedFile() file: UploadedImportFile & { size?: number },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.pmsService.addPhoto(
+      shipId,
+      id,
+      body.kind === 'completion' ? 'completion' : 'issue',
+      file,
+      user,
+    );
+  }
+
+  @Get('tasks/:id/photos/:photoId')
+  async getTaskPhoto(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('photoId', ParseUUIDPipe) photoId: string,
+    @Res() res: Response,
+  ) {
+    const photo = await this.pmsService.getPhoto(shipId, id, photoId);
+    res.setHeader('Content-Type', photo.mimeType);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(photo.name)}"`,
+    );
+    res.send(photo.buffer);
+  }
+
+  @Delete('tasks/:id/photos/:photoId')
+  deleteTaskPhoto(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('photoId', ParseUUIDPipe) photoId: string,
+  ) {
+    return this.pmsService.deletePhoto(shipId, id, photoId);
   }
 
   @Get('assets/:assetId/hours')

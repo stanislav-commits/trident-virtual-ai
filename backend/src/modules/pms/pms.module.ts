@@ -9,6 +9,7 @@ import { AssetHoursConfigEntity } from './entities/asset-hours-config.entity';
 import { AssetHourReadingEntity } from './entities/asset-hour-reading.entity';
 import { AssetHoursService } from './asset-hours.service';
 import { PmsImportService } from './pms-import.service';
+import { TaskPhotoStorageService } from './task-photo-storage.service';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { IntegrationsModule } from '../../integrations/integrations.module';
@@ -31,7 +32,7 @@ import { InventoryModule } from '../inventory/inventory.module';
     InventoryModule,
   ],
   controllers: [PmsController],
-  providers: [PmsService, AssetHoursService, PmsImportService],
+  providers: [PmsService, AssetHoursService, PmsImportService, TaskPhotoStorageService],
   exports: [PmsService, AssetHoursService],
 })
 export class PmsModule {}

@@ -11104,3 +11104,39 @@
   font-size: 10px; padding: 0 5px; border-radius: 5px;
   background: var(--chat-surface-3); color: var(--chat-text-muted);
 }
+
+/* ── Task photos (issue / completion) in the task drawer ── */
+
+.pms-drawer__photo-group { margin-bottom: 12px; }
+.pms-drawer__photo-group-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--chat-text-muted); margin-bottom: 6px;
+}
+.pms-drawer__photo-add {
+  font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: 0;
+  color: var(--accent-bright, #60a5fa); cursor: pointer; padding: 2px 6px;
+  border-radius: 6px;
+}
+.pms-drawer__photo-add:hover { background: var(--chat-surface-3); }
+.pms-drawer__photo-add--busy { opacity: 0.5; pointer-events: none; }
+
+.pms-drawer__photos { display: flex; flex-wrap: wrap; gap: 8px; }
+.pms-drawer__photo {
+  position: relative; width: 84px; height: 84px; border-radius: 8px;
+  overflow: hidden; border: 1px solid var(--chat-border);
+}
+.pms-drawer__photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pms-drawer__photo-loading {
+  width: 100%; height: 100%; display: flex; align-items: center;
+  justify-content: center; color: var(--chat-text-muted);
+}
+.pms-drawer__photo-del {
+  position: absolute; top: 3px; right: 3px; width: 18px; height: 18px;
+  border: 0; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff;
+  font-size: 12px; line-height: 1; cursor: pointer;
+}
+.pms-drawer__photo-error {
+  margin-top: 6px; font-size: 12px;
+  color: var(--status-danger-soft, var(--status-danger));
+}

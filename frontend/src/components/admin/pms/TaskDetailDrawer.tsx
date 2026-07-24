@@ -3,6 +3,12 @@ import { createPortal } from "react-dom";
 import { TrashIcon } from "../AdminPanelIcons";
 import type { InventoryItem } from "../../../api/inventoryApi";
 import {
+  deleteTaskPhoto,
+  fetchTaskPhotoObjectUrl,
+  uploadTaskPhoto,
+  type TaskPhotoMeta,
+} from "../../../api/pmsApi";
+import {
   STATUS_LABEL,
   INTERVAL_UNITS,
   type PmsTask,
@@ -37,6 +43,9 @@ export function TaskDetailDrawer({
   task,
   parts,
   deptLabel,
+  token,
+  shipId,
+  onPhotosChanged,
   onClose,
   onEdit,
   onPerform,
@@ -47,6 +56,9 @@ export function TaskDetailDrawer({
   task: PmsTask;
   parts: InventoryItem[];
   deptLabel: (d?: string) => string | undefined;
+  token: string | null;
+  shipId: string | null;
+  onPhotosChanged: () => void;
   onClose: () => void;
   onEdit: () => void;
   onPerform: () => void;
@@ -372,6 +384,16 @@ export function TaskDetailDrawer({
               </div>
             )}
           </section>
+
+          {/* Photos — the "saw it → photographed it → assigned it" evidence:
+              issue photos document the breakage, completion photos the
+              finished work. */}
+          <TaskPhotosSection
+            task={task}
+            token={token}
+            shipId={shipId}
+            onChanged={onPhotosChanged}
+          />
         </div>
 
         {/* Postpone form — expands above the footer when Postpone is clicked */}
@@ -478,5 +500,166 @@ export function TaskDetailDrawer({
       </aside>
     </div>,
     document.body,
+  );
+}
+
+/** Bearer-authenticated thumbnail (plain <img src> can't send the header). */
+function TaskPhotoThumb({
+  token,
+  shipId,
+  taskId,
+  photo,
+  onDelete,
+}: {
+  token: string;
+  shipId: string;
+  taskId: string;
+  photo: TaskPhotoMeta;
+  onDelete: () => void;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let alive = true;
+    void fetchTaskPhotoObjectUrl(token, shipId, taskId, photo.id)
+      .then((u) => {
+        objectUrl = u;
+        if (alive) setUrl(u);
+        else URL.revokeObjectURL(u);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [token, shipId, taskId, photo.id]);
+
+  const tip = [photo.name, photo.uploadedByName, photo.uploadedAt.slice(0, 10)]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div className="pms-drawer__photo" title={tip}>
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer">
+          <img src={url} alt={photo.name} />
+        </a>
+      ) : (
+        <div className="pms-drawer__photo-loading">…</div>
+      )}
+      <button
+        type="button"
+        className="pms-drawer__photo-del"
+        onClick={onDelete}
+        aria-label={`Delete photo ${photo.name}`}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+function TaskPhotosSection({
+  task,
+  token,
+  shipId,
+  onChanged,
+}: {
+  task: PmsTask;
+  token: string | null;
+  shipId: string | null;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const photos = task.photos ?? [];
+  const issue = photos.filter((p) => p.kind !== "completion");
+  const completion = photos.filter((p) => p.kind === "completion");
+
+  const upload = async (files: FileList | null, kind: "issue" | "completion") => {
+    if (!token || !shipId || !files?.length) return;
+    setBusy(true);
+    setError("");
+    try {
+      for (const file of Array.from(files)) {
+        await uploadTaskPhoto(token, shipId, task.id, file, kind);
+      }
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (photoId: string) => {
+    if (!token || !shipId) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteTaskPhoto(token, shipId, task.id, photoId);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const group = (
+    label: string,
+    kind: "issue" | "completion",
+    items: TaskPhotoMeta[],
+  ) => (
+    <div className="pms-drawer__photo-group">
+      <div className="pms-drawer__photo-group-head">
+        <span>{label}</span>
+        <label className={`pms-drawer__photo-add${busy ? " pms-drawer__photo-add--busy" : ""}`}>
+          + Add
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: "none" }}
+            disabled={busy}
+            onChange={(e) => {
+              void upload(e.target.files, kind);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+      {items.length > 0 ? (
+        <div className="pms-drawer__photos">
+          {items.map((p) =>
+            token && shipId ? (
+              <TaskPhotoThumb
+                key={p.id}
+                token={token}
+                shipId={shipId}
+                taskId={task.id}
+                photo={p}
+                onDelete={() => void remove(p.id)}
+              />
+            ) : null,
+          )}
+        </div>
+      ) : (
+        <div className="pms-drawer__muted">None yet.</div>
+      )}
+    </div>
+  );
+
+  return (
+    <section className="pms-drawer__section">
+      <div className="pms-drawer__section-head">
+        Photos
+        {photos.length > 0 && (
+          <span className="pms-drawer__count">{photos.length}</span>
+        )}
+      </div>
+      {group("Issue / breakage", "issue", issue)}
+      {group("Completed work", "completion", completion)}
+      {error && <div className="pms-drawer__photo-error">{error}</div>}
+    </section>
   );
 }

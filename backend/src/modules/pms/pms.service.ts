@@ -9,8 +9,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { UserEntity } from '../users/entities/user.entity';
-import { PmsTaskEntity } from './entities/pms-task.entity';
+import { PmsTaskEntity, TaskPhoto } from './entities/pms-task.entity';
 import { AssetHoursService } from './asset-hours.service';
+import { TaskPhotoStorageService } from './task-photo-storage.service';
+import { randomUUID } from 'crypto';
 import { addInterval } from './date-interval.util';
 import { nextTaskCode } from './pms-task-code.util';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
@@ -90,6 +92,7 @@ export class PmsService {
     private readonly userRepository: Repository<UserEntity>,
     private readonly assetHoursService: AssetHoursService,
     private readonly adminEvents: AdminEventBus,
+    private readonly taskPhotoStorage: TaskPhotoStorageService,
   ) {}
 
   /** Broadcast a PMS change so other admins' Maintenance/Tasks boards
@@ -240,6 +243,9 @@ export class PmsService {
   async remove(shipId: string, id: string): Promise<void> {
     const task = await this.taskRepository.findOne({ where: { id, shipId } });
     if (!task) throw new NotFoundException('Task not found');
+    for (const photo of task.photos ?? []) {
+      await this.taskPhotoStorage.delete(photo.provider, task.id, photo.id);
+    }
     await this.taskRepository.delete(id);
     this.emitChange(shipId, 'deleted', id);
   }
@@ -554,6 +560,100 @@ export class PmsService {
     });
   }
 
+  // ── Task photos (issue = the breakage/finding, completion = the work) ──
+
+  private static readonly MAX_PHOTOS_PER_TASK = 10;
+  private static readonly MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB
+  private static readonly ALLOWED_PHOTO_MIME =
+    /^image\/(jpeg|png|webp|heic|heif|gif)$/i;
+
+  async addPhoto(
+    shipId: string,
+    id: string,
+    kind: 'issue' | 'completion',
+    file: {
+      originalname?: string;
+      mimetype?: string;
+      size?: number;
+      buffer?: Buffer;
+    },
+    user?: AuthenticatedUser,
+  ) {
+    const task = await this.taskRepository.findOne({ where: { id, shipId } });
+    if (!task) throw new NotFoundException('Task not found');
+    if (!file?.buffer || !file.size) {
+      throw new BadRequestException('file is required');
+    }
+    if (!PmsService.ALLOWED_PHOTO_MIME.test(file.mimetype ?? '')) {
+      throw new BadRequestException('only image files are allowed');
+    }
+    if (file.size > PmsService.MAX_PHOTO_BYTES) {
+      throw new BadRequestException('photo is larger than 10 MB');
+    }
+    if ((task.photos ?? []).length >= PmsService.MAX_PHOTOS_PER_TASK) {
+      throw new BadRequestException(
+        `a task can hold at most ${PmsService.MAX_PHOTOS_PER_TASK} photos`,
+      );
+    }
+    let uploadedByName: string | null = user?.name ?? null;
+    if (!uploadedByName && user) {
+      const account = await this.userRepository.findOne({
+        where: { id: user.id },
+      });
+      uploadedByName = account?.name ?? user.userId ?? null;
+    }
+    const photoId = randomUUID();
+    const provider = await this.taskPhotoStorage.save(
+      task.id,
+      photoId,
+      file.buffer,
+      file.mimetype ?? 'application/octet-stream',
+    );
+    const entry: TaskPhoto = {
+      id: photoId,
+      name: (file.originalname ?? 'photo').slice(0, 200),
+      mimeType: file.mimetype ?? 'application/octet-stream',
+      sizeBytes: file.size,
+      provider,
+      kind: kind === 'completion' ? 'completion' : 'issue',
+      uploadedByName,
+      uploadedAt: new Date().toISOString(),
+    };
+    task.photos = [...(task.photos ?? []), entry];
+    await this.taskRepository.save(task);
+    this.emitChange(shipId, 'updated', task.id);
+    return this.reload(task.id);
+  }
+
+  async getPhoto(
+    shipId: string,
+    id: string,
+    photoId: string,
+  ): Promise<{ buffer: Buffer; mimeType: string; name: string }> {
+    const task = await this.taskRepository.findOne({ where: { id, shipId } });
+    if (!task) throw new NotFoundException('Task not found');
+    const entry = (task.photos ?? []).find((p) => p.id === photoId);
+    if (!entry) throw new NotFoundException('Photo not found');
+    const buffer = await this.taskPhotoStorage.read(
+      entry.provider,
+      task.id,
+      entry.id,
+    );
+    return { buffer, mimeType: entry.mimeType, name: entry.name };
+  }
+
+  async deletePhoto(shipId: string, id: string, photoId: string) {
+    const task = await this.taskRepository.findOne({ where: { id, shipId } });
+    if (!task) throw new NotFoundException('Task not found');
+    const entry = (task.photos ?? []).find((p) => p.id === photoId);
+    if (!entry) throw new NotFoundException('Photo not found');
+    await this.taskPhotoStorage.delete(entry.provider, task.id, entry.id);
+    task.photos = (task.photos ?? []).filter((p) => p.id !== photoId);
+    await this.taskRepository.save(task);
+    this.emitChange(shipId, 'updated', task.id);
+    return this.reload(task.id);
+  }
+
   private async assigneeNames(
     tasks: PmsTaskEntity[],
   ): Promise<Map<string, string>> {
@@ -668,6 +768,17 @@ export class PmsService {
         id: a.id,
         name: a.displayName,
       })),
+      photos: (task.photos ?? []).map(
+        ({ id, name, mimeType, sizeBytes, kind, uploadedByName, uploadedAt }) => ({
+          id,
+          name,
+          mimeType,
+          sizeBytes,
+          kind,
+          uploadedByName,
+          uploadedAt,
+        }),
+      ),
     };
   }
 
