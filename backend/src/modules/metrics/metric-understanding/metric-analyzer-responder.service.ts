@@ -2780,6 +2780,22 @@ export class MetricAnalyzerResponderService {
     }
     if (!task) return fail('task title is required');
 
+    // Year-slip guard. Observed live 2026-07-26: "к завтрашнему дню" was
+    // stored as 2025-07-27 — a year in the past, so the task was born
+    // overdue. The system prompt already carries the current date; this is
+    // the deterministic backstop. A few days back is allowed (logging work
+    // that was already due); a month-plus is a typo, not an intent.
+    if (dueDate) {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const daysPast =
+        (Date.parse(todayIso) - Date.parse(dueDate)) / 86_400_000;
+      if (daysPast > 30) {
+        return fail(
+          `NOT CREATED: due_date ${dueDate} is ${Math.round(daysPast)} days in the PAST (today is ${todayIso}) — that is almost always a wrong year. Re-send with the correct ISO date computed from today.`,
+        );
+      }
+    }
+
     let asset: AssetEntity | null = null;
     if (assetIdInternal) {
       asset = await this.assetRepository.findOne({

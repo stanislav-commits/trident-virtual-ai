@@ -16,10 +16,34 @@
  */
 
 const CONFIRMATION_TOKEN =
-  '(?:да|ага|угу|конечно|подтверждаю|подтверждено|верно|точно|правильно|yes|yeah|yep|yup|correct|confirm(?:ed)?|ok(?:ay)?|go\\s*ahead|do\\s*it|sounds?\\s*good|proceed|affirmative)';
+  '(?:да|ага|угу|конечно|подтверждаю|подтверждено|верно|точно|правильно|согласен|согласна|давай(?:те)?|поехали|погнали|yes|yeah|yep|yup|correct|confirm(?:ed)?|ok(?:ay)?|ок(?:ей)?|go\\s*ahead|do\\s*it|sounds?\\s*good|all\\s*good|proceed|affirmative)';
+
+/**
+ * Words that ride along with a confirmation and carry no content of their
+ * own. Without these, the single most natural Russian confirmation — "всё
+ * верно" — failed the whole-string match (only "верно" was a known token),
+ * fell through to a fresh classify, was labelled small_talk and answered by
+ * the tool-less chat responder, which fabricated "Задача создана! ✅" while
+ * nothing reached the register. Observed live 2026-07-26.
+ */
+const FILLER_TOKEN =
+  '(?:вс[её]|так|именно|абсолютно|полностью|совершенно|тогда|it\'?s|that\'?s|all|everything|looks|sounds|good|fine)';
+
+const ANY_CONFIRMATION_WORD = `(?:${CONFIRMATION_TOKEN}|${FILLER_TOKEN})`;
 
 const BARE_CONFIRMATION_PATTERN = new RegExp(
-  `^[\\s"'«»]*${CONFIRMATION_TOKEN}(?:[\\s,.:;!"'»]+${CONFIRMATION_TOKEN})*[\\s".,!:;»]*$`,
+  `^[\\s"'«»]*${ANY_CONFIRMATION_WORD}(?:[\\s,.:;!"'»]+${ANY_CONFIRMATION_WORD})*[\\s".,!:;»]*$`,
+  'iu',
+);
+
+/**
+ * Filler alone ("всё так") must not count as a confirmation, so at least one
+ * real affirmative has to be present. NB: JS \b is ASCII-only and never
+ * fires around Cyrillic — the boundaries here are letter lookarounds, which
+ * also keep "неверно" from matching on its "верно" tail.
+ */
+const HAS_CONFIRMATION_TOKEN = new RegExp(
+  `(?<!\\p{L})${CONFIRMATION_TOKEN}(?!\\p{L})`,
   'iu',
 );
 
@@ -28,7 +52,11 @@ const PENDING_WRITE_PROPOSAL_PATTERN =
 
 /** Is this message a short, content-free affirmative ("да", "подтверждаю", "yes, confirm")? */
 export function isBareConfirmationReply(text: string): boolean {
-  return BARE_CONFIRMATION_PATTERN.test(text.trim());
+  const trimmed = text.trim();
+  return (
+    BARE_CONFIRMATION_PATTERN.test(trimmed) &&
+    HAS_CONFIRMATION_TOKEN.test(trimmed)
+  );
 }
 
 /**

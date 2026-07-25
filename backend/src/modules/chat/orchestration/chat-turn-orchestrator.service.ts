@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import { ChatLlmService } from '../chat-llm.service';
@@ -8,6 +8,11 @@ import { ChatSessionEntity } from '../entities/chat-session.entity';
 import { ChatTurnPlan, ChatTurnPlanAsk } from '../planning/chat-turn-plan.types';
 import { ChatTurnPlannerService } from '../planning/chat-turn-planner.service';
 import { ChatTurnResponderKind } from '../planning/chat-turn-responder-kind.enum';
+import {
+  WRITE_TOOL_NAMES,
+  WRITE_CLAIM_UNVERIFIED_DISCLAIMER,
+  claimsRegisterWriteSuccess,
+} from '../../metrics/metric-understanding/write-claim-guard.util';
 import { ChatSemanticRoute } from '../routing/chat-semantic-router.types';
 import { ChatDocumentsResponderService } from '../responders/documents/chat-documents-responder.service';
 import { ChatInDevelopmentResponderService } from '../responders/chat-in-development-responder.service';
@@ -47,6 +52,8 @@ import {
 
 @Injectable()
 export class ChatTurnOrchestratorService {
+  private readonly logger = new Logger(ChatTurnOrchestratorService.name);
+
   /**
    * How many decomposed sub-asks run at once. Both providers handle 2 at
    * current account tiers (Anthropic verified at 2M input-tokens/min).
@@ -92,11 +99,53 @@ export class ChatTurnOrchestratorService {
     const result = await this.respondForPlan(input, plan);
     const chartLabels = await chartLabelsPromise;
     return {
-      content: result.content,
+      content: this.guardAgainstPhantomWriteClaim(result),
       ragflowContext: result.ragflowContext
         ? { ...result.ragflowContext, chartLabels }
         : { chartLabels },
     };
+  }
+
+
+  /**
+   * Last-resort honesty net over the FINAL answer, whichever responder wrote
+   * it. The analyzer has its own in-loop guard, but it only protects turns
+   * that reach the analyzer: a bare confirmation ("все верно") can land on
+   * the small-talk or PMS responder — neither has write tools or a guard —
+   * and the model happily replies "Задача создана! ✅" with nothing written.
+   * Observed live 2026-07-26: the crew confirmed a task, was told it was
+   * created, and it was nowhere in the register.
+   *
+   * So: if the composed answer claims a completed register write and no
+   * write tool actually succeeded anywhere in this turn, state that plainly
+   * instead of letting the claim stand.
+   */
+  private guardAgainstPhantomWriteClaim(result: {
+    content: string;
+    ragflowContext: Record<string, unknown> | null;
+  }): string {
+    const content = result.content ?? '';
+    if (!content.trim()) return content;
+    // The analyzer's own guard already appended this — don't stack it.
+    if (content.includes(WRITE_CLAIM_UNVERIFIED_DISCLAIMER)) return content;
+    if (!claimsRegisterWriteSuccess(content)) return content;
+
+    const askResults = Array.isArray(result.ragflowContext?.askResults)
+      ? (result.ragflowContext?.askResults as Array<{
+          data?: { otherToolCalls?: Array<{ tool?: string; ok?: boolean }> };
+        }>)
+      : [];
+    const writeSucceeded = askResults.some((ask) =>
+      (ask?.data?.otherToolCalls ?? []).some(
+        (call) => !!call?.tool && WRITE_TOOL_NAMES.has(call.tool) && call.ok === true,
+      ),
+    );
+    if (writeSucceeded) return content;
+
+    this.logger.warn(
+      'Phantom write claim: final answer claims a register write but no write tool succeeded this turn — appending the disclaimer.',
+    );
+    return `${content}\n\n${WRITE_CLAIM_UNVERIFIED_DISCLAIMER}`;
   }
 
   private async respondForPlan(
