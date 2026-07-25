@@ -18,6 +18,8 @@ export async function getChatSessions(
     search?: string;
     cursor?: string | null;
     limit?: number;
+    /** Scope the history to one vessel (admins switch ships constantly). */
+    shipId?: string | null;
   },
 ): Promise<ChatSessionListDto> {
   const searchParams = new URLSearchParams();
@@ -29,6 +31,9 @@ export async function getChatSessions(
   }
   if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
     searchParams.set("limit", `${params.limit}`);
+  }
+  if (params?.shipId) {
+    searchParams.set("shipId", params.shipId);
   }
 
   const path = searchParams.size

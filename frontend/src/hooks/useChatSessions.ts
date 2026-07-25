@@ -56,6 +56,8 @@ function mergeSessionPages(
 export function useChatSessions(
   token: string | null,
   searchQuery = "",
+  /** Active vessel — the list reloads when the user switches ships. */
+  activeShipId?: string | null,
 ) {
   const normalizedSearch = searchQuery.trim();
   const [state, setState] = useState<UseChatSessionsState>({
@@ -91,6 +93,7 @@ export function useChatSessions(
       const data = await getChatSessions(token, {
         search: normalizedSearch || undefined,
         limit: CHAT_SESSION_PAGE_SIZE,
+        shipId: activeShipId ?? undefined,
       });
       setState({
         sessions: sortChatSessions(data.sessions),
@@ -112,7 +115,7 @@ export function useChatSessions(
         error: message,
       });
     }
-  }, [normalizedSearch, token]);
+  }, [normalizedSearch, token, activeShipId]);
 
   useEffect(() => {
     void fetchFirstPage();
@@ -221,6 +224,7 @@ export function useChatSessions(
         search: normalizedSearch || undefined,
         cursor: state.nextCursor,
         limit: CHAT_SESSION_PAGE_SIZE,
+        shipId: activeShipId ?? undefined,
       });
       setState((prev) => ({
         ...prev,
@@ -241,6 +245,7 @@ export function useChatSessions(
     }
   }, [
     normalizedSearch,
+    activeShipId,
     state.hasMore,
     state.isLoading,
     state.isLoadingMore,

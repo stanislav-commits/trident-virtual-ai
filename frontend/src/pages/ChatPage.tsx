@@ -54,7 +54,7 @@ export function ChatPage() {
     pinSession,
     loadMoreSessions,
     refreshSessions,
-  } = useChatSessions(token, deferredSearchQuery);
+  } = useChatSessions(token, deferredSearchQuery, sessionShipId);
 
   const {
     messages,
@@ -248,6 +248,36 @@ export function ChatPage() {
       setActiveSessionTitle(null);
     }
   }, [sessions, activeSessionId]);
+
+  // Which vessel the OPEN chat belongs to. Captured from the list (legacy
+  // chats carry null and match every vessel) so it survives the refetch that
+  // a vessel switch triggers.
+  const openSessionShipRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!activeSessionId) {
+      openSessionShipRef.current = undefined;
+      return;
+    }
+    const found = sessions.find((session) => session.id === activeSessionId);
+    if (found) openSessionShipRef.current = found.shipId;
+  }, [sessions, activeSessionId]);
+
+  // Switching the active vessel means the user moved on to another ship.
+  // A chat that belongs to the PREVIOUS vessel must not stay open: the
+  // session's ship is fixed at creation and every answer would still be
+  // about the old vessel while the header shows the new one (reported live
+  // 2026-07-26 — switching demo → SeaWolf X changed nothing).
+  const previousShipRef = useRef(sessionShipId);
+  useEffect(() => {
+    const previous = previousShipRef.current;
+    previousShipRef.current = sessionShipId;
+    if (previous === sessionShipId || !activeSessionId) return;
+    const openShip = openSessionShipRef.current;
+    if (openShip && openShip !== sessionShipId) {
+      openSessionShipRef.current = undefined;
+      navigate(appRoutes.chats, { replace: true });
+    }
+  }, [sessionShipId, activeSessionId, navigate]);
 
   // Track unmount/session-change so a long-running pollForResponse loop
   // doesn't keep firing setState after the component is gone or the user

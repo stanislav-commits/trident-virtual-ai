@@ -65,6 +65,15 @@ export class ChatSessionsService {
       });
     }
 
+    // Legacy sessions carry no ship_id (chats predate vessel scoping); they
+    // are kept in every vessel's list rather than vanishing from the UI.
+    if (query.shipId) {
+      queryBuilder.andWhere(
+        '(session.ship_id = :shipId OR session.ship_id IS NULL)',
+        { shipId: query.shipId },
+      );
+    }
+
     const rows = await queryBuilder.getMany();
     const hasMore = rows.length > limit;
     const sessions = rows.slice(0, limit);
