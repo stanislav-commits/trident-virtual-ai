@@ -184,12 +184,20 @@ export interface ChatRagflowContextDto {
 }
 
 // Message from backend ChatMessage
+export interface ChatMessageAttachmentDto {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 export interface ChatMessageDto {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   ragflowContext?: ChatRagflowContextDto | null;
   contextReferences: ChatContextReferenceDto[];
+  attachments?: ChatMessageAttachmentDto[];
   createdAt: string;
   deletedAt?: string | null;
 }

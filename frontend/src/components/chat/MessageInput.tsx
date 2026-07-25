@@ -15,6 +15,10 @@ interface MessageInputProps {
   shipId?: string | null;
   disabled?: boolean;
   placeholder?: string;
+  /** "+ Attach photo" staging (photos ride with the next message). */
+  onAttachFiles?: (files: File[]) => void;
+  pendingFiles?: Array<{ file: File; previewUrl: string }>;
+  onRemovePending?: (index: number) => void;
 }
 
 export function MessageInput({
@@ -26,6 +30,9 @@ export function MessageInput({
   shipId,
   disabled = false,
   placeholder = 'Type a message...',
+  onAttachFiles,
+  pendingFiles = [],
+  onRemovePending,
 }: MessageInputProps) {
   const voice = useVoiceCaptureSession({ value, onChange, token, sessionId });
   const { isSessionActive, cancel } = voice;
@@ -36,13 +43,15 @@ export function MessageInput({
     }
   }, [cancel, disabled, isSessionActive]);
 
+  const canSend = Boolean(value.trim()) || pendingFiles.length > 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (value.trim()) onSend();
+    if (canSend) onSend();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && value.trim() && !disabled) {
+    if (e.key === 'Enter' && !e.shiftKey && canSend && !disabled) {
       e.preventDefault();
       onSend();
     }
@@ -50,8 +59,30 @@ export function MessageInput({
 
   return (
     <form className="chat-main__input-row" onSubmit={handleSubmit}>
+      {pendingFiles.length > 0 && (
+        <div className="chat-main__pending">
+          {pendingFiles.map((p, i) => (
+            <div key={p.previewUrl} className="chat-main__pending-chip">
+              <img src={p.previewUrl} alt={p.file.name} />
+              <button
+                type="button"
+                className="chat-main__pending-del"
+                aria-label={`Remove ${p.file.name}`}
+                onClick={() => onRemovePending?.(i)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="chat-main__capsule">
-        <QuickReportButton token={token} shipId={shipId} disabled={disabled} />
+        <QuickReportButton
+          token={token}
+          shipId={shipId}
+          disabled={disabled}
+          onAttachFiles={onAttachFiles}
+        />
         <input
           type="text"
           className="chat-main__input"
@@ -71,7 +102,7 @@ export function MessageInput({
         <button
           type="submit"
           className="chat-main__send chat-main__send--inside"
-          disabled={disabled || voice.isSessionActive || !value.trim()}
+          disabled={disabled || voice.isSessionActive || !canSend}
           aria-label="Send message"
         >
           <img src={sendIcon} alt="" className="chat-main__send-img" />

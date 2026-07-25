@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { reportDefect, uploadTaskPhoto } from "../../api/pmsApi";
+import { listAssets } from "../../api/assetsApi";
 
 /**
- * The chat's "+" quick-report entry — the messenger-style attach affordance
- * (same pattern MaintainX/UpKeep use for "report an issue", and IDEA Yacht's
- * Snag List): saw it → photographed it → it becomes an unplanned task in the
- * maintenance plan (defects also land in the defect register). Deliberately
- * few fields: type, what happened, department, photos.
+ * The chat's "+" attach menu — messenger-style. Two actions:
+ *  - attach photos/files to the AI conversation (handled by the parent via
+ *    onAttachFiles; the assistant SEES images),
+ *  - quick defect report (IDEA Yacht Snag List / MaintainX-style): saw it →
+ *    photographed it → one small form → defect register + unplanned task
+ *    with the photos attached. Deliberately few fields; optional asset link.
  */
-
-type ReportType = "defect" | "incident";
 
 const DEPARTMENTS = [
   { key: "", label: "—" },
@@ -19,18 +19,28 @@ const DEPARTMENTS = [
   { key: "galley", label: "Galley" },
 ];
 
+interface AssetSuggestion {
+  id: string;
+  assetIdInternal: string;
+  displayName: string;
+}
+
 export function QuickReportButton({
   token,
   shipId,
   disabled,
+  onAttachFiles,
 }: {
   token: string | null;
   shipId: string | null | undefined;
   disabled?: boolean;
+  /** "Attach to conversation" — files are handed to the chat composer. */
+  onAttachFiles?: (files: File[]) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [modalType, setModalType] = useState<ReportType | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const attachInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -50,47 +60,63 @@ export function QuickReportButton({
         className="qr__plus"
         onClick={() => setMenuOpen((o) => !o)}
         disabled={disabled}
-        aria-label="Quick actions"
-        title="Report a defect or incident"
+        aria-label="Attach or report"
+        title="Attach a photo or report a defect"
       >
         +
       </button>
       {menuOpen && (
         <div className="qr__menu" role="menu">
+          {onAttachFiles && (
+            <button
+              type="button"
+              className="qr__menu-item"
+              onClick={() => {
+                setMenuOpen(false);
+                attachInputRef.current?.click();
+              }}
+            >
+              📷 Attach photo or file
+              <span className="qr__menu-sub">
+                Add it to the conversation — the assistant will see it
+              </span>
+            </button>
+          )}
           <button
             type="button"
             className="qr__menu-item"
             onClick={() => {
               setMenuOpen(false);
-              setModalType("defect");
+              setModalOpen(true);
             }}
           >
             🔧 Report defect
             <span className="qr__menu-sub">
-              Breakage — goes to the defect register + maintenance plan
-            </span>
-          </button>
-          <button
-            type="button"
-            className="qr__menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setModalType("incident");
-            }}
-          >
-            ⚠️ Report incident
-            <span className="qr__menu-sub">
-              Occurrence needing follow-up — becomes an unplanned task
+              Breakage or issue — lands in the defect register + maintenance
+              plan with your photos
             </span>
           </button>
         </div>
       )}
-      {modalType && (
+      {onAttachFiles && (
+        <input
+          ref={attachInputRef}
+          type="file"
+          accept="image/*,.pdf"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            if (files.length) onAttachFiles(files);
+            e.target.value = "";
+          }}
+        />
+      )}
+      {modalOpen && (
         <QuickReportModal
           token={token}
           shipId={shipId}
-          type={modalType}
-          onClose={() => setModalType(null)}
+          onClose={() => setModalOpen(false)}
         />
       )}
     </div>
@@ -100,12 +126,10 @@ export function QuickReportButton({
 function QuickReportModal({
   token,
   shipId,
-  type,
   onClose,
 }: {
   token: string;
   shipId: string;
-  type: ReportType;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState("");
@@ -120,6 +144,33 @@ function QuickReportModal({
     photos: number;
     failedPhotos: number;
   } | null>(null);
+
+  // Optional equipment link — debounced search over the asset register.
+  const [assetQuery, setAssetQuery] = useState("");
+  const [assetOptions, setAssetOptions] = useState<AssetSuggestion[]>([]);
+  const [asset, setAsset] = useState<AssetSuggestion | null>(null);
+  const [assetOpen, setAssetOpen] = useState(false);
+
+  useEffect(() => {
+    if (asset || assetQuery.trim().length < 2) {
+      setAssetOptions([]);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      listAssets(token, shipId, { search: assetQuery.trim(), limit: 8 })
+        .then((r) =>
+          setAssetOptions(
+            r.items.map((a) => ({
+              id: a.id,
+              assetIdInternal: a.assetIdInternal,
+              displayName: a.displayName,
+            })),
+          ),
+        )
+        .catch(() => setAssetOptions([]));
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [assetQuery, asset, token, shipId]);
 
   useEffect(() => {
     const urls = files.map((f) => URL.createObjectURL(f));
@@ -141,10 +192,11 @@ function QuickReportModal({
     setError("");
     try {
       const created = await reportDefect(token, shipId, {
-        type,
+        type: "defect",
         title: title.trim(),
         description: details.trim() || null,
         department: department || null,
+        assetId: asset?.id ?? null,
       });
       let uploaded = 0;
       let failed = 0;
@@ -175,14 +227,16 @@ function QuickReportModal({
         {done ? (
           <>
             <div className="qr__done-icon">✅</div>
-            <h3 className="qr__title">
-              {type === "defect" ? "Defect logged" : "Incident logged"}
-            </h3>
+            <h3 className="qr__title">Defect logged</h3>
             <p className="qr__done-text">
               Unplanned task <strong>{done.taskCode ?? "created"}</strong> is in
-              the maintenance plan
-              {type === "defect" ? " and the defect register" : ""}.
-              {done.photos > 0 && <> {done.photos} photo(s) attached.</>}
+              the maintenance plan and the defect register
+              {asset ? (
+                <>
+                  , linked to <strong>{asset.displayName}</strong>
+                </>
+              ) : null}
+              .{done.photos > 0 && <> {done.photos} photo(s) attached.</>}
               {done.failedPhotos > 0 && (
                 <>
                   {" "}
@@ -201,9 +255,7 @@ function QuickReportModal({
           </>
         ) : (
           <>
-            <h3 className="qr__title">
-              {type === "defect" ? "🔧 Report defect" : "⚠️ Report incident"}
-            </h3>
+            <h3 className="qr__title">🔧 Report defect</h3>
             <input
               className="qr__input"
               placeholder="What happened? (short title)"
@@ -221,6 +273,61 @@ function QuickReportModal({
               onChange={(e) => setDetails(e.target.value)}
               disabled={busy}
             />
+
+            <div className="qr__row">
+              <span className="qr__label">Equipment (optional)</span>
+              {asset ? (
+                <div className="qr__asset-picked">
+                  <span className="qr__asset-code">{asset.assetIdInternal}</span>
+                  <span className="qr__asset-name">{asset.displayName}</span>
+                  <button
+                    type="button"
+                    className="qr__asset-clear"
+                    onClick={() => {
+                      setAsset(null);
+                      setAssetQuery("");
+                    }}
+                    aria-label="Clear equipment"
+                    disabled={busy}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <div className="qr__asset-search">
+                  <input
+                    className="qr__input"
+                    placeholder="Search the asset register — e.g. fan, compressor, DG1…"
+                    value={assetQuery}
+                    onChange={(e) => {
+                      setAssetQuery(e.target.value);
+                      setAssetOpen(true);
+                    }}
+                    onFocus={() => setAssetOpen(true)}
+                    disabled={busy}
+                  />
+                  {assetOpen && assetOptions.length > 0 && (
+                    <div className="qr__asset-options">
+                      {assetOptions.map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          className="qr__asset-option"
+                          onClick={() => {
+                            setAsset(a);
+                            setAssetOpen(false);
+                          }}
+                        >
+                          <span className="qr__asset-code">{a.assetIdInternal}</span>
+                          <span className="qr__asset-name">{a.displayName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="qr__row">
               <span className="qr__label">Department</span>
               <div className="qr__chips">
@@ -296,9 +403,8 @@ function QuickReportModal({
               </button>
             </div>
             <p className="qr__hint">
-              {type === "defect"
-                ? "Lands in the defect register and the maintenance plan as an unplanned task, with your photos attached."
-                : "Becomes an unplanned task in the maintenance plan, with your photos attached."}
+              Lands in the defect register and the maintenance plan as an
+              unplanned task, with your photos attached.
             </p>
           </>
         )}

@@ -12,6 +12,7 @@ import { ChatController } from './chat.controller';
 import { ChatDailyBriefService } from './chat-daily-brief.service';
 import { ChatLlmService } from './chat-llm.service';
 import { ChatMessagesService } from './chat-messages.service';
+import { ChatAttachmentStorageService } from './chat-attachment-storage.service';
 import { ChatUiLabelsService } from './chat-ui-labels.service';
 import { ChatSessionsService } from './chat-sessions.service';
 import { ChatConversationContextService } from './context/chat-conversation-context.service';
@@ -66,6 +67,7 @@ import { ChatVoiceTranscriptionService } from './voice/chat-voice-transcription.
   providers: [
     ChatSessionsService,
     ChatMessagesService,
+    ChatAttachmentStorageService,
     ChatLlmService,
     ChatUiLabelsService,
     ChatContextMemoryService,

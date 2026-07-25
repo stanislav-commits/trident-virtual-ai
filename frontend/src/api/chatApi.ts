@@ -79,10 +79,19 @@ export async function createChatSession(
   return res.json();
 }
 
+export interface ChatAttachmentMeta {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  provider?: string;
+}
+
 export async function sendChatMessage(
   sessionId: string,
   content: string,
   token: string,
+  attachments?: ChatAttachmentMeta[],
 ): Promise<ChatMessageDto> {
   const res = await fetchWithAuth(
     chatApiPath(`sessions/${sessionId}/messages`),
@@ -90,7 +99,10 @@ export async function sendChatMessage(
       token,
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: content.trim() }),
+      body: JSON.stringify({
+        content: content.trim(),
+        ...(attachments?.length ? { attachments } : {}),
+      }),
     },
   );
   if (!res.ok) {
@@ -98,6 +110,39 @@ export async function sendChatMessage(
     throw new Error(err.message ?? "Failed to send message");
   }
   return res.json();
+}
+
+/** Upload one photo for the NEXT message in this session ("+ attach"). */
+export async function uploadChatAttachment(
+  sessionId: string,
+  file: File,
+  token: string,
+): Promise<ChatAttachmentMeta> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetchWithAuth(
+    chatApiPath(`sessions/${sessionId}/attachments`),
+    { token, method: "POST", body: form },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to upload attachment");
+  }
+  return res.json();
+}
+
+/** Bearer-authenticated attachment bytes → object URL for <img>. */
+export async function fetchChatAttachmentObjectUrl(
+  sessionId: string,
+  attachmentId: string,
+  token: string,
+): Promise<string> {
+  const res = await fetchWithAuth(
+    chatApiPath(`sessions/${sessionId}/attachments/${attachmentId}`),
+    { token },
+  );
+  if (!res.ok) throw new Error("Failed to load attachment");
+  return URL.createObjectURL(await res.blob());
 }
 
 export async function getChatMessages(

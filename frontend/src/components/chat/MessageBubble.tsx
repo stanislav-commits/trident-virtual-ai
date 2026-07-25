@@ -1,4 +1,5 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -10,8 +11,10 @@ import type {
   ChatMessageDto,
   ChatContextReferenceDto,
   ChatSuggestionActionDto,
+  ChatMessageAttachmentDto,
 } from "../../types/chat";
 import { useAuth } from "../../context/AuthContext";
+import { fetchChatAttachmentObjectUrl } from "../../api/chatApi";
 import ChatChartBlock from "./ChatChartBlock";
 import ChatMapBlock from "./ChatMapBlock";
 import ChatTableBlock from "./ChatTableBlock";
@@ -298,6 +301,48 @@ function useMdComponents(
   );
 }
 
+/** Bearer-authenticated thumbnail of a photo the user attached ("+ attach").
+ *  Session id comes from the route — attachments are session-scoped. */
+function UserAttachmentThumb({
+  attachment,
+  token,
+}: {
+  attachment: ChatMessageAttachmentDto;
+  token: string | null;
+}) {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!token || !sessionId) return;
+    let objectUrl: string | null = null;
+    let alive = true;
+    void fetchChatAttachmentObjectUrl(sessionId, attachment.id, token)
+      .then((u) => {
+        objectUrl = u;
+        if (alive) setUrl(u);
+        else URL.revokeObjectURL(u);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [token, sessionId, attachment.id]);
+
+  if (!url) return <div className="chat-message__attachment chat-message__attachment--loading">…</div>;
+  return (
+    <a
+      className="chat-message__attachment"
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      title={attachment.name}
+    >
+      <img src={url} alt={attachment.name} />
+    </a>
+  );
+}
+
 export function MessageBubble({
   message,
   isLoading = false,
@@ -474,6 +519,14 @@ export function MessageBubble({
           <TaskMessageCard card={taskCard} />
         ) : (
           content.trim()
+        )}
+
+        {role === "user" && (message.attachments?.length ?? 0) > 0 && (
+          <div className="chat-message__attachments">
+            {message.attachments!.map((att) => (
+              <UserAttachmentThumb key={att.id} attachment={att} token={token} />
+            ))}
+          </div>
         )}
 
         {role === "assistant" && charts.length > 0 && (

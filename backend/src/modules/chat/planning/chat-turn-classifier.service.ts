@@ -81,6 +81,21 @@ export class ChatTurnClassifierService {
       `Classifier picked intent=${parsed.intent} for "${input.question.slice(0, 120)}"`,
     );
 
+    // A message with photo attachments must reach the metric ANALYZER — it
+    // is the only responder with vision (the image is injected into its
+    // first user turn). Whatever the text classified as, an attached photo
+    // of a part/gauge/leak is a question about THIS vessel.
+    if (
+      (input.context.latestUserMessage?.attachments?.length ?? 0) > 0 &&
+      parsed.intent !== ChatTurnIntent.LIVE_METRICS &&
+      parsed.intent !== ChatTurnIntent.HISTORICAL_METRICS
+    ) {
+      this.logger.log(
+        'Attachment present — overriding intent to live_metrics (vision-capable responder)',
+      );
+      return { ...parsed, intent: ChatTurnIntent.LIVE_METRICS };
+    }
+
     return this.overrideIntentForVesselSignals(
       parsed,
       input.question,

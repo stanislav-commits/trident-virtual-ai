@@ -16,6 +16,7 @@ import {
   getChatSessions,
   regenerateChatResponse,
   sendChatMessage,
+  uploadChatAttachment,
 } from "../api/chatApi";
 import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
@@ -347,10 +348,39 @@ export function ChatPage() {
     [addMessage, refreshSessions, token],
   );
 
+  // Photos staged via the "+" menu, sent with the next message (the
+  // assistant sees them through Claude vision). Object URLs previewed in
+  // chips above the input; uploaded only at send time.
+  const [pendingFiles, setPendingFiles] = useState<
+    Array<{ file: File; previewUrl: string }>
+  >([]);
+  const addPendingFiles = useCallback((files: File[]) => {
+    setPendingFiles((prev) =>
+      [
+        ...prev,
+        ...files
+          .filter((f) => f.type.startsWith("image/"))
+          .map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
+      ].slice(0, 5),
+    );
+  }, []);
+  const removePendingFile = useCallback((index: number) => {
+    setPendingFiles((prev) => {
+      const target = prev[index];
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
   const handleSend = useCallback(
     async (textOverride?: string) => {
       const textToSend = textOverride || inputValue;
-      if (!textToSend.trim() || isSending || isWaitingForResponse) {
+      const filesToSend = textOverride ? [] : pendingFiles;
+      if (
+        (!textToSend.trim() && filesToSend.length === 0) ||
+        isSending ||
+        isWaitingForResponse
+      ) {
         return;
       }
 
@@ -379,14 +409,27 @@ export function ChatPage() {
           navigate(appRoutes.chatSession(currentSessionId), { replace: true });
         }
 
+        // Upload staged photos first — their metadata rides on the message.
+        const attachments = [];
+        for (const { file } of filesToSend) {
+          attachments.push(
+            await uploadChatAttachment(currentSessionId, file, token!),
+          );
+        }
+
         setIsWaitingForResponse(true);
         clearTitleWatchTimer();
         setTitleWatch(true);
         const userMessage = await sendChatMessage(
           currentSessionId,
-          textToSend,
+          textToSend.trim() || "Photo attached.",
           token!,
+          attachments,
         );
+        if (filesToSend.length > 0) {
+          filesToSend.forEach((f) => URL.revokeObjectURL(f.previewUrl));
+          setPendingFiles([]);
+        }
         addMessage(userMessage);
         setIsSending(false);
         pollForResponse(currentSessionId, userMessage.id);
@@ -405,6 +448,7 @@ export function ChatPage() {
       clearTitleWatchTimer,
       createSession,
       inputValue,
+      pendingFiles,
       isSending,
       isWaitingForResponse,
       navigate,
@@ -657,6 +701,9 @@ export function ChatPage() {
                 token={token}
                 sessionId={activeSessionId}
                 shipId={sessionShipId}
+                onAttachFiles={addPendingFiles}
+                pendingFiles={pendingFiles}
+                onRemovePending={removePendingFile}
                 disabled={isDisabled}
                 placeholder="Type a message..."
               />
@@ -714,6 +761,9 @@ export function ChatPage() {
                 token={token}
                 sessionId={activeSessionId}
                 shipId={sessionShipId}
+                onAttachFiles={addPendingFiles}
+                pendingFiles={pendingFiles}
+                onRemovePending={removePendingFile}
                 disabled={isDisabled}
                 placeholder="Start a new conversation..."
               />

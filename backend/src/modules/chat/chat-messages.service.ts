@@ -18,6 +18,8 @@ import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ChatTurnOrchestratorService } from './orchestration/chat-turn-orchestrator.service';
 import { sanitizeContextReferencesForClient } from './orchestration/chat-context-reference-sanitizer.util';
 import { ChatProgressBus } from './progress/chat-progress.bus';
+import { ChatAttachmentStorageService } from './chat-attachment-storage.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ChatMessagesService {
@@ -31,7 +33,75 @@ export class ChatMessagesService {
     private readonly chatContextMemoryService: ChatContextMemoryService,
     private readonly chatTurnOrchestratorService: ChatTurnOrchestratorService,
     private readonly chatProgressBus: ChatProgressBus,
+    private readonly attachmentStorage: ChatAttachmentStorageService,
   ) {}
+
+  private static readonly MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // Anthropic vision limit
+  private static readonly ALLOWED_ATTACHMENT_MIME =
+    /^image\/(jpeg|png|webp|heic|heif|gif)$/i;
+
+  /** Store an image for the next message in this session; the client echoes
+   *  the returned metadata back on send (whitelist-validated there). */
+  async uploadAttachment(
+    user: AuthenticatedUser,
+    sessionId: string,
+    file: { originalname?: string; mimetype?: string; size?: number; buffer?: Buffer },
+  ) {
+    const session = await this.chatSessionsService.findAccessibleSessionOrThrow(
+      user,
+      sessionId,
+    );
+    if (!ChatMessagesService.ALLOWED_ATTACHMENT_MIME.test(file.mimetype ?? '')) {
+      throw new BadRequestException(
+        'only image files are supported (jpeg, png, webp, heic, gif)',
+      );
+    }
+    if ((file.size ?? 0) > ChatMessagesService.MAX_ATTACHMENT_BYTES) {
+      throw new BadRequestException('image is larger than 5 MB');
+    }
+    const id = randomUUID();
+    const provider = await this.attachmentStorage.save(
+      session.id,
+      id,
+      file.buffer!,
+      file.mimetype ?? 'application/octet-stream',
+    );
+    return {
+      id,
+      name: (file.originalname ?? 'photo').slice(0, 200),
+      mimeType: file.mimetype ?? 'application/octet-stream',
+      sizeBytes: file.size ?? 0,
+      provider,
+    };
+  }
+
+  /** Read an attachment's bytes for display (bearer-authenticated <img>). */
+  async getAttachment(
+    user: AuthenticatedUser,
+    sessionId: string,
+    attachmentId: string,
+  ): Promise<{ buffer: Buffer; mimeType: string; name: string }> {
+    const session = await this.chatSessionsService.findAccessibleSessionOrThrow(
+      user,
+      sessionId,
+    );
+    // Metadata (mime/name/provider) lives on the message that carries it.
+    const row = await this.chatMessagesRepository
+      .createQueryBuilder('m')
+      .where('m.session_id = :sessionId', { sessionId: session.id })
+      .andWhere(`m.attachments @> :probe::jsonb`, {
+        probe: JSON.stringify([{ id: attachmentId }]),
+      })
+      .getOne();
+    const meta = row?.attachments?.find((a) => a.id === attachmentId);
+    if (!meta) throw new NotFoundException('attachment not found');
+    const buffer = await this.attachmentStorage.read(
+      meta.provider,
+      session.id,
+      meta.id,
+    );
+    return { buffer, mimeType: meta.mimeType, name: meta.name };
+  }
 
   async list(user: AuthenticatedUser, sessionId: string) {
     const session = await this.chatSessionsService.findAccessibleSessionOrThrow(
@@ -62,11 +132,30 @@ export class ChatMessagesService {
       sessionId,
     );
     const normalizedContent = this.normalizeContent(input.content);
+    // Attachment metadata is client-echoed from the upload endpoint —
+    // whitelist-validate the bits that matter (id shape, image mime,
+    // provider) instead of trusting it wholesale.
+    const attachments = (input.attachments ?? [])
+      .filter(
+        (a) =>
+          /^[0-9a-f-]{36}$/i.test(a.id) &&
+          /^image\/(jpeg|png|webp|heic|heif|gif)$/i.test(a.mimeType) &&
+          (a.provider === 'local' || a.provider === 'spaces'),
+      )
+      .slice(0, 5)
+      .map((a) => ({
+        id: a.id,
+        name: (a.name || 'photo').slice(0, 200),
+        mimeType: a.mimeType,
+        sizeBytes: a.sizeBytes ?? 0,
+        provider: a.provider as 'local' | 'spaces',
+      }));
     const message = this.chatMessagesRepository.create({
       sessionId: session.id,
       role: ChatMessageRole.USER,
       content: normalizedContent,
       ragflowContext: null,
+      attachments,
     });
     const savedMessage = await this.chatMessagesRepository.save(message);
 

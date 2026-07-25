@@ -47,13 +47,15 @@ interface AnthropicTool {
 }
 
 interface AnthropicContentBlock {
-  type: 'text' | 'tool_use' | 'tool_result';
+  type: 'text' | 'tool_use' | 'tool_result' | 'image';
   text?: string;
   id?: string;
   name?: string;
   input?: Record<string, unknown>;
   tool_use_id?: string;
   content?: string | Array<{ type: 'text'; text: string }>;
+  /** For type:'image' — inline base64 vision input. */
+  source?: { type: 'base64'; media_type: string; data: string };
   cache_control?: { type: 'ephemeral' };
 }
 
@@ -380,7 +382,24 @@ function convertMessagesToAnthropic(messages: ChatMessage[]): AnthropicMessage[]
 
   for (const m of messages) {
     if (m.role === 'user') {
-      out.push({ role: 'user', content: m.content });
+      // Neutral user blocks → Anthropic blocks (text + base64 image vision).
+      out.push({
+        role: 'user',
+        content: Array.isArray(m.content)
+          ? m.content.map((b): AnthropicContentBlock =>
+              b.type === 'image_base64'
+                ? {
+                    type: 'image',
+                    source: {
+                      type: 'base64',
+                      media_type: b.mediaType,
+                      data: b.data,
+                    },
+                  }
+                : { type: 'text', text: b.text },
+            )
+          : m.content,
+      });
       continue;
     }
 

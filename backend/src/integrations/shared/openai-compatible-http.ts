@@ -86,8 +86,16 @@ export async function createOpenAiCompatibleChatCompletion(
 // return a text reply OR a list of tool_calls that the caller must execute
 // and feed back into a follow-up call.
 
+/** Provider-neutral user content block — a text run or an inline image.
+ *  Serialized per provider: Anthropic image blocks (vision) or OpenAI
+ *  image_url data URIs. Only USER messages may carry blocks. */
+export type UserContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image_base64'; mediaType: string; data: string };
+
 export type ChatMessage =
-  | { role: 'system' | 'user'; content: string }
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string | UserContentBlock[] }
   | { role: 'assistant'; content: string | null; tool_calls?: OpenAiToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string };
 
@@ -127,6 +135,25 @@ export interface OpenAiCompatibleToolCallResult {
   cacheReadInputTokens?: number;
 }
 
+/** User content blocks → OpenAI wire shape (text runs + image_url data
+ *  URIs). String content and non-user roles pass through unchanged. */
+function toOpenAiWireMessage(m: ChatMessage): Record<string, unknown> {
+  if (m.role === 'user' && Array.isArray(m.content)) {
+    return {
+      role: 'user',
+      content: m.content.map((b) =>
+        b.type === 'image_base64'
+          ? {
+              type: 'image_url',
+              image_url: { url: `data:${b.mediaType};base64,${b.data}` },
+            }
+          : { type: 'text', text: b.text },
+      ),
+    };
+  }
+  return m as unknown as Record<string, unknown>;
+}
+
 export async function createOpenAiCompatibleToolCallCompletion(
   input: OpenAiCompatibleToolCallInput,
 ): Promise<OpenAiCompatibleToolCallResult> {
@@ -140,7 +167,7 @@ export async function createOpenAiCompatibleToolCallCompletion(
       model: input.model,
       ...buildTemperatureParam(input.model, input.temperature ?? 0.1),
       ...buildTokenLimitParam(input.model, input.maxTokens ?? 800),
-      messages: input.messages,
+      messages: input.messages.map(toOpenAiWireMessage),
       tools: input.tools,
       tool_choice: 'auto',
     }),

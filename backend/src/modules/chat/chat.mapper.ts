@@ -21,6 +21,12 @@ export interface ChatMessageResponseDto {
   content: string;
   ragflowContext: Record<string, unknown> | null;
   contextReferences: ChatContextReferenceResponseDto[];
+  attachments: Array<{
+    id: string;
+    name: string;
+    mimeType: string;
+    sizeBytes: number;
+  }>;
   createdAt: string;
   deletedAt: string | null;
 }
@@ -53,6 +59,9 @@ export function toChatMessageResponse(
     content: entity.content,
     ragflowContext: sanitizedRagflowContext,
     contextReferences,
+    attachments: (entity.attachments ?? []).map(
+      ({ id, name, mimeType, sizeBytes }) => ({ id, name, mimeType, sizeBytes }),
+    ),
     createdAt: entity.createdAt.toISOString(),
     deletedAt: entity.deletedAt ? entity.deletedAt.toISOString() : null,
   };

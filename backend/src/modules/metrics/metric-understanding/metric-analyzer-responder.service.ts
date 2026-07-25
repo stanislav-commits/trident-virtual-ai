@@ -180,6 +180,8 @@ export class MetricAnalyzerResponderService {
       onTextDelta?: (delta: string | null) => void;
       /** The chat user on whose behalf write tools act (completion history). */
       actorUserId?: string;
+      /** Photos attached to the question — injected as vision blocks. */
+      images?: Array<{ mediaType: string; dataBase64: string }>;
     },
   ): Promise<AnswerQuestionResult> {
     const t0 = Date.now();
@@ -269,7 +271,21 @@ export class MetricAnalyzerResponderService {
           'CURRENT DATE above — never use your training-data year. ' +
           'For absolute Flux times, anchor the year to the current date.',
       },
-      { role: 'user', content: question.trim() },
+      // Attached photos ride as vision blocks ahead of the question text —
+      // the model SEES what the crew photographed (broken part, gauge, leak).
+      opts?.images?.length
+        ? {
+            role: 'user',
+            content: [
+              ...opts.images.map((img) => ({
+                type: 'image_base64' as const,
+                mediaType: img.mediaType,
+                data: img.dataBase64,
+              })),
+              { type: 'text' as const, text: question.trim() },
+            ],
+          }
+        : { role: 'user', content: question.trim() },
     ];
 
     const audit: ToolCallAudit[] = [];

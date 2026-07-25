@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { MetricAnalyzerResponderService } from '../../metrics/metric-understanding/metric-analyzer-responder.service';
 import { ChatContextQueryResolverService } from '../context/chat-context-query-resolver.service';
 import { ChatProgressBus } from '../progress/chat-progress.bus';
+import { ChatAttachmentStorageService } from '../chat-attachment-storage.service';
 import {
   ChatTurnResponderInput,
   ChatTurnResponderOutput,
@@ -16,6 +17,7 @@ export class ChatMetricAnalyzerResponderService {
     private readonly metricAnalyzerResponderService: MetricAnalyzerResponderService,
     private readonly chatContextQueryResolverService: ChatContextQueryResolverService,
     private readonly chatProgressBus: ChatProgressBus,
+    private readonly attachmentStorage: ChatAttachmentStorageService,
   ) {}
 
   async respond(input: ChatTurnResponderInput): Promise<ChatTurnResponderOutput> {
@@ -58,6 +60,29 @@ export class ChatMetricAnalyzerResponderService {
       }
     }
 
+    // Photos attached to the triggering message → base64 vision blocks.
+    // Loaded here (not in the analyzer) so the storage dependency stays in
+    // the chat module; a read failure degrades to a text-only answer.
+    const attachments = input.context.latestUserMessage?.attachments ?? [];
+    const images: Array<{ mediaType: string; dataBase64: string }> = [];
+    for (const att of attachments.slice(0, 5)) {
+      try {
+        const buffer = await this.attachmentStorage.read(
+          att.provider,
+          input.session.id,
+          att.id,
+        );
+        images.push({
+          mediaType: att.mimeType,
+          dataBase64: buffer.toString('base64'),
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Attachment ${att.id} unreadable — answering without it: ${formatError(err)}`,
+        );
+      }
+    }
+
     try {
       const result = await this.metricAnalyzerResponderService.answer(
         input.session.shipId,
@@ -72,6 +97,7 @@ export class ChatMetricAnalyzerResponderService {
           // Write tools (complete_maintenance_task) snapshot WHO acted —
           // the chat session's owner is the acting crew member.
           actorUserId: input.session.userId,
+          images: images.length ? images : undefined,
         },
       );
 
