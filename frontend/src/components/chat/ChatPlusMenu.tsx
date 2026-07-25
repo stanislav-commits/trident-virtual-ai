@@ -64,12 +64,20 @@ export function ChatPlusMenu({
   canManageVessel,
   onAttachFiles,
   onOpenPanel,
+  placement = "up",
 }: {
   disabled?: boolean;
   /** Master/Chief-officer-only actions (documents) are hidden otherwise. */
   canManageVessel?: boolean;
   onAttachFiles?: (files: File[]) => void;
   onOpenPanel: (action: ChatPanelAction) => void;
+  /**
+   * Which way the menu opens. In a live chat the composer sits at the bottom
+   * of the screen so the menu goes "up"; on the new-chat welcome screen the
+   * composer is centred and opening up would cover the branding, so it
+   * drops "down" instead.
+   */
+  placement?: "up" | "down";
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -107,12 +115,14 @@ export function ChatPlusMenu({
         +
       </button>
       {open && (
-        <div className="cpm__menu" role="menu">
+        <div
+          className={`cpm__menu${placement === "down" ? " cpm__menu--down" : ""}`}
+          role="menu"
+        >
           {onAttachFiles && (
             <button type="button" className="cpm__item" onClick={() => { setOpen(false); fileRef.current?.click(); }}>
               <span className="cpm__ico"><Paperclip /></span>
               <span className="cpm__label">Add files or photos</span>
-              <span className="cpm__hint">talk about it</span>
             </button>
           )}
           <div className="cpm__sep" />

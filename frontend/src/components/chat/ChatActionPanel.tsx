@@ -288,6 +288,7 @@ function WorkOrderForm({
   const [department, setDepartment] = useState("");
   const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("medium");
   const [dueDate, setDueDate] = useState("");
+  const [asset, setAsset] = useState<AssetSuggestion | null>(null);
   const { files, setFiles, previews } = usePhotoState();
   const [crew, setCrew] = useState<CrewMemberDto[]>([]);
   const [busy, setBusy] = useState(false);
@@ -329,7 +330,11 @@ function WorkOrderForm({
     try {
       const task = await createPmsTask(token, shipId, {
         task: title.trim(),
-        board: "general",
+        // Equipment work belongs on the maintenance plan; people-directed
+        // chores stay on the general Tasks board (same split the assistant's
+        // create_maintenance_task tool enforces server-side).
+        board: asset ? "maintenance" : "general",
+        assetIds: asset ? [asset.id] : undefined,
         planning: "unplanned",
         priority,
         department: department || null,
@@ -356,12 +361,13 @@ function WorkOrderForm({
     const who = assignable.find((c) => c.accountUserId === assigneeUserId);
     return (
       <Done
-        text={`Work order ${done.taskCode ?? ""} created on the Tasks board${who ? `, assigned to ${who.name}` : ""}. It appears in their tasks.`}
+        text={`Work order ${done.taskCode ?? ""} created on the ${asset ? "maintenance plan" : "Tasks board"}${asset ? ` for ${asset.displayName}` : ""}${who ? `, assigned to ${who.name}` : ""}. It appears in their tasks.`}
         onClose={() => {
           setDone(null);
           setTitle("");
           setDetails("");
           setAssigneeUserId("");
+          setAsset(null);
           setFiles([]);
         }}
       />
@@ -387,6 +393,23 @@ function WorkOrderForm({
         onChange={(e) => setDetails(e.target.value)}
         disabled={busy}
       />
+      <div className="capanel__field">
+        <span className="capanel__label">Equipment (optional)</span>
+        {token && shipId && (
+          <AssetPicker
+            token={token}
+            shipId={shipId}
+            asset={asset}
+            onPick={setAsset}
+            onClear={() => setAsset(null)}
+            disabled={busy}
+          />
+        )}
+        <span className="capanel__hint">
+          Linking equipment files this on the maintenance plan instead of the
+          general Tasks board.
+        </span>
+      </div>
       <div className="capanel__field">
         <span className="capanel__label">Department</span>
         <div className="capanel__chips">

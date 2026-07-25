@@ -800,6 +800,7 @@ export function ChatPage() {
                 onRemovePending={removePendingFile}
                 onOpenPanel={openActionPanel}
                 canManageVessel={canManageVessel}
+                menuPlacement="down"
                 disabled={isDisabled}
                 placeholder="Start a new conversation..."
               />

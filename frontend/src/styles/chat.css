@@ -808,8 +808,11 @@
 .chat-main__input-row {
   padding: 12px 56px 32px;
   display: flex;
-  gap: 12px;
-  align-items: center;
+  /* column so staged attachments stack ABOVE the composer, full width —
+     as a row they rendered as a narrow block to the left of the capsule. */
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
   max-width: 900px;
   margin: 0 auto;
   animation: inputBarSlideUp 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
@@ -4594,6 +4597,7 @@
   border: 1px solid var(--chat-border-strong); border-radius: 14px;
   box-shadow: 0 12px 40px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 1px;
 }
+.cpm__menu--down { bottom: auto; top: 44px; }
 .cpm__sep { height: 1px; background: var(--chat-border); margin: 6px 4px; }
 .cpm__item {
   display: flex; align-items: center; gap: 12px; width: 100%;

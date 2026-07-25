@@ -21,6 +21,8 @@ interface MessageInputProps {
   onOpenPanel?: (action: ChatPanelAction) => void;
   /** Master/Chief-officer-only actions (Add document) shown when true. */
   canManageVessel?: boolean;
+  /** "down" on the centred new-chat composer, "up" in a live chat. */
+  menuPlacement?: 'up' | 'down';
 }
 
 export function MessageInput({
@@ -36,6 +38,7 @@ export function MessageInput({
   onRemovePending,
   onOpenPanel,
   canManageVessel,
+  menuPlacement,
 }: MessageInputProps) {
   const voice = useVoiceCaptureSession({ value, onChange, token, sessionId });
   const { isSessionActive, cancel } = voice;
@@ -86,6 +89,7 @@ export function MessageInput({
             canManageVessel={canManageVessel}
             onAttachFiles={onAttachFiles}
             onOpenPanel={onOpenPanel}
+            placement={menuPlacement}
           />
         )}
         <input
