@@ -14,6 +14,8 @@ export interface CrewMemberDto {
   // login linkage
   hasLogin: boolean;
   loginUserId: string | null;
+  /** users.id (uuid) — the assignee id for work orders; null if no login. */
+  accountUserId: string | null;
 }
 
 export interface LoginCredentials {

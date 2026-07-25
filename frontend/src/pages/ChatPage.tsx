@@ -27,6 +27,8 @@ import type { Alert } from "../api/alertsApi";
 import type { PmsTaskDto } from "../api/pmsApi";
 import { MessageInput } from "../components/chat/MessageInput";
 import { MessageList } from "../components/chat/MessageList";
+import { ChatActionPanel } from "../components/chat/ChatActionPanel";
+import type { ChatPanelAction } from "../components/chat/ChatPlusMenu";
 import logoImg from "../assets/logo-home.png";
 import { appRoutes } from "../utils/routes";
 import type { ChatContextReferenceDto } from "../types/chat";
@@ -372,6 +374,29 @@ export function ChatPage() {
     });
   }, []);
 
+  // Right-side action panel ("+" menu → work order / defect / document /
+  // parts). Same slide/closing pattern as the PMS/alerts panels.
+  const [actionPanel, setActionPanel] = useState<ChatPanelAction | null>(null);
+  const [actionClosing, setActionClosing] = useState(false);
+  const actionTimer = useRef<number | null>(null);
+  const openActionPanel = useCallback((a: ChatPanelAction) => {
+    if (actionTimer.current) {
+      window.clearTimeout(actionTimer.current);
+      actionTimer.current = null;
+    }
+    setActionClosing(false);
+    setActionPanel(a);
+  }, []);
+  const closeActionPanel = useCallback(() => {
+    setActionClosing(true);
+    actionTimer.current = window.setTimeout(() => {
+      setActionPanel(null);
+      setActionClosing(false);
+      actionTimer.current = null;
+    }, 400);
+  }, []);
+  const canManageVessel = user?.role === "admin";
+
   const handleSend = useCallback(
     async (textOverride?: string) => {
       const textToSend = textOverride || inputValue;
@@ -680,7 +705,7 @@ export function ChatPage() {
 
         {activeSessionId ? (
           <div
-            className={`chat-main__workspace${sourcesPanelCitations || showPms || pmsClosing || showAlerts || alertsClosing ? " chat-main__workspace--with-panel" : ""}`}
+            className={`chat-main__workspace${sourcesPanelCitations || showPms || pmsClosing || showAlerts || alertsClosing || actionPanel ? " chat-main__workspace--with-panel" : ""}`}
           >
             <div className="chat-main__stars" aria-hidden />
             <section className="chat-main__conversation">
@@ -700,10 +725,11 @@ export function ChatPage() {
                 onSend={() => handleSend()}
                 token={token}
                 sessionId={activeSessionId}
-                shipId={sessionShipId}
                 onAttachFiles={addPendingFiles}
                 pendingFiles={pendingFiles}
                 onRemovePending={removePendingFile}
+                onOpenPanel={openActionPanel}
+                canManageVessel={canManageVessel}
                 disabled={isDisabled}
                 placeholder="Type a message..."
               />
@@ -732,10 +758,19 @@ export function ChatPage() {
                 onAskAi={handleAskAlertAi}
               />
             )}
+            {actionPanel && (
+              <ChatActionPanel
+                action={actionPanel}
+                token={token}
+                shipId={sessionShipId}
+                closing={actionClosing}
+                onClose={closeActionPanel}
+              />
+            )}
           </div>
         ) : (
           <div
-            className={`chat-main__workspace${showPms || pmsClosing || showAlerts || alertsClosing ? " chat-main__workspace--with-panel" : ""}`}
+            className={`chat-main__workspace${showPms || pmsClosing || showAlerts || alertsClosing || actionPanel ? " chat-main__workspace--with-panel" : ""}`}
           >
             <div className="chat-main__welcome-wrap">
               <div className="chat-welcome">
@@ -760,10 +795,11 @@ export function ChatPage() {
                 onSend={() => handleSend()}
                 token={token}
                 sessionId={activeSessionId}
-                shipId={sessionShipId}
                 onAttachFiles={addPendingFiles}
                 pendingFiles={pendingFiles}
                 onRemovePending={removePendingFile}
+                onOpenPanel={openActionPanel}
+                canManageVessel={canManageVessel}
                 disabled={isDisabled}
                 placeholder="Start a new conversation..."
               />
@@ -784,6 +820,15 @@ export function ChatPage() {
                 closing={alertsClosing}
                 noAnim={panelSwap}
                 onAskAi={handleAskAlertAi}
+              />
+            )}
+            {actionPanel && (
+              <ChatActionPanel
+                action={actionPanel}
+                token={token}
+                shipId={sessionShipId}
+                closing={actionClosing}
+                onClose={closeActionPanel}
               />
             )}
           </div>

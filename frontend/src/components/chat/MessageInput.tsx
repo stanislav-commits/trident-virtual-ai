@@ -3,7 +3,7 @@ import sendIcon from '../../assets/Vector.svg';
 import { useVoiceCaptureSession } from '../../hooks/useVoiceCaptureSession';
 import { VoiceInputButton } from './VoiceInputButton';
 import { VoiceInputSessionPanel } from './VoiceInputSessionPanel';
-import { QuickReportButton } from './QuickReportButton';
+import { ChatPlusMenu, type ChatPanelAction } from './ChatPlusMenu';
 
 interface MessageInputProps {
   value: string;
@@ -11,14 +11,16 @@ interface MessageInputProps {
   onSend: () => void;
   token: string | null;
   sessionId?: string | null;
-  /** Enables the "+" quick-report (defect/incident) entry. */
-  shipId?: string | null;
   disabled?: boolean;
   placeholder?: string;
   /** "+ Attach photo" staging (photos ride with the next message). */
   onAttachFiles?: (files: File[]) => void;
   pendingFiles?: Array<{ file: File; previewUrl: string }>;
   onRemovePending?: (index: number) => void;
+  /** Open a right-side action panel (work order / defect / document / parts). */
+  onOpenPanel?: (action: ChatPanelAction) => void;
+  /** Master/Chief-officer-only actions (Add document) shown when true. */
+  canManageVessel?: boolean;
 }
 
 export function MessageInput({
@@ -27,12 +29,13 @@ export function MessageInput({
   onSend,
   token,
   sessionId,
-  shipId,
   disabled = false,
   placeholder = 'Type a message...',
   onAttachFiles,
   pendingFiles = [],
   onRemovePending,
+  onOpenPanel,
+  canManageVessel,
 }: MessageInputProps) {
   const voice = useVoiceCaptureSession({ value, onChange, token, sessionId });
   const { isSessionActive, cancel } = voice;
@@ -77,12 +80,14 @@ export function MessageInput({
         </div>
       )}
       <div className="chat-main__capsule">
-        <QuickReportButton
-          token={token}
-          shipId={shipId}
-          disabled={disabled}
-          onAttachFiles={onAttachFiles}
-        />
+        {onOpenPanel && (
+          <ChatPlusMenu
+            disabled={disabled}
+            canManageVessel={canManageVessel}
+            onAttachFiles={onAttachFiles}
+            onOpenPanel={onOpenPanel}
+          />
+        )}
         <input
           type="text"
           className="chat-main__input"

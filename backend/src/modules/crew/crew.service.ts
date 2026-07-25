@@ -236,9 +236,12 @@ export class CrewService {
       active: r.active,
       joinedAt: r.joinedAt ?? undefined,
       notes: r.notes ?? undefined,
-      // login linkage: hasLogin + the username (never the password)
+      // login linkage: hasLogin + the username (never the password).
+      // accountUserId is the users.id (uuid) — needed to assign PMS
+      // tasks/work orders to this person; null when they have no login.
       hasLogin: !!r.userId,
       loginUserId: r.userId ? (usernames.get(r.userId) ?? null) : null,
+      accountUserId: r.userId ?? null,
     };
   }
 }
