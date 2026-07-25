@@ -19,8 +19,14 @@ import {
 import {
   previewComplianceDocs,
   commitComplianceDocs,
+  fetchComplianceOverview,
+  fetchComplianceArchetypes,
   type IngestProposal,
+  type CommitProposal,
+  type ArchetypeSchema,
 } from "../../api/complianceApi";
+import { ComplianceIngestModal } from "../admin/ComplianceIngestModal";
+import { type AssetOption } from "../admin/AssetMultiSelect";
 
 /**
  * The right-side panel that hosts the "+" menu's actions (work order,
@@ -288,10 +294,28 @@ function WorkOrderForm({
     listCrew(token, shipId).then(setCrew).catch(() => setCrew([]));
   }, [token, shipId]);
 
+  // Only crew with a login can be assigned; when a department is picked the
+  // list narrows to that department (matches how an officer thinks: "who on
+  // deck can do this?"). Selecting a department that excludes the current
+  // assignee clears it.
   const assignable = useMemo(
-    () => crew.filter((c) => c.active && c.accountUserId),
-    [crew],
+    () =>
+      crew.filter(
+        (c) =>
+          c.active &&
+          c.accountUserId &&
+          (!department || c.department === department),
+      ),
+    [crew, department],
   );
+  useEffect(() => {
+    if (
+      assigneeUserId &&
+      !assignable.some((c) => c.accountUserId === assigneeUserId)
+    ) {
+      setAssigneeUserId("");
+    }
+  }, [assignable, assigneeUserId]);
 
   const submit = async () => {
     if (!token || !shipId || !title.trim() || busy) return;
@@ -359,6 +383,22 @@ function WorkOrderForm({
         disabled={busy}
       />
       <div className="capanel__field">
+        <span className="capanel__label">Department</span>
+        <div className="capanel__chips">
+          {DEPARTMENTS.map((d) => (
+            <button
+              key={d.key}
+              type="button"
+              className={`capanel__chip${department === d.key ? " capanel__chip--on" : ""}`}
+              onClick={() => setDepartment(d.key)}
+              disabled={busy}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="capanel__field">
         <span className="capanel__label">Assign to</span>
         <select
           className="capanel__input"
@@ -375,7 +415,9 @@ function WorkOrderForm({
         </select>
         {assignable.length === 0 && (
           <span className="capanel__hint">
-            No crew with a login yet — issue logins from the Crew tab to assign.
+            {department
+              ? "No crew with a login in this department — issue logins from the Crew tab."
+              : "No crew with a login yet — issue logins from the Crew tab to assign."}
           </span>
         )}
       </div>
@@ -406,22 +448,6 @@ function WorkOrderForm({
             onChange={(e) => setDueDate(e.target.value)}
             disabled={busy}
           />
-        </div>
-      </div>
-      <div className="capanel__field">
-        <span className="capanel__label">Department</span>
-        <div className="capanel__chips">
-          {DEPARTMENTS.map((d) => (
-            <button
-              key={d.key}
-              type="button"
-              className={`capanel__chip${department === d.key ? " capanel__chip--on" : ""}`}
-              onClick={() => setDepartment(d.key)}
-              disabled={busy}
-            >
-              {d.label}
-            </button>
-          ))}
         </div>
       </div>
       <PhotoField files={files} setFiles={setFiles} previews={previews} disabled={busy} />
@@ -648,6 +674,15 @@ function DefectForm({
 
 // ── 3. Add document (certificate) ──────────────────────────────────────────
 
+interface DocTypeOption {
+  id: string;
+  sfiCode: string;
+  name: string;
+  sectionCode: string;
+  sectionName: string;
+  archetype: string | null;
+}
+
 function DocumentForm({
   token,
   shipId,
@@ -656,10 +691,58 @@ function DocumentForm({
   shipId: string | null | undefined;
 }) {
   const [files, setFiles] = useState<File[]>([]);
-  const [proposals, setProposals] = useState<IngestProposal[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState<number | null>(null);
+  // Review is handed off to the FULL admin ingest modal (categories,
+  // archetype-driven fields, document preview) — reused as-is.
+  const [review, setReview] = useState<{
+    proposals: IngestProposal[];
+    files: File[];
+  } | null>(null);
+  const [commitError, setCommitError] = useState<string | null>(null);
+
+  // Reference data the admin review modal needs: doc types, archetype field
+  // schema, and asset options for per-unit certificate linking.
+  const [types, setTypes] = useState<DocTypeOption[]>([]);
+  const [schema, setSchema] = useState<ArchetypeSchema | null>(null);
+  const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
+  useEffect(() => {
+    if (!token || !shipId) return;
+    void fetchComplianceOverview(token, shipId)
+      .then((ov) =>
+        setTypes(
+          (ov.sections ?? []).flatMap((s) =>
+            s.types.map((t) => ({
+              id: t.id,
+              sfiCode: t.sfiCode,
+              name: t.name,
+              sectionCode: s.sectionCode,
+              sectionName: s.sectionName,
+              archetype: t.archetype,
+            })),
+          ),
+        ),
+      )
+      .catch(() => setTypes([]));
+    void fetchComplianceArchetypes(token, shipId)
+      .then(setSchema)
+      .catch(() => setSchema(null));
+    void listAssets(token, shipId, { limit: 2000 })
+      .then((r) =>
+        setAssetOptions(
+          r.items.map((a) => ({
+            id: a.id,
+            label: `${a.assetIdInternal} — ${a.displayName}`,
+            sfiGroup: a.sfiGroup,
+            sfiGroupName: a.sfiGroupName,
+            sfiSub: a.sfiSub,
+            sfiSubName: a.sfiSubName,
+          })),
+        ),
+      )
+      .catch(() => setAssetOptions([]));
+  }, [token, shipId]);
 
   const preview = async () => {
     if (!token || !shipId || files.length === 0 || busy) return;
@@ -667,7 +750,7 @@ function DocumentForm({
     setError("");
     try {
       const res = await previewComplianceDocs(token, shipId, files);
-      setProposals(res.proposals);
+      setReview({ proposals: res.proposals, files });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to read the documents");
     } finally {
@@ -675,42 +758,33 @@ function DocumentForm({
     }
   };
 
-  const commit = async () => {
-    if (!token || !shipId || !proposals || busy) return;
+  const commit = async (proposals: CommitProposal[]) => {
+    if (!token || !shipId || !review) return;
     setBusy(true);
-    setError("");
+    setCommitError(null);
     try {
-      const res = await commitComplianceDocs(
+      const { created } = await commitComplianceDocs(
         token,
         shipId,
-        proposals
-          .filter((p) => p.typeId)
-          .map((p) => ({
-            typeId: p.typeId!,
-            filename: p.filename,
-            certNo: p.certNo,
-            issuer: p.issuer,
-            issueDate: p.issueDate,
-            fields: p.fields ?? null,
-            assetId: p.assetId ?? null,
-            extractedText: p.extractedText ?? null,
-          })),
-        files,
+        proposals,
+        review.files,
       );
-      setDone(res.created);
+      if (created < proposals.length) {
+        setCommitError(
+          `Saved ${created} of ${proposals.length}. ${proposals.length - created} could not be saved — check the required fields (marked *).`,
+        );
+      } else {
+        setReview(null);
+        setDone(created);
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save the documents");
+      setCommitError(
+        e instanceof Error ? e.message : "Failed to save the documents",
+      );
     } finally {
       setBusy(false);
     }
   };
-
-  const patch = (i: number, key: keyof IngestProposal, value: string) =>
-    setProposals((prev) =>
-      prev
-        ? prev.map((p, j) => (j === i ? { ...p, [key]: value } : p))
-        : prev,
-    );
 
   if (done !== null) {
     return (
@@ -719,77 +793,8 @@ function DocumentForm({
         onClose={() => {
           setDone(null);
           setFiles([]);
-          setProposals(null);
         }}
       />
-    );
-  }
-
-  if (proposals) {
-    return (
-      <>
-        <p className="capanel__hint">
-          Review the AI-extracted details, correct anything, then confirm.
-        </p>
-        {proposals.map((p, i) => (
-          <div key={p.filename + i} className="capanel__doc-card">
-            <div className="capanel__doc-file">{p.filename}</div>
-            <div className="capanel__doc-type">
-              {p.typeName ?? "Unrecognized type"}
-              {p.confidence != null && (
-                <span className="capanel__doc-conf">
-                  {Math.round(p.confidence * 100)}%
-                </span>
-              )}
-            </div>
-            <input
-              className="capanel__input"
-              placeholder="Certificate no."
-              value={p.certNo ?? ""}
-              onChange={(e) => patch(i, "certNo", e.target.value)}
-              disabled={busy}
-            />
-            <input
-              className="capanel__input"
-              placeholder="Issuer"
-              value={p.issuer ?? ""}
-              onChange={(e) => patch(i, "issuer", e.target.value)}
-              disabled={busy}
-            />
-            <input
-              type="date"
-              className="capanel__input"
-              value={p.issueDate ?? ""}
-              onChange={(e) => patch(i, "issueDate", e.target.value)}
-              disabled={busy}
-            />
-            {!p.typeId && (
-              <div className="capanel__error">
-                No matching document type — this file will be skipped on save.
-              </div>
-            )}
-          </div>
-        ))}
-        {error && <div className="capanel__error">{error}</div>}
-        <div className="capanel__row2">
-          <button
-            type="button"
-            className="capanel__btn"
-            onClick={() => setProposals(null)}
-            disabled={busy}
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            className="capanel__btn capanel__btn--primary"
-            onClick={() => void commit()}
-            disabled={busy || !proposals.some((p) => p.typeId)}
-          >
-            {busy ? "Saving…" : "Confirm & save"}
-          </button>
-        </div>
-      </>
     );
   }
 
@@ -797,7 +802,8 @@ function DocumentForm({
     <>
       <p className="capanel__hint">
         Upload certificates or class/flag documents. The assistant reads each
-        one; you review and confirm before it goes to the register.
+        one; you review and confirm — with categories, per-type fields and a
+        document preview — before it goes to the register.
       </p>
       <label className="capanel__photo-add capanel__doc-drop">
         📄 Choose files (PDF or photo)
@@ -839,6 +845,24 @@ function DocumentForm({
       >
         {busy ? "Reading…" : "Read & review"}
       </button>
+
+      {/* The full admin review window — categories, archetype fields, preview. */}
+      {review && (
+        <ComplianceIngestModal
+          proposals={review.proposals}
+          files={review.files}
+          types={types}
+          schema={schema}
+          assetOptions={assetOptions}
+          busy={busy}
+          error={commitError}
+          onCancel={() => {
+            setReview(null);
+            setCommitError(null);
+          }}
+          onConfirm={commit}
+        />
+      )}
     </>
   );
 }
