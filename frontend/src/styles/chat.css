@@ -827,7 +827,7 @@
   align-items: center;
   gap: 8px;
   min-height: var(--chat-input-height);
-  padding: 0 6px 0 14px;
+  padding: 0 0 0 6px;
   border-radius: var(--chat-radius-pill);
   background: var(--chat-surface-2);
   border: 1px solid var(--chat-border-strong);
@@ -1307,8 +1307,8 @@
 
 /* Send inside capsule — Grok-style (must come after .chat-main__send so it overrides) */
 .chat-main__send--inside {
-  width: 40px;
-  height: 40px;
+  width: var(--chat-input-height);
+  height: var(--chat-input-height);
   border-radius: 50%;
   background: #ffffff;
   border: none;
@@ -1316,8 +1316,8 @@
 }
 
 .chat-main__send--inside .chat-main__send-img {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   filter: brightness(0);
   opacity: 1;
 }
@@ -4579,14 +4579,14 @@
 /* ── Claude-style "+" menu ── */
 .cpm { position: relative; display: flex; align-items: center; }
 .cpm__plus {
-  width: 32px; height: 32px; margin-left: 6px; flex-shrink: 0;
-  border: 1px solid var(--chat-border-strong); border-radius: 50%;
+  width: 40px; height: 40px; flex-shrink: 0;
+  border: none; border-radius: 50%;
   background: transparent; color: var(--chat-text-muted);
-  font-size: 20px; line-height: 1; cursor: pointer;
+  font-size: 26px; line-height: 1; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  transition: color .15s, border-color .15s;
+  transition: color .15s, background .15s;
 }
-.cpm__plus:hover:not(:disabled) { color: var(--chat-text); border-color: var(--chat-text-muted); }
+.cpm__plus:hover:not(:disabled) { color: var(--chat-text); background: var(--chat-surface-3); }
 .cpm__plus:disabled { opacity: .4; cursor: default; }
 .cpm__menu {
   position: absolute; bottom: 44px; left: 0; z-index: 40; min-width: 300px;
