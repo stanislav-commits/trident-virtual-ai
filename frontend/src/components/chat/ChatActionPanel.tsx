@@ -136,8 +136,13 @@ function PhotoField({
           style={{ display: "none" }}
           disabled={disabled}
           onChange={(e) => {
-            setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+            // Read the FileList into a plain array BEFORE clearing the input
+            // — clearing e.target.value also clears e.target.files, and a
+            // functional setState updater re-reads this closure lazily at
+            // render time, after the clear has already happened.
+            const picked = Array.from(e.target.files ?? []);
             e.target.value = "";
+            setFiles((prev) => [...prev, ...picked]);
           }}
         />
       </label>
@@ -814,8 +819,9 @@ function DocumentForm({
           style={{ display: "none" }}
           disabled={busy}
           onChange={(e) => {
-            setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+            const picked = Array.from(e.target.files ?? []);
             e.target.value = "";
+            setFiles((prev) => [...prev, ...picked]);
           }}
         />
       </label>
