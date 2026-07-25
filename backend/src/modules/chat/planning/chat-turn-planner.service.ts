@@ -52,13 +52,31 @@ export class ChatTurnPlannerService {
         this.chatMetricsTimeNormalizerService.normalizeAsk(ask, context),
       ),
     );
+    // The classifier already forces LIVE_METRICS when the turn carries photo
+    // attachments (only the metric analyzer has vision). The semantic router
+    // is a SEPARATE call that never sees the attachments, so on a question
+    // like "что ты можешь сказать о моём шве" it reads as a technical
+    // reference ask and returns DOCUMENTS — and the orchestrator checks the
+    // semantic route BEFORE the intent's responder, so the documents →
+    // web-fallback path won and the photo was silently dropped (neither of
+    // those responders forwards images). Force the metrics route too, so
+    // route and intent agree and the image actually reaches the model.
+    const hasAttachments =
+      (context.latestUserMessage?.attachments?.length ?? 0) > 0;
     let semanticRoutes = await Promise.all(
       normalizedAsks.map((ask) =>
-        this.chatSemanticRouterService.route({
-          question: ask.question,
-          shipId: context.session.shipId,
-          responseLanguage: decomposition.responseLanguage,
-        }),
+        hasAttachments
+          ? Promise.resolve(
+              this.chatSemanticRouterService.buildForcedMetricsRouteDecision(
+                context.session.shipId,
+                ask.question,
+              ),
+            )
+          : this.chatSemanticRouterService.route({
+              question: ask.question,
+              shipId: context.session.shipId,
+              responseLanguage: decomposition.responseLanguage,
+            }),
       ),
     );
     const documentOnlyCompositeRoute =
