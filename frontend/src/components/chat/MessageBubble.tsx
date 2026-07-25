@@ -38,10 +38,13 @@ interface MessageBubbleProps {
 }
 
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
+  const date = new Date(iso);
+  const time = date.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const day = date.toLocaleDateString([], { month: "short", day: "numeric" });
+  return `${day}, ${time}`;
 }
 
 interface AlertCard {
