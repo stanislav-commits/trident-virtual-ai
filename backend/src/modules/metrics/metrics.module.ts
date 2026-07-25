@@ -20,6 +20,7 @@ import { MetricWatchEntity } from './entities/metric-watch.entity';
 import { DefectEntity } from '../pms/entities/defect.entity';
 import { AlertEntity } from '../alerts/entities/alert.entity';
 import { UserEntity } from '../users/entities/user.entity';
+import { CrewMemberEntity } from '../crew/entities/crew-member.entity';
 import { MetricWatchCheckerService } from './metric-watch-checker.service';
 import { TrendWarningService } from './trend-warning.service';
 import { MetricDescriptionBackfillService } from './metric-description-backfill.service';
@@ -55,6 +56,7 @@ import { MetricsService } from './metrics.service';
       AlertEntity,
       DefectEntity,
       UserEntity,
+      CrewMemberEntity,
     ]),
   ],
   controllers: [MetricsController],

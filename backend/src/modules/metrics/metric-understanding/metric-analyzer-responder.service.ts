@@ -6,6 +6,7 @@ import { AuthenticatedUser } from '../../../core/auth/auth.types';
 import { MetricWatchEntity } from '../entities/metric-watch.entity';
 import { DefectEntity } from '../../pms/entities/defect.entity';
 import { UserEntity } from '../../users/entities/user.entity';
+import { CrewMemberEntity } from '../../crew/entities/crew-member.entity';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import {
   checkBasicWriteAccess,
@@ -161,6 +162,8 @@ export class MetricAnalyzerResponderService {
     private readonly defectRepository: Repository<DefectEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
+    @InjectRepository(CrewMemberEntity)
+    private readonly crewRepository: Repository<CrewMemberEntity>,
     private readonly llmService: LlmService,
     private readonly ragService: RagService,
     private readonly webSearchService: WebSearchService,
@@ -2747,7 +2750,11 @@ export class MetricAnalyzerResponderService {
       args.board === 'maintenance' || args.board === 'general'
         ? args.board
         : null;
-    const callArgs = { task, board: requestedBoard, priority, due_date: dueDate, asset_id_internal: assetIdInternal, department: requestedDepartment, confirmed: args.confirmed === true };
+    const requestedAssignee =
+      typeof args.assignee === 'string' && args.assignee.trim()
+        ? args.assignee.trim()
+        : null;
+    const callArgs = { task, board: requestedBoard, priority, due_date: dueDate, asset_id_internal: assetIdInternal, department: requestedDepartment, assignee: requestedAssignee, confirmed: args.confirmed === true };
 
     const fail = (error: string) => ({
       toolCallId: tc.id,
@@ -2798,8 +2805,19 @@ export class MetricAnalyzerResponderService {
     const auth = checkDepartmentWriteAccess(actorPosition, requestedDepartment);
     if (!auth.allowed) return fail(`NOT CREATED: ${auth.reason}`);
 
+    // "отправь задание второму механику" — resolve the named person to a
+    // login account. Assigning silently-nobody when the user named someone
+    // is worse than failing: the work would never reach them.
+    let assigneeUserId: string | null = null;
+    if (requestedAssignee) {
+      const resolved = await this.resolveAssignee(shipId, requestedAssignee);
+      if ('error' in resolved) return fail(`NOT CREATED: ${resolved.error}`);
+      assigneeUserId = resolved.userId;
+    }
+
     const saved = await this.pmsService.create(shipId, {
       task: task.slice(0, 200),
+      assigneeUserId,
       // The general board folds unknown categories to 'Certificate' — a chore
       // is an Assignment there; maintenance keeps the loose 'General'.
       category: board === 'general' ? 'Assignment' : 'General',
@@ -2817,7 +2835,7 @@ export class MetricAnalyzerResponderService {
     });
 
     if (!saved) return fail('task created but could not be reloaded — check the register');
-    const resultSummary = `created ${board === 'general' ? 'Tasks-board assignment' : 'PMS task'} "${task}" (${priority}${dueDate ? ', due ' + dueDate : ''}${asset ? ', asset ' + (asset.displayName ?? assetIdInternal) : ''})`;
+    const resultSummary = `created ${board === 'general' ? 'Tasks-board assignment' : 'PMS task'} "${task}" (${priority}${dueDate ? ', due ' + dueDate : ''}${asset ? ', asset ' + (asset.displayName ?? assetIdInternal) : ''}${requestedAssignee ? ', assigned to ' + requestedAssignee : ''})`;
     return {
       toolCallId: tc.id,
       otherCall: {
@@ -2830,7 +2848,8 @@ export class MetricAnalyzerResponderService {
         task_id: saved.id,
         task_code: saved.taskCode,
         board,
-        note: `Task created on the ${board === 'general' ? 'Tasks board (people-directed assignment)' : 'Maintenance Plan'}. Confirm to the user with the task title and code; do not invent extra details.`,
+        assigned_to: requestedAssignee,
+        note: `Task created on the ${board === 'general' ? 'Tasks board (people-directed assignment)' : 'Maintenance Plan'}${requestedAssignee ? ` and assigned to ${requestedAssignee}` : ''}. Confirm to the user with the task title and code; do not invent extra details.`,
       },
     };
   }
@@ -3354,6 +3373,118 @@ export class MetricAnalyzerResponderService {
    * .ts, metrics.controller.ts) — they resolve to SUPERINTENDENT, which
    * checkDepartmentWriteAccess already treats as "any department".
    */
+  /**
+   * Resolve "второй механик" / "Diego" / "2nd engineer" to a crew member's
+   * LOGIN account id, so a task the user directed at someone actually lands
+   * in that person's list. Only crew WITH a login can be assigned — a
+   * roster entry without an account has no users.id to hang the task on.
+   *
+   * Returns the roster in the error text on failure: the model has no
+   * crew-listing tool, so this is how it learns who it may pick from and
+   * can relay real options instead of guessing.
+   */
+  private async resolveAssignee(
+    shipId: string,
+    query: string,
+  ): Promise<{ userId: string } | { error: string }> {
+    const rows = await this.crewRepository.find({ where: { shipId } });
+    const assignable = rows.filter((r) => r.active && r.userId);
+
+    if (assignable.length === 0) {
+      return {
+        error:
+          'no crew member on this vessel has a login yet, so the task cannot be assigned to anyone. Tell the user a login must be issued from the Crew tab first, and offer to create the task unassigned.',
+      };
+    }
+
+    const norm = (v: string) => v.toLowerCase().trim();
+    const q = norm(query);
+
+    // Rank words the crew speak in Russian, mapped onto the English ranks
+    // stored in the roster. Ordinals are separate so "второй механик" can
+    // match a "Second Engineer" whichever way the rank was spelled.
+    const RU_TERMS: Array<[RegExp, string[]]> = [
+      [/старпом|старший помощ/, ['chief officer', 'first officer']],
+      [/капитан|мастер/, ['master', 'captain']],
+      [/стармех|старший механик/, ['chief engineer']],
+      [/механик|моторист/, ['engineer', 'motorman']],
+      [/боцман/, ['bosun', 'boatswain']],
+      [/матрос/, ['deckhand', 'seaman', 'sailor']],
+      [/повар|кок|шеф/, ['chef', 'cook']],
+      [/стюард|горничн/, ['stew', 'stewardess', 'steward']],
+      [/электрик/, ['electrician', 'eto']],
+    ];
+    // NB: JS \b is ASCII-word based, so it never matches before a Cyrillic
+    // letter — the Russian alternatives MUST be plain substrings or the
+    // ordinal never fires (which is exactly the "второй механик" case).
+    const ORDINALS: Array<[RegExp, string[]]> = [
+      [/втор|\b2-?й|\bsecond\b|\b2nd\b/, ['second', '2nd', '2']],
+      [/трет|\b3-?й|\bthird\b|\b3rd\b/, ['third', '3rd', '3']],
+      [/перв|\b1-?й|\bfirst\b|\b1st\b/, ['first', '1st', 'chief']],
+    ];
+
+    const rankTerms = RU_TERMS.filter(([re]) => re.test(q)).flatMap(([, t]) => t);
+    const ordinalTerms = ORDINALS.filter(([re]) => re.test(q)).flatMap(([, t]) => t);
+
+    const queryTokens = q.split(/[\s,]+/).filter(Boolean);
+    const scored = assignable
+      .map((r) => {
+        const name = norm(r.name ?? '');
+        const rank = norm(r.rank ?? '');
+        let score = 0;
+        // Name matching deliberately avoids `q.includes(name)`: a short
+        // roster name is easily a substring of an unrelated word — "Ник"
+        // lives inside "механик" and would otherwise outrank every real
+        // rank match and silently assign the task to the wrong person.
+        const nameTokens = name.split(/\s+/).filter(Boolean);
+        const nameHit =
+          !!name &&
+          (name === q ||
+            (q.length >= 4 && name.includes(q)) ||
+            nameTokens.some(
+              (nt) => nt.length >= 3 && queryTokens.some((qt) => qt === nt),
+            ));
+        if (nameHit) score += 100;
+        if (rank && (rank === q || q.includes(rank) || rank.includes(q))) score += 60;
+        if (rankTerms.some((t) => rank.includes(t))) score += 30;
+        // An ordinal only counts on top of a matching rank family, so
+        // "второй механик" cannot latch onto "Second Stewardess". Weighted
+        // above the ambiguity margin: within one rank family the ordinal IS
+        // the disambiguator ("второй механик" → Second Engineer, not Chief).
+        if (score > 0 && ordinalTerms.some((t) => rank.includes(t))) score += 40;
+        return { row: r, score };
+      })
+      .filter((c) => c.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const roster = assignable
+      .map((r) => `${r.name} (${r.rank || 'no rank'})`)
+      .join(', ');
+
+    if (scored.length === 0) {
+      return {
+        error: `could not match "${query}" to anyone on the crew roster with a login. Assignable crew: ${roster}. Ask the user which of them to assign it to (or to create it unassigned) — do not pick one yourself.`,
+      };
+    }
+    // A near-tie is as unsafe as an exact tie — require a clear winner
+    // before writing someone's name onto a task.
+    const AMBIGUITY_MARGIN = 20;
+    if (
+      scored.length > 1 &&
+      scored[0].score - scored[1].score < AMBIGUITY_MARGIN
+    ) {
+      const tied = scored
+        .filter((c) => scored[0].score - c.score < AMBIGUITY_MARGIN)
+        .map((c) => `${c.row.name} (${c.row.rank || 'no rank'})`)
+        .join(', ');
+      return {
+        error: `"${query}" is ambiguous — it matches ${tied}. Ask the user which one they mean.`,
+      };
+    }
+
+    return { userId: scored[0].row.userId as string };
+  }
+
   private async resolveActorPosition(
     actorUserId: string | null,
   ): Promise<string | null> {

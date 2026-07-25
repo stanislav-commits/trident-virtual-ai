@@ -759,6 +759,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           due_date: { type: 'string', description: 'Optional due date YYYY-MM-DD.' },
           asset_id_internal: { type: 'string', description: 'Optional asset to link — resolve via lookup_asset / find_assets_by_function FIRST and use its asset_id_internal. An asset-linked task always belongs on the maintenance board.' },
           department: { type: 'string', enum: ['deck', 'engine', 'interior', 'galley'], description: 'Which department this task belongs to — infer from the equipment/context when possible (e.g. a genset/engine-room task is "engine", housekeeping is "interior"). Omit for a general task open to everyone.' },
+          assignee: { type: 'string', description: 'WHO should do it, exactly as the user named them — a person ("Diego", "Erik Lund") or a rank/role ("второй механик", "2nd engineer", "chief officer", "стармех"). Pass this whenever the user directs the work at someone ("отправь задание второму механику", "assign it to the bosun"); omit when no one is named. Resolved server-side against the crew roster; if the person is missing, has no login, or the name is ambiguous, the call fails with the list of assignable crew — relay that to the user plainly instead of creating an unassigned task silently.' },
           confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed creating this exact task in this conversation.' },
         },
         required: ['task', 'board', 'confirmed'],

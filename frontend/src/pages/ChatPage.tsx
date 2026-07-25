@@ -373,6 +373,23 @@ export function ChatPage() {
       return prev.filter((_, i) => i !== index);
     });
   }, []);
+  // Staged photos belong to the chat they were attached in — without this
+  // they followed the user into every other conversation (and would have
+  // been sent with an unrelated message). The one id change that must NOT
+  // clear them is the session handleSend creates for a brand-new chat: the
+  // upload is still in flight at that point, so it flags its own id here.
+  const selfCreatedSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeSessionId && selfCreatedSessionRef.current === activeSessionId) {
+      selfCreatedSessionRef.current = null;
+      return;
+    }
+    setPendingFiles((prev) => {
+      if (prev.length === 0) return prev;
+      prev.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      return [];
+    });
+  }, [activeSessionId]);
 
   // Right-side action panel ("+" menu → work order / defect / document /
   // parts). Same slide/closing pattern as the PMS/alerts panels.
@@ -431,6 +448,11 @@ export function ChatPage() {
 
           const newSession = await createSession(sessionShipId);
           currentSessionId = newSession.id;
+          // Tell the session-change effect this id is ours, so it keeps the
+          // photos that are about to be uploaded into it.
+          if (filesToSend.length > 0) {
+            selfCreatedSessionRef.current = currentSessionId;
+          }
           navigate(appRoutes.chatSession(currentSessionId), { replace: true });
         }
 
