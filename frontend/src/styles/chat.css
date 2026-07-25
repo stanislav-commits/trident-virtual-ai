@@ -4627,7 +4627,7 @@
   border: 1px solid var(--chat-border); border-radius: 9px; padding: 10px 12px;
   font-size: 13.5px; color: var(--chat-text); font-family: inherit;
 }
-.capanel__input:focus { outline: none; border-color: var(--chat-accent, #3b82f6); }
+.capanel__input:focus { outline: none; border-color: var(--chat-text-muted); }
 .capanel__textarea { resize: vertical; min-height: 64px; }
 .capanel__field { display: flex; flex-direction: column; gap: 6px; }
 .capanel__row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -4642,8 +4642,8 @@
   border: 1px solid var(--chat-border); background: transparent; color: var(--chat-text-muted);
 }
 .capanel__chip--on {
-  border-color: var(--chat-accent, #3b82f6); color: var(--chat-accent, #3b82f6);
-  background: color-mix(in srgb, var(--chat-accent, #3b82f6) 12%, transparent);
+  border-color: var(--chat-text-muted); color: var(--chat-text);
+  background: var(--chat-surface-3);
 }
 .capanel__photo-add {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
@@ -4673,7 +4673,7 @@
   display: flex; align-items: center; gap: 8px; padding: 8px 12px;
   border: 1px solid var(--chat-border); border-radius: 9px; background: var(--chat-bg-subtle);
 }
-.capanel__asset-code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--chat-accent, #3b82f6); flex-shrink: 0; }
+.capanel__asset-code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--chat-text-muted); flex-shrink: 0; }
 .capanel__asset-name { font-size: 12.5px; color: var(--chat-text); min-width: 0; }
 .capanel__asset-clear {
   margin-left: auto; width: 18px; height: 18px; border: 0; border-radius: 50%;
@@ -4690,7 +4690,7 @@
   padding: 10px 16px; border-radius: 9px; font-size: 13.5px; font-weight: 600; cursor: pointer;
   border: 1px solid var(--chat-border); background: transparent; color: var(--chat-text-muted);
 }
-.capanel__btn--primary { border: 0; background: var(--chat-accent, #3b82f6); color: #fff; }
+.capanel__btn--primary { border: 0; background: var(--chat-text); color: var(--chat-bg-subtle); }
 .capanel__btn:disabled { opacity: .5; cursor: default; }
 .capanel__error { font-size: 12.5px; color: var(--status-danger-soft, #f87171); }
 .capanel__done { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding-top: 30px; }
