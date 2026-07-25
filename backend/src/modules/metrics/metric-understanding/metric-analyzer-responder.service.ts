@@ -27,7 +27,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, Not, Repository } from 'typeorm';
+import { Brackets, In, IsNull, Not, Repository, MoreThan } from 'typeorm';
 import {
   InfluxMetricSelector,
   InfluxService,
@@ -2837,6 +2837,40 @@ export class MetricAnalyzerResponderService {
       const resolved = await this.resolveAssignee(shipId, requestedAssignee);
       if ('error' in resolved) return fail(`NOT CREATED: ${resolved.error}`);
       assigneeUserId = resolved.userId;
+    }
+
+    // Idempotency window. The planner is told to keep a write in ONE ask,
+    // but it is an LLM: a turn can still fan out into parallel asks that
+    // each call this tool, and the model can call it twice inside one loop.
+    // Observed live 2026-07-26: two identical tasks 28s apart. The planner
+    // rule reduces the odds; this makes a duplicate impossible.
+    const recentSame = await this.pmsTaskRepository.findOne({
+      where: {
+        shipId,
+        task: task.slice(0, 200),
+        source: 'chat',
+        createdAt: MoreThan(new Date(Date.now() - 3 * 60_000)),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (recentSame) {
+      const summary = `duplicate suppressed — "${task}" was already created moments ago as ${recentSame.taskCode ?? recentSame.id}`;
+      return {
+        toolCallId: tc.id,
+        otherCall: {
+          iteration, tool: 'create_maintenance_task', args: callArgs, ok: true,
+          resultSummary: summary, latencyMs: Date.now() - t0,
+        },
+        payload: {
+          ok: true,
+          task_created: false,
+          already_existed: true,
+          task_id: recentSame.id,
+          task_code: recentSame.taskCode,
+          board: recentSame.board,
+          note: 'This exact task was already created in this conversation moments ago — do NOT create it again. Report the existing task code to the user as the created task; mention it only once.',
+        },
+      };
     }
 
     const saved = await this.pmsService.create(shipId, {
