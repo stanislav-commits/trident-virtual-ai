@@ -204,11 +204,19 @@ export class MetricAnalyzerResponderService {
       order: { id: 'ASC' },
     });
 
-    if (catalogRaw.length === 0) {
+    // A vessel with no analyzed metrics can still be asked things this
+    // responder handles without telemetry — a photo to look at, a task to
+    // create, a defect to log. Turns carrying an attachment are routed here
+    // BECAUSE it is the only vision-capable responder, so refusing them for
+    // a missing metric catalog would break the photo flow entirely on such
+    // ships. Metric-only turns keep the hard stop.
+    const hasImages = (opts?.images?.length ?? 0) > 0;
+    if (catalogRaw.length === 0 && !hasImages) {
       throw new BadRequestException(
         'No analyzed metrics for this ship yet. Run /metrics/ships/:shipId/analyze first.',
       );
     }
+    const metricsUnavailable = catalogRaw.length === 0;
 
     const catalog: AnalyzedCatalogItem[] = catalogRaw.map((m) => {
       const { measurement, field } = this.splitKey(m.key, m.field);
@@ -262,7 +270,9 @@ export class MetricAnalyzerResponderService {
           '\n\nMETRIC CATALOG (ship: ' +
           (ship.name || ship.id) +
           '):\n' +
-          digest,
+          (metricsUnavailable
+            ? 'NONE — this vessel has no analyzed telemetry configured. Do NOT call metric/telemetry tools and do not claim any live readings; answer from what you can see and from the register tools (maintenance, defects, inventory, compliance). If the user asks for a measurement, say plainly that telemetry is not set up for this vessel.'
+            : digest),
       },
       {
         role: 'system',
