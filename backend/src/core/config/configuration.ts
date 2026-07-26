@@ -42,7 +42,11 @@ export default function configuration() {
       jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
     },
     alerts: {
-      autoAnalyzeSeverity: process.env.ALERT_AUTO_ANALYZE_SEVERITY ?? 'critical,high',
+      // OFF by default: the automatic per-alert asset analysis produced
+      // poor results and burned tokens on every critical/high alert
+      // (2026-07-26 — to be reworked). Re-enable per environment with
+      // ALERT_AUTO_ANALYZE_SEVERITY=critical,high once it is good enough.
+      autoAnalyzeSeverity: process.env.ALERT_AUTO_ANALYZE_SEVERITY ?? 'off',
       // Max characters kept for the auto-analysis text — the Notifications
       // panel needs a short, factual annotation, not a full report; the
       // prompt asks for that but the cut is enforced deterministically too.
