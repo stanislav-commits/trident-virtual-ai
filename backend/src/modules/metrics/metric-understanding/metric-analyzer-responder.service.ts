@@ -185,6 +185,14 @@ export class MetricAnalyzerResponderService {
       actorUserId?: string;
       /** Photos attached to the question — injected as vision blocks. */
       images?: Array<{ mediaType: string; dataBase64: string }>;
+      /**
+       * What the user actually typed (or a resolved language name). The ask
+       * this service receives is a REWRITTEN standalone question, and the
+       * prompt plus tool descriptions are full of Russian examples, so the
+       * model drifted into Russian on an English conversation once the write
+       * tools engaged (observed 2026-07-27). This is the language anchor.
+       */
+      answerLanguage?: string | null;
     },
   ): Promise<AnswerQuestionResult> {
     const t0 = Date.now();
@@ -272,6 +280,22 @@ export class MetricAnalyzerResponderService {
             ? 'NONE — this vessel has no analyzed telemetry configured yet. ONLY the sensor/telemetry tools are unavailable: do not call them and never state a live reading. EVERYTHING ELSE works exactly as normal, including the WRITE tools — you can still create and complete maintenance tasks, log hours, log and close defects, and read the maintenance, defect, inventory, compliance, manual and drawing registers. Never tell the user you are read-only or that a feature is unavailable/in development. Only when asked for an actual measurement, say plainly that telemetry is not set up for this vessel yet.'
             : digest),
       },
+      ...(opts?.answerLanguage?.trim()
+        ? [
+            {
+              role: 'system' as const,
+              content:
+                'ANSWER LANGUAGE — DECISIVE, overrides everything below: write ' +
+                'the ENTIRE answer (headings, table headers, labels, task ' +
+                'titles) in the SAME language the user is writing in. This is ' +
+                'the user\'s own wording for reference:\n"' +
+                opts.answerLanguage.trim().slice(0, 400) +
+                '"\nThe examples in this system prompt and in the TOOL ' +
+                'DESCRIPTIONS are mostly Russian — they are examples only and ' +
+                'must NEVER influence the language you answer in.',
+            },
+          ]
+        : []),
       {
         role: 'system',
         content:

@@ -12,6 +12,7 @@ import {
   isBareConfirmationReply,
   looksLikePendingWriteProposal,
 } from './chat-pending-write-confirmation.util';
+import { isConversationMetaRequest } from './chat-conversation-meta-request.util';
 import {
   ChatSemanticRoute,
   ChatSemanticRouteDecision,
@@ -37,6 +38,14 @@ export class ChatTurnPlannerService {
     );
     if (pendingConfirmationPlan) {
       return pendingConfirmationPlan;
+    }
+
+    const conversationMetaPlan = this.buildConversationMetaPlan(
+      context,
+      decomposition.responseLanguage,
+    );
+    if (conversationMetaPlan) {
+      return conversationMetaPlan;
     }
 
     const classifiedAsks = await Promise.all(
@@ -180,6 +189,55 @@ export class ChatTurnPlannerService {
       route.documents.mode === 'composite' &&
       route.documents.components.length >= 2
     );
+  }
+
+  /**
+   * "Переведи на английский" / "rephrase that" is about the CONVERSATION,
+   * not the vessel — the thing to restate is the assistant's own previous
+   * message. The decomposer rewrites it into a standalone ask, which then
+   * classified as `documentation`, fell through the documents→web fallback
+   * and came back from a stateless web responder asking the user to paste
+   * the text it should already have had (observed live 2026-07-27).
+   * Route it to the conversation responder, which sees the full thread.
+   */
+  private buildConversationMetaPlan(
+    context: ChatConversationContext,
+    responseLanguage: string | null,
+  ): ChatTurnPlan | null {
+    const question = context.latestUserMessage?.content?.trim();
+    if (!question || !isConversationMetaRequest(question)) {
+      return null;
+    }
+    // Needs something of ours to act on — otherwise it is a fresh request.
+    const hasAssistantHistory = context.allMessages.some(
+      (message) => message.role === ChatMessageRole.ASSISTANT,
+    );
+    if (!hasAssistantHistory) return null;
+
+    return {
+      asks: [
+        {
+          id: 'ask-1',
+          intent: ChatTurnIntent.SMALL_TALK,
+          responder: ChatTurnResponderKind.SMALL_TALK,
+          question,
+          capabilityEnabled: true,
+          capabilityLabel: 'general conversation',
+          timeMode: null,
+          timestamp: null,
+          rangeStart: null,
+          rangeEnd: null,
+          semanticRoute:
+            this.chatSemanticRouterService.buildForcedSmallTalkRouteDecision(
+              context.session.shipId,
+              question,
+            ),
+        },
+      ],
+      responseLanguage,
+      reasoning:
+        'Conversation-meta request (translate/rephrase/shorten) — kept in the thread so the previous answer is available.',
+    };
   }
 
   /**

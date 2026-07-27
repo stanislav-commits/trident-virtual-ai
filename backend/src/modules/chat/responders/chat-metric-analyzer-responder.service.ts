@@ -98,6 +98,13 @@ export class ChatMetricAnalyzerResponderService {
           // the chat session's owner is the acting crew member.
           actorUserId: input.session.userId,
           images: images.length ? images : undefined,
+          // Anchor the answer language to what the user actually typed: the
+          // ask handed to the analyzer is a rewritten standalone question and
+          // the decomposer often reports responseLanguage as null.
+          answerLanguage:
+            input.plan.responseLanguage?.trim() ||
+            input.context.latestUserMessage?.content?.trim() ||
+            null,
         },
       );
 

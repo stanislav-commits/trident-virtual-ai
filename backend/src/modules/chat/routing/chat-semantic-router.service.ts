@@ -68,6 +68,32 @@ export class ChatSemanticRouterService {
     };
   }
 
+  /**
+   * A forced NON-SOURCE decision, so the turn lands on the conversation
+   * responder. Used for requests about the thread itself ("переведи на
+   * английский", "rephrase that"): they need the chat history, not a
+   * document/metric/web lookup. UNCLEAR is simply the route value that none
+   * of the orchestrator's source branches claim — requiresClarification
+   * stays false, so nothing asks the user to disambiguate.
+   */
+  buildForcedSmallTalkRouteDecision(
+    shipId: string | null,
+    question: string,
+  ): ChatSemanticRouteDecision {
+    return {
+      route: ChatSemanticRoute.UNCLEAR,
+      confidence: 1,
+      requiresClarification: false,
+      clarificationQuestion: null,
+      sourcePolicy: this.buildSourcePolicy(ChatSemanticRoute.UNCLEAR),
+      documents: this.buildDefaultDocumentsRoute(shipId, question),
+      metrics: this.buildDefaultMetricsRoute(),
+      web: this.buildDefaultWebRoute(),
+      internalDebugNote:
+        'Deterministic override: request about the conversation itself (translate/rephrase) — answered from the thread.',
+    };
+  }
+
   async route(input: ChatSemanticRouterInput): Promise<ChatSemanticRouteDecision> {
     const question = input.question.trim();
 
