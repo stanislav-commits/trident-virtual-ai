@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import sendIcon from '../../assets/Vector.svg';
 import { useVoiceCaptureSession } from '../../hooks/useVoiceCaptureSession';
 import { VoiceInputButton } from './VoiceInputButton';
@@ -56,7 +56,18 @@ export function MessageInput({
     if (canSend) onSend();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // A long prompt used to scroll inside one line; the composer now grows
+  // with the text (height, since it is already full width) up to the cap in
+  // CSS, then scrolls.
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && canSend && !disabled) {
       e.preventDefault();
       onSend();
@@ -92,11 +103,12 @@ export function MessageInput({
             placement={menuPlacement}
           />
         )}
-        <input
-          type="text"
+        <textarea
+          ref={inputRef}
           className="chat-main__input"
           placeholder={placeholder}
           value={value}
+          rows={1}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled || voice.isSessionActive}

@@ -31,7 +31,10 @@ import { ChatActionPanel } from "../components/chat/ChatActionPanel";
 import type { ChatPanelAction } from "../components/chat/ChatPlusMenu";
 import logoImg from "../assets/logo-home.png";
 import { appRoutes } from "../utils/routes";
-import type { ChatContextReferenceDto } from "../types/chat";
+import type {
+  ChatContextReferenceDto,
+  ChatPendingActionDto,
+} from "../types/chat";
 
 export function ChatPage() {
   const { user, token } = useAuth();
@@ -444,6 +447,20 @@ export function ChatPage() {
   }, []);
   const canManageVessel = user?.role === "admin";
 
+  // "Yes" on a proposed task: open the work-order form prefilled so the user
+  // reviews and edits before anything is written. The write then happens
+  // through the normal REST call, not through the model — which is what
+  // makes the confirmation trustworthy.
+  const [actionPrefill, setActionPrefill] =
+    useState<ChatPendingActionDto | null>(null);
+  const confirmPendingAction = useCallback(
+    (action: ChatPendingActionDto) => {
+      setActionPrefill(action);
+      openActionPanel("workorder");
+    },
+    [openActionPanel],
+  );
+
   const handleSend = useCallback(
     async (textOverride?: string) => {
       const textToSend = textOverride || inputValue;
@@ -769,6 +786,7 @@ export function ChatPage() {
                 onRegenerate={handleRegenerate}
                 onSendMessage={(text) => handleSend(text)}
                 onOpenSourcesPanel={handleOpenSourcesPanel}
+                onConfirmPendingAction={confirmPendingAction}
                 actionsDisabled={isDisabled}
               />
               <MessageInput
@@ -815,8 +833,12 @@ export function ChatPage() {
                 action={actionPanel}
                 token={token}
                 shipId={sessionShipId}
+                prefill={actionPrefill}
                 closing={actionClosing}
-                onClose={closeActionPanel}
+                onClose={() => {
+                  setActionPrefill(null);
+                  closeActionPanel();
+                }}
               />
             )}
           </div>
@@ -880,8 +902,12 @@ export function ChatPage() {
                 action={actionPanel}
                 token={token}
                 shipId={sessionShipId}
+                prefill={actionPrefill}
                 closing={actionClosing}
-                onClose={closeActionPanel}
+                onClose={() => {
+                  setActionPrefill(null);
+                  closeActionPanel();
+                }}
               />
             )}
           </div>

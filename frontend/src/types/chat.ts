@@ -13,6 +13,20 @@ export interface ChatContextReferenceDto {
   sourceUrl?: string;
 }
 
+/** A register write proposed by the assistant, confirmed with buttons. */
+export interface ChatPendingActionDto {
+  kind: "create_task";
+  task: string;
+  board: "maintenance" | "general";
+  description?: string | null;
+  priority?: string | null;
+  dueDate?: string | null;
+  department?: string | null;
+  assignee?: string | null;
+  assetIdInternal?: string | null;
+  assetName?: string | null;
+}
+
 export interface ChatSuggestionActionDto {
   label: string;
   message: string;
@@ -167,6 +181,7 @@ export interface ChatTurnAskResultDto {
     maps?: ChatMapDto[];
     tables?: ChatTableDto[];
     kpis?: ChatKpiBlockDto[];
+    pendingAction?: ChatPendingActionDto | null;
   } | null;
   contextReferences?: ChatContextReferenceDto[];
 }

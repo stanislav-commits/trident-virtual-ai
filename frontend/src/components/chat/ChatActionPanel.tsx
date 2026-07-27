@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChatPanelAction } from "./ChatPlusMenu";
+import type { ChatPendingActionDto } from "../../types/chat";
 import { listCrew, type CrewMemberDto } from "../../api/crewApi";
 import { listAssets } from "../../api/assetsApi";
 import {
@@ -60,12 +61,16 @@ export function ChatActionPanel({
   action,
   token,
   shipId,
+  prefill,
   closing,
   onClose,
 }: {
   action: ChatPanelAction;
   token: string | null;
   shipId: string | null | undefined;
+  /** A task the assistant proposed and the user accepted with "Yes" — the
+   *  form opens filled in so they review/edit before anything is written. */
+  prefill?: ChatPendingActionDto | null;
   closing?: boolean;
   onClose: () => void;
 }) {
@@ -88,7 +93,7 @@ export function ChatActionPanel({
         </div>
         <div className="capanel__body">
           {action === "workorder" && (
-            <WorkOrderForm token={token} shipId={shipId} />
+            <WorkOrderForm token={token} shipId={shipId} prefill={prefill} />
           )}
           {action === "defect" && <DefectForm token={token} shipId={shipId} />}
           {action === "document" && (
@@ -278,16 +283,22 @@ function Done({ text, onClose }: { text: string; onClose: () => void }) {
 function WorkOrderForm({
   token,
   shipId,
+  prefill,
 }: {
   token: string | null;
   shipId: string | null | undefined;
+  prefill?: ChatPendingActionDto | null;
 }) {
-  const [title, setTitle] = useState("");
-  const [details, setDetails] = useState("");
+  const [title, setTitle] = useState(prefill?.task ?? "");
+  const [details, setDetails] = useState(prefill?.description ?? "");
   const [assigneeUserId, setAssigneeUserId] = useState("");
-  const [department, setDepartment] = useState("");
-  const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("medium");
-  const [dueDate, setDueDate] = useState("");
+  const [department, setDepartment] = useState(prefill?.department ?? "");
+  const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>(
+    (PRIORITIES as readonly string[]).includes(prefill?.priority ?? "")
+      ? (prefill?.priority as (typeof PRIORITIES)[number])
+      : "medium",
+  );
+  const [dueDate, setDueDate] = useState(prefill?.dueDate ?? "");
   const [asset, setAsset] = useState<AssetSuggestion | null>(null);
   const { files, setFiles, previews } = usePhotoState();
   const [crew, setCrew] = useState<CrewMemberDto[]>([]);
@@ -299,6 +310,45 @@ function WorkOrderForm({
     if (!token || !shipId) return;
     listCrew(token, shipId).then(setCrew).catch(() => setCrew([]));
   }, [token, shipId]);
+
+  // The proposal names people and equipment the way the user said them; the
+  // form needs ids. Resolve both once the roster/register answer.
+  useEffect(() => {
+    const wanted = prefill?.assignee?.trim().toLowerCase();
+    if (!wanted || crew.length === 0) return;
+    // Search the WHOLE roster, not the department-filtered list: the
+    // proposal's department is the model's guess (a davit job reads as
+    // "deck") while the named person may sit elsewhere (Diego is engine).
+    // The person the user actually named wins, and the department follows
+    // them — otherwise the filter hides them and the field stays empty.
+    const hit = crew.find(
+      (c) =>
+        c.active &&
+        c.accountUserId &&
+        (c.name.toLowerCase() === wanted ||
+          c.name.toLowerCase().includes(wanted) ||
+          (c.rank ?? "").toLowerCase().includes(wanted)),
+    );
+    if (!hit?.accountUserId) return;
+    setDepartment(hit.department ?? "");
+    setAssigneeUserId(hit.accountUserId);
+  }, [prefill?.assignee, crew]);
+
+  useEffect(() => {
+    const code = prefill?.assetIdInternal?.trim();
+    if (!code || !token || !shipId) return;
+    listAssets(token, shipId, { search: code, limit: 5 })
+      .then((r) => {
+        const hit = r.items.find((a) => a.assetIdInternal === code);
+        if (hit)
+          setAsset({
+            id: hit.id,
+            assetIdInternal: hit.assetIdInternal,
+            displayName: hit.displayName,
+          });
+      })
+      .catch(() => undefined);
+  }, [prefill?.assetIdInternal, token, shipId]);
 
   // Only crew with a login can be assigned; when a department is picked the
   // list narrows to that department (matches how an officer thinks: "who on

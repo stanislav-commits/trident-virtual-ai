@@ -60,6 +60,7 @@ import { ShipMetricCatalogEntity } from '../entities/ship-metric-catalog.entity'
 import {
   AnalyzedCatalogItem,
   AnswerQuestionResult,
+  PendingWriteProposal,
   ChatChart,
   ChatChartAnnotation,
   ChatChartSeries,
@@ -331,6 +332,9 @@ export class MetricAnalyzerResponderService {
     const maps: ChatMap[] = [];
     const tables: ChatTable[] = [];
     const kpis: ChatKpiBlock[] = [];
+    // Set when the model proposes a register write: the USER confirms it
+    // with a button, not by typing a phrase we then have to recognise.
+    let pendingAction: PendingWriteProposal | null = null;
     // render_chart calls that drew several SEPARATE lines (combine !=
     // "sum") — candidates for the total-intent guard below. Stacked area
     // charts are excluded: the stack's top already reads as the total, so
@@ -430,6 +434,9 @@ export class MetricAnalyzerResponderService {
               catalogIndex,
               iteration,
               opts?.actorUserId ?? null,
+              (proposal) => {
+                pendingAction = proposal;
+              },
             ),
           ),
         );
@@ -598,6 +605,7 @@ export class MetricAnalyzerResponderService {
       maps,
       tables,
       kpis,
+      pendingAction,
       totalTokens:
         totalPromptTokens +
         totalCacheWriteTokens +
@@ -618,6 +626,7 @@ export class MetricAnalyzerResponderService {
     catalogIndex: Map<string, Map<string, AnalyzedCatalogItem>>,
     iteration: number,
     actorUserId: string | null = null,
+    onProposeWrite: (proposal: PendingWriteProposal) => void = () => {},
   ): Promise<{
     toolCallId: string;
     payload: Record<string, unknown>;
@@ -670,7 +679,9 @@ export class MetricAnalyzerResponderService {
       case 'render_kpi':
         return this.toolRenderKpi(tc, args, iteration);
       case 'create_maintenance_task':
-        return await this.toolCreateMaintenanceTask(tc, args, shipId, iteration, actorUserId);
+        return await this.toolCreateMaintenanceTask(
+          tc, args, shipId, iteration, actorUserId, onProposeWrite,
+        );
       case 'complete_maintenance_task':
         return await this.toolCompleteMaintenanceTask(tc, args, shipId, iteration, actorUserId);
       case 'log_hours_reading':
@@ -2752,6 +2763,7 @@ export class MetricAnalyzerResponderService {
     shipId: string,
     iteration: number,
     actorUserId: string | null,
+    onProposeWrite: (proposal: PendingWriteProposal) => void = () => {},
   ): Promise<{
     toolCallId: string;
     payload: Record<string, unknown>;
@@ -2800,9 +2812,38 @@ export class MetricAnalyzerResponderService {
     });
 
     if (args.confirmed !== true) {
-      return fail(
-        'NOT CREATED: confirmed must be true, and only after the user explicitly confirmed this exact task in the conversation. State what you would create and ask the user to confirm first.',
-      );
+      // Not an error — this is the normal path now. The proposal is handed
+      // to the UI, which shows the user Yes/No buttons and (on Yes) opens
+      // the task form prefilled for review. No typed confirmation to parse,
+      // so no phrase-guessing across languages and no way for the write to
+      // be "confirmed" by a responder that has no tools.
+      onProposeWrite({
+        kind: 'create_task',
+        task: task.slice(0, 200),
+        board: requestedBoard ?? (assetIdInternal ? 'maintenance' : 'general'),
+        description,
+        priority,
+        dueDate,
+        department: requestedDepartment,
+        assignee: requestedAssignee,
+        assetIdInternal,
+        assetName: null,
+      });
+      return {
+        toolCallId: tc.id,
+        payload: {
+          ok: true,
+          task_created: false,
+          awaiting_user_confirmation: true,
+          note:
+            'The task has NOT been created. The user has been shown a confirmation card with Yes/No buttons and can edit the details before it is saved. In your reply: state in ONE short sentence what will be created, then STOP. Do NOT ask them to type a confirmation, do NOT claim it was created, and do NOT call this tool again for this task.',
+        },
+        otherCall: {
+          iteration, tool: 'create_maintenance_task', args: callArgs, ok: true,
+          resultSummary: `proposed "${task}" for user confirmation (not written)`,
+          latencyMs: Date.now() - t0,
+        },
+      };
     }
     if (!task) return fail('task title is required');
 

@@ -827,7 +827,9 @@
   position: relative;
   flex: 1;
   display: flex;
-  align-items: center;
+  /* end-aligned so the "+" and send buttons stay on the last line as the
+     textarea grows upward */
+  align-items: flex-end;
   gap: 8px;
   min-height: var(--chat-input-height);
   padding: 0 0 0 6px;
@@ -909,6 +911,10 @@
 .chat-main__input {
   flex: 1;
   min-height: var(--chat-input-height);
+  /* Grows with the text (JS sets height from scrollHeight) instead of
+     scrolling a long prompt inside a single line; caps out at ~8 lines. */
+  max-height: 220px;
+  overflow-y: auto;
   min-width: 0;
   padding: 14px 8px 14px 0;
   border-radius: 0;
@@ -4708,3 +4714,52 @@
 .capanel__doc-file { font-size: 12px; color: var(--chat-text-muted); word-break: break-all; }
 .capanel__doc-type { font-size: 13.5px; font-weight: 600; color: var(--chat-text); display: flex; align-items: center; gap: 8px; }
 .capanel__doc-conf { font-size: 11px; font-weight: 400; color: var(--chat-text-subtle); }
+
+/* ── In-app image viewer for chat attachments ── */
+.chat-message__attachment { border: 0; padding: 0; background: transparent; cursor: zoom-in; }
+.chat-lightbox {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.82); padding: 40px;
+  animation: lightboxIn 0.15s ease-out;
+}
+@keyframes lightboxIn { from { opacity: 0; } to { opacity: 1; } }
+.chat-lightbox__img {
+  max-width: 100%; max-height: 100%;
+  object-fit: contain; border-radius: 8px; cursor: default;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.chat-lightbox__close {
+  position: absolute; top: 16px; right: 20px;
+  width: 40px; height: 40px; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12); color: #fff;
+  font-size: 26px; line-height: 1; cursor: pointer;
+}
+.chat-lightbox__close:hover { background: rgba(255, 255, 255, 0.22); }
+
+/* ── Proposed register write: confirm with buttons, not typed words ── */
+.chat-confirm {
+  margin-top: 12px; padding: 14px 16px;
+  border: 1px solid var(--chat-border-strong); border-radius: 12px;
+  background: var(--chat-bg-subtle); max-width: 520px;
+}
+.chat-confirm__head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.chat-confirm__icon { font-size: 15px; }
+.chat-confirm__title { font-size: 14.5px; font-weight: 600; color: var(--chat-text); }
+.chat-confirm__facts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 12px; }
+.chat-confirm__facts > div { display: flex; gap: 6px; align-items: baseline; }
+.chat-confirm__facts dt {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--chat-text-muted);
+}
+.chat-confirm__facts dd { margin: 0; font-size: 12.5px; color: var(--chat-text); }
+.chat-confirm__actions { display: flex; gap: 8px; }
+.chat-confirm__btn {
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; border: 1px solid var(--chat-border); background: transparent;
+  color: var(--chat-text-muted);
+}
+.chat-confirm__btn:hover:not(:disabled) { color: var(--chat-text); border-color: var(--chat-text-muted); }
+.chat-confirm__btn--yes { border: 0; background: var(--chat-text); color: var(--chat-bg-subtle); }
+.chat-confirm__btn:disabled { opacity: .5; cursor: default; }
+.chat-confirm__hint { margin: 8px 0 0; font-size: 11.5px; color: var(--chat-text-subtle); }

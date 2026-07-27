@@ -145,6 +145,20 @@ export interface ChatKpiBlock {
   items: ChatKpiItem[];
 }
 
+/** A proposed create_maintenance_task, shown as a confirm card in chat. */
+export interface PendingWriteProposal {
+  kind: 'create_task';
+  task: string;
+  board: 'maintenance' | 'general';
+  description?: string | null;
+  priority?: string | null;
+  dueDate?: string | null;
+  department?: string | null;
+  assignee?: string | null;
+  assetIdInternal?: string | null;
+  assetName?: string | null;
+}
+
 export interface AnswerQuestionResult {
   shipId: string;
   question: string;
@@ -155,6 +169,13 @@ export interface AnswerQuestionResult {
   maps: ChatMap[];                   // render_map output, drawn client-side
   tables: ChatTable[];                // render_table output, drawn client-side
   kpis: ChatKpiBlock[];               // render_kpi output, drawn client-side
+  /**
+   * A register write the model wants to make, surfaced for the USER to
+   * confirm with a button instead of by typing "да"/"yes"/"все верно" —
+   * guessing confirmation phrasing across languages was fragile and let
+   * writes fall through to responders with no tools at all.
+   */
+  pendingAction?: PendingWriteProposal | null;
   totalTokens: number;
   estimatedCostUsd: number;
   durationMs: number;

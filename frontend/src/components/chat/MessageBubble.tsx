@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,6 +13,7 @@ import type {
   ChatContextReferenceDto,
   ChatSuggestionActionDto,
   ChatMessageAttachmentDto,
+  ChatPendingActionDto,
 } from "../../types/chat";
 import { useAuth } from "../../context/AuthContext";
 import { fetchChatAttachmentObjectUrl } from "../../api/chatApi";
@@ -34,6 +36,8 @@ interface MessageBubbleProps {
   onRegenerate?: (messageId: string) => void;
   onSendMessage?: (text: string) => void;
   onOpenSourcesPanel?: (citations: ChatContextReferenceDto[]) => void;
+  /** "Yes" on a proposed write — opens the task form prefilled for review. */
+  onConfirmPendingAction?: (action: ChatPendingActionDto) => void;
   actionsDisabled?: boolean;
 }
 
@@ -315,6 +319,15 @@ function UserAttachmentThumb({
 }) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [url, setUrl] = useState<string | null>(null);
+  // Opens INSIDE the app instead of a new browser tab — a blob: tab loses
+  // the chat and cannot be navigated back to the conversation.
+  const [zoomed, setZoomed] = useState(false);
+  useEffect(() => {
+    if (!zoomed) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setZoomed(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [zoomed]);
   useEffect(() => {
     if (!token || !sessionId) return;
     let objectUrl: string | null = null;
@@ -334,15 +347,45 @@ function UserAttachmentThumb({
 
   if (!url) return <div className="chat-message__attachment chat-message__attachment--loading">…</div>;
   return (
-    <a
-      className="chat-message__attachment"
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      title={attachment.name}
-    >
-      <img src={url} alt={attachment.name} />
-    </a>
+    <>
+      <button
+        type="button"
+        className="chat-message__attachment"
+        onClick={() => setZoomed(true)}
+        title={attachment.name}
+        aria-label={`Open ${attachment.name}`}
+      >
+        <img src={url} alt={attachment.name} />
+      </button>
+      {zoomed &&
+        // Portal to <body>: inside the bubble the thumbnail's own sizing
+        // rules cascade onto the full-size image and shrink it to 88px.
+        createPortal(
+          <div
+            className="chat-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={attachment.name}
+            onClick={() => setZoomed(false)}
+          >
+            <button
+              type="button"
+              className="chat-lightbox__close"
+              onClick={() => setZoomed(false)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <img
+              className="chat-lightbox__img"
+              src={url}
+              alt={attachment.name}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
@@ -353,6 +396,7 @@ export function MessageBubble({
   onRegenerate,
   onSendMessage,
   onOpenSourcesPanel,
+  onConfirmPendingAction,
   actionsDisabled = false,
 }: MessageBubbleProps) {
   const { token, user } = useAuth();
@@ -404,6 +448,19 @@ export function MessageBubble({
           : [],
       )
     : [];
+  // A proposed register write: the user confirms with a button instead of
+  // typing "да"/"yes"/"все верно", which we then had to recognise.
+  const [actionDismissed, setActionDismissed] = useState(false);
+  const pendingAction: ChatPendingActionDto | null = Array.isArray(
+    ragflowContext?.askResults,
+  )
+    ? ((ragflowContext.askResults
+        .map((ask) => ask?.data?.pendingAction)
+        .find((a) => a && typeof a === "object") as
+        | ChatPendingActionDto
+        | undefined) ?? null)
+    : null;
+
   // Structured tables (render_table) ride the same way as charts/maps.
   const tables: ChatTableDto[] = Array.isArray(ragflowContext?.askResults)
     ? ragflowContext.askResults.flatMap((ask) =>
@@ -566,6 +623,78 @@ export function MessageBubble({
             {tables.map((t, index) => (
               <ChatTableBlock key={`${t.title}-${index}`} table={t} />
             ))}
+          </div>
+        )}
+
+        {role === "assistant" && pendingAction && !actionDismissed && (
+          <div className="chat-confirm">
+            <div className="chat-confirm__head">
+              <span className="chat-confirm__icon" aria-hidden>
+                📋
+              </span>
+              <span className="chat-confirm__title">{pendingAction.task}</span>
+            </div>
+            <dl className="chat-confirm__facts">
+              <div>
+                <dt>Board</dt>
+                <dd>
+                  {pendingAction.board === "maintenance"
+                    ? "Maintenance Plan"
+                    : "Tasks"}
+                </dd>
+              </div>
+              {pendingAction.assignee && (
+                <div>
+                  <dt>Assignee</dt>
+                  <dd>{pendingAction.assignee}</dd>
+                </div>
+              )}
+              {pendingAction.department && (
+                <div>
+                  <dt>Department</dt>
+                  <dd>{pendingAction.department}</dd>
+                </div>
+              )}
+              {pendingAction.priority && (
+                <div>
+                  <dt>Priority</dt>
+                  <dd>{pendingAction.priority}</dd>
+                </div>
+              )}
+              {pendingAction.dueDate && (
+                <div>
+                  <dt>Due</dt>
+                  <dd>{pendingAction.dueDate}</dd>
+                </div>
+              )}
+              {pendingAction.assetIdInternal && (
+                <div>
+                  <dt>Equipment</dt>
+                  <dd>{pendingAction.assetIdInternal}</dd>
+                </div>
+              )}
+            </dl>
+            <div className="chat-confirm__actions">
+              <button
+                type="button"
+                className="chat-confirm__btn chat-confirm__btn--yes"
+                onClick={() => onConfirmPendingAction?.(pendingAction)}
+                disabled={!onConfirmPendingAction || actionsDisabled}
+              >
+                Yes — review &amp; create
+              </button>
+              <button
+                type="button"
+                className="chat-confirm__btn"
+                onClick={() => setActionDismissed(true)}
+                disabled={actionsDisabled}
+              >
+                No
+              </button>
+            </div>
+            <p className="chat-confirm__hint">
+              Nothing is saved until you confirm in the form.
+            </p>
           </div>
         )}
 
