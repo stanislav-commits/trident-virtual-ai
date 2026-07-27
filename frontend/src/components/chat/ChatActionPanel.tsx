@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatPanelAction } from "./ChatPlusMenu";
 import type { ChatPendingActionDto } from "../../types/chat";
 import { listCrew, type CrewMemberDto } from "../../api/crewApi";
@@ -217,7 +217,7 @@ function AssetPicker({
   if (asset) {
     return (
       <div className="capanel__asset-picked">
-        <span className="capanel__asset-code">{asset.assetIdInternal}</span>
+        {/* The internal register code is plumbing — the crew reads names. */}
         <span className="capanel__asset-name">{asset.displayName}</span>
         <button
           type="button"
@@ -256,12 +256,66 @@ function AssetPicker({
                 setOpen(false);
               }}
             >
-              <span className="capanel__asset-code">{a.assetIdInternal}</span>
               <span className="capanel__asset-name">{a.displayName}</span>
             </button>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Native <input type="date"> renders in whatever format the BROWSER's OS
+ * locale dictates — Chrome ignores both the document lang and
+ * navigator.language, so a due date showed as 08/01/2026 and read as
+ * 8 January to half the crew. This shows an unambiguous "1 Aug 2026" and
+ * still opens the real calendar (the native input is kept, just hidden).
+ */
+function DateField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
+}) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  const label = value
+    ? new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "";
+  const openPicker = () => {
+    const el = ref.current;
+    if (!el || disabled) return;
+    // showPicker() is Chrome/Edge/Safari 16+; focus is the graceful fallback.
+    if (typeof el.showPicker === "function") el.showPicker();
+    else el.focus();
+  };
+  return (
+    <div className="capanel__date">
+      <button
+        type="button"
+        className="capanel__input capanel__date-btn"
+        onClick={openPicker}
+        disabled={disabled}
+      >
+        {label || <span className="capanel__date-empty">Pick a date</span>}
+      </button>
+      <input
+        ref={ref}
+        type="date"
+        className="capanel__date-native"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        tabIndex={-1}
+        aria-hidden
+      />
     </div>
   );
 }
@@ -519,13 +573,7 @@ function WorkOrderForm({
         </div>
         <div className="capanel__field">
           <span className="capanel__label">Due date</span>
-          <input
-            type="date"
-            className="capanel__input"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            disabled={busy}
-          />
+          <DateField value={dueDate} onChange={setDueDate} disabled={busy} />
         </div>
       </div>
       <PhotoField files={files} setFiles={setFiles} previews={previews} disabled={busy} />
