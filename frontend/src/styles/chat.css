@@ -832,7 +832,7 @@
   align-items: flex-end;
   gap: 8px;
   min-height: var(--chat-input-height);
-  padding: 0 0 0 6px;
+  padding: 0 6px 0 6px;
   border-radius: var(--chat-radius-pill);
   background: var(--chat-surface-2);
   border: 1px solid var(--chat-border-strong);
@@ -936,6 +936,10 @@
   position: relative;
   width: 44px;
   height: 44px;
+  /* Sits on the same baseline as the "+" and send button — the capsule
+     bottom-aligns its controls so they follow the last line as the
+     textarea grows, and 44px vs 40px would otherwise leave the mic low. */
+  margin-bottom: 4px;
   border-radius: 50%;
   border: 1px solid transparent;
   background: transparent;
