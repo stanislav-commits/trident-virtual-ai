@@ -116,47 +116,33 @@ export class ChatDailyBriefService {
       .getMany();
 
     if (alerts.length === 0) {
-      return this.lang() === 'ru'
-        ? 'Данные системы (источник истины): за последние 24 часа алармов не зафиксировано.'
-        : 'Ground truth from the alerts system: no alarms recorded in the last 24 hours.';
+      return 'Ground truth from the alerts system: no alarms recorded in the last 24 hours.';
     }
     const lines = alerts.map((a) => {
       const status = a.status === 'resolved' ? 'resolved' : 'firing';
       return `- [${a.severity}/${status}] ${a.title}${a.message ? ` — ${a.message}` : ''} (started ${a.startedAt.toISOString()}${a.resolvedAt ? `, resolved ${a.resolvedAt.toISOString()}` : ''})`;
     });
-    const header =
-      this.lang() === 'ru'
-        ? `Данные системы (источник истины) — ${alerts.length} аларм(ов) за последние 24 часа:`
-        : `Ground truth from the alerts system — ${alerts.length} alarm(s) in the last 24 hours:`;
+    const header = `Ground truth from the alerts system — ${alerts.length} alarm(s) in the last 24 hours:`;
     return [header, ...lines].join('\n');
   }
 
+  /**
+   * The prompt is ALWAYS English — prompts must never be written in another
+   * language (Russian wording inside prompts dragged the model's answers into
+   * Russian on English conversations). The OUTPUT language is set separately,
+   * via the analyzer's answerLanguage option.
+   */
   private briefQuestion(alarmsGroundTruth: string): string {
-    // The analyzer mirrors the question's language, so this env var flips
-    // the whole brief.
-    if (this.lang() !== 'ru') {
-      return (
-        'Morning brief for the crew. Compile a short vessel status report: ' +
-        `1) alarms and faults over the last 24 hours — use this authoritative list, do not re-derive it yourself:\n${alarmsGroundTruth}\n` +
-        'Summarize it in your own words (or say the night was quiet if it is empty) — do not call find_active_alarms, this list is already ground truth; ' +
-        '2) current critical reserves — fuel, fresh water, DEF — as ONE render_kpi block, flagging anything low; ' +
-        '3) maintenance due today or overdue (get_maintenance_tasks) — only the important ones, max 5; ' +
-        '4) current position and whether today\'s weather window is workable (get_vessel_state + get_marine_forecast); ' +
-        '5) trend warnings: check 2-3 key running systems (generators, HVAC, tanks) with compare_to_typical / find_unusual_periods over the last 72h and flag anything drifting from its normal range — SKIP this section entirely when all is normal. ' +
-        'Start with a one-line verdict (all normal / needs attention: X). Keep it tight — this is a daily digest, not an audit. ' +
-        'Write the text as short prose paragraphs and bullet lists ONLY — never markdown |-tables (they are stripped); anything tabular goes through render_table, and the maintenance list belongs in the render_table, not repeated in text. Do NOT write your own big title/header line — the delivery adds a dated header already; start directly with the verdict.'
-      );
-    }
     return (
-      'Утренний брифинг для экипажа. Составь короткую сводку по судну: ' +
-      `1) алармы и неисправности за последние 24 часа — используй этот авторитетный список, не выводи его заново сам:\n${alarmsGroundTruth}\n` +
-      'Перескажи своими словами (или скажи, что ночь прошла спокойно, если список пуст) — НЕ вызывай find_active_alarms, этот список уже является источником истины; ' +
-      '2) текущие критические запасы — топливо, пресная вода, DEF — одним блоком render_kpi, отметь низкие; ' +
-      '3) задачи ТО на сегодня и просроченные (get_maintenance_tasks) — только важные, максимум 5; ' +
-      '4) текущая позиция и пригодно ли сегодняшнее погодное окно (get_vessel_state + get_marine_forecast); ' +
-      '5) тренд-предупреждения: проверь 2-3 ключевые работающие системы (генераторы, климат, танки) через compare_to_typical / find_unusual_periods за последние 72 часа и отметь, что уходит от своей нормы — если всё в норме, ПРОПУСТИ эту секцию целиком. ' +
-      'Начни с вердикта одной строкой (всё в норме / требует внимания: X). Кратко — это ежедневный дайджест, не аудит. ' +
-      'Текст пиши только короткими абзацами и маркированными списками — НИКАКИХ markdown-таблиц через | (они вырезаются); всё табличное — только через render_table, и список задач ТО живёт в render_table, не дублируй его текстом. НЕ пиши свой большой заголовок — датированный заголовок уже добавляется при доставке; начинай сразу с вердикта.'
+      'Morning brief for the crew. Compile a short vessel status report: ' +
+        `1) alarms and faults over the last 24 hours — use this authoritative list, do not re-derive it yourself:\n${alarmsGroundTruth}\n` +
+      'Summarize it in your own words (or say the night was quiet if it is empty) — do not call find_active_alarms, this list is already ground truth; ' +
+      '2) current critical reserves — fuel, fresh water, DEF — as ONE render_kpi block, flagging anything low; ' +
+      '3) maintenance due today or overdue (get_maintenance_tasks) — only the important ones, max 5; ' +
+      '4) current position and whether today\'s weather window is workable (get_vessel_state + get_marine_forecast); ' +
+      '5) trend warnings: check 2-3 key running systems (generators, HVAC, tanks) with compare_to_typical / find_unusual_periods over the last 72h and flag anything drifting from its normal range — SKIP this section entirely when all is normal. ' +
+      'Start with a one-line verdict (all normal / needs attention: X). Keep it tight — this is a daily digest, not an audit. ' +
+      'Write the text as short prose paragraphs and bullet lists ONLY — never markdown |-tables (they are stripped); anything tabular goes through render_table, and the maintenance list belongs in the render_table, not repeated in text. Do NOT write your own big title/header line — the delivery adds a dated header already; start directly with the verdict.'
     );
   }
 
@@ -165,6 +151,7 @@ export class ChatDailyBriefService {
     const result = await this.metricAnalyzerResponderService.answer(
       ship.id,
       this.briefQuestion(alarmsGroundTruth),
+      { answerLanguage: this.lang() },
     );
 
     // Same shape the chat responder produces, so MessageBubble renders the

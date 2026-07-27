@@ -564,13 +564,13 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'render_chart',
       description:
-        'Draw a time-series chart INSIDE the chat for the user to see. Call this when the user asks to "show / plot / graph / draw / визуализируй / покажи график" a metric over time, or whenever a trend is clearly easier to grasp visually than as one number. First resolve each metric with find_metrics_by_intent to get the EXACT measurement + field, then call THIS tool directly — you do NOT need to fetch, align, downsample, sum or stack the data yourself first. NEVER use run_flux_query to build a chart and NEVER dump raw data rows into the answer; render_chart pulls, down-samples, sums (combine:"sum") and stacks (chart_type:"area") server-side. The chart is rendered to the user automatically — you do NOT list the data points; just write a one-line textual takeaway (peak, trend, total) alongside it. The server down-samples, so a wide range is fine. If the user names a specific step/bucket ("every 4 hours", "по дням", "hourly", "raw"/"без усреднения"), you MUST set `every` to that exact Flux duration — do not silently pick your own when the user asked for one. TOTALS: when the user wants ONE combined line across several metrics ("total water across all tanks", "суммарный уровень топлива", "combined", "в сумме"), pass ALL the contributing metrics in `series` AND set combine:"sum" — the server adds them into a single trend. NEVER fake a total by passing one metric and labelling it as the sum, and NEVER leave N separate lines when the user asked for the total. FORECAST: when the user asks to project/forecast/"when will it run out / run empty / hit X / когда закончится / хватит ли / прогноз", set forecast:true (and forecast_to to the target — 0 for "run empty", or the threshold) so the projection is DRAWN on the chart with an ETA marker — do NOT just describe the projection in prose. Also: never write placeholder tokens like {{CHART}} in your answer — the chart renders on its own.',
+        'Draw a time-series chart INSIDE the chat for the user to see. Call this when the user asks to "show / plot / graph / draw the trend" a metric over time, or whenever a trend is clearly easier to grasp visually than as one number. First resolve each metric with find_metrics_by_intent to get the EXACT measurement + field, then call THIS tool directly — you do NOT need to fetch, align, downsample, sum or stack the data yourself first. NEVER use run_flux_query to build a chart and NEVER dump raw data rows into the answer; render_chart pulls, down-samples, sums (combine:"sum") and stacks (chart_type:"area") server-side. The chart is rendered to the user automatically — you do NOT list the data points; just write a one-line textual takeaway (peak, trend, total) alongside it. The server down-samples, so a wide range is fine. If the user names a specific step/bucket ("every 4 hours", "daily", "hourly", "raw"/"without averaging"), you MUST set `every` to that exact Flux duration — do not silently pick your own when the user asked for one. TOTALS: when the user wants ONE combined line across several metrics ("total water across all tanks", "total fuel level", "combined", "summed"), pass ALL the contributing metrics in `series` AND set combine:"sum" — the server adds them into a single trend. NEVER fake a total by passing one metric and labelling it as the sum, and NEVER leave N separate lines when the user asked for the total. FORECAST: when the user asks to project/forecast/"when will it run out / run empty / hit X", set forecast:true (and forecast_to to the target — 0 for "run empty", or the threshold) so the projection is DRAWN on the chart with an ETA marker — do NOT just describe the projection in prose. Also: never write placeholder tokens like {{CHART}} in your answer — the chart renders on its own.',
       parameters: {
         type: 'object',
         properties: {
           title: {
             type: 'string',
-            description: 'Short human title for the chart, in the user\'s language, e.g. "Расход пресной воды — 30 дней" or "Fresh-water pump power (last 30 days)". Never put internal metric keys or asset codes here.',
+            description: 'Short human title for the chart, in the user\'s language, e.g. "Fresh-water consumption — 30 days" or "Fresh-water pump power (last 30 days)". Never put internal metric keys or asset codes here.',
           },
           series: {
             type: 'array',
@@ -595,7 +595,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           },
           every: {
             type: 'string',
-            description: 'Down-sample bucket (Flux duration, e.g. 5m, 1h, 4h, 1d). Set this whenever the user specifies a step ("every 4 hours" → "4h", "по дням" → "1d"). Omit only when the user did not ask for a specific step — the server then picks a sensible bucket for the range.',
+            description: 'Down-sample bucket (Flux duration, e.g. 5m, 1h, 4h, 1d). Set this whenever the user specifies a step ("every 4 hours" → "4h", "daily" → "1d"). Omit only when the user did not ask for a specific step — the server then picks a sensible bucket for the range.',
           },
           chart_type: {
             type: 'string',
@@ -605,19 +605,19 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           combine: {
             type: 'string',
             enum: ['none', 'sum'],
-            description: 'none (default) = plot each series as its own line. "sum" = add all the series together per time bucket into ONE line (use for "total across all tanks / combined / суммарно"). Only valid when the series share a unit.',
+            description: 'none (default) = plot each series as its own line. "sum" = add all the series together per time bucket into ONE line (use for "total across all tanks / combined / summed"). Only valid when the series share a unit.',
           },
           combined_label: {
             type: 'string',
-            description: 'Legend/label for the single line produced by combine:"sum", e.g. "Total fresh water" / "Суммарный уровень топлива". Optional.',
+            description: 'Legend/label for the single line produced by combine:"sum", e.g. "Total fresh water" / "Total fuel level". Optional.',
           },
           mark_events: {
             type: 'boolean',
-            description: 'Set true to mark significant step changes (refills/bunkering as step-ups, big draws as step-downs) as dashed vertical lines on the chart. Use when the user asks "when did we bunker / refill / отметь события / заправки / резкие изменения". Only applies to a single-metric line.',
+            description: 'Set true to mark significant step changes (refills/bunkering as step-ups, big draws as step-downs) as dashed vertical lines on the chart. Use when the user asks "when did we bunker / refill / mark the events / step changes". Only applies to a single-metric line.',
           },
           forecast: {
             type: 'boolean',
-            description: 'Set true to project the recent trend forward as a dashed estimate line (linear fit). Use for "forecast / projection / when will it run out / прогноз / когда закончится / хватит ли". Only for a single-metric line.',
+            description: 'Set true to project the recent trend forward as a dashed estimate line (linear fit). Use for "forecast / projection / when will it run out / will it last". Only for a single-metric line.',
           },
           forecast_to: {
             type: 'number',
@@ -625,7 +625,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           },
           forecast_label: {
             type: 'string',
-            description: 'Legend label for the dashed forecast line in the user\'s language, e.g. "Прогноз" / "Forecast". Optional.',
+            description: 'Legend label for the dashed forecast line in the user\'s language, e.g. "Forecast". Optional.',
           },
         },
         required: ['title', 'series', 'range'],
@@ -637,13 +637,13 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'render_map',
       description:
-        'Draw an interactive MAP of the vessel in the chat: its GPS track over a period plus its current position, on a Windy weather map. Call this when the user asks "where is the ship / where has she been / show the route / track / map / где судно / покажи трек / маршрут / карту / на карте". Call render_map DIRECTLY — do NOT paste raw coordinates into the answer; the map renders on its own. Give a short plain takeaway alongside it (rough area, distance covered, current position in words).',
+        'Draw an interactive MAP of the vessel in the chat: its GPS track over a period plus its current position, on a Windy weather map. Call this when the user asks "where is the ship / where has she been / show the route / track / map". Call render_map DIRECTLY — do NOT paste raw coordinates into the answer; the map renders on its own. Give a short plain takeaway alongside it (rough area, distance covered, current position in words).',
       parameters: {
         type: 'object',
         properties: {
           title: {
             type: 'string',
-            description: 'Short human title in the user\'s language, e.g. "Маршрут SeaWolf X — 7 дней" or "Vessel track (last week)".',
+            description: 'Short human title in the user\'s language, e.g. "SeaWolf X track — 7 days" or "Vessel track (last week)".',
           },
           range: {
             type: 'object',
@@ -674,7 +674,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
         properties: {
           title: {
             type: 'string',
-            description: 'Short table title in the user\'s language, e.g. "Пресная вода по танкам" or "Generators overview". Never put internal metric keys or asset codes here.',
+            description: 'Short table title in the user\'s language, e.g. "Fresh water by tank" or "Generators overview". Never put internal metric keys or asset codes here.',
           },
           columns: {
             type: 'array',
@@ -719,7 +719,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             items: {
               type: 'object',
               properties: {
-                label: { type: 'string', description: 'Short label, in the user\'s language, e.g. "Fuel tank 5P" / "Генератор 1, нагрузка". Never an internal metric key or asset code.' },
+                label: { type: 'string', description: 'Short label, in the user\'s language, e.g. "Fuel tank 5P" / "Generator 1 load". Never an internal metric key or asset code.' },
                 value: { type: 'number', description: 'The current value, in display units.' },
                 unit: { type: 'string', description: 'e.g. "%", "L", "h", "°C", "bar". Optional.' },
                 format: {
@@ -748,18 +748,18 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'create_maintenance_task',
       description:
-        'CREATE a task in the vessel\'s task register from the conversation — e.g. "создай задачу долить DEF", "add a task to check the bilge pump". There are TWO boards and you MUST pick the right one via `board`: "maintenance" = the Maintenance Plan, ONLY for work on the vessel\'s equipment/assets (repairs, servicing, inspections, topping up systems — anything about a physical asset, even when the asset is not linked in the register); "general" = the Tasks board for people-directed assignments and chores that are NOT equipment upkeep (housekeeping/cleaning like "почистить ковровое покрытие", provisioning, paperwork, drills, personal assignments). This WRITES to the live register, so it is STRICTLY confirmation-gated: NEVER call it proactively or bundle it into an answer. Flow: (1) the user asks to create a task (or you propose one and they agree); (2) you state exactly what will be created — title, priority, due date, linked equipment, department — and ask for confirmation; (3) ONLY after the user explicitly confirms you call this tool with confirmed:true. A confirmation counts when the user said it in this conversation OR when the question itself states the user has already confirmed (e.g. "Пользователь явно подтвердил: создай задачу..." — the confirmation happened in a previous turn and was carried into this ask). If neither holds, do not call the tool — propose and ask instead. One call per confirmed task. NOTE: this is POSITION-GATED — the acting account can only write into ITS OWN department (Master/Superintendent may write to any); a mismatched department is refused with an explanation, which you must relay to the user plainly, not paper over.',
+        'CREATE a task in the vessel\'s task register from the conversation — e.g. "add a task to top up DEF", "add a task to check the bilge pump". There are TWO boards and you MUST pick the right one via `board`: "maintenance" = the Maintenance Plan, ONLY for work on the vessel\'s equipment/assets (repairs, servicing, inspections, topping up systems — anything about a physical asset, even when the asset is not linked in the register); "general" = the Tasks board for people-directed assignments and chores that are NOT equipment upkeep (housekeeping/cleaning like "shampoo the salon carpet", provisioning, paperwork, drills, personal assignments). This WRITES to the live register, so it is STRICTLY confirmation-gated: NEVER call it proactively or bundle it into an answer. Flow: (1) the user asks to create a task (or you propose one and they agree); (2) you state exactly what will be created — title, priority, due date, linked equipment, department — and ask for confirmation; (3) ONLY after the user explicitly confirms you call this tool with confirmed:true. A confirmation counts when the user said it in this conversation OR when the question itself states the user has already confirmed (e.g. "The user explicitly confirmed: create the task..." — the confirmation happened in a previous turn and was carried into this ask). If neither holds, do not call the tool — propose and ask instead. One call per confirmed task. NOTE: this is POSITION-GATED — the acting account can only write into ITS OWN department (Master/Superintendent may write to any); a mismatched department is refused with an explanation, which you must relay to the user plainly, not paper over.',
       parameters: {
         type: 'object',
         properties: {
-          task: { type: 'string', description: 'Short task title, in the user\'s language, e.g. "Долить DEF в танк 27P" / "Replace watermaker filter cartridges".' },
+          task: { type: 'string', description: 'Short task title, in the user\'s language, e.g. "Top up DEF in tank 27P" / "Replace watermaker filter cartridges".' },
           board: { type: 'string', enum: ['maintenance', 'general'], description: 'REQUIRED routing decision: "maintenance" for equipment/asset work (goes to the Maintenance Plan), "general" for people-directed chores/assignments not about equipment (goes to the Tasks board).' },
           description: { type: 'string', description: 'Optional details: why the task exists, what triggered it, target values. Mention it was created from the chat.' },
           priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Default medium.' },
           due_date: { type: 'string', description: 'Optional due date YYYY-MM-DD.' },
           asset_id_internal: { type: 'string', description: 'Optional asset to link — resolve via lookup_asset / find_assets_by_function FIRST and use its asset_id_internal. An asset-linked task always belongs on the maintenance board.' },
           department: { type: 'string', enum: ['deck', 'engine', 'interior', 'galley'], description: 'Which department this task belongs to — infer from the equipment/context when possible (e.g. a genset/engine-room task is "engine", housekeeping is "interior"). Omit for a general task open to everyone.' },
-          assignee: { type: 'string', description: 'WHO should do it, exactly as the user named them — a person ("Diego", "Erik Lund") or a rank/role ("второй механик", "2nd engineer", "chief officer", "стармех"). Pass this whenever the user directs the work at someone ("отправь задание второму механику", "assign it to the bosun"); omit when no one is named. Resolved server-side against the crew roster; if the person is missing, has no login, or the name is ambiguous, the call fails with the list of assignable crew — relay that to the user plainly instead of creating an unassigned task silently.' },
+          assignee: { type: 'string', description: 'WHO should do it, exactly as the user named them — a person ("Diego", "Erik Lund") or a rank/role ("2nd engineer", "chief officer", "chief engineer", "bosun"). Pass this whenever the user directs the work at someone ("send the job to the 2nd engineer", "assign it to the bosun"); omit when no one is named. Resolved server-side against the crew roster; if the person is missing, has no login, or the name is ambiguous, the call fails with the list of assignable crew — relay that to the user plainly instead of creating an unassigned task silently.' },
           confirmed: { type: 'boolean', description: 'MUST be true, and only after the user explicitly confirmed creating this exact task in this conversation.' },
         },
         required: ['task', 'board', 'confirmed'],
@@ -771,7 +771,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'complete_maintenance_task',
       description:
-        'Mark a PMS (maintenance) task as DONE from the conversation — "отметь задачу выполненной", "mark the drill as completed", "we did the fire drill today". WRITE tool, STRICTLY confirmation-gated exactly like create_maintenance_task: (1) resolve WHICH task (by task_code when the user gives one, else task_query — if several match you will get a candidate list back; ask the user to pick); (2) state the task title + code and ask for confirmation; (3) call with confirmed:true ONLY after an explicit user "yes" — either said in this conversation or when the question itself states the user already confirmed. Recurring tasks roll forward to their next due date; one-offs move to history.',
+        'Mark a PMS (maintenance) task as DONE from the conversation — "mark that task as done", "mark the drill as completed", "we did the fire drill today". WRITE tool, STRICTLY confirmation-gated exactly like create_maintenance_task: (1) resolve WHICH task (by task_code when the user gives one, else task_query — if several match you will get a candidate list back; ask the user to pick); (2) state the task title + code and ask for confirmation; (3) call with confirmed:true ONLY after an explicit user "yes" — either said in this conversation or when the question itself states the user already confirmed. Recurring tasks roll forward to their next due date; one-offs move to history.',
       parameters: {
         type: 'object',
         properties: {
@@ -791,7 +791,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'log_hours_reading',
       description:
-        'Log a manual RUNNING-HOURS counter reading for an asset — "запиши моточасы генератора: 1046", "log 1046 h on the port genset". WRITE tool, confirmation-gated like the other write tools: resolve the asset FIRST (lookup_asset / find_assets_by_function → asset_id_internal), state asset + hours and ask, then call with confirmed:true only after an explicit user yes (in this conversation, or stated as already-confirmed in the question). The reading lands in the asset\'s hours journal and completes this month\'s reading-reminder task if one exists.',
+        'Log a manual RUNNING-HOURS counter reading for an asset — "log the generator running hours: 1046", "log 1046 h on the port genset". WRITE tool, confirmation-gated like the other write tools: resolve the asset FIRST (lookup_asset / find_assets_by_function → asset_id_internal), state asset + hours and ask, then call with confirmed:true only after an explicit user yes (in this conversation, or stated as already-confirmed in the question). The reading lands in the asset\'s hours journal and completes this month\'s reading-reminder task if one exists.',
       parameters: {
         type: 'object',
         properties: {
@@ -810,7 +810,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'create_metric_watch',
       description:
-        'Create a standing WATCH on a metric — "следи за баком 5P, скажи когда меньше 15%", "watch the stbd genset coolant and tell me when it goes above 90". The system then checks the metric every few minutes and posts a Notifications-panel entry when the condition trips (auto-clears on recovery, stays armed). WRITE tool, confirmation-gated like the others: (1) resolve the metric via find_metrics_by_intent / find_asset_metrics; (2) convert the user\'s wording into the metric\'s own display units when needed (e.g. "15%" of a litres tank → look up capacity via aggregate_asset_facts and compute the litre threshold); (3) state metric + condition + threshold and ask; (4) call with confirmed:true only after an explicit user yes (in this conversation or stated as already-confirmed in the question).',
+        'Create a standing WATCH on a metric — "watch tank 5P and tell me when it drops below 15%", "watch the stbd genset coolant and tell me when it goes above 90". The system then checks the metric every few minutes and posts a Notifications-panel entry when the condition trips (auto-clears on recovery, stays armed). WRITE tool, confirmation-gated like the others: (1) resolve the metric via find_metrics_by_intent / find_asset_metrics; (2) convert the user\'s wording into the metric\'s own display units when needed (e.g. "15%" of a litres tank → look up capacity via aggregate_asset_facts and compute the litre threshold); (3) state metric + condition + threshold and ask; (4) call with confirmed:true only after an explicit user yes (in this conversation or stated as already-confirmed in the question).',
       parameters: {
         type: 'object',
         properties: {
@@ -831,7 +831,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'list_metric_watches',
       description:
-        'List the active metric watches on this vessel ("what are you watching / какие вотчи стоят / что отслеживаешь"). Read-only. Returns label, condition, threshold, current state and last value — report them plainly.',
+        'List the active metric watches on this vessel ("what are you watching / list the active watches"). Read-only. Returns label, condition, threshold, current state and last value — report them plainly.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -840,7 +840,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'remove_metric_watch',
       description:
-        'Deactivate a metric watch ("перестань следить за баком 5P", "remove the coolant watch"). WRITE tool, confirmation-gated: list/resolve which watch (by label fragment — must match exactly one), state it, get an explicit yes, then call with confirmed:true.',
+        'Deactivate a metric watch ("stop watching tank 5P", "remove the coolant watch"). WRITE tool, confirmation-gated: list/resolve which watch (by label fragment — must match exactly one), state it, get an explicit yes, then call with confirmed:true.',
       parameters: {
         type: 'object',
         properties: {
@@ -856,11 +856,11 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'log_defect',
       description:
-        'Record a DEFECT / equipment failure in the vessel\'s defect register — "порвался ремень на компрессоре", "hydraulic hose on the crane started leaking", "запиши дефект: …". WRITE tool, confirmation-gated like the others: resolve the equipment when named (lookup_asset / find_assets_by_function → asset_id_internal), state title + equipment + date and ask; call with confirmed:true only after an explicit user yes (in this conversation or stated as already-confirmed in the question). Include cause/action/parts only if the user already knows them — they are usually added later when the defect is closed. This also auto-creates a linked UNPLANNED task in the maintenance register, so infer department and category (failure type, e.g. "Mechanical"/"Electrical"/"Hydraulic") from where and what failed — mention both when asking for confirmation. NOTE: this is POSITION-GATED — the acting account can only log defects for ITS OWN department (Master/Superintendent may log for any); a mismatched department is refused with an explanation, which you must relay to the user plainly.',
+        'Record a DEFECT / equipment failure in the vessel\'s defect register — "the compressor drive belt snapped", "hydraulic hose on the crane started leaking", "log a defect: …". WRITE tool, confirmation-gated like the others: resolve the equipment when named (lookup_asset / find_assets_by_function → asset_id_internal), state title + equipment + date and ask; call with confirmed:true only after an explicit user yes (in this conversation or stated as already-confirmed in the question). Include cause/action/parts only if the user already knows them — they are usually added later when the defect is closed. This also auto-creates a linked UNPLANNED task in the maintenance register, so infer department and category (failure type, e.g. "Mechanical"/"Electrical"/"Hydraulic") from where and what failed — mention both when asking for confirmation. NOTE: this is POSITION-GATED — the acting account can only log defects for ITS OWN department (Master/Superintendent may log for any); a mismatched department is refused with an explanation, which you must relay to the user plainly.',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Short failure title in the user\'s language, e.g. "Порван приводной ремень компрессора".' },
+          title: { type: 'string', description: 'Short failure title in the user\'s language, e.g. "Compressor drive belt snapped".' },
           description: { type: 'string', description: 'Optional details: symptoms, circumstances, what was observed.' },
           asset_id_internal: { type: 'string', description: 'Optional failed equipment — resolve via lookup_asset / find_assets_by_function first.' },
           occurred_on: { type: 'string', description: 'Failure date YYYY-MM-DD. Default today.' },
@@ -880,7 +880,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'close_defect',
       description:
-        'Close an open defect, recording how it was fixed — "дефект по компрессору устранён: заменили ремень, причина — износ". WRITE tool, confirmation-gated: resolve WHICH defect via find_defects (title fragment must match exactly one open defect), state it + the cause/action, get an explicit yes, then confirmed:true.',
+        'Close an open defect, recording how it was fixed — "compressor defect fixed: replaced the belt, cause was wear". WRITE tool, confirmation-gated: resolve WHICH defect via find_defects (title fragment must match exactly one open defect), state it + the cause/action, get an explicit yes, then confirmed:true.',
       parameters: {
         type: 'object',
         properties: {
@@ -899,7 +899,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'find_defects',
       description:
-        'Search the defect / failure register (read-only): "какие поломки повторяются", "what keeps failing on the crane", "что было причиной в прошлый раз", "открытые дефекты". Returns matching defects (title, equipment, status, dates, cause/action when closed) plus per-equipment recurrence counts — use those to answer "most frequent failures" honestly. An empty result means no defects are recorded — say so; never invent failure history.',
+        'Search the defect / failure register (read-only): "what keeps breaking", "what keeps failing on the crane", "what was the cause last time", "open defects". Returns matching defects (title, equipment, status, dates, cause/action when closed) plus per-equipment recurrence counts — use those to answer "most frequent failures" honestly. An empty result means no defects are recorded — say so; never invent failure history.',
       parameters: {
         type: 'object',
         properties: {

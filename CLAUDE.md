@@ -39,6 +39,8 @@ CI (`.github/workflows/ci.yml` + `checks` job in `deploy.yml`) runs typecheck + 
 
 ## Gotchas / conventions
 
+- **Prompts are English-only — no exceptions.** Every string sent to a model (system prompts, tool descriptions/examples, decomposer/classifier/router instructions, brief and alert questions) must be written in English. Russian wording inside prompts — above all the examples in `tool-definitions.const.ts` — dragged answers into Russian on English conversations (2026-07-27). To control the OUTPUT language, pass `answerLanguage` to `MetricAnalyzerResponderService.answer()` instead; never translate the prompt. This does NOT apply to: regexes that match Russian user input (`chat-pending-write-confirmation.util.ts`, `chat-turn-classifier.service.ts`, document/parts keyword lists), transliteration tables, or user-facing strings shown to the crew.
+
 - **Secrets:** grep `.env` files by exact var name only (`grep '^VAR_NAME='`) — never dump them; never print secret values into chat/logs.
 - Health endpoint `reachable: false` for influx/rag/llm/web-search is hardcoded cosmetics (`getStatus()` never probes) — not an outage signal.
 - `severity` label from Grafana arrives as `severity` or `Severity` (hand-made rules) — webhook normalizes both.

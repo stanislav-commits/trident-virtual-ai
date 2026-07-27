@@ -78,14 +78,13 @@ export class AlertAutoAnalysisService {
     const lang = this.configService.get<string>('chat.dailyBriefLanguage', 'en');
     const when = alert.startedAt.toISOString();
     const valuePart = alert.value != null ? ` value=${alert.value}` : '';
+    // Prompts are ALWAYS authored in English; the OUTPUT language is set
+    // separately via answerLanguage (a Russian prompt used to drag the
+    // model into Russian even on English conversations).
     const question =
-      lang === 'ru'
-        ? `Аларм «${alert.title}» (severity ${alert.severity}) сработал в ${when}${valuePart}. ` +
-          'Разберись в вероятной причине (тренд метрики вокруг срабатывания, связанные метрики, состояние оборудования, повторялся ли аларм раньше), но ОТВЕТЬ РОВНО ДВУМЯ КОРОТКИМИ СТРОКАМИ в этом формате, без заголовков, без markdown, без пояснений сверху: ' +
-          '"Cause: <одно предложение, самая вероятная причина>" затем с новой строки "Immediate action: <одно предложение, что сделать прямо сейчас>". Это компактная аннотация для панели уведомлений, а не отчёт — если не уверен в причине, так и напиши коротко ("Cause: unclear, needs manual check"). Только текст: без вызовов render_chart/render_table/render_kpi.'
-        : `Alarm "${alert.title}" (severity ${alert.severity}) fired at ${when}${valuePart}. ` +
-          'Investigate the likely cause (this metric\'s trend around the trigger, correlated metrics, equipment state, whether it has fired before), but ANSWER IN EXACTLY TWO SHORT LINES in this format, no headers, no markdown, no preamble: ' +
-          '"Cause: <one sentence, the most likely cause>" then on a new line "Immediate action: <one sentence, what to do right now>". This is a compact Notifications-panel annotation, not a report — if unsure of the cause, say so briefly ("Cause: unclear, needs manual check"). Text only: no render_chart/render_table/render_kpi calls.';
+      `Alarm "${alert.title}" (severity ${alert.severity}) fired at ${when}${valuePart}. ` +
+      'Investigate the likely cause (this metric\'s trend around the trigger, correlated metrics, equipment state, whether it has fired before), but ANSWER IN EXACTLY TWO SHORT LINES in this format, no headers, no markdown, no preamble: ' +
+      '"Cause: <one sentence, the most likely cause>" then on a new line "Immediate action: <one sentence, what to do right now>". This is a compact Notifications-panel annotation, not a report — if unsure of the cause, say so briefly ("Cause: unclear, needs manual check"). Text only: no render_chart/render_table/render_kpi calls.';
 
     this.logger.log(
       `Auto-analyzing alert "${alert.ruleName}" (${alert.severity}) for ship ${alert.shipId}`,
@@ -93,6 +92,7 @@ export class AlertAutoAnalysisService {
     const result = await this.metricAnalyzerResponderService.answer(
       alert.shipId,
       question,
+      { answerLanguage: lang },
     );
 
     // Re-read: the alert may have resolved/updated while the analyzer ran.

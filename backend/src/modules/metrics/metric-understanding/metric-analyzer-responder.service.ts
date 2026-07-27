@@ -285,14 +285,16 @@ export class MetricAnalyzerResponderService {
             {
               role: 'system' as const,
               content:
-                'ANSWER LANGUAGE — DECISIVE, overrides everything below: write ' +
-                'the ENTIRE answer (headings, table headers, labels, task ' +
-                'titles) in the SAME language the user is writing in. This is ' +
-                'the user\'s own wording for reference:\n"' +
+                'ANSWER LANGUAGE — DECISIVE, overrides everything below: ' +
+                'write the ENTIRE answer (headings, table headers, labels, ' +
+                'task titles) in the language indicated here:\n"' +
                 opts.answerLanguage.trim().slice(0, 400) +
-                '"\nThe examples in this system prompt and in the TOOL ' +
-                'DESCRIPTIONS are mostly Russian — they are examples only and ' +
-                'must NEVER influence the language you answer in.',
+                '"\nIf that is a sample of the user\'s own writing, mirror ' +
+                'ITS language; if it is a language name or code, use that ' +
+                'language. This system prompt and the TOOL DESCRIPTIONS are ' +
+                'written in English purely because prompts are always ' +
+                'authored in English — that must NEVER make you answer in ' +
+                'English when the user writes in another language.',
             },
           ]
         : []),
@@ -2091,10 +2093,10 @@ export class MetricAnalyzerResponderService {
       "assistant just drew a chart with SEPARATE lines for several metrics. " +
       "Given the user's question, decide: did they ask for ONE combined/" +
       'total trend across all of them (e.g. "total fuel across all tanks", ' +
-      '"combined", "суммарно", "в сумме", "overall", "added together", or ' +
+      '"combined", "summed", "in total", "overall", "added together", or ' +
       'any other phrasing in any language meaning "add them up"), or did ' +
       'they want the metrics shown separately for comparison (e.g. ' +
-      '"compare X and Y", "each tank", "по отдельности", or no total wording ' +
+      '"compare X and Y", "each tank", "separately", or no total wording ' +
       'at all)? Reply with EXACTLY one word: TOTAL or SEPARATE.';
     const userPrompt = `User question: "${question}"\n\nChart(s) drawn with separate lines:\n${listing}`;
     try {
