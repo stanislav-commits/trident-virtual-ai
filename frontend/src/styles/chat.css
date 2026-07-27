@@ -1316,19 +1316,22 @@
 
 /* Send inside capsule — Grok-style (must come after .chat-main__send so it overrides) */
 .chat-main__send--inside {
-  width: var(--chat-input-height);
-  height: var(--chat-input-height);
+  width: 40px;
+  height: 40px;
+  /* Bottom-aligned in the capsule like the "+", so both stay on the last
+     line as the textarea grows. */
+  margin-bottom: 6px;
   border-radius: 50%;
   background: #ffffff;
   border: none;
   box-shadow: none;
 }
 
-.chat-main__send--inside .chat-main__send-img {
-  width: 20px;
-  height: 20px;
-  filter: brightness(0);
-  opacity: 1;
+.chat-main__send--inside .chat-main__send-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  color: #111111;
 }
 
 .chat-main__send--inside:hover:not(:disabled) {
@@ -4140,8 +4143,8 @@
     box-shadow: none;
   }
 
-  .chat-main__send--inside .chat-main__send-img {
-    filter: brightness(0) invert(1);
+  .chat-main__send--inside .chat-main__send-icon {
+    color: #ffffff;
   }
 
   .chat-main__send--inside:hover:not(:disabled) {
@@ -4380,8 +4383,8 @@
   box-shadow: none;
 }
 
-[data-theme="light"] .chat-main__send--inside .chat-main__send-img {
-  filter: brightness(0) invert(1);
+[data-theme="light"] .chat-main__send--inside .chat-main__send-icon {
+  color: #ffffff;
 }
 
 [data-theme="light"] .chat-main__send--inside:hover:not(:disabled) {
