@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import type {
   ChatContextReferenceDto,
   ChatMessageDto,
-  ChatPendingActionDto,
 } from "../../types/chat";
 import { MessageBubble } from "./MessageBubble";
 
@@ -17,7 +16,6 @@ interface MessageListProps {
   onRegenerate?: (messageId: string) => void;
   onSendMessage?: (text: string) => void;
   onOpenSourcesPanel?: (citations: ChatContextReferenceDto[]) => void;
-  onConfirmPendingAction?: (action: ChatPendingActionDto) => void;
   actionsDisabled?: boolean;
 }
 
@@ -34,7 +32,6 @@ export function MessageList({
   onRegenerate,
   onSendMessage,
   onOpenSourcesPanel,
-  onConfirmPendingAction,
   actionsDisabled = false,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,7 +61,6 @@ export function MessageList({
             onRegenerate={onRegenerate}
             onSendMessage={onSendMessage}
             onOpenSourcesPanel={onOpenSourcesPanel}
-            onConfirmPendingAction={onConfirmPendingAction}
             actionsDisabled={actionsDisabled}
           />
         ))

@@ -27,7 +27,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, Not, Repository, MoreThan } from 'typeorm';
+import { Brackets, In, IsNull, Not, Repository } from 'typeorm';
 import {
   InfluxMetricSelector,
   InfluxService,
@@ -2811,170 +2811,38 @@ export class MetricAnalyzerResponderService {
       },
     });
 
-    if (args.confirmed !== true) {
-      // Not an error — this is the normal path now. The proposal is handed
-      // to the UI, which shows the user Yes/No buttons and (on Yes) opens
-      // the task form prefilled for review. No typed confirmation to parse,
-      // so no phrase-guessing across languages and no way for the write to
-      // be "confirmed" by a responder that has no tools.
-      onProposeWrite({
-        kind: 'create_task',
-        task: task.slice(0, 200),
-        board: requestedBoard ?? (assetIdInternal ? 'maintenance' : 'general'),
-        description,
-        priority,
-        dueDate,
-        department: requestedDepartment,
-        assignee: requestedAssignee,
-        assetIdInternal,
-        assetName: null,
-      });
-      return {
-        toolCallId: tc.id,
-        payload: {
-          ok: true,
-          task_created: false,
-          awaiting_user_confirmation: true,
-          note:
-            'The task has NOT been created. The user has been shown a confirmation card with Yes/No buttons and can edit the details before it is saved. In your reply: state in ONE short sentence what will be created, then STOP. Do NOT ask them to type a confirmation, do NOT claim it was created, and do NOT call this tool again for this task.',
-        },
-        otherCall: {
-          iteration, tool: 'create_maintenance_task', args: callArgs, ok: true,
-          resultSummary: `proposed "${task}" for user confirmation (not written)`,
-          latencyMs: Date.now() - t0,
-        },
-      };
-    }
     if (!task) return fail('task title is required');
 
-    // Year-slip guard. Observed live 2026-07-26: "к завтрашнему дню" was
-    // stored as 2025-07-27 — a year in the past, so the task was born
-    // overdue. The system prompt already carries the current date; this is
-    // the deterministic backstop. A few days back is allowed (logging work
-    // that was already due); a month-plus is a typo, not an intent.
-    if (dueDate) {
-      const todayIso = new Date().toISOString().slice(0, 10);
-      const daysPast =
-        (Date.parse(todayIso) - Date.parse(dueDate)) / 86_400_000;
-      if (daysPast > 30) {
-        return fail(
-          `NOT CREATED: due_date ${dueDate} is ${Math.round(daysPast)} days in the PAST (today is ${todayIso}) — that is almost always a wrong year. Re-send with the correct ISO date computed from today.`,
-        );
-      }
-    }
-
-    let asset: AssetEntity | null = null;
-    if (assetIdInternal) {
-      asset = await this.assetRepository.findOne({
-        where: { shipId, assetIdInternal },
-      });
-      if (!asset) {
-        return fail(
-          `asset "${assetIdInternal}" not found in the register — resolve it via lookup_asset / find_assets_by_function first, or omit the asset`,
-        );
-      }
-    }
-
-    // Board routing: the Maintenance Plan holds ONLY equipment/asset work;
-    // people-directed chores (cleaning, provisioning, paperwork) go to the
-    // Tasks board. Asset-linked = asset work by definition; otherwise the
-    // model must have decided — an omitted board fails with instructions so
-    // the next round self-corrects instead of silently polluting the plan.
-    const board: 'maintenance' | 'general' | null = asset
-      ? 'maintenance'
-      : requestedBoard;
-    if (!board) {
-      return fail(
-        'NOT CREATED: board is required — pass board:"maintenance" for equipment/asset work (Maintenance Plan) or board:"general" for a people-directed chore/assignment (Tasks board, e.g. cleaning, provisioning, paperwork).',
-      );
-    }
-
-    // Position-based write gating: an explicit department the actor doesn't
-    // belong to is refused (Master/Superintendent exempt); no department
-    // given/inferable is open to any recognized non-guest crew member.
-    const actorPosition = await this.resolveActorPosition(actorUserId);
-    const auth = checkDepartmentWriteAccess(actorPosition, requestedDepartment);
-    if (!auth.allowed) return fail(`NOT CREATED: ${auth.reason}`);
-
-    // "отправь задание второму механику" — resolve the named person to a
-    // login account. Assigning silently-nobody when the user named someone
-    // is worse than failing: the work would never reach them.
-    let assigneeUserId: string | null = null;
-    if (requestedAssignee) {
-      const resolved = await this.resolveAssignee(shipId, requestedAssignee);
-      if ('error' in resolved) return fail(`NOT CREATED: ${resolved.error}`);
-      assigneeUserId = resolved.userId;
-    }
-
-    // Idempotency window. The planner is told to keep a write in ONE ask,
-    // but it is an LLM: a turn can still fan out into parallel asks that
-    // each call this tool, and the model can call it twice inside one loop.
-    // Observed live 2026-07-26: two identical tasks 28s apart. The planner
-    // rule reduces the odds; this makes a duplicate impossible.
-    const recentSame = await this.pmsTaskRepository.findOne({
-      where: {
-        shipId,
-        task: task.slice(0, 200),
-        source: 'chat',
-        createdAt: MoreThan(new Date(Date.now() - 3 * 60_000)),
-      },
-      order: { createdAt: 'DESC' },
-    });
-    if (recentSame) {
-      const summary = `duplicate suppressed — "${task}" was already created moments ago as ${recentSame.taskCode ?? recentSame.id}`;
-      return {
-        toolCallId: tc.id,
-        otherCall: {
-          iteration, tool: 'create_maintenance_task', args: callArgs, ok: true,
-          resultSummary: summary, latencyMs: Date.now() - t0,
-        },
-        payload: {
-          ok: true,
-          task_created: false,
-          already_existed: true,
-          task_id: recentSame.id,
-          task_code: recentSame.taskCode,
-          board: recentSame.board,
-          note: 'This exact task was already created in this conversation moments ago — do NOT create it again. Report the existing task code to the user as the created task; mention it only once.',
-        },
-      };
-    }
-
-    const saved = await this.pmsService.create(shipId, {
+    // This tool NEVER writes. It proposes, and the USER confirms with a
+    // button, then reviews the prefilled form — that form performs the
+    // write. Letting the model write directly is what produced phantom
+    // "task created" replies, duplicates, and (2026-07-27) a direct order
+    // being treated as its own confirmation, skipping the card entirely.
+    onProposeWrite({
+      kind: 'create_task',
       task: task.slice(0, 200),
-      assigneeUserId,
-      // The general board folds unknown categories to 'Certificate' — a chore
-      // is an Assignment there; maintenance keeps the loose 'General'.
-      category: board === 'general' ? 'Assignment' : 'General',
-      planning: 'unplanned',
+      board: requestedBoard ?? (assetIdInternal ? 'maintenance' : 'general'),
+      description,
       priority,
-      department: requestedDepartment,
-      description:
-        (description ?? '') +
-        (description ? '\n\n' : '') +
-        'Created from the chat assistant on crew request.',
       dueDate,
-      source: 'chat',
-      board,
-      assetIds: asset ? [asset.id] : [],
+      department: requestedDepartment,
+      assignee: requestedAssignee,
+      assetIdInternal,
+      assetName: null,
     });
-
-    if (!saved) return fail('task created but could not be reloaded — check the register');
-    const resultSummary = `created ${board === 'general' ? 'Tasks-board assignment' : 'PMS task'} "${task}" (${priority}${dueDate ? ', due ' + dueDate : ''}${asset ? ', asset ' + (asset.displayName ?? assetIdInternal) : ''}${requestedAssignee ? ', assigned to ' + requestedAssignee : ''})`;
     return {
       toolCallId: tc.id,
-      otherCall: {
-        iteration, tool: 'create_maintenance_task', args: callArgs, ok: true,
-        resultSummary, latencyMs: Date.now() - t0,
-      },
       payload: {
         ok: true,
-        task_created: true,
-        task_id: saved.id,
-        task_code: saved.taskCode,
-        board,
-        assigned_to: requestedAssignee,
-        note: `Task created on the ${board === 'general' ? 'Tasks board (people-directed assignment)' : 'Maintenance Plan'}${requestedAssignee ? ` and assigned to ${requestedAssignee}` : ''}. Confirm to the user with the task title and code; do not invent extra details.`,
+        task_created: false,
+        awaiting_user_confirmation: true,
+        note:
+          'NOT created — nothing was written. The task form has just OPENED for the user on the right, filled in with these details; they review, edit and confirm there, or close it. Reply with ONE short sentence describing what WILL be created (future tense), then STOP. Do not point at a card or buttons (there are none), do not ask the user to type a confirmation, do not say it was created, and never call this tool again for the same task.',
+      },
+      otherCall: {
+        iteration, tool: 'create_maintenance_task', args: callArgs, ok: true,
+        resultSummary: `proposed "${task}" for user confirmation (nothing written)`,
+        latencyMs: Date.now() - t0,
       },
     };
   }

@@ -131,7 +131,7 @@ export class ChatMetricAnalyzerResponderService {
           // — same out-of-band ride, drawn by <ChatTableBlock>/<ChatKpiBlock>.
           tables: result.tables,
           kpis: result.kpis,
-          // A proposed register write awaiting the user's Yes/No button.
+          // A proposed task: the client opens the prefilled form for it.
           pendingAction: result.pendingAction ?? null,
           totalTokens: result.totalTokens,
           estimatedCostUsd: result.estimatedCostUsd,

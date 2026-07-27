@@ -13,7 +13,6 @@ import type {
   ChatContextReferenceDto,
   ChatSuggestionActionDto,
   ChatMessageAttachmentDto,
-  ChatPendingActionDto,
 } from "../../types/chat";
 import { useAuth } from "../../context/AuthContext";
 import { fetchChatAttachmentObjectUrl } from "../../api/chatApi";
@@ -36,8 +35,6 @@ interface MessageBubbleProps {
   onRegenerate?: (messageId: string) => void;
   onSendMessage?: (text: string) => void;
   onOpenSourcesPanel?: (citations: ChatContextReferenceDto[]) => void;
-  /** "Yes" on a proposed write — opens the task form prefilled for review. */
-  onConfirmPendingAction?: (action: ChatPendingActionDto) => void;
   actionsDisabled?: boolean;
 }
 
@@ -396,7 +393,6 @@ export function MessageBubble({
   onRegenerate,
   onSendMessage,
   onOpenSourcesPanel,
-  onConfirmPendingAction,
   actionsDisabled = false,
 }: MessageBubbleProps) {
   const { token, user } = useAuth();
@@ -448,19 +444,6 @@ export function MessageBubble({
           : [],
       )
     : [];
-  // A proposed register write: the user confirms with a button instead of
-  // typing "да"/"yes"/"все верно", which we then had to recognise.
-  const [actionDismissed, setActionDismissed] = useState(false);
-  const pendingAction: ChatPendingActionDto | null = Array.isArray(
-    ragflowContext?.askResults,
-  )
-    ? ((ragflowContext.askResults
-        .map((ask) => ask?.data?.pendingAction)
-        .find((a) => a && typeof a === "object") as
-        | ChatPendingActionDto
-        | undefined) ?? null)
-    : null;
-
   // Structured tables (render_table) ride the same way as charts/maps.
   const tables: ChatTableDto[] = Array.isArray(ragflowContext?.askResults)
     ? ragflowContext.askResults.flatMap((ask) =>
@@ -623,78 +606,6 @@ export function MessageBubble({
             {tables.map((t, index) => (
               <ChatTableBlock key={`${t.title}-${index}`} table={t} />
             ))}
-          </div>
-        )}
-
-        {role === "assistant" && pendingAction && !actionDismissed && (
-          <div className="chat-confirm">
-            <div className="chat-confirm__head">
-              <span className="chat-confirm__icon" aria-hidden>
-                📋
-              </span>
-              <span className="chat-confirm__title">{pendingAction.task}</span>
-            </div>
-            <dl className="chat-confirm__facts">
-              <div>
-                <dt>Board</dt>
-                <dd>
-                  {pendingAction.board === "maintenance"
-                    ? "Maintenance Plan"
-                    : "Tasks"}
-                </dd>
-              </div>
-              {pendingAction.assignee && (
-                <div>
-                  <dt>Assignee</dt>
-                  <dd>{pendingAction.assignee}</dd>
-                </div>
-              )}
-              {pendingAction.department && (
-                <div>
-                  <dt>Department</dt>
-                  <dd>{pendingAction.department}</dd>
-                </div>
-              )}
-              {pendingAction.priority && (
-                <div>
-                  <dt>Priority</dt>
-                  <dd>{pendingAction.priority}</dd>
-                </div>
-              )}
-              {pendingAction.dueDate && (
-                <div>
-                  <dt>Due</dt>
-                  <dd>{pendingAction.dueDate}</dd>
-                </div>
-              )}
-              {pendingAction.assetIdInternal && (
-                <div>
-                  <dt>Equipment</dt>
-                  <dd>{pendingAction.assetIdInternal}</dd>
-                </div>
-              )}
-            </dl>
-            <div className="chat-confirm__actions">
-              <button
-                type="button"
-                className="chat-confirm__btn chat-confirm__btn--yes"
-                onClick={() => onConfirmPendingAction?.(pendingAction)}
-                disabled={!onConfirmPendingAction || actionsDisabled}
-              >
-                Yes — review &amp; create
-              </button>
-              <button
-                type="button"
-                className="chat-confirm__btn"
-                onClick={() => setActionDismissed(true)}
-                disabled={actionsDisabled}
-              >
-                No
-              </button>
-            </div>
-            <p className="chat-confirm__hint">
-              Nothing is saved until you confirm in the form.
-            </p>
           </div>
         )}
 

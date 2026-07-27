@@ -453,13 +453,41 @@ export function ChatPage() {
   // makes the confirmation trustworthy.
   const [actionPrefill, setActionPrefill] =
     useState<ChatPendingActionDto | null>(null);
-  const confirmPendingAction = useCallback(
-    (action: ChatPendingActionDto) => {
-      setActionPrefill(action);
-      openActionPanel("workorder");
-    },
-    [openActionPanel],
-  );
+  // When the assistant proposes a task, open the form straight away with the
+  // fields filled in — the user reviews, edits and confirms there, or just
+  // closes it. Only for a message that ARRIVES while the chat is open:
+  // opening an old conversation whose last reply happens to carry a proposal
+  // must not pop the panel, and closing it must not bring it back.
+  const knownOnOpenRef = useRef<Set<string> | null>(null);
+  const handledProposalRef = useRef<string | null>(null);
+  useEffect(() => {
+    knownOnOpenRef.current = null;
+    handledProposalRef.current = null;
+  }, [activeSessionId]);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    if (knownOnOpenRef.current === null) {
+      // First render of this conversation — everything here is history.
+      knownOnOpenRef.current = new Set(messages.map((message) => message.id));
+      return;
+    }
+    const last = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    if (!last || knownOnOpenRef.current.has(last.id)) return;
+    if (handledProposalRef.current === last.id) return;
+    const proposal = (
+      (last.ragflowContext?.askResults ?? []) as Array<{
+        data?: { pendingAction?: ChatPendingActionDto | null };
+      }>
+    )
+      .map((ask) => ask?.data?.pendingAction)
+      .find((action): action is ChatPendingActionDto => !!action);
+    if (!proposal) return;
+    handledProposalRef.current = last.id;
+    setActionPrefill(proposal);
+    openActionPanel("workorder");
+  }, [messages, openActionPanel]);
 
   const handleSend = useCallback(
     async (textOverride?: string) => {
@@ -786,7 +814,6 @@ export function ChatPage() {
                 onRegenerate={handleRegenerate}
                 onSendMessage={(text) => handleSend(text)}
                 onOpenSourcesPanel={handleOpenSourcesPanel}
-                onConfirmPendingAction={confirmPendingAction}
                 actionsDisabled={isDisabled}
               />
               <MessageInput

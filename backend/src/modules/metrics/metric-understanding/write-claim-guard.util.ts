@@ -23,7 +23,10 @@
 
 /** Keep in sync with the write-tool cases in dispatchToolCall(). */
 export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'create_maintenance_task',
+  // NB: create_maintenance_task is deliberately ABSENT — it only proposes
+  // now; the write happens in the form the user confirms into. So an answer
+  // claiming a task was created, with no other write tool having run, is a
+  // phantom claim and must trip the guard.
   'complete_maintenance_task',
   'log_hours_reading',
   'create_metric_watch',
