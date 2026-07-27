@@ -4586,7 +4586,10 @@
 }
 
 /* ── Claude-style "+" menu ── */
-.cpm { position: relative; display: flex; align-items: center; }
+/* The capsule bottom-aligns its controls so they stay on the last line as
+   the textarea grows; without this offset the 40px "+" sat flush on the
+   capsule's bottom edge and read as "fallen out" of the pill. */
+.cpm { position: relative; display: flex; align-items: center; margin-bottom: 6px; }
 .cpm__plus {
   width: 40px; height: 40px; flex-shrink: 0;
   border: none; border-radius: 50%;
