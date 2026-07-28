@@ -28,6 +28,12 @@ import {
   openChatDocumentSource,
 } from "./chatSourceReferences";
 
+/**
+ * Sent when photos travel without a caption — the API needs some text. The
+ * crew did not write it, so it is not shown as if they had.
+ */
+export const PHOTO_ONLY_CAPTION = "Photo attached.";
+
 interface MessageBubbleProps {
   message: ChatMessageDto;
   isLoading?: boolean;
@@ -560,7 +566,7 @@ export function MessageBubble({
           <AlertMessageCard card={alertCard} />
         ) : taskCard ? (
           <TaskMessageCard card={taskCard} />
-        ) : (
+        ) : content.trim() === PHOTO_ONLY_CAPTION ? null : (
           content.trim()
         )}
 

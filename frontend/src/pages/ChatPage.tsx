@@ -21,6 +21,7 @@ import {
 import { AppLayout } from "../components/layout/AppLayout";
 import { ChatList } from "../components/chat/ChatList";
 import { ChatSourcesPanel } from "../components/chat/ChatSourcesPanel";
+import { PHOTO_ONLY_CAPTION } from "../components/chat/MessageBubble";
 import { PmsSidePanel } from "../components/chat/PmsSidePanel";
 import { AlertsSidePanel } from "../components/chat/AlertsSidePanel";
 import type { Alert } from "../api/alertsApi";
@@ -321,6 +322,17 @@ export function ChatPage() {
     };
   }, [activeSessionId, clearTitleWatchTimer]);
 
+  /**
+   * Stops WAITING for the answer, not the model — there is no server-side
+   * cancel, so the reply still lands and shows up on the next refresh. What
+   * this frees is the composer, which otherwise stays disabled.
+   */
+  const handleStopWaiting = useCallback(() => {
+    pollAbortRef.current?.abort();
+    setIsWaitingForResponse(false);
+    setIsSending(false);
+  }, []);
+
   const pollForResponse = useCallback(
     async (currentSessionId: string, userMessageId: string) => {
       // Chat-v2 multi-ask + documents/web fallback can take 2-3 minutes on
@@ -544,7 +556,7 @@ export function ChatPage() {
         setTitleWatch(true);
         const userMessage = await sendChatMessage(
           currentSessionId,
-          textToSend.trim() || "Photo attached.",
+          textToSend.trim() || PHOTO_ONLY_CAPTION,
           token!,
           attachments,
         );
@@ -828,6 +840,8 @@ export function ChatPage() {
                 onOpenPanel={openActionPanel}
                 canManageVessel={canManageVessel}
                 disabled={isDisabled}
+                isGenerating={isWaitingForResponse}
+                onStopGenerating={handleStopWaiting}
                 placeholder="Type a message..."
               />
             </section>
@@ -903,6 +917,8 @@ export function ChatPage() {
                 canManageVessel={canManageVessel}
                 menuPlacement="down"
                 disabled={isDisabled}
+                isGenerating={isWaitingForResponse}
+                onStopGenerating={handleStopWaiting}
                 placeholder="Start a new conversation..."
               />
             </div>

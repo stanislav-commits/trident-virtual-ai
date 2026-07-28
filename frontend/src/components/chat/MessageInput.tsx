@@ -22,6 +22,10 @@ interface MessageInputProps {
   canManageVessel?: boolean;
   /** "down" on the centred new-chat composer, "up" in a live chat. */
   menuPlacement?: 'up' | 'down';
+  /** An answer is on its way — the send button becomes a stop button. */
+  isGenerating?: boolean;
+  /** Stops the WAIT, not the model: there is no server-side cancel. */
+  onStopGenerating?: () => void;
 }
 
 export function MessageInput({
@@ -38,6 +42,8 @@ export function MessageInput({
   onOpenPanel,
   canManageVessel,
   menuPlacement,
+  isGenerating = false,
+  onStopGenerating,
 }: MessageInputProps) {
   const voice = useVoiceCaptureSession({ value, onChange, token, sessionId });
   const { isSessionActive, cancel } = voice;
@@ -120,10 +126,15 @@ export function MessageInput({
           onStart={voice.start}
         />
         <button
-          type="submit"
+          type={isGenerating ? "button" : "submit"}
           className="chat-main__send chat-main__send--inside"
-          disabled={disabled || voice.isSessionActive || !canSend}
-          aria-label="Send message"
+          onClick={isGenerating ? onStopGenerating : undefined}
+          disabled={
+            isGenerating
+              ? false
+              : disabled || voice.isSessionActive || !canSend
+          }
+          aria-label={isGenerating ? "Stop waiting for the answer" : "Send message"}
         >
           <svg
             className="chat-main__send-icon"
@@ -135,8 +146,14 @@ export function MessageInput({
             strokeLinejoin="round"
             aria-hidden
           >
-            <line x1="12" y1="19" x2="12" y2="5" />
-            <polyline points="5 12 12 5 19 12" />
+            {isGenerating ? (
+              <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" />
+            ) : (
+              <>
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
+              </>
+            )}
           </svg>
         </button>
         <VoiceInputSessionPanel
