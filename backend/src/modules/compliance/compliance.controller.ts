@@ -164,8 +164,11 @@ export class ComplianceController {
   }
 
   @Get('overview')
-  overview(@Param('shipId', ParseUUIDPipe) shipId: string) {
-    return this.complianceService.overview(shipId);
+  overview(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.complianceService.overview(shipId, user);
   }
 
   @Get('archetypes')
@@ -177,8 +180,9 @@ export class ComplianceController {
   listForAsset(
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @Param('assetId', ParseUUIDPipe) assetId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.complianceService.listForAsset(shipId, assetId);
+    return this.complianceService.listForAsset(shipId, assetId, user);
   }
 
   @Post('docs')

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -22,6 +23,11 @@ import { DocumentsService } from '../documents/documents.service';
 import { DocumentsUploadStorageService } from '../documents/ingestion/documents-upload-storage.service';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { AdminEventBus } from '../admin-events/admin-event.bus';
+import { AccessControlService } from '../access-control/access-control.service';
+import {
+  categoryForArchetype,
+  ResourceCategory,
+} from '../access-control/access-positions';
 import {
   ARCHETYPE_FIELDS,
   BASE_FIELDS,
@@ -74,6 +80,7 @@ export class ComplianceService {
     private readonly uploadStorage: DocumentsUploadStorageService,
     private readonly documentsService: DocumentsService,
     private readonly adminEvents: AdminEventBus,
+    private readonly accessControlService: AccessControlService,
   ) {}
 
   private emitChange(
@@ -150,8 +157,12 @@ export class ComplianceService {
     docId: string,
     user: AuthenticatedUser,
   ): Promise<{ buffer: Buffer; contentType: string; fileName: string }> {
-    const doc = await this.docRepository.findOne({ where: { id: docId, shipId } });
+    const doc = await this.docRepository.findOne({
+      where: { id: docId, shipId },
+      relations: { docType: true },
+    });
     if (!doc) throw new NotFoundException('Compliance record not found.');
+    await this.assertCanReadType(user, shipId, doc.docType?.archetype);
 
     if (doc.documentId) {
       return this.documentsService.getFile(doc.documentId, user);
@@ -386,7 +397,8 @@ export class ComplianceService {
    * Gap analysis falls out for free — required types with no records
    * surface as 'missing'.
    */
-  async overview(shipId: string) {
+  async overview(shipId: string, user?: AuthenticatedUser | null) {
+    const allowed = await this.readableCategories(user, shipId);
     const [types, docs] = await Promise.all([
       this.typeRepository.find({
         where: { shipId },
@@ -433,6 +445,12 @@ export class ComplianceService {
     >();
 
     for (const type of types) {
+      // RBAC: drop whole categories this user's position may not read.
+      if (allowed) {
+        const category = categoryForArchetype(type.archetype);
+        if (category !== null && !allowed.has(category)) continue;
+      }
+
       let section = sections.get(type.sectionCode);
       if (!section) {
         section = {
@@ -520,12 +538,23 @@ export class ComplianceService {
   }
 
   /** Records linked to one asset — feeds the asset drawer Certs tab. */
-  async listForAsset(shipId: string, assetId: string) {
-    const docs = await this.docRepository.find({
+  async listForAsset(
+    shipId: string,
+    assetId: string,
+    user?: AuthenticatedUser | null,
+  ) {
+    const allowed = await this.readableCategories(user, shipId);
+    const found = await this.docRepository.find({
       where: { shipId, assetId },
       relations: { docType: true, document: true },
       order: { expiryDate: 'DESC' },
     });
+    const docs = allowed
+      ? found.filter((doc) => {
+          const category = categoryForArchetype(doc.docType?.archetype);
+          return category === null || allowed.has(category);
+        })
+      : found;
     return docs.map((doc) => ({
       id: doc.id,
       sfiCode: doc.docType?.sfiCode ?? null,
@@ -848,6 +877,35 @@ export class ComplianceService {
     const saved = await this.typeRepository.save(type);
     this.emitChange(shipId, 'updated', typeId);
     return saved;
+  }
+
+  /**
+   * The compliance categories this user may read on this ship, or `null` for
+   * "no RBAC restriction" — admins and accounts not linked to a crew member.
+   * Mirrors AccessControlService.allowedCategories, so enforcement stays opt-in
+   * per user via crew linkage and never locks an admin out.
+   */
+  private async readableCategories(
+    user: AuthenticatedUser | null | undefined,
+    shipId: string,
+  ): Promise<Set<ResourceCategory> | null> {
+    if (!user?.id) return null;
+    return this.accessControlService.allowedCategories(user.id, shipId);
+  }
+
+  /** Throw unless the user may read documents of this type's category. */
+  private async assertCanReadType(
+    user: AuthenticatedUser | null | undefined,
+    shipId: string,
+    archetype: string | null | undefined,
+  ): Promise<void> {
+    const allowed = await this.readableCategories(user, shipId);
+    if (!allowed) return;
+    const category = categoryForArchetype(archetype);
+    if (category === null || allowed.has(category)) return;
+    throw new ForbiddenException(
+      'Your position does not have access to this category of compliance document.',
+    );
   }
 
   private recordStatus(doc: ComplianceDocEntity): ComplianceStatus {

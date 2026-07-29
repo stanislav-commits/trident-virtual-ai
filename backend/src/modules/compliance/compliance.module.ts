@@ -13,6 +13,7 @@ import { IntegrationsModule } from '../../integrations/integrations.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { DocumentsUploadStorageService } from '../documents/ingestion/documents-upload-storage.service';
 import { ComplianceExtractionService } from './compliance-extraction.service';
+import { AccessControlModule } from '../access-control/access-control.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ComplianceExtractionService } from './compliance-extraction.service';
     PmsModule,
     IntegrationsModule,
     DocumentsModule,
+    AccessControlModule,
   ],
   controllers: [ComplianceController],
   providers: [
