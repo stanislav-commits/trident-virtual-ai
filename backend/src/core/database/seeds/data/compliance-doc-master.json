@@ -3591,10 +3591,10 @@
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
   "drives_pms": "survey",
-  "document_type": null,
-  "validity_driver": null,
-  "reminder_profile": null,
-  "v60_ref": null
+  "document_type": "FLAG_EXEMPTION",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.8.12"
  },
  {
   "sfi_code": "1.8.13",
@@ -3657,10 +3657,10 @@
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
   "drives_pms": "NC close-out",
-  "document_type": null,
+  "document_type": "REPORT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.7.13"
+  "v60_ref": "1.8.14"
  },
  {
   "sfi_code": "1.8.15",
