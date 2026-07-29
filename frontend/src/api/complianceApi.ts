@@ -71,9 +71,19 @@ export interface ArchetypeField {
   auth: boolean;
 }
 
+export interface V60FieldSpec {
+  datatype: string;
+  hint: string;
+  options?: string[];
+}
+
 export interface ArchetypeSchema {
   base: ArchetypeField[];
   archetypes: Record<string, ArchetypeField[]>;
+  /** v60 field-matrix slots, so the form can follow a document's profile. */
+  v60Fields?: Record<string, V60FieldSpec>;
+  /** Profile slugs that are NOT stored per record (vessel identity, links). */
+  v60NonRecordFields?: string[];
 }
 
 export interface ComplianceDocType {

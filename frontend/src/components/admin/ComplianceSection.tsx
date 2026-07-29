@@ -752,6 +752,9 @@ export function ComplianceSection({ token }: { token: string | null }) {
               schema?.archetypes[docModal.type.archetype]) ||
             []
           }
+          fieldProfile={docModal.type.fieldProfile}
+          v60Fields={schema?.v60Fields}
+          v60NonRecordFields={schema?.v60NonRecordFields}
           linkCardinality={docModal.type.linkCardinality}
           assetOptions={assetOptions}
           crewOptions={crewOptions}

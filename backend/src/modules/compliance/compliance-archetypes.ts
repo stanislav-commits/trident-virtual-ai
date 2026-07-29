@@ -299,3 +299,63 @@ export function linkRoleForArchetype(archetype: string | null): string {
       return 'documents';
   }
 }
+
+/**
+ * The v60 Certificate Field Matrix's 22 tick columns, as record fields.
+ *
+ * `field_profile` on a catalogue row lists which of these a document shows, but
+ * the matrix only names them — it says nothing about how to capture them. Five
+ * had no home at all in the record model (approval_authority,
+ * approval_capacity, survey_window, governing_standard, conditions_reference),
+ * so the register displayed a profile it had no way to fill: 52 documents tick
+ * Governing Standard, which the review notes explicitly put in place of the old
+ * Survey Regime, and 32 tick Conditions Reference.
+ *
+ * Nine slugs are omitted on purpose — the vessel-identity block is a display
+ * mask over Vessel Master Data on `ships`, not values stored per record — as is
+ * `linked_entity`, which is the doc_asset_links model.
+ */
+export const V60_FIELD_SPECS: Record<
+  string,
+  { datatype: string; hint: string; options?: string[] }
+> = {
+  document_number: { datatype: 'string', hint: 'certificate / document number' },
+  issuing_party: { datatype: 'string', hint: 'who issued it' },
+  approval_authority: {
+    datatype: 'string',
+    hint: 'the body that approved it, where that differs from the issuer',
+  },
+  approval_capacity: {
+    datatype: 'enum',
+    hint: 'mandatory on flag approvals — issued by the Flag directly, or by an RO acting on its behalf',
+    options: ['flag', 'ro_on_behalf_of_flag', 'class', 'other'],
+  },
+  issue_date: { datatype: 'date', hint: 'date of issue' },
+  expiry_date: { datatype: 'date', hint: 'printed expiry, where the document has one' },
+  anniversary_date: { datatype: 'date', hint: 'anniversary of the certificate' },
+  survey_window: { datatype: 'string', hint: 'window the periodical survey may fall in' },
+  next_survey_type: { datatype: 'string', hint: 'annual / intermediate / renewal' },
+  last_endorsement_date: { datatype: 'date', hint: 'date of the last endorsement' },
+  governing_standard: {
+    datatype: 'string',
+    hint: 'the convention or code the document is issued under — replaces the old Survey Regime',
+  },
+  conditions_reference: {
+    datatype: 'text',
+    hint: 'conditions or limitations stated on the document',
+  },
+};
+
+/** Slugs the profile can list but that are NOT stored on the record. */
+export const V60_NON_RECORD_FIELDS = new Set([
+  'linked_entity',
+  'vessel_gt',
+  'vessel_nt',
+  'vessel_imo',
+  'official_number',
+  'vessel_call_sign',
+  'vessel_flag',
+  'port_of_registry',
+  'registered_owner',
+  'principal_dimensions',
+]);

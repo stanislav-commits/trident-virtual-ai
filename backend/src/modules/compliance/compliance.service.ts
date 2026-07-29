@@ -43,6 +43,8 @@ import {
   identityChecks,
   linkRoleForArchetype,
   requiredFields,
+  V60_FIELD_SPECS,
+  V60_NON_RECORD_FIELDS,
   validityField,
 } from './compliance-archetypes';
 
@@ -1164,7 +1166,14 @@ export class ComplianceService {
 
   /** Archetype field schema (BASE + per-archetype blocks) for UI forms. */
   archetypeSchema() {
-    return { base: BASE_FIELDS, archetypes: ARCHETYPE_FIELDS };
+    return {
+      base: BASE_FIELDS,
+      archetypes: ARCHETYPE_FIELDS,
+      // v60 field-matrix slots, so the record form can be driven by a
+      // document's field_profile rather than only by its archetype block.
+      v60Fields: V60_FIELD_SPECS,
+      v60NonRecordFields: [...V60_NON_RECORD_FIELDS],
+    };
   }
 
   // ── archetype field helpers (doc-control schema v9) ──

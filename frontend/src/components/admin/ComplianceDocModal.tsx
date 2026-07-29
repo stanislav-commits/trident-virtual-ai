@@ -2,7 +2,8 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { XIcon } from "./AdminPanelIcons";
 import { AssetMultiSelect, type AssetOption } from "./AssetMultiSelect";
-import type { ArchetypeField } from "../../api/complianceApi";
+import type { ArchetypeField,
+  V60FieldSpec } from "../../api/complianceApi";
 import {
   prettyLabel,
   inputTypeFor,
@@ -23,8 +24,18 @@ export interface DocModalValues {
 interface ComplianceDocModalProps {
   typeName: string;
   typeCode: string;
-  /** The archetype's field block from the schema — drives which fields show. */
+  /** The archetype's field block from the schema. */
   archetypeFields: ArchetypeField[];
+  /**
+   * The document's v60 field profile, when the workbook covers it. It takes
+   * precedence: v60 decides per document which fields exist ("no optional
+   * values"), and five of its slots — governing_standard, conditions_reference,
+   * approval_authority, approval_capacity, survey_window — have no archetype
+   * block at all, so a profile-blind form could not capture them.
+   */
+  fieldProfile?: string[] | null;
+  v60Fields?: Record<string, V60FieldSpec>;
+  v60NonRecordFields?: string[];
   linkCardinality: string | null;
   assetOptions: AssetOption[];
   crewOptions: Array<{ id: string; label: string; rank: string }>;
@@ -49,6 +60,9 @@ export function ComplianceDocModal({
   typeName,
   typeCode,
   archetypeFields,
+  fieldProfile,
+  v60Fields,
+  v60NonRecordFields,
   linkCardinality,
   assetOptions,
   crewOptions,
@@ -61,7 +75,49 @@ export function ComplianceDocModal({
   onSave,
   onCancel,
 }: ComplianceDocModalProps) {
-  const schemaFields = archetypeFields.filter((f) => f.datatype !== "fk");
+  const blockFields = archetypeFields.filter((f) => f.datatype !== "fk");
+  // Profile first, then the archetype fields it does not name. The union is
+  // deliberate: v60's 22 columns have no slot for an archetype's own validity
+  // date (EQUIP_SVC.next_due_date, PERSONNEL.earliest_expiry), and dropping
+  // those would cut the value that drives expiry_date and the PMS task.
+  const schemaFields: ArchetypeField[] = (() => {
+    if (!fieldProfile?.length || !v60Fields) return blockFields;
+    // The BASE "Document" section above already renders these three onto the
+    // record's own columns; leaving them in the profile list printed each one
+    // twice in the same window.
+    const skip = new Set([
+      ...(v60NonRecordFields ?? []),
+      "document_number",
+      "issuing_party",
+      "issue_date",
+      // The v9 blocks spell one of these differently — same value, one letter
+      // apart from v60's slug, and it slipped through as a duplicate input.
+      "vessel_callsign",
+    ]);
+    const fromProfile = fieldProfile
+      .filter((slug) => !skip.has(slug) && v60Fields[slug])
+      .map((slug) => ({
+        field: slug,
+        datatype: v60Fields[slug].datatype,
+        required: false,
+        hint: v60Fields[slug].hint,
+        sotRole: "none",
+        sotTarget: "none",
+        auth: false,
+      }));
+    const named = new Set(fromProfile.map((f) => f.field));
+    return [
+      ...fromProfile,
+      ...blockFields.filter(
+        (f) =>
+          !named.has(f.field) &&
+          // The v9 blocks carry their own vessel_gt / vessel_imo / call sign
+          // inputs. v60 takes those from Vessel Master Data, and an editable
+          // copy here would be a second source of truth for the same value.
+          !skip.has(f.field),
+      ),
+    ];
+  })();
   const [values, setValues] = useState<DocModalValues>(() => ({
     ...initial,
     fields: foldToSchema(
