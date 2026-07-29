@@ -95,6 +95,7 @@ import { AddDefectDepartmentTaskLink20260724000300 } from './migrations/20260724
 import { AddPmsTaskPhotos20260724000400 } from './migrations/20260724000400-add-pms-task-photos';
 import { SyncUsersCrew20260724000500 } from './migrations/20260724000500-sync-users-crew';
 import { AddChatMessageAttachments20260725000100 } from './migrations/20260725000100-add-chat-message-attachments';
+import { ClearReportFalseExpiry20260729000200 } from './migrations/20260729000200-clear-report-false-expiry';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -213,6 +214,7 @@ const dataSource = new DataSource({
     AddPmsTaskPhotos20260724000400,
     SyncUsersCrew20260724000500,
     AddChatMessageAttachments20260725000100,
+    ClearReportFalseExpiry20260729000200,
   ],
   synchronize: false,
   ssl: db.ssl

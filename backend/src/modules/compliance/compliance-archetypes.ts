@@ -200,18 +200,37 @@ export function requiredFields(archetype: string | null): string[] {
 
 /**
  * The validity date field whose value drives compliance_docs.expiry_date and
- * the compliance status. Prefers the [AUTH] field; otherwise the block's
- * date field that writes to compliance (e.g. PERSONNEL.earliest_expiry,
- * LEGAL.valid_until). Null when the archetype has no expiry concept.
+ * the compliance status — declared per archetype, never inferred.
+ *
+ * It used to be derived: the [AUTH] field, else the first date field writing to
+ * `compliance`. That inference was wrong for REPORT, whose first such field is
+ * `report_date` — the date the survey HAPPENED. It landed in expiry_date, so
+ * every report was born expired and raised a critical certificate alert on the
+ * day it was uploaded. An archetype that has no expiry concept must map to
+ * null, and only an explicit list can say so.
+ *
+ * A date field being present is not the same as the document expiring: REPORT,
+ * PLAN, PUBLICATION, RECORD_BOOK and EQUIP_TYPE are all dated and none of them
+ * expire. This mirrors v60's Rule 1 — what a document IS and how its validity
+ * changes are separate dimensions.
  */
+const VALIDITY_FIELD: Record<string, string | null> = {
+  STAT_CERT: 'expiry_date', //   [AUTH]
+  EQUIP_SVC: 'next_due_date', // [AUTH]
+  INSURANCE: 'cover_to', //      [AUTH]
+  AGREEMENT: 'term_to', //       [AUTH]
+  PERSONNEL: 'earliest_expiry', // earliest of the person's sub-certificates
+  LEGAL: 'valid_until',
+  REPORT: null, // report_date is when it happened, not when it lapses
+  PLAN: null, // approved until superseded
+  PUBLICATION: null, // corrections, not expiry
+  RECORD_BOOK: null, // retention, not expiry
+  EQUIP_TYPE: null, // type approval does not expire
+};
+
 export function validityField(archetype: string | null): string | null {
-  const block = archetypeBlock(archetype);
-  const auth = block.find((f) => f.auth);
-  if (auth) return auth.field;
-  const comp = block.find(
-    (f) => f.datatype === 'date' && f.sotTarget.startsWith('compliance'),
-  );
-  return comp ? comp.field : null;
+  if (!archetype) return null;
+  return VALIDITY_FIELD[archetype] ?? null;
 }
 
 /**
