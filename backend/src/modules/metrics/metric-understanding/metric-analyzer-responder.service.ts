@@ -5443,7 +5443,12 @@ export class MetricAnalyzerResponderService {
       equipment: string | null;
     }> = [];
     for (const type of types) {
-      const records = docsByType.get(type.id) ?? [];
+      // Superseded / archived issues are history, not evidence in force —
+      // filtered BEFORE the emptiness test, so a type whose only records have
+      // been replaced is reported as a gap rather than vanishing.
+      const records = (docsByType.get(type.id) ?? []).filter(
+        (doc) => !doc.recordState || doc.recordState === 'current',
+      );
       // Same rule as the register: only 'Y' makes an empty row a gap. This used
       // to count 'C' as required too, so chat reported missing documents the
       // admin panel did not.
@@ -5506,6 +5511,13 @@ export class MetricAnalyzerResponderService {
       missing: items.filter((i) => i.status === 'missing').length,
     };
 
+    // `capped` truncates at 80; the gap list must not, or "what is missing?"
+    // answers from a partial list while sounding complete (one vessel alone has
+    // 156 gaps). Names only — a gap has no dates, numbers or issuer.
+    const missingDocuments = items
+      .filter((i) => i.status === 'missing')
+      .map((i) => `${i.section}: ${i.type}`);
+
     return {
       toolCallId: tc.id,
       otherCall: {
@@ -5520,7 +5532,8 @@ export class MetricAnalyzerResponderService {
         ok: true,
         counts,
         items: capped,
-        note: 'Live Compliance register = source of truth for certificate/statutory-doc status. expiring ≈ within 90 days. Quote expiry dates + certificate numbers.',
+        missingDocuments,
+        note: 'Live Compliance register = source of truth for certificate/statutory-doc status. expiring ≈ within 90 days. Quote expiry dates + certificate numbers. `items` may be truncated at 80; `missingDocuments` is the COMPLETE list of documents this vessel is required to hold and does not have — already filtered by the applicability matrix (vessel size, flag, commercial/private), so it excludes what does not apply here and what is only conditionally required. Answer "what is missing" from `missingDocuments` only, naming individual documents rather than sections.',
       },
     };
   }

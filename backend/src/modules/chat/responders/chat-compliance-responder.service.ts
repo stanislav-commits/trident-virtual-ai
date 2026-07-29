@@ -22,6 +22,8 @@ interface ComplianceItem {
   renewalCycle: string | null;
   recordId: string | null;
   archetype: string | null;
+  /** Y / C / R / TBD resolved for THIS vessel — decides what "missing" means. */
+  applicabilityVerdict: string | null;
 }
 
 /**
@@ -58,7 +60,14 @@ export class ChatComplianceResponderService {
 
     const allItems = await this.loadItems(shipId);
     const items = await this.applyAccess(allItems, input.session.userId, shipId);
-    const ranked = this.rankForQuestion(items, question);
+    // Gaps are listed in full, separately. A gap has no dates, numbers or
+    // issuer — spending detail slots on it would push real records out of
+    // context, and truncating it would make "what is missing?" answer with a
+    // partial list while sounding complete. SeaWolf X alone has 156 gaps
+    // against an 80-item detail budget.
+    const gaps = items.filter((item) => item.status === 'missing');
+    const records = items.filter((item) => item.status !== 'missing');
+    const ranked = this.rankForQuestion(records, question);
     const included = ranked.slice(0, this.maxItemsInContext);
 
     // For records that directly match the question, pull their full stored text
@@ -78,13 +87,14 @@ export class ChatComplianceResponderService {
       question,
       responseLanguage: input.plan.responseLanguage,
       items: included,
-      totalCount: items.length,
+      gaps,
+      totalCount: records.length,
       texts,
     });
 
     const expired = items.filter((item) => item.status === 'expired').length;
     const expiring = items.filter((item) => item.status === 'expiring').length;
-    const missing = items.filter((item) => item.status === 'missing').length;
+    const missing = gaps.length;
 
     return {
       askId: input.ask.id,
@@ -169,11 +179,22 @@ export class ChatComplianceResponderService {
         const surveyWindow = this.str(type.surveyWindow);
         const renewalCycle = this.str(type.renewalCycle);
         const typeStatus = this.str(type.status);
-        const records = Array.isArray(type.records)
+        const applicabilityVerdict = this.str(type.applicabilityVerdict);
+        const allRecords = Array.isArray(type.records)
           ? (type.records as Array<Record<string, unknown>>)
           : [];
+        // Superseded and archived issues are history, not evidence in force —
+        // reporting them would tell the crew a replaced certificate is on file.
+        const records = allRecords.filter((record) => {
+          const state = this.str(record.recordState);
+          return !state || state === 'current';
+        });
 
         if (!records.length) {
+          // 'missing' is decided by the applicability matrix: it means this
+          // vessel is REQUIRED to hold the document and none is on file.
+          // 'conditional' means the matrix has not established that it is
+          // needed here — never report that as a gap.
           if (typeStatus === 'missing') {
             items.push({
               section: sectionName,
@@ -187,6 +208,7 @@ export class ChatComplianceResponderService {
               renewalCycle,
               recordId: null,
               archetype,
+              applicabilityVerdict,
             });
           }
           continue;
@@ -205,6 +227,7 @@ export class ChatComplianceResponderService {
             renewalCycle,
             recordId: this.str(record.id),
             archetype,
+            applicabilityVerdict,
           });
         }
       }
@@ -278,11 +301,13 @@ export class ChatComplianceResponderService {
     question: string;
     responseLanguage: string | null;
     items: ComplianceItem[];
+    gaps: ComplianceItem[];
     totalCount: number;
     texts: Map<string, string>;
   }): Promise<string> {
     const register = this.formatRegister(
       input.items,
+      input.gaps,
       input.totalCount,
       input.texts,
     );
@@ -292,8 +317,12 @@ export class ChatComplianceResponderService {
       "Answer the user's compliance question using ONLY the compliance register below.",
       "These records come from the vessel's structured Compliance Docs (doc-control) module — the source of truth for the status of ALL statutory and controlled documents (certificates, equipment servicing records, type approvals, crew certificates, insurance, required plans, record books, survey reports, agreements, legal docs), not manuals or uploaded document copies.",
       'Some records include a "full text" block — the transcribed body of that document. Use it to answer detailed body-level questions, but never invent content that is not present.',
-      'Status meaning: EXPIRED = past its expiry date; EXPIRING = expires within ~90 days; VALID = in date (or permanent); MISSING = a required document with no record on file.',
+      'Status meaning: EXPIRED = past its expiry date; EXPIRING = expires within ~90 days; VALID = in date (or permanent).',
+      'The register has two blocks. DOCUMENTS ON FILE lists the records the vessel holds; it may be truncated, and the line at its end says so. REQUIRED FOR THIS VESSEL BUT NOT ON FILE is the complete, authoritative list of gaps — it is never truncated.',
+      'A document counts as missing ONLY if it appears in that second block. That block is already filtered by the vessel applicability matrix (its size, flag and commercial/private operation), so it excludes documents that do not apply to this vessel and documents that are only conditionally required until someone confirms they apply here.',
+      'When asked what is missing, what is outstanding, or what the vessel still needs: answer from the REQUIRED ... NOT ON FILE block ONLY. Name the individual documents, grouped by section. Never answer with section names alone, never list a whole section as missing, and never count documents that are not in that block. If the block says none, say nothing is missing.',
       'If no record in the register is relevant to the question, say so plainly — do NOT invent documents, dates, issuers, or numbers.',
+      'The register records only WHETHER a document is on file. It does not record why one is absent, what the consequences are, or how urgent it is. Never state a reason for an absence, an operational or legal impact, a penalty, or an urgency/priority rating — none of that is in the data. Report what is missing, plus the renewal cycle and survey window where the register gives them.',
       'Be concise and practical. Lead with expired/expiring/missing items when the user asks what needs attention. Quote expiry dates and document/certificate numbers when present.',
       input.responseLanguage
         ? `Write the answer in this language: ${input.responseLanguage}.`
@@ -324,10 +353,11 @@ export class ChatComplianceResponderService {
 
   private formatRegister(
     items: ComplianceItem[],
+    gaps: ComplianceItem[],
     totalCount: number,
     texts: Map<string, string>,
   ): string {
-    if (!items.length) {
+    if (!items.length && !gaps.length) {
       return 'No compliance documents are registered for this vessel.';
     }
 
@@ -355,11 +385,34 @@ export class ChatComplianceResponderService {
 
     if (totalCount > items.length) {
       lines.push(
-        `(showing ${items.length} of ${totalCount} records — ask about a specific certificate or piece of equipment to narrow down)`,
+        `(showing ${items.length} of ${totalCount} records on file — ask about a specific certificate or piece of equipment to narrow down)`,
       );
     }
 
-    return lines.join('\n');
+    const out = items.length
+      ? ['DOCUMENTS ON FILE:', ...lines]
+      : ['DOCUMENTS ON FILE: none.'];
+
+    if (gaps.length) {
+      const bySection = new Map<string, string[]>();
+      for (const gap of gaps) {
+        const key = gap.section || 'Other';
+        const list = bySection.get(key) ?? [];
+        list.push(gap.typeName);
+        bySection.set(key, list);
+      }
+      out.push(
+        '',
+        `REQUIRED FOR THIS VESSEL BUT NOT ON FILE (${gaps.length}) — this list is COMPLETE, it is the answer to "what is missing":`,
+      );
+      for (const [section, names] of bySection) {
+        out.push(`  ${section}: ${names.join('; ')}`);
+      }
+    } else {
+      out.push('', 'REQUIRED FOR THIS VESSEL BUT NOT ON FILE: none.');
+    }
+
+    return out.join('\n');
   }
 
   private buildContextReferences(items: ComplianceItem[]): unknown[] {
