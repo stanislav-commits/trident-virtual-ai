@@ -98,6 +98,7 @@ import { AddChatMessageAttachments20260725000100 } from './migrations/2026072500
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
+import { ComplianceDocMasterEntity } from '../../modules/compliance/entities/compliance-doc-master.entity';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -128,6 +129,8 @@ const dataSource = new DataSource({
     AccessMatrixCellEntity,
     CrewMemberEntity,
     PmsTaskEntity,
+    // Registered so `db:seed:compliance` can rebuild the rulebook catalogue.
+    ComplianceDocMasterEntity,
   ],
   migrations: [
     InitAccessControlSchema20260418000100,
