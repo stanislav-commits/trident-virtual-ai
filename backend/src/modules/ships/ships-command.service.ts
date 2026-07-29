@@ -99,8 +99,33 @@ export class ShipsCommandService {
     if (input.lengthM !== undefined) {
       ship.lengthM = input.lengthM != null ? String(input.lengthM) : null;
     }
+    if (input.beamM !== undefined) {
+      ship.beamM = input.beamM != null ? String(input.beamM) : null;
+    }
+    if (input.depthM !== undefined) {
+      ship.depthM = input.depthM != null ? String(input.depthM) : null;
+    }
     if (input.grossTonnage !== undefined) {
       ship.grossTonnage = input.grossTonnage ?? null;
+    }
+    if (input.netTonnage !== undefined) {
+      ship.netTonnage = input.netTonnage ?? null;
+    }
+    // Vessel master data (v60) — identity printed on statutory certificates.
+    if (input.officialNumber !== undefined) {
+      ship.officialNumber = input.officialNumber ?? null;
+    }
+    if (input.portOfRegistry !== undefined) {
+      ship.portOfRegistry = input.portOfRegistry ?? null;
+    }
+    if (input.registeredOwner !== undefined) {
+      ship.registeredOwner = input.registeredOwner ?? null;
+    }
+    if (input.companyName !== undefined) {
+      ship.companyName = input.companyName ?? null;
+    }
+    if (input.companyImoNumber !== undefined) {
+      ship.companyImoNumber = input.companyImoNumber ?? null;
     }
     if (input.shipyard !== undefined) ship.shipyard = input.shipyard ?? null;
     if (input.classSociety !== undefined) {

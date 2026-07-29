@@ -20,11 +20,21 @@ const EMPTY_FORM = {
   callSign: "",
   flag: "",
   lengthM: "",
+  beamM: "",
+  depthM: "",
   buildYear: "",
   shipyard: "",
   classSociety: "",
   homePort: "",
   grossTonnage: "",
+  netTonnage: "",
+  // Vessel master data — identity printed on statutory certificates; the
+  // compliance record form reads these instead of asking per certificate.
+  officialNumber: "",
+  portOfRegistry: "",
+  registeredOwner: "",
+  companyName: "",
+  companyImoNumber: "",
   operationType: "commercial",
   metricAnalysisHint: "",
 };
@@ -82,6 +92,14 @@ function shipToForm(ship: ShipSummaryItem): FormState {
     classSociety: ship.classSociety ?? "",
     homePort: ship.homePort ?? "",
     grossTonnage: ship.grossTonnage != null ? String(ship.grossTonnage) : "",
+    beamM: ship.beamM != null ? String(ship.beamM) : "",
+    depthM: ship.depthM != null ? String(ship.depthM) : "",
+    netTonnage: ship.netTonnage != null ? String(ship.netTonnage) : "",
+    officialNumber: ship.officialNumber ?? "",
+    portOfRegistry: ship.portOfRegistry ?? "",
+    registeredOwner: ship.registeredOwner ?? "",
+    companyName: ship.companyName ?? "",
+    companyImoNumber: ship.companyImoNumber ?? "",
     operationType: ship.operationType ?? "commercial",
     metricAnalysisHint: ship.metricAnalysisHint ?? "",
   };
@@ -201,7 +219,15 @@ export function AddVesselModal({
       callSign: form.callSign.trim() || null,
       flag: form.flag.trim() || null,
       lengthM: form.lengthM ? Number(form.lengthM) : null,
+      beamM: form.beamM ? Number(form.beamM) : null,
+      depthM: form.depthM ? Number(form.depthM) : null,
       grossTonnage: form.grossTonnage ? Number(form.grossTonnage) : null,
+      netTonnage: form.netTonnage ? Number(form.netTonnage) : null,
+      officialNumber: form.officialNumber.trim() || null,
+      portOfRegistry: form.portOfRegistry.trim() || null,
+      registeredOwner: form.registeredOwner.trim() || null,
+      companyName: form.companyName.trim() || null,
+      companyImoNumber: form.companyImoNumber.trim() || null,
       shipyard: form.shipyard.trim() || null,
       classSociety: form.classSociety.trim() || null,
       homePort: form.homePort.trim() || null,
@@ -367,9 +393,27 @@ export function AddVesselModal({
             numeric
           />
           <Field
+            label="Beam, m"
+            value={form.beamM}
+            onChange={set("beamM")}
+            numeric
+          />
+          <Field
+            label="Depth, m"
+            value={form.depthM}
+            onChange={set("depthM")}
+            numeric
+          />
+          <Field
             label="Gross tonnage"
             value={form.grossTonnage}
             onChange={set("grossTonnage")}
+            numeric
+          />
+          <Field
+            label="Net tonnage"
+            value={form.netTonnage}
+            onChange={set("netTonnage")}
             numeric
           />
           <label className="vessel-modal__field">
@@ -396,6 +440,34 @@ export function AddVesselModal({
             label="Home port"
             value={form.homePort}
             onChange={set("homePort")}
+          />
+          {/* Vessel master data — printed on statutory certificates. Kept on
+              the vessel so a certificate never asks for it twice. */}
+          <div className="vessel-modal__section">Vessel master data</div>
+          <Field
+            label="Official number"
+            value={form.officialNumber}
+            onChange={set("officialNumber")}
+          />
+          <Field
+            label="Port of registry"
+            value={form.portOfRegistry}
+            onChange={set("portOfRegistry")}
+          />
+          <Field
+            label="Registered owner"
+            value={form.registeredOwner}
+            onChange={set("registeredOwner")}
+          />
+          <Field
+            label="ISM company"
+            value={form.companyName}
+            onChange={set("companyName")}
+          />
+          <Field
+            label="Company IMO"
+            value={form.companyImoNumber}
+            onChange={set("companyImoNumber")}
           />
           <label
             className="vessel-modal__field"

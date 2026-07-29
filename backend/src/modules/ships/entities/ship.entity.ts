@@ -43,8 +43,42 @@ export class ShipEntity {
   @Column({ name: 'length_m', type: 'numeric', precision: 6, scale: 2, nullable: true })
   lengthM!: string | null;
 
+  @Column({ name: 'beam_m', type: 'numeric', precision: 6, scale: 2, nullable: true })
+  beamM!: string | null;
+
+  @Column({ name: 'depth_m', type: 'numeric', precision: 6, scale: 2, nullable: true })
+  depthM!: string | null;
+
   @Column({ name: 'gross_tonnage', type: 'int', nullable: true })
   grossTonnage!: number | null;
+
+  @Column({ name: 'net_tonnage', type: 'int', nullable: true })
+  netTonnage!: number | null;
+
+  /**
+   * Vessel master data printed on statutory certificates. v60 auto-populates
+   * these into the record form instead of having them typed per certificate.
+   * `portOfRegistry` is the legal port on the Certificate of Registry — not
+   * `homePort`, which is operational and may differ.
+   */
+  @Column({ name: 'official_number', type: 'varchar', length: 40, nullable: true })
+  officialNumber!: string | null;
+
+  @Column({ name: 'port_of_registry', type: 'varchar', length: 120, nullable: true })
+  portOfRegistry!: string | null;
+
+  @Column({ name: 'registered_owner', type: 'varchar', length: 200, nullable: true })
+  registeredOwner!: string | null;
+
+  /**
+   * The ISM Company (the DOC holder), not the owner — the Document of
+   * Compliance and the ISM Code 3.1 declaration are issued to it.
+   */
+  @Column({ name: 'company_name', type: 'varchar', length: 200, nullable: true })
+  companyName!: string | null;
+
+  @Column({ name: 'company_imo_number', type: 'varchar', length: 10, nullable: true })
+  companyImoNumber!: string | null;
 
   @Column({ name: 'shipyard', type: 'varchar', length: 120, nullable: true })
   shipyard!: string | null;

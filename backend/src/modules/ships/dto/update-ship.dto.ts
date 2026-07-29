@@ -63,10 +63,58 @@ export class UpdateShipDto {
   lengthM?: number | null;
 
   @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  beamM?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  depthM?: number | null;
+
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(500000)
   grossTonnage?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(500000)
+  netTonnage?: number | null;
+
+  // Vessel master data — printed on statutory certificates, auto-populated
+  // into compliance records rather than typed per certificate.
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  officialNumber?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  portOfRegistry?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  registeredOwner?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  companyName?: string | null;
+
+  @Transform(({ value }) => normalizeImoNumber(value))
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{7}$/, {
+    message: 'Company IMO number must contain exactly 7 digits',
+  })
+  companyImoNumber?: string | null;
 
   @Transform(({ value }) => normalizeTrimmedText(value))
   @IsOptional()

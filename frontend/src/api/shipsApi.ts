@@ -10,13 +10,22 @@ export type ShipSummaryItem = {
   callSign: string | null;
   flag: string | null;
   lengthM: number | null;
+  beamM: number | null;
+  depthM: number | null;
   grossTonnage: number | null;
+  netTonnage: number | null;
   shipyard: string | null;
   classSociety: string | null;
   homePort: string | null;
   fleetManagerEmail: string | null;
   operationType: string | null;
   metricAnalysisHint: string | null;
+  // Vessel master data — auto-populated into compliance records.
+  officialNumber: string | null;
+  portOfRegistry: string | null;
+  registeredOwner: string | null;
+  companyName: string | null;
+  companyImoNumber: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -30,13 +39,21 @@ export type CreateShipInput = {
   callSign?: string | null;
   flag?: string | null;
   lengthM?: number | null;
+  beamM?: number | null;
+  depthM?: number | null;
   grossTonnage?: number | null;
+  netTonnage?: number | null;
   shipyard?: string | null;
   classSociety?: string | null;
   homePort?: string | null;
   fleetManagerEmail?: string | null;
   operationType?: string | null;
   metricAnalysisHint?: string | null;
+  officialNumber?: string | null;
+  portOfRegistry?: string | null;
+  registeredOwner?: string | null;
+  companyName?: string | null;
+  companyImoNumber?: string | null;
 };
 
 export type UpdateShipInput = {
@@ -48,13 +65,21 @@ export type UpdateShipInput = {
   callSign?: string | null;
   flag?: string | null;
   lengthM?: number | null;
+  beamM?: number | null;
+  depthM?: number | null;
   grossTonnage?: number | null;
+  netTonnage?: number | null;
   shipyard?: string | null;
   classSociety?: string | null;
   homePort?: string | null;
   fleetManagerEmail?: string | null;
   operationType?: string | null;
   metricAnalysisHint?: string | null;
+  officialNumber?: string | null;
+  portOfRegistry?: string | null;
+  registeredOwner?: string | null;
+  companyName?: string | null;
+  companyImoNumber?: string | null;
 };
 
 export async function getShips(token: string): Promise<ShipSummaryItem[]> {
