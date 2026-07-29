@@ -8,10 +8,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Not, Repository } from 'typeorm';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import {
+  applicabilityVerdict,
   deriveFlagRegistry,
   deriveGtBucket,
   FLAG_REGISTRY_COLUMN,
   GT_BUCKET_COLUMN,
+  hideFromRegister,
+  raisesGap,
   resolveApplicability,
 } from './compliance-profile.util';
 import { ComplianceDocMasterEntity } from './entities/compliance-doc-master.entity';
@@ -38,7 +41,17 @@ import {
   validityField,
 } from './compliance-archetypes';
 
-export type ComplianceStatus = 'valid' | 'expiring' | 'expired' | 'missing';
+/**
+ * `conditional` is not a health state — it means the register cannot say the
+ * document is missing, because the applicability matrix has not established
+ * that this vessel needs it (C / R / TBD). See applicabilityVerdict().
+ */
+export type ComplianceStatus =
+  | 'valid'
+  | 'expiring'
+  | 'expired'
+  | 'missing'
+  | 'conditional';
 
 const EXPIRING_DAYS = 90;
 
@@ -466,19 +479,30 @@ export class ComplianceService {
         if (category !== null && !allowed.has(category)) continue;
       }
 
+      const records = docsByType.get(type.id) ?? [];
+
+      // Not required for this vessel and nothing uploaded → keep it out of the
+      // register entirely. A row that holds records is always shown.
+      if (hideFromRegister(type.applicability, records.length)) continue;
+
       let section = sections.get(type.sectionCode);
       if (!section) {
         section = {
           sectionCode: type.sectionCode,
           sectionName: type.sectionName,
           types: [],
-          counts: { valid: 0, expiring: 0, expired: 0, missing: 0 },
+          counts: {
+            valid: 0,
+            expiring: 0,
+            expired: 0,
+            missing: 0,
+            conditional: 0,
+          },
         };
         sections.set(type.sectionCode, section);
       }
 
-      const records = docsByType.get(type.id) ?? [];
-      const status = this.typeStatus(records);
+      const status = this.typeStatus(records, type.applicability);
       section.counts[status] += 1;
 
       section.types.push({
@@ -488,6 +512,7 @@ export class ComplianceService {
         scope: type.scope,
         linkedSfi: type.linkedSfi,
         applicability: type.applicability,
+        applicabilityVerdict: applicabilityVerdict(type.applicability),
         renewalCycle: type.renewalCycle,
         surveyWindow: type.surveyWindow,
         updateTrigger: type.updateTrigger,
@@ -953,8 +978,14 @@ export class ComplianceService {
    * as required — the vessel-profile "not required" gate was retired so the
    * full list always shows a real status.
    */
-  private typeStatus(records: ComplianceDocEntity[]): ComplianceStatus {
-    if (!records.length) return 'missing';
+  private typeStatus(
+    records: ComplianceDocEntity[],
+    applicability: string | null | undefined,
+  ): ComplianceStatus {
+    if (!records.length) {
+      // The applicability matrix decides whether an empty row is a gap.
+      return raisesGap(applicability) ? 'missing' : 'conditional';
+    }
     const order: ComplianceStatus[] = ['expired', 'expiring', 'valid'];
     for (const status of order) {
       if (records.some((doc) => this.recordStatus(doc) === status)) {

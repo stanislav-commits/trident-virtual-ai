@@ -54,6 +54,7 @@ import {
 } from '../../pms/pms-status.util';
 import { ComplianceDocEntity } from '../../compliance/entities/compliance-doc.entity';
 import { ComplianceDocTypeEntity } from '../../compliance/entities/compliance-doc-type.entity';
+import { raisesGap } from '../../compliance/compliance-profile.util';
 import { InventoryItemEntity } from '../../inventory/entities/inventory-item.entity';
 import { InventoryItemAssetEntity } from '../../inventory/entities/inventory-item-asset.entity';
 import { ShipMetricCatalogEntity } from '../entities/ship-metric-catalog.entity';
@@ -5443,10 +5444,11 @@ export class MetricAnalyzerResponderService {
     }> = [];
     for (const type of types) {
       const records = docsByType.get(type.id) ?? [];
-      const required =
-        type.applicability === 'Y' || type.applicability === 'C';
+      // Same rule as the register: only 'Y' makes an empty row a gap. This used
+      // to count 'C' as required too, so chat reported missing documents the
+      // admin panel did not.
       if (!records.length) {
-        if (required) {
+        if (raisesGap(type.applicability)) {
           items.push({
             type: type.name,
             section: type.sectionName,

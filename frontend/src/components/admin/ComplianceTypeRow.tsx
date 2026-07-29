@@ -94,8 +94,35 @@ export function ComplianceTypeRow({
 
   const recordCount = type.records.length;
 
+  // The applicability matrix says this vessel may not need the document. Dim
+  // the row so the required set reads first, and label why it is not a gap.
+  // `not_applicable` only ever reaches the UI when the row holds records — the
+  // register hides the empty ones — so it needs a label too, otherwise a
+  // document the matrix says this vessel does not need appears unexplained.
+  const notRequired = type.applicabilityVerdict !== "required";
+  const applicabilityLabel =
+    type.applicabilityVerdict === "recommended"
+      ? "Recommended"
+      : type.applicabilityVerdict === "not_applicable"
+        ? "Not required"
+        : type.applicability === "C"
+          ? "Conditional"
+          : "Applicability TBD";
+  const applicabilityHint =
+    type.applicabilityVerdict === "recommended"
+      ? "Recommended for this vessel, not required. Not counted as a gap."
+      : type.applicabilityVerdict === "not_applicable"
+        ? "The applicability matrix says this vessel does not need this document — shown because records exist against it."
+        : type.applicability === "C"
+          ? "Conditional — required only in certain cases (see notes). Set applicability to Y once confirmed it applies to this vessel."
+          : "The applicability matrix has no verdict for this vessel yet. Set applicability to Y or N to decide.";
+
   return (
-    <div className={`compliance__type${open ? " compliance__type--open" : ""}`}>
+    <div
+      className={`compliance__type${open ? " compliance__type--open" : ""}${
+        notRequired ? " compliance__type--not-required" : ""
+      }`}
+    >
       <div className="compliance__type-row">
         <span className="compliance__type-code">{type.sfiCode}</span>
         <button
@@ -123,6 +150,15 @@ export function ComplianceTypeRow({
             {type.archetype}
           </span>
         )}
+        {/* Only when it says something the status badge does not: a plain
+            conditional row with no records already reads CONDITIONAL, and two
+            chips saying the same thing just crowd out the document name. */}
+        {notRequired &&
+          !(type.status === "conditional" && type.applicability === "C") && (
+            <span className="compliance__applicability" title={applicabilityHint}>
+              {applicabilityLabel}
+            </span>
+          )}
         {recordCount > 0 && (
           <span className="compliance__rec-count" title="Records on file">
             {recordCount}

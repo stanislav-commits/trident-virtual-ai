@@ -9642,6 +9642,14 @@
 .compliance__filter--on {
   background: var(--chat-accent, #3b82f6); border-color: var(--chat-accent, #3b82f6); color: #fff;
 }
+/* Applicability toggle — orthogonal to the status chips, so it is pushed to
+   the end of the row and reads as a switch rather than one more choice. */
+.compliance__filter--toggle { margin-left: auto; border-style: dashed; }
+.compliance__filter--toggle.compliance__filter--on { border-style: solid; }
+.compliance__empty {
+  margin: 14px 0; padding: 0 4px;
+  font-size: 12.5px; color: var(--chat-text-muted);
+}
 .compliance__layout {
   display: flex; gap: 14px; align-items: flex-start;
 }
@@ -9758,6 +9766,11 @@
 .compliance__badge--expiring { color: var(--status-warn); border-color: var(--status-warn-border); background: var(--status-warn-bg); }
 .compliance__badge--expired { color: var(--status-danger); border-color: var(--status-danger-border); background: var(--status-danger-bg); }
 .compliance__badge--missing { color: var(--status-muted); background: var(--status-muted-bg); }
+/* Not a health state — the vessel may simply not need this document yet. */
+.compliance__badge--conditional {
+  color: var(--chat-text-muted); background: transparent;
+  border-style: dashed; opacity: .75;
+}
 .compliance__type { padding: 6px 14px 6px 26px; border-top: 1px solid var(--chat-border); }
 .compliance__type-row { display: flex; align-items: center; gap: 10px; }
 .compliance__type-code {
@@ -10092,6 +10105,22 @@
   color: var(--chat-accent, #4a90d9);
   background: color-mix(in srgb, var(--chat-accent, #4a90d9) 16%, transparent);
   border-radius: 4px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;
+}
+/* Applicability matrix: a row this vessel is not required to hold recedes so
+   the required set reads first. Still fully interactive — only dimmed. */
+.compliance__applicability {
+  margin-left: 8px; font-size: 9px; font-weight: 700; letter-spacing: 0.03em;
+  color: var(--chat-text-muted);
+  border: 1px dashed var(--chat-border-strong);
+  border-radius: 4px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;
+}
+.compliance__type--not-required .compliance__type-code,
+.compliance__type--not-required .compliance__type-name { opacity: .6; }
+.compliance__type--not-required:hover .compliance__type-code,
+.compliance__type--not-required:hover .compliance__type-name,
+.compliance__type--not-required.compliance__type--open .compliance__type-code,
+.compliance__type--not-required.compliance__type--open .compliance__type-name {
+  opacity: 1;
 }
 .compliance__type-meta {
   font-size: 10.5px; color: var(--chat-text-muted);

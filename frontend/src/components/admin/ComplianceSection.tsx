@@ -86,6 +86,20 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const [typeFilter, setTypeFilter] = useState<
     "all" | "empty" | "filled" | "expired" | "expiring" | "valid"
   >("all");
+  // Collapse the register down to what this vessel is actually required to
+  // hold. Orthogonal to typeFilter — it combines with any of them. Remembered
+  // because it is a way of working, not a one-off view.
+  const [hideNotRequired, setHideNotRequired] = useState(
+    () => localStorage.getItem("trident.compliance.hideNotRequired") === "1",
+  );
+  const toggleHideNotRequired = () =>
+    setHideNotRequired((v) => {
+      localStorage.setItem(
+        "trident.compliance.hideNotRequired",
+        v ? "0" : "1",
+      );
+      return !v;
+    });
   const [schema, setSchema] = useState<ArchetypeSchema | null>(null);
   const [savingDoc, setSavingDoc] = useState(false);
   // Single-doc save failure — shown INSIDE the doc modal, not behind it.
@@ -329,7 +343,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
   };
 
   const totals = useMemo(() => {
-    const t = { valid: 0, expiring: 0, expired: 0, missing: 0 };
+    const t = { valid: 0, expiring: 0, expired: 0, missing: 0, conditional: 0 };
     for (const s of overview?.sections ?? []) {
       for (const k of Object.keys(t) as (keyof typeof t)[]) {
         t[k] += s.counts[k] ?? 0;
@@ -354,6 +368,15 @@ export function ComplianceSection({ token }: { token: string | null }) {
   const query = search.trim().toLowerCase();
   // Status filter for the type list (All / Empty / Filled / Expired / …).
   const matchesFilter = (t: ComplianceDocType) => {
+    // "Only required" never hides a row that holds records — a document
+    // someone uploaded is evidence, whatever the matrix says about this vessel.
+    if (
+      hideNotRequired &&
+      t.applicabilityVerdict !== "required" &&
+      t.records.length === 0
+    ) {
+      return false;
+    }
     switch (typeFilter) {
       case "empty":
         return t.records.length === 0;
@@ -388,7 +411,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
       }))
       .filter((g) => g.types.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleSections, query, typeFilter]);
+  }, [visibleSections, query, typeFilter, hideNotRequired]);
 
   // Extraction values (unknown-typed) → the modal's string form values.
   const toFormFields = (f: Record<string, unknown> | null | undefined) => {
@@ -623,7 +646,10 @@ export function ComplianceSection({ token }: { token: string | null }) {
           <h2 className="compliance__title">Compliance Docs</h2>
           <div className="compliance__subtitle">
             {totals.missing} missing · {totals.expired} expired ·{" "}
-            {totals.expiring} expiring · {totals.valid} valid
+            {totals.expiring} expiring · {totals.valid} valid ·{" "}
+            <span title="Conditional or recommended for this vessel — not counted as a gap">
+              {totals.conditional} conditional
+            </span>
           </div>
         </div>
         <div className="compliance__head-controls">
@@ -710,7 +736,6 @@ export function ComplianceSection({ token }: { token: string | null }) {
         <ComplianceDocModal
           typeName={docModal.type.name}
           typeCode={docModal.type.sfiCode}
-          archetype={docModal.type.archetype}
           archetypeFields={
             (docModal.type.archetype &&
               schema?.archetypes[docModal.type.archetype]) ||
@@ -821,6 +846,17 @@ export function ComplianceSection({ token }: { token: string | null }) {
               {label}
             </button>
           ))}
+          <button
+            type="button"
+            className={`compliance__filter compliance__filter--toggle${
+              hideNotRequired ? " compliance__filter--on" : ""
+            }`}
+            onClick={toggleHideNotRequired}
+            aria-pressed={hideNotRequired}
+            title="Hide the documents the applicability matrix says this vessel does not need — conditional, recommended and TBD. Rows that already hold records stay visible."
+          >
+            Only required
+          </button>
         </div>
       )}
 
@@ -856,9 +892,17 @@ export function ComplianceSection({ token }: { token: string | null }) {
                           ? " compliance__rail-count--issues"
                           : " compliance__rail-count--ok"
                     }`}
+                    title={
+                      section.counts.conditional > 0
+                        ? `${section.counts.conditional} conditional / recommended document(s) not counted`
+                        : undefined
+                    }
                   >
-                    {section.counts.valid}/
-                    {section.counts.valid + issues}
+                    {/* Nothing in this section is required of this vessel —
+                        "0/0" would read as a failure rather than as N/A. */}
+                    {section.counts.valid + issues === 0
+                      ? "—"
+                      : `${section.counts.valid}/${section.counts.valid + issues}`}
                   </span>
                 </button>
               );
@@ -908,12 +952,22 @@ export function ComplianceSection({ token }: { token: string | null }) {
               }
 
               if (!current) return null;
+              // matchesFilter is a no-op here for typeFilter (it is "all" in
+              // this branch) — it applies the "only required" toggle without
+              // leaving the single-section view.
+              const sectionTypes = current.types.filter(matchesFilter);
               return (
                 <>
                   <div className="compliance__main-head">
                     {current.sectionCode} {current.sectionName}
                   </div>
-                  {current.types.map(renderTypeRow)}
+                  {sectionTypes.length === 0 ? (
+                    <p className="compliance__empty">
+                      Nothing in this section is required of this vessel.
+                    </p>
+                  ) : (
+                    sectionTypes.map(renderTypeRow)
+                  )}
                 </>
               );
             })()}

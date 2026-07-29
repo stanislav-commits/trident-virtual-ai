@@ -68,6 +68,60 @@ export function deriveFlagRegistry(flag: string | null): string | null {
  * (conditional) beats Y (required) beats R (recommended) — the most
  * restrictive signal wins.
  */
+/**
+ * What a resolved applicability letter MEANS for this vessel.
+ *
+ * The letters come from the Cert_Applicability_Matrix legend:
+ *   Y = Required   C = Conditional (see notes)   R = Recommended
+ *   N = Not Required   blank = TBD for this vessel
+ *
+ * Only `required` makes a document a compliance GAP. This is v60's Rule 2 —
+ * "Conditional documents must not create a missing-document alert unless
+ * applicability has been confirmed for the vessel" — and confirming is exactly
+ * an operator switching the per-ship type from C to Y (PATCH types/:typeId).
+ * Blank is TBD, so it is treated as conditional rather than silently required.
+ */
+export type ApplicabilityVerdict =
+  | 'required'
+  | 'conditional'
+  | 'recommended'
+  | 'not_applicable';
+
+export function applicabilityVerdict(
+  applicability: string | null | undefined,
+): ApplicabilityVerdict {
+  switch (String(applicability ?? '').trim().toUpperCase()) {
+    case 'Y':
+      return 'required';
+    case 'R':
+      return 'recommended';
+    case 'N':
+      return 'not_applicable';
+    case 'C':
+    default:
+      return 'conditional'; // C and blank/TBD alike
+  }
+}
+
+/** Does a missing document of this applicability count as a compliance gap? */
+export function raisesGap(applicability: string | null | undefined): boolean {
+  return applicabilityVerdict(applicability) === 'required';
+}
+
+/**
+ * Hide a not-required document from the register — but only while it holds no
+ * records. Something an operator actually uploaded is never hidden, whatever
+ * the matrix says about this vessel.
+ */
+export function hideFromRegister(
+  applicability: string | null | undefined,
+  recordCount: number,
+): boolean {
+  return (
+    recordCount === 0 && applicabilityVerdict(applicability) === 'not_applicable'
+  );
+}
+
 export function resolveApplicability(
   row: ComplianceDocMasterEntity,
   keys: {

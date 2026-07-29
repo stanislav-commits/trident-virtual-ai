@@ -1,6 +1,23 @@
 import { fetchWithAuth } from "./core";
 
-export type ComplianceStatus = "valid" | "expiring" | "expired" | "missing";
+/**
+ * `conditional` is not a health state: the applicability matrix has not
+ * established that this vessel needs the document (C / R / TBD), so an empty
+ * row cannot be called missing. See the backend's applicabilityVerdict().
+ */
+export type ComplianceStatus =
+  | "valid"
+  | "expiring"
+  | "expired"
+  | "missing"
+  | "conditional";
+
+/** Y / C / R / TBD from the Cert_Applicability_Matrix, resolved for this ship. */
+export type ApplicabilityVerdict =
+  | "required"
+  | "conditional"
+  | "recommended"
+  | "not_applicable";
 
 export interface ComplianceLink {
   id: string;
@@ -58,6 +75,7 @@ export interface ComplianceDocType {
   scope: string;
   linkedSfi: string | null;
   applicability: string;
+  applicabilityVerdict: ApplicabilityVerdict;
   renewalCycle: string | null;
   surveyWindow: string | null;
   updateTrigger: string | null;
