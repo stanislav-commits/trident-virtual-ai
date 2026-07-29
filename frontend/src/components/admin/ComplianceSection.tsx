@@ -9,6 +9,7 @@ import {
   fetchComplianceArchetypes,
   addComplianceDocLink,
   removeComplianceDocLink,
+  restoreComplianceDoc,
   previewComplianceDocs,
   commitComplianceDocs,
   openComplianceDocFile,
@@ -583,6 +584,16 @@ export function ComplianceSection({ token }: { token: string | null }) {
     }
   };
 
+  const restoreRecord = async (docId: string) => {
+    if (!token || !shipId) return;
+    try {
+      await restoreComplianceDoc(token, shipId, docId);
+      void reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to restore record");
+    }
+  };
+
   const openFile = async (docId: string) => {
     if (!token || !shipId) return;
     try {
@@ -926,6 +937,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
                     if (rec) void startEditRecord(type, rec);
                   }}
                   onDeleteRecord={(docId) => void removeRecord(docId)}
+                  onRestoreRecord={(docId) => void restoreRecord(docId)}
                   onOpenFile={(docId) => void openFile(docId)}
                 />
               );

@@ -19,6 +19,7 @@ interface ComplianceTypeRowProps {
   /** Click a record → open its fields in the edit modal. */
   onEditRecord: (docId: string) => void;
   onDeleteRecord: (docId: string) => void;
+  onRestoreRecord: (docId: string) => void;
   onOpenFile: (docId: string) => void;
 }
 
@@ -78,6 +79,7 @@ export function ComplianceTypeRow({
   onAddDocument,
   onEditRecord,
   onDeleteRecord,
+  onRestoreRecord,
   onOpenFile,
 }: ComplianceTypeRowProps) {
   // What a document links to follows its cardinality (schema v9):
@@ -93,6 +95,15 @@ export function ComplianceTypeRow({
   const open = expanded;
 
   const recordCount = type.records.length;
+  // A record with no explicit state predates the version model — treat it as
+  // in force rather than hiding it.
+  const currentRecords = type.records.filter(
+    (r) => !r.recordState || r.recordState === "current",
+  );
+  const historyRecords = type.records.filter(
+    (r) => r.recordState === "superseded" || r.recordState === "archived",
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // The applicability matrix says this vessel may not need the document. Dim
   // the row so the required set reads first, and label why it is not a gap.
@@ -199,10 +210,12 @@ export function ComplianceTypeRow({
             </div>
           )}
 
-          {/* Existing records */}
-          {recordCount > 0 && (
+          {/* Records in force. Superseded and archived issues move into the
+              history block below so a renewed certificate stops competing with
+              its replacement in the list. */}
+          {currentRecords.length > 0 && (
             <div className="compliance__records">
-              {type.records.map((rec) => (
+              {currentRecords.map((rec) => (
                 <div key={rec.id} className="compliance__record-wrap">
                   <div
                     className="compliance__record compliance__record--clickable"
@@ -305,6 +318,59 @@ export function ComplianceTypeRow({
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {historyRecords.length > 0 && (
+            <div className="compliance__history">
+              <button
+                type="button"
+                className="compliance__history-toggle"
+                onClick={() => setHistoryOpen((v) => !v)}
+                aria-expanded={historyOpen}
+              >
+                <span className="compliance__chevron">
+                  {historyOpen ? "▾" : "▸"}
+                </span>
+                {historyRecords.length} earlier{" "}
+                {historyRecords.length === 1 ? "issue" : "issues"}
+              </button>
+              {historyOpen &&
+                historyRecords.map((rec) => (
+                  <div key={rec.id} className="compliance__history-row">
+                    <span className="compliance__history-state">
+                      {rec.recordState === "archived"
+                        ? "Archived"
+                        : `Superseded${rec.revision ? ` · rev ${rec.revision}` : ""}`}
+                    </span>
+                    <span className="compliance__record-main">
+                      {rec.documentFileName ?? rec.certNo ?? "—"}
+                      {rec.issuer ? ` \u00b7 ${rec.issuer}` : ""}
+                    </span>
+                    <span className="compliance__record-dates">
+                      {formatDateDMY(rec.issueDate) ?? "?"} →{" "}
+                      {formatDateDMY(rec.expiryDate) ?? "—"}
+                    </span>
+                    {rec.hasFile && (
+                      <button
+                        type="button"
+                        className="compliance__record-open"
+                        onClick={() => onOpenFile(rec.id)}
+                        title="Open / preview file"
+                      >
+                        Open
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="compliance__record-open"
+                      onClick={() => onRestoreRecord(rec.id)}
+                      title="Put this issue back in force"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
             </div>
           )}
 

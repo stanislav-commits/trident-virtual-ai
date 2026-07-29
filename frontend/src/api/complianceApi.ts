@@ -51,6 +51,14 @@ export interface ComplianceRecord {
     registerValue: string;
     assetName: string;
   }> | null;
+  /**
+   * Version model. Absent on records saved before it existed — treat a missing
+   * value as `current`.
+   */
+  recordState?: "current" | "superseded" | "archived";
+  revision?: number;
+  supersededByDocId?: string | null;
+  archivedAt?: string | null;
 }
 
 export interface ArchetypeField {
@@ -76,6 +84,8 @@ export interface ComplianceDocType {
   linkedSfi: string | null;
   applicability: string;
   applicabilityVerdict: ApplicabilityVerdict;
+  oneCurrentVersion?: boolean;
+  retainHistory?: boolean;
   renewalCycle: string | null;
   surveyWindow: string | null;
   updateTrigger: string | null;
@@ -166,6 +176,19 @@ export async function addComplianceDocLink(
     },
   );
   await ensureOk(response, "Add link");
+}
+
+/** Put a superseded or archived issue back in force. */
+export async function restoreComplianceDoc(
+  token: string,
+  shipId: string,
+  docId: string,
+): Promise<void> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/docs/${docId}/restore`,
+    { token, method: "POST" },
+  );
+  await ensureOk(response, "Restore record");
 }
 
 export async function removeComplianceDocLink(

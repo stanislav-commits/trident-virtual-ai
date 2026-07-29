@@ -10106,6 +10106,26 @@
   background: color-mix(in srgb, var(--chat-accent, #4a90d9) 16%, transparent);
   border-radius: 4px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;
 }
+/* Version history — superseded / archived issues, collapsed by default so the
+   issue in force reads first. */
+.compliance__history { margin: 6px 0 2px 62px; }
+.compliance__history-toggle {
+  background: transparent; border: 0; padding: 2px 0; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--chat-text-muted);
+}
+.compliance__history-toggle:hover { color: var(--chat-text); }
+.compliance__history-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 0 4px 16px; font-size: 11.5px; opacity: .72;
+}
+.compliance__history-row:hover { opacity: 1; }
+.compliance__history-state {
+  font-size: 9px; font-weight: 700; letter-spacing: .03em; white-space: nowrap;
+  color: var(--chat-text-muted); border: 1px dashed var(--chat-border-strong);
+  border-radius: 4px; padding: 1px 6px; flex-shrink: 0;
+}
+
 /* Applicability matrix: a row this vessel is not required to hold recedes so
    the required set reads first. Still fully interactive — only dimmed. */
 .compliance__applicability {
