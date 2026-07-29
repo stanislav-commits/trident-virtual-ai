@@ -442,6 +442,7 @@ export class ComplianceService {
    */
   async overview(shipId: string, user?: AuthenticatedUser | null) {
     const allowed = await this.readableCategories(user, shipId);
+    const ship = await this.shipRepository.findOne({ where: { id: shipId } });
     const [types, docs] = await Promise.all([
       this.typeRepository.find({
         where: { shipId },
@@ -557,6 +558,8 @@ export class ComplianceService {
         // the access gate — documentType is displayed and will take over when
         // the field profiles land.
         documentType: type.documentType,
+        fieldProfile: type.fieldProfile,
+        specialData: type.specialData,
         validityDriver: type.validityDriver,
         reminderProfile: type.reminderProfile,
         v60Ref: type.v60Ref,
@@ -619,7 +622,25 @@ export class ComplianceService {
         byCode(String(a.sfiCode), String(b.sfiCode)),
       );
     }
-    return { shipId, sections: ordered };
+    // Vessel identity, sent once. v60's field matrix ticks these on 80-odd
+    // documents and 1.1.1's template says they "should auto-populate from
+    // Vessel Master Data" rather than be typed onto each certificate.
+    const vessel = {
+      vessel_gt: ship?.grossTonnage ?? null,
+      vessel_nt: ship?.netTonnage ?? null,
+      vessel_imo: ship?.imoNumber ?? null,
+      official_number: ship?.officialNumber ?? null,
+      vessel_call_sign: ship?.callSign ?? null,
+      vessel_flag: ship?.flag ?? null,
+      port_of_registry: ship?.portOfRegistry ?? null,
+      registered_owner: ship?.registeredOwner ?? null,
+      principal_dimensions:
+        ship?.lengthM && ship?.beamM
+          ? `${ship.lengthM} × ${ship.beamM}${ship.depthM ? ` × ${ship.depthM}` : ''} m`
+          : null,
+    };
+
+    return { shipId, vessel, sections: ordered };
   }
 
   /**

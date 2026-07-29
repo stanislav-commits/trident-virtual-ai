@@ -58,6 +58,8 @@ const COLUMN_TO_PROPERTY: Record<string, keyof ComplianceDocMasterEntity> = {
   validity_driver: 'validityDriver',
   reminder_profile: 'reminderProfile',
   v60_ref: 'v60Ref',
+  field_profile: 'fieldProfile',
+  special_data: 'specialData',
 };
 
 async function run() {
@@ -101,6 +103,8 @@ async function run() {
            "validity_driver"  = m."validity_driver",
            "reminder_profile" = m."reminder_profile",
            "v60_ref"          = m."v60_ref",
+           "field_profile"    = m."field_profile",
+           "special_data"     = m."special_data",
            "archetype"        = m."archetype",
            "link_cardinality" = m."link_cardinality",
            "reg_basis"        = m."reg_basis",

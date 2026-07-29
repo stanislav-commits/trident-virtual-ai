@@ -938,6 +938,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
                   }}
                   onDeleteRecord={(docId) => void removeRecord(docId)}
                   onRestoreRecord={(docId) => void restoreRecord(docId)}
+                  vessel={overview?.vessel}
                   onOpenFile={(docId) => void openFile(docId)}
                 />
               );

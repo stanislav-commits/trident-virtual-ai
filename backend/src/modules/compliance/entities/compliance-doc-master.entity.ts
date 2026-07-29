@@ -145,6 +145,20 @@ export class ComplianceDocMasterEntity {
   @Column({ name: 'v60_ref', type: 'varchar', length: 12, nullable: true })
   v60Ref!: string | null;
 
+  /**
+   * Which fields this document shows, from the v60 Certificate Field Matrix
+   * (☑ = displayed, ☐ = hidden, no optional values). Per DOCUMENT, not per
+   * type: 32 STAT_CERT rows produce 16 different signatures. The nine
+   * vessel-identity slugs are a display mask over Vessel Master Data on
+   * `ships`, not values stored per record.
+   */
+  @Column({ name: 'field_profile', type: 'jsonb', nullable: true })
+  fieldProfile!: string[] | null;
+
+  /** The matrix's Special Certificate Data cell, verbatim — shown, not parsed. */
+  @Column({ name: 'special_data', type: 'text', nullable: true })
+  specialData!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }

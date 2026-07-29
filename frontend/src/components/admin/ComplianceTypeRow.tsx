@@ -1,7 +1,11 @@
 import { useState } from "react";
-import type { ComplianceDocType } from "../../api/complianceApi";
+import type {
+  ComplianceDocType,
+  ComplianceVessel,
+} from "../../api/complianceApi";
 import { StatusBadge } from "./StatusBadge";
 import { prettyLabel, formatDateDMY } from "./compliance/complianceLabels";
+import { ComplianceRecordFields } from "./ComplianceRecordFields";
 
 interface ComplianceTypeRowProps {
   type: ComplianceDocType;
@@ -20,6 +24,8 @@ interface ComplianceTypeRowProps {
   onEditRecord: (docId: string) => void;
   onDeleteRecord: (docId: string) => void;
   onRestoreRecord: (docId: string) => void;
+  /** Vessel identity — the nine identity fields are a mask over it. */
+  vessel: ComplianceVessel | undefined;
   onOpenFile: (docId: string) => void;
 }
 
@@ -80,6 +86,7 @@ export function ComplianceTypeRow({
   onEditRecord,
   onDeleteRecord,
   onRestoreRecord,
+  vessel,
   onOpenFile,
 }: ComplianceTypeRowProps) {
   // What a document links to follows its cardinality (schema v9):
@@ -217,6 +224,14 @@ export function ComplianceTypeRow({
                 )}
                 {type.renewalCycle && <span>Renews: {type.renewalCycle}</span>}
               </div>
+              {/* The matrix's Special Certificate Data cell: the extra fields
+                  v60 expects on this document. Free text — shown for the
+                  operator to act on, not parsed into inputs. */}
+              {type.specialData && (
+                <p className="compliance__special">
+                  Also expected: {type.specialData}
+                </p>
+              )}
             </div>
           )}
 
@@ -273,6 +288,13 @@ export function ComplianceTypeRow({
                       ×
                     </button>
                   </div>
+                  {/* v60 field matrix: the document's fields, readable in the
+                      register itself rather than only inside the edit window. */}
+                  <ComplianceRecordFields
+                    record={rec}
+                    profile={type.fieldProfile}
+                    vessel={vessel}
+                  />
                   {/* Identity mismatch vs the register (register wins) */}
                   {rec.identityFlags && rec.identityFlags.length > 0 && (
                     <div className="compliance__mismatch">

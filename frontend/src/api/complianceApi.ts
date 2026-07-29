@@ -88,6 +88,9 @@ export interface ComplianceDocType {
   retainHistory?: boolean;
   /** v60 Certificate Field Matrix / Behaviour Matrix. Null where v60 has no row. */
   documentType?: string | null;
+  /** Visible field slugs from the v60 Certificate Field Matrix (☑ columns). */
+  fieldProfile?: string[] | null;
+  specialData?: string | null;
   validityDriver?: string | null;
   reminderProfile?: string | null;
   v60Ref?: string | null;
@@ -105,6 +108,9 @@ export interface ComplianceDocType {
   records: ComplianceRecord[];
 }
 
+/** Vessel identity, sent once — the nine identity fields are a mask over it. */
+export type ComplianceVessel = Record<string, string | number | null>;
+
 export interface ComplianceSection {
   sectionCode: string;
   sectionName: string;
@@ -114,6 +120,7 @@ export interface ComplianceSection {
 
 export interface ComplianceOverview {
   shipId: string;
+  vessel?: ComplianceVessel;
   sections: ComplianceSection[];
 }
 

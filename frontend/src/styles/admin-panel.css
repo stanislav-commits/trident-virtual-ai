@@ -10106,6 +10106,32 @@
   background: color-mix(in srgb, var(--chat-accent, #4a90d9) 16%, transparent);
   border-radius: 4px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;
 }
+.compliance__special {
+  margin: 6px 0 0; font-size: 11px; font-style: italic;
+  color: var(--chat-text-muted);
+}
+/* v60 field matrix rendered inline under each record. Dense on purpose: this
+   competes with the record row for attention and must not win. */
+.compliance__fields {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 14px; margin: 4px 0 2px 70px;
+}
+.compliance__field-cell { min-width: 0; }
+.compliance__field-cell dt {
+  font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--chat-text-muted);
+}
+.compliance__field-cell dd {
+  margin: 0; font-size: 11.5px; color: var(--chat-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.compliance__field-vessel { color: var(--chat-text-muted); }
+.compliance__field-auto {
+  margin-left: 5px; font-size: 8.5px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--chat-text-muted);
+  border: 1px dashed var(--chat-border-strong); border-radius: 3px; padding: 0 4px;
+}
+
 /* Version history — superseded / archived issues, collapsed by default so the
    issue in force reads first. */
 .compliance__history { margin: 6px 0 2px 62px; }
