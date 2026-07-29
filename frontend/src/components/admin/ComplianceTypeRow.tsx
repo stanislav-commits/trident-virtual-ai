@@ -145,11 +145,21 @@ export function ComplianceTypeRow({
           <span className="compliance__chevron">{open ? "▾" : "▸"}</span>
           <span className="compliance__type-name">{type.name}</span>
         </button>
-        {type.archetype && (
+        {(type.documentType || type.archetype) && (
           <span
-            className="compliance__archetype"
+            className={`compliance__archetype${
+              type.documentType ? "" : " compliance__archetype--legacy"
+            }`}
             title={[
+              // v60's type is shown when the workbook covers this row; the old
+              // archetype is what still drives the field block, so both are
+              // worth seeing while the two coexist.
+              type.documentType
+                ? `v60 type: ${type.documentType}${type.v60Ref ? ` (ref ${type.v60Ref})` : ""}`
+                : "Not covered by the v60 workbook — still on the v9 archetype",
               `Archetype: ${type.archetype}`,
+              type.validityDriver && `Validity: ${type.validityDriver}`,
+              type.reminderProfile && `Reminders: ${type.reminderProfile}`,
               type.linkCardinality && `Link: ${type.linkCardinality}`,
               type.drivesPms &&
                 type.drivesPms !== "no" &&
@@ -158,7 +168,7 @@ export function ComplianceTypeRow({
               .filter(Boolean)
               .join("\n")}
           >
-            {type.archetype}
+            {type.documentType ?? type.archetype}
           </span>
         )}
         {/* Only when it says something the status badge does not: a plain

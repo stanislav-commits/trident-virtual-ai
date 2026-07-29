@@ -26,7 +26,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "Flag State registration (national law)",
   "basis_note": "Establishes nationality, title & right to fly the flag",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.1.1"
  },
  {
   "sfi_code": "1.1.2",
@@ -55,7 +59,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "Flag YET scheme (e.g. REG / Cayman)",
   "basis_note": "Yacht-specific operational / commercial compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.1.2"
  },
  {
   "sfi_code": "1.1.3",
@@ -84,7 +92,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "International Convention on Tonnage Measurement 1969",
   "basis_note": "Official tonnage (manning, fees, rule thresholds)",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.1.3"
  },
  {
   "sfi_code": "1.1.4",
@@ -113,7 +125,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "Panama Canal Authority tonnage rules",
   "basis_note": "Canal-transit tonnage for toll assessment",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.1.4"
  },
  {
   "sfi_code": "1.1.5",
@@ -142,7 +158,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "Suez Canal Authority tonnage rules",
   "basis_note": "Canal-transit tonnage for toll assessment",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.1.5"
  },
  {
   "sfi_code": "1.1.6",
@@ -171,7 +191,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "Flag State registration (national law)",
   "basis_note": "Establishes nationality, title & right to fly the flag",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "BUILD_RECORD",
+  "validity_driver": "VD-PERMANENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.1.6"
  },
  {
   "sfi_code": "1.1.7",
@@ -200,7 +224,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "Flag State / class (newbuild)",
   "basis_note": "Statutory compliance evidence",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "BUILD_RECORD",
+  "validity_driver": "VD-PERMANENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.1.7"
  },
  {
   "sfi_code": "1.1.8",
@@ -229,7 +257,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-PERMANENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.1.8"
  },
  {
   "sfi_code": "1.1.9",
@@ -258,7 +290,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.1.9"
  },
  {
   "sfi_code": "1.1.10",
@@ -287,7 +323,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.1.10"
  },
  {
   "sfi_code": "1.2.1",
@@ -316,7 +356,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "CLASS_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.2.1"
  },
  {
   "sfi_code": "1.2.2",
@@ -345,7 +389,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "CLASS_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.2.2"
  },
  {
   "sfi_code": "1.2.3",
@@ -374,7 +422,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "CLASS_STATUS",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.2.3"
  },
  {
   "sfi_code": "1.2.4",
@@ -403,7 +455,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "BUILD_RECORD",
+  "validity_driver": "VD-PERMANENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.4"
  },
  {
   "sfi_code": "1.2.5",
@@ -432,7 +488,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "BUILD_RECORD",
+  "validity_driver": "VD-PERMANENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.5"
  },
  {
   "sfi_code": "1.2.6",
@@ -461,7 +521,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.6"
  },
  {
   "sfi_code": "1.2.7",
@@ -490,7 +554,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.7"
  },
  {
   "sfi_code": "1.2.8",
@@ -519,7 +587,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.8"
  },
  {
   "sfi_code": "1.2.9",
@@ -548,7 +620,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "TYPE_APPROVAL",
+  "validity_driver": "VD-PERMANENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.9"
  },
  {
   "sfi_code": "1.2.10",
@@ -577,7 +653,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "CLASS_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.10"
  },
  {
   "sfi_code": "1.2.11",
@@ -606,7 +686,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.11"
  },
  {
   "sfi_code": "1.2.12",
@@ -635,7 +719,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "CLASS_EXEMPTION",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.12"
  },
  {
   "sfi_code": "1.2.13",
@@ -664,7 +752,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "CLASS_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.2.13"
  },
  {
   "sfi_code": "1.3.1",
@@ -693,7 +785,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "REG Yacht Code (PYC/LY3) / flag",
   "basis_note": "Yacht-specific operational / commercial compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.3.1"
  },
  {
   "sfi_code": "1.3.2",
@@ -722,7 +818,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "REG Yacht Code (PYC/LY3) / flag",
   "basis_note": "Yacht-specific operational / commercial compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.3.2"
  },
  {
   "sfi_code": "1.3.3",
@@ -751,7 +851,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "REG Yacht Code (PYC/LY3) / flag",
   "basis_note": "Yacht-specific operational / commercial compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.3.3"
  },
  {
   "sfi_code": "1.3.4",
@@ -780,7 +884,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.3.4"
  },
  {
   "sfi_code": "1.3.5",
@@ -809,7 +917,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS ch II-1",
   "basis_note": "Construction, stability & machinery safety",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.3.5"
  },
  {
   "sfi_code": "1.3.6",
@@ -838,7 +950,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS ch II-2 / III",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.3.6"
  },
  {
   "sfi_code": "1.3.7",
@@ -867,7 +983,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.3.7"
  },
  {
   "sfi_code": "1.3.8",
@@ -896,7 +1016,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "CLASS_EXEMPTION",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.3.8"
  },
  {
   "sfi_code": "1.3.9",
@@ -925,7 +1049,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.3.9"
  },
  {
   "sfi_code": "1.3.10",
@@ -954,7 +1082,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS I/7",
   "basis_note": "Statutory compliance evidence",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.3.10"
  },
  {
   "sfi_code": "1.4.1",
@@ -983,7 +1115,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS ch IV; ITU Radio Regulations",
   "basis_note": "Radio / GMDSS communications capability",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.4.1"
  },
  {
   "sfi_code": "1.4.2",
@@ -1012,7 +1148,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_RECORD",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.4.2"
  },
  {
   "sfi_code": "1.4.3",
@@ -1041,7 +1181,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS ch IV; ITU Radio Regulations",
   "basis_note": "Radio / GMDSS communications capability",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.4.3"
  },
  {
   "sfi_code": "1.4.4",
@@ -1070,7 +1214,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ITU Radio Regulations; SOLAS ch IV",
   "basis_note": "Radio / GMDSS communications capability",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.4.4"
  },
  {
   "sfi_code": "1.4.5",
@@ -1099,7 +1247,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "COMPLIANCE_SERVICE",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.4.5"
  },
  {
   "sfi_code": "1.4.6",
@@ -1128,7 +1280,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS ch IV; ITU Radio Regulations",
   "basis_note": "Radio / GMDSS communications capability",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.7",
@@ -1157,7 +1313,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS ch IV; ITU Radio Regulations",
   "basis_note": "Radio / GMDSS communications capability",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.4.6"
  },
  {
   "sfi_code": "1.4.8",
@@ -1186,7 +1346,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.9",
@@ -1215,7 +1379,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS V/19-1",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": "STAT_RECORD",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.4.7"
  },
  {
   "sfi_code": "1.4.10",
@@ -1244,7 +1412,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS IV/7; LSA/radio servicing (res A.1040)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.11",
@@ -1273,7 +1445,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "SOLAS IV/7; LSA/radio servicing (res A.1040)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.4.11"
  },
  {
   "sfi_code": "1.4.12",
@@ -1302,7 +1478,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "SOLAS IV/7; LSA/radio servicing (res A.1040)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.13",
@@ -1331,7 +1511,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "SOLAS IV/7; LSA/radio servicing (res A.1040)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.14",
@@ -1360,7 +1544,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "SOLAS IV/7; LSA/radio servicing (res A.1040)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.4.14"
  },
  {
   "sfi_code": "1.4.15",
@@ -1389,7 +1577,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS V/19.2.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.4.15"
  },
  {
   "sfi_code": "1.4.16",
@@ -1418,7 +1610,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS III/6, ch IV",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.17",
@@ -1447,7 +1643,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "ITU Radio Regulations; SOLAS ch IV",
   "basis_note": "Radio / GMDSS communications capability",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.18",
@@ -1476,7 +1676,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "ITU Radio Regulations; SOLAS ch IV",
   "basis_note": "Radio / GMDSS communications capability",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.19",
@@ -1505,7 +1709,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.20",
@@ -1534,7 +1742,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.21",
@@ -1563,7 +1775,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.22",
@@ -1592,7 +1808,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.23",
@@ -1621,7 +1841,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.24",
@@ -1650,7 +1874,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.4.25",
@@ -1679,7 +1907,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.5.1",
@@ -1708,7 +1940,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "International Convention on Load Lines 1966 / 1988 Protocol",
   "basis_note": "Freeboard, watertight integrity & seaworthiness",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.5.1"
  },
  {
   "sfi_code": "1.5.2",
@@ -1737,7 +1973,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_RECORD",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.5.2"
  },
  {
   "sfi_code": "1.5.3",
@@ -1766,7 +2006,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.5.3"
  },
  {
   "sfi_code": "1.5.4",
@@ -1795,7 +2039,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS II-1/5; IS Code 2008 (res MSC.267(85))",
   "basis_note": "Construction, stability & machinery safety",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "CLASS_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.5.4"
  },
  {
   "sfi_code": "1.5.5",
@@ -1824,7 +2072,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS II-1/5-1",
   "basis_note": "Construction, stability & machinery safety",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "CLASS_APPROVAL",
+  "validity_driver": "VD-NONE",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.5.5"
  },
  {
   "sfi_code": "1.5.6",
@@ -1853,7 +2105,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS II-1; class rules",
   "basis_note": "Construction, stability & machinery safety",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "PLAN",
+  "validity_driver": "VD-NONE",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.5.6"
  },
  {
   "sfi_code": "1.6.1",
@@ -1882,7 +2138,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex I",
   "basis_note": "Oil-pollution prevention compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.2",
@@ -1911,7 +2171,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex I",
   "basis_note": "Oil-pollution prevention compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.3",
@@ -1940,7 +2204,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.4",
@@ -1969,7 +2237,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.5",
@@ -1998,7 +2270,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex IV",
   "basis_note": "Sewage discharge compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.6",
@@ -2027,7 +2303,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex IV",
   "basis_note": "Sewage discharge compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.7",
@@ -2056,7 +2336,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex V",
   "basis_note": "Garbage management & discharge compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.8",
@@ -2085,7 +2369,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "AFS Convention 2001",
   "basis_note": "Anti-fouling system compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.9",
@@ -2114,7 +2402,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "AFS Convention 2001",
   "basis_note": "Anti-fouling system compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.10",
@@ -2143,7 +2435,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "BWM Convention 2004",
   "basis_note": "Ballast-water management compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.11",
@@ -2172,7 +2468,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "BWM Convention 2004",
   "basis_note": "Ballast-water management compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.12",
@@ -2201,7 +2501,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex I reg 37",
   "basis_note": "Oil-pollution prevention compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.13",
@@ -2230,7 +2534,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "MARPOL Annex I reg 14",
   "basis_note": "Oil-pollution prevention compliance",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.14",
@@ -2259,7 +2567,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "MARPOL Annex VI reg 13 + NOx Technical Code 2008",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.15",
@@ -2288,7 +2600,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "MARPOL Annex VI reg 13 + NOx Technical Code 2008",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.16",
@@ -2317,7 +2633,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "MARPOL Annex VI reg 13 + NOx Technical Code 2008",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.17",
@@ -2346,7 +2666,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "MARPOL Annex VI reg 13 + NOx Technical Code 2008",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.6.18",
@@ -2375,7 +2699,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.1",
@@ -2404,7 +2732,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI ch 4 (energy efficiency)",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-12",
+  "v60_ref": "1.6.1"
  },
  {
   "sfi_code": "1.7.2",
@@ -2433,7 +2765,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI ch 4 (energy efficiency)",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.3",
@@ -2462,7 +2798,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 25",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.6.3"
  },
  {
   "sfi_code": "1.7.4",
@@ -2491,7 +2831,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 24-25",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-PERMANENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.6.4"
  },
  {
   "sfi_code": "1.7.5",
@@ -2520,7 +2864,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 28",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.6",
@@ -2549,7 +2897,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 26-28",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.6.5"
  },
  {
   "sfi_code": "1.7.7",
@@ -2578,7 +2930,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 26-28",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.8",
@@ -2607,7 +2963,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 26-28",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.9",
@@ -2636,7 +2996,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 27 (fuel oil data collection)",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.10",
@@ -2665,7 +3029,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 27 (fuel oil data collection)",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.11",
@@ -2694,7 +3062,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "EU Reg 2015/757",
   "basis_note": "Statutory compliance evidence",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.12",
@@ -2723,7 +3095,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "EU Reg 2015/757",
   "basis_note": "Statutory compliance evidence",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.13",
@@ -2752,7 +3128,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "EU ETS Directive 2003/87/EC (maritime extension)",
   "basis_note": "EU/UK carbon reporting & market compliance",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.14",
@@ -2781,7 +3161,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "UK MRV Regulations",
   "basis_note": "EU/UK carbon reporting & market compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.7.15",
@@ -2810,7 +3194,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "FuelEU Maritime Reg (EU) 2023/1805",
   "basis_note": "EU/UK carbon reporting & market compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.8.1",
@@ -2839,7 +3227,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISM Code (SOLAS ch IX)",
   "basis_note": "Safety-management-system compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.7.1"
  },
  {
   "sfi_code": "1.8.2",
@@ -2868,7 +3260,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISM Code (SOLAS ch IX)",
   "basis_note": "Safety-management-system compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.7.2"
  },
  {
   "sfi_code": "1.8.3",
@@ -2897,7 +3293,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISM Code (SOLAS ch IX)",
   "basis_note": "Safety-management-system compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_RECORD",
+  "validity_driver": "VD-PERMANENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.8.3"
  },
  {
   "sfi_code": "1.8.4",
@@ -2926,7 +3326,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISPS Code (SOLAS XI-2)",
   "basis_note": "Ship-security compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.7.4"
  },
  {
   "sfi_code": "1.8.5",
@@ -2955,7 +3359,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISPS Code (SOLAS XI-2)",
   "basis_note": "Ship-security compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.8.5"
  },
  {
   "sfi_code": "1.8.6",
@@ -2984,7 +3392,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS XI-1/5",
   "basis_note": "Vessel history / identification (CSR)",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": "RECORD_BOOK",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.7.6"
  },
  {
   "sfi_code": "1.8.7",
@@ -3013,7 +3425,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MLC 2006",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.7.7"
  },
  {
   "sfi_code": "1.8.8",
@@ -3042,7 +3458,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MLC 2006",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.8.8"
  },
  {
   "sfi_code": "1.8.9",
@@ -3071,7 +3491,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MLC 2006",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.8.9"
  },
  {
   "sfi_code": "1.8.10",
@@ -3100,7 +3524,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MLC 2006",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_RECORD",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.8.10"
  },
  {
   "sfi_code": "1.8.11",
@@ -3129,7 +3557,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/14; IMO res A.1047(27)",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.8.11"
  },
  {
   "sfi_code": "1.8.12",
@@ -3158,7 +3590,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.8.13",
@@ -3187,7 +3623,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "REPORT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.8.13"
  },
  {
   "sfi_code": "1.8.14",
@@ -3216,7 +3656,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": null,
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.7.13"
  },
  {
   "sfi_code": "1.8.15",
@@ -3245,7 +3689,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISM Code (SOLAS ch IX)",
   "basis_note": "Safety-management-system compliance",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "REPORT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.8.15"
  },
  {
   "sfi_code": "1.8.16",
@@ -3274,7 +3722,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISM Code (SOLAS ch IX)",
   "basis_note": "Safety-management-system compliance",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "REPORT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.8.16"
  },
  {
   "sfi_code": "1.8.17",
@@ -3303,7 +3755,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISPS Code (SOLAS XI-2)",
   "basis_note": "Ship-security compliance",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "REPORT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.8.17"
  },
  {
   "sfi_code": "1.8.18",
@@ -3332,7 +3788,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MLC 2006",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "REPORT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.8.18"
  },
  {
   "sfi_code": "1.8.19",
@@ -3361,7 +3821,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "SURVEY_REPORT",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.8.19"
  },
  {
   "sfi_code": "1.8.20",
@@ -3390,7 +3854,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": "RECORD_BOOK",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.8.20"
  },
  {
   "sfi_code": "1.9.1",
@@ -3419,7 +3887,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "International Health Regulations 2005",
   "basis_note": "Public-health / sanitation compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.9.1"
  },
  {
   "sfi_code": "1.9.2",
@@ -3448,7 +3920,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS V/19.2.1 (deviation)",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": "RECORD",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.9.2"
  },
  {
   "sfi_code": "1.9.3",
@@ -3477,7 +3953,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS V/19.2.1 (deviation)",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": "REPORT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.9.3"
  },
  {
   "sfi_code": "1.9.4",
@@ -3506,7 +3986,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27; V/19.2.1.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.9.5",
@@ -3535,7 +4019,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27; V/19.2.1.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": "COMPLIANCE_SERVICE",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.9.5"
  },
  {
   "sfi_code": "1.9.6",
@@ -3564,7 +4052,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": "COMPLIANCE_SERVICE",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.9.6"
  },
  {
   "sfi_code": "1.9.7",
@@ -3593,7 +4085,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": "COMPLIANCE_SERVICE",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.9.7"
  },
  {
   "sfi_code": "1.9.8",
@@ -3622,7 +4118,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "STCW reg I/9; MLC A1.2",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.9.9",
@@ -3651,7 +4151,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": "COMPLIANCE_SERVICE",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.9.9"
  },
  {
   "sfi_code": "1.9.10",
@@ -3680,7 +4184,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial service / subscription contract — governed by supplier terms",
-  "drives_pms": "renewal"
+  "drives_pms": "renewal",
+  "document_type": "COMPLIANCE_SERVICE",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.9.10"
  },
  {
   "sfi_code": "1.9.11",
@@ -3709,7 +4217,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS III/20; LSA Code; res MSC.402(96)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": "RECORD",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.9.11"
  },
  {
   "sfi_code": "1.9.12",
@@ -3738,7 +4250,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": "VD-TIME",
+  "reminder_profile": "RP-01",
+  "v60_ref": "1.9.12"
  },
  {
   "sfi_code": "1.9.13",
@@ -3767,7 +4283,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.9.14",
@@ -3796,7 +4316,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "International Health Regulations 2005",
   "basis_note": "Public-health / sanitation compliance",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "RECORD",
+  "validity_driver": "VD-EVENT",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.9.14"
  },
  {
   "sfi_code": "1.10.1",
@@ -3825,7 +4349,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Evidence of title transfer — legal instrument, required by registry but not a maritime cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "LEGAL",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.1"
  },
  {
   "sfi_code": "1.10.2",
@@ -3854,7 +4382,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Tax / customs status (EU VAT) — fiscal, not maritime statute",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "LEGAL",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.2"
  },
  {
   "sfi_code": "1.10.3",
@@ -3883,7 +4415,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Tax / customs status (EU VAT) — fiscal, not maritime statute",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "LEGAL",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.3"
  },
  {
   "sfi_code": "1.10.4",
@@ -3912,7 +4448,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Delegated signing authority — corporate/legal",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "LEGAL",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.4"
  },
  {
   "sfi_code": "1.10.5",
@@ -3941,7 +4481,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Owning-company existence — company law",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "LEGAL",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.5"
  },
  {
   "sfi_code": "1.10.6",
@@ -3970,7 +4514,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "AML / KYC due diligence — banking & registry requirement",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "LEGAL",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.6"
  },
  {
   "sfi_code": "1.10.7",
@@ -3999,7 +4547,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Ownership-structure documentation — corporate/legal",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "LEGAL",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.7"
  },
  {
   "sfi_code": "1.10.8",
@@ -4028,7 +4580,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial contract (owner ↔ manager) — governed by its own terms",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "LEGAL",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.8"
  },
  {
   "sfi_code": "1.10.9",
@@ -4057,7 +4613,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27; V/19.2.1.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "LEGAL",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.9"
  },
  {
   "sfi_code": "1.10.10",
@@ -4086,7 +4646,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MLC 2006 (Std A2.1)",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": "RECORD_BOOK",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.10.10"
  },
  {
   "sfi_code": "1.11.1",
@@ -4115,7 +4679,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial insurance cover — carried for protection / charter terms, not convention-mandated",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.1"
  },
  {
   "sfi_code": "1.11.2",
@@ -4144,7 +4712,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial insurance cover — carried for protection / charter terms, not convention-mandated",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.2"
  },
  {
   "sfi_code": "1.11.3",
@@ -4173,7 +4745,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial insurance cover — carried for protection / charter terms, not convention-mandated",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.3"
  },
  {
   "sfi_code": "1.11.4",
@@ -4202,7 +4778,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial insurance cover — carried for protection / charter terms, not convention-mandated",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.11.5",
@@ -4231,7 +4811,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial insurance cover — carried for protection / charter terms, not convention-mandated",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.11.6",
@@ -4260,7 +4844,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MLC 2006",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.6"
  },
  {
   "sfi_code": "1.11.7",
@@ -4289,7 +4877,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MLC 2006",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.11.8",
@@ -4318,7 +4910,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "Nairobi Wreck Removal Convention 2007",
   "basis_note": "Mandatory financial-security / civil-liability cover",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.8"
  },
  {
   "sfi_code": "1.11.9",
@@ -4347,7 +4943,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial insurance cover — carried for protection / charter terms, not convention-mandated",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.9"
  },
  {
   "sfi_code": "1.11.10",
@@ -4376,7 +4976,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "CLC 1992 (oil pollution civil liability)",
   "basis_note": "Mandatory financial-security / civil-liability cover",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.11.11",
@@ -4405,7 +5009,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "CLC 1992 (oil pollution civil liability)",
   "basis_note": "Mandatory financial-security / civil-liability cover",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.11.12",
@@ -4434,7 +5042,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "STCW reg I/9; MLC A1.2",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.12"
  },
  {
   "sfi_code": "1.11.13",
@@ -4463,7 +5075,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial insurance cover — carried for protection / charter terms, not convention-mandated",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.13"
  },
  {
   "sfi_code": "1.11.14",
@@ -4492,7 +5108,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Commercial insurance cover — carried for protection / charter terms, not convention-mandated",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.14"
  },
  {
   "sfi_code": "1.11.15",
@@ -4521,7 +5141,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27; V/19.2.1.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "INSURANCE",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.11.15"
  },
  {
   "sfi_code": "1.12.1",
@@ -4550,7 +5174,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.12.1"
  },
  {
   "sfi_code": "1.12.2",
@@ -4579,7 +5207,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.3",
@@ -4608,7 +5240,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": "STAT_CERT",
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": "1.12.3"
  },
  {
   "sfi_code": "1.12.4",
@@ -4637,7 +5273,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.5",
@@ -4666,7 +5306,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.6",
@@ -4695,7 +5339,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.7",
@@ -4724,7 +5372,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.8",
@@ -4753,7 +5405,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.9",
@@ -4782,7 +5438,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27; V/19.2.1.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.10",
@@ -4811,7 +5471,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27; V/19.2.1.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.11",
@@ -4840,7 +5504,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27; V/19.2.1.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.12",
@@ -4869,7 +5537,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.13",
@@ -4898,7 +5570,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27; V/19.2.1.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.14",
@@ -4927,7 +5603,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.15",
@@ -4956,7 +5636,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.16",
@@ -4985,7 +5669,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.17",
@@ -5014,7 +5702,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.12.18",
@@ -5043,7 +5735,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.1",
@@ -5072,7 +5768,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "SOLAS III/20; LSA Code; res MSC.402(96)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.2",
@@ -5101,7 +5801,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": "SOLAS III/20; LSA Code; res MSC.402(96)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.3",
@@ -5130,7 +5834,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS III/20; LSA Code; res MSC.402(96)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.4",
@@ -5159,7 +5867,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS III/20; LSA Code",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.5",
@@ -5188,7 +5900,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.6",
@@ -5217,7 +5933,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.7",
@@ -5246,7 +5966,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.8",
@@ -5275,7 +5999,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS III/20; LSA Code",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.9",
@@ -5304,7 +6032,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.10",
@@ -5333,7 +6065,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.11",
@@ -5362,7 +6098,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "survey"
+  "drives_pms": "survey",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.12",
@@ -5391,7 +6131,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.13",
@@ -5420,7 +6164,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.14",
@@ -5449,7 +6197,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS II-2/7; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.15",
@@ -5478,7 +6230,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.16",
@@ -5507,7 +6263,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.17",
@@ -5536,7 +6296,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.18",
@@ -5565,7 +6329,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.19",
@@ -5594,7 +6362,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS II-2/10; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.20",
@@ -5623,7 +6395,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS II-2/10; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.21",
@@ -5652,7 +6428,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS II-2/10; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.22",
@@ -5681,7 +6461,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS II-2/10; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.23",
@@ -5710,7 +6494,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.24",
@@ -5739,7 +6527,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS II-2/14; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.25",
@@ -5768,7 +6560,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS II-2/14; FSS Code; MSC.1/Circ.1432",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.26",
@@ -5797,7 +6593,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS II-2/14; FSS Code; MSC.1/Circ.1432",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.27",
@@ -5826,7 +6626,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "SOLAS II-2/14; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.13.28",
@@ -5855,7 +6659,11 @@
   "link_cardinality": "per_unit",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.1",
@@ -5884,7 +6692,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "ILO C152 / class lifting-appliance rules",
   "basis_note": "Lifting-gear safety & test certification",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.2",
@@ -5913,7 +6725,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "ILO C152 / class lifting-appliance rules",
   "basis_note": "Lifting-gear safety & test certification",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.3",
@@ -5942,7 +6758,11 @@
   "link_cardinality": "single_asset",
   "reg_basis": "SOLAS III/20; LSA Code; res MSC.402(96)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.4",
@@ -5971,7 +6791,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.5",
@@ -6000,7 +6824,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.6",
@@ -6029,7 +6857,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.7",
@@ -6058,7 +6890,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.8",
@@ -6087,7 +6923,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.9",
@@ -6116,7 +6956,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.10",
@@ -6145,7 +6989,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.11",
@@ -6174,7 +7022,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.12",
@@ -6203,7 +7055,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.13",
@@ -6232,7 +7088,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.14",
@@ -6261,7 +7121,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.15",
@@ -6290,7 +7154,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.16",
@@ -6319,7 +7187,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.17",
@@ -6348,7 +7220,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": "ILO C152 / class lifting-appliance rules",
   "basis_note": "Lifting-gear safety & test certification",
-  "drives_pms": "YES"
+  "drives_pms": "YES",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.14.18",
@@ -6377,7 +7253,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ILO C152 / flag cargo-gear regs (yacht: LOLER + class)",
   "basis_note": "Lifting-gear safety & test certification",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.1",
@@ -6406,7 +7286,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.2",
@@ -6435,7 +7319,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.3",
@@ -6464,7 +7352,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.4",
@@ -6493,7 +7385,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.5",
@@ -6522,7 +7418,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.6",
@@ -6551,7 +7451,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.7",
@@ -6580,7 +7484,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.8",
@@ -6609,7 +7517,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.9",
@@ -6638,7 +7550,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.10",
@@ -6667,7 +7583,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.11",
@@ -6696,7 +7616,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.12",
@@ -6725,7 +7649,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.13",
@@ -6754,7 +7682,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.14",
@@ -6783,7 +7715,11 @@
   "link_cardinality": "person",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.15",
@@ -6812,7 +7748,11 @@
   "link_cardinality": "person",
   "reg_basis": "STCW reg I/9; MLC A1.2",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.16",
@@ -6841,7 +7781,11 @@
   "link_cardinality": "person",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.17",
@@ -6870,7 +7814,11 @@
   "link_cardinality": "person",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.18",
@@ -6899,7 +7847,11 @@
   "link_cardinality": "person",
   "reg_basis": "MLC 2006 (Std A2.1)",
   "basis_note": "Seafarer living & working conditions",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.19",
@@ -6928,7 +7880,11 @@
   "link_cardinality": "person",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.15.20",
@@ -6957,7 +7913,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.1",
@@ -6986,7 +7946,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.2",
@@ -7015,7 +7979,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS II-2/14; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.3",
@@ -7044,7 +8012,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.4",
@@ -7073,7 +8045,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.5",
@@ -7102,7 +8078,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.6",
@@ -7131,7 +8111,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.7",
@@ -7160,7 +8144,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.8",
@@ -7189,7 +8177,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.9",
@@ -7218,7 +8210,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex I reg 37",
   "basis_note": "Oil-pollution prevention compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.10",
@@ -7247,7 +8243,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.11",
@@ -7276,7 +8276,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.12",
@@ -7305,7 +8309,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISPS Code (SOLAS XI-2)",
   "basis_note": "Ship-security compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": "FLAG_APPROVAL",
+  "validity_driver": "VD-DEPENDENCY",
+  "reminder_profile": "RP-00",
+  "v60_ref": "1.7.5"
  },
  {
   "sfi_code": "1.16.13",
@@ -7334,7 +8342,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.14",
@@ -7363,7 +8375,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.15",
@@ -7392,7 +8408,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 13 + NOx Technical Code 2008",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.16",
@@ -7421,7 +8441,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex V",
   "basis_note": "Garbage management & discharge compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.17",
@@ -7450,7 +8474,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "BWM Convention 2004",
   "basis_note": "Ballast-water management compliance",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.18",
@@ -7479,7 +8507,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.19",
@@ -7508,7 +8540,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS III/8 & III/37",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.20",
@@ -7537,7 +8573,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.21",
@@ -7566,7 +8606,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.16.22",
@@ -7595,7 +8639,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.1",
@@ -7624,7 +8672,11 @@
   "link_cardinality": "sub_group",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.2",
@@ -7653,7 +8705,11 @@
   "link_cardinality": "person",
   "reg_basis": null,
   "basis_note": "No standalone statutory basis — governed by contract / flag / class",
-  "drives_pms": "reval"
+  "drives_pms": "reval",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.3",
@@ -7682,7 +8738,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27; V/19.2.1.4",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.4",
@@ -7711,7 +8771,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Reference publication — currency expected under SOLAS V/27; item itself isn’t certified",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.5",
@@ -7740,7 +8804,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISM Code (SOLAS ch IX)",
   "basis_note": "Safety-management-system compliance",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.6",
@@ -7769,7 +8837,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Reference publication — currency expected under SOLAS V/27; item itself isn’t certified",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.7",
@@ -7798,7 +8870,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Reference publication — currency expected under SOLAS V/27; item itself isn’t certified",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.8",
@@ -7827,7 +8903,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex I reg 17",
   "basis_note": "Oil-pollution prevention compliance",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.9",
@@ -7856,7 +8936,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex I reg 17",
   "basis_note": "Oil-pollution prevention compliance",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.10",
@@ -7885,7 +8969,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex V",
   "basis_note": "Garbage management & discharge compliance",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.11",
@@ -7914,7 +9002,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "BWM Convention 2004",
   "basis_note": "Ballast-water management compliance",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.12",
@@ -7943,7 +9035,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.13",
@@ -7972,7 +9068,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 12",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.14",
@@ -8001,7 +9101,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "MARPOL Annex VI reg 13 / NOx Technical Code (onboard verification)",
   "basis_note": "Air-emission & energy-efficiency compliance",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.15",
@@ -8030,7 +9134,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.16",
@@ -8059,7 +9167,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.17",
@@ -8088,7 +9200,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS ch IV; ITU Radio Regulations",
   "basis_note": "Radio / GMDSS communications capability",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.18",
@@ -8117,7 +9233,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS III/20; LSA Code; res MSC.402(96)",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.19",
@@ -8146,7 +9266,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS II-2/14; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.20",
@@ -8175,7 +9299,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS II-2/14; FSS Code",
   "basis_note": "Fire safety — detection / suppression readiness",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.21",
@@ -8204,7 +9332,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS III/8 & III/37",
   "basis_note": "Life-saving appliance readiness",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.22",
@@ -8233,7 +9365,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS II-1/19; res A.952(23)",
   "basis_note": "Construction, stability & machinery safety",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.23",
@@ -8262,7 +9398,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "STCW 1978 as amended (Manila 2010)",
   "basis_note": "Crew competency / certification",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.24",
@@ -8291,7 +9431,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "ISPS Code (SOLAS XI-2)",
   "basis_note": "Ship-security compliance",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.25",
@@ -8320,7 +9464,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Reference publication — currency expected under SOLAS V/27; item itself isn’t certified",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.26",
@@ -8349,7 +9497,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Survey / audit output — evidences compliance rather than being mandated itself",
-  "drives_pms": "NC close-out"
+  "drives_pms": "NC close-out",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.27",
@@ -8378,7 +9530,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Technical / working document — version-controlled; carriage may be implied by class or SOLAS, not a standalone cert",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.28",
@@ -8407,7 +9563,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS II-1/3-7; MSC/Circ.1135",
   "basis_note": "Construction, stability & machinery safety",
-  "drives_pms": "no"
+  "drives_pms": "no",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.29",
@@ -8436,7 +9596,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Reference publication — currency expected under SOLAS V/27; item itself isn’t certified",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.30",
@@ -8465,7 +9629,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Reference publication — currency expected under SOLAS V/27; item itself isn’t certified",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.31",
@@ -8494,7 +9662,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Reference publication — currency expected under SOLAS V/27; item itself isn’t certified",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.32",
@@ -8523,7 +9695,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Reference publication — currency expected under SOLAS V/27; item itself isn’t certified",
-  "drives_pms": "corrections"
+  "drives_pms": "corrections",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.33",
@@ -8552,7 +9728,11 @@
   "link_cardinality": "vessel",
   "reg_basis": "SOLAS V/27",
   "basis_note": "Safe-navigation equipment & passage planning",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.34",
@@ -8581,7 +9761,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.35",
@@ -8610,7 +9794,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.36",
@@ -8639,7 +9827,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.37",
@@ -8668,7 +9860,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.38",
@@ -8697,7 +9893,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.39",
@@ -8726,7 +9926,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.40",
@@ -8755,7 +9959,11 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  },
  {
   "sfi_code": "1.17.41",
@@ -8784,6 +9992,10 @@
   "link_cardinality": "vessel",
   "reg_basis": null,
   "basis_note": "Operational record — retention obligation flows from the related instrument",
-  "drives_pms": "retention"
+  "drives_pms": "retention",
+  "document_type": null,
+  "validity_driver": null,
+  "reminder_profile": null,
+  "v60_ref": null
  }
 ]

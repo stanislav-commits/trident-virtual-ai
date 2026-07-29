@@ -10142,6 +10142,12 @@
 .compliance__type--not-required.compliance__type--open .compliance__type-name {
   opacity: 1;
 }
+/* A row the v60 workbook does not cover — still on the old archetype. */
+.compliance__archetype--legacy {
+  color: var(--chat-text-muted);
+  background: transparent;
+  border: 1px dashed var(--chat-border-strong);
+}
 .compliance__type-meta {
   font-size: 10.5px; color: var(--chat-text-muted);
   margin: 2px 0 2px 62px;

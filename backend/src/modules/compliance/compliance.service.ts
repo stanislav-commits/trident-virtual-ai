@@ -553,6 +553,13 @@ export class ComplianceService {
         regBasis: type.regBasis,
         basisNote: type.basisNote,
         drivesPms: type.drivesPms,
+        // v60 axes. archetype is still what drives field blocks, PMS specs and
+        // the access gate — documentType is displayed and will take over when
+        // the field profiles land.
+        documentType: type.documentType,
+        validityDriver: type.validityDriver,
+        reminderProfile: type.reminderProfile,
+        v60Ref: type.v60Ref,
         oneCurrentVersion: type.oneCurrentVersion,
         retainHistory: type.retainHistory,
         status,

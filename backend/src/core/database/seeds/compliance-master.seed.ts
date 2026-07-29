@@ -53,6 +53,11 @@ const COLUMN_TO_PROPERTY: Record<string, keyof ComplianceDocMasterEntity> = {
   reg_basis: 'regBasis',
   basis_note: 'basisNote',
   drives_pms: 'drivesPms',
+  // v60 axes — see AddV60DocumentType20260729000600
+  document_type: 'documentType',
+  validity_driver: 'validityDriver',
+  reminder_profile: 'reminderProfile',
+  v60_ref: 'v60Ref',
 };
 
 async function run() {
@@ -86,11 +91,36 @@ async function run() {
     else created += 1;
   }
 
+  // Push the rulebook's own fields down onto the per-ship rows. Those were
+  // copied at instantiate time, so a re-seeded catalogue would otherwise reach
+  // the vessels only for types created after it. Per-ship overrides live in
+  // other columns (applicability, notes) and are not touched.
+  await dataSource.query(`
+    UPDATE "compliance_doc_types" t
+       SET "document_type"    = m."document_type",
+           "validity_driver"  = m."validity_driver",
+           "reminder_profile" = m."reminder_profile",
+           "v60_ref"          = m."v60_ref",
+           "archetype"        = m."archetype",
+           "link_cardinality" = m."link_cardinality",
+           "reg_basis"        = m."reg_basis",
+           "basis_note"       = m."basis_note",
+           "drives_pms"       = m."drives_pms"
+      FROM "compliance_doc_master" m
+     WHERE m."sfi_code" = t."sfi_code"
+  `);
+  // Count separately: the driver's return shape for UPDATE ... RETURNING is not
+  // a plain row array, and reading a length off it under-reported 606 as 2.
+  const [{ n: propagated }]: Array<{ n: string }> = await dataSource.query(
+    `SELECT COUNT(*)::text AS n FROM "compliance_doc_types"`,
+  );
+
   const total = await repository.count();
   await dataSource.destroy();
 
   console.log(
-    `Compliance rulebook seeded: ${created} created, ${updated} updated, ${total} rows total`,
+    `Compliance rulebook seeded: ${created} created, ${updated} updated, ` +
+      `${total} rows total; ${propagated} per-ship rows refreshed`,
   );
 }
 

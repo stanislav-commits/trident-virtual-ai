@@ -99,6 +99,7 @@ import { ClearReportFalseExpiry20260729000200 } from './migrations/2026072900020
 import { AddVesselMasterData20260729000300 } from './migrations/20260729000300-add-vessel-master-data';
 import { AddComplianceVersioning20260729000400 } from './migrations/20260729000400-add-compliance-versioning';
 import { AddComplianceDocFiles20260729000500 } from './migrations/20260729000500-add-compliance-doc-files';
+import { AddV60DocumentType20260729000600 } from './migrations/20260729000600-add-v60-document-type';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -221,6 +222,7 @@ const dataSource = new DataSource({
     AddVesselMasterData20260729000300,
     AddComplianceVersioning20260729000400,
     AddComplianceDocFiles20260729000500,
+    AddV60DocumentType20260729000600,
   ],
   synchronize: false,
   ssl: db.ssl

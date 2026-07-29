@@ -103,6 +103,27 @@ export class ComplianceDocTypeEntity {
   @Column({ name: 'mandatory_upload', type: 'boolean', default: false })
   mandatoryUpload!: boolean;
 
+  /**
+   * v60 axes. `documentType` is what the document IS (Certificate Field
+   * Matrix); `validityDriver` + `reminderProfile` are how its status changes
+   * (Certificate Behaviour Matrix) — Rule 1 keeps them separate. Null on rows
+   * the workbook does not cover (all of MARPOL, most of 1.12, and everything
+   * from 1.13 on, which leaves the register). `v60Ref` is the workbook row this
+   * one was matched to: the mapping is by NAME, never by code, because v60
+   * renumbered the 1.6/1.7/1.8 block.
+   */
+  @Column({ name: 'document_type', type: 'varchar', length: 30, nullable: true })
+  documentType!: string | null;
+
+  @Column({ name: 'validity_driver', type: 'varchar', length: 20, nullable: true })
+  validityDriver!: string | null;
+
+  @Column({ name: 'reminder_profile', type: 'varchar', length: 10, nullable: true })
+  reminderProfile!: string | null;
+
+  @Column({ name: 'v60_ref', type: 'varchar', length: 12, nullable: true })
+  v60Ref!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }

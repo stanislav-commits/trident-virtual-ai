@@ -86,6 +86,11 @@ export interface ComplianceDocType {
   applicabilityVerdict: ApplicabilityVerdict;
   oneCurrentVersion?: boolean;
   retainHistory?: boolean;
+  /** v60 Certificate Field Matrix / Behaviour Matrix. Null where v60 has no row. */
+  documentType?: string | null;
+  validityDriver?: string | null;
+  reminderProfile?: string | null;
+  v60Ref?: string | null;
   renewalCycle: string | null;
   surveyWindow: string | null;
   updateTrigger: string | null;
