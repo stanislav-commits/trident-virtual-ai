@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Res,
   UploadedFiles,
   UseGuards,
@@ -204,14 +205,31 @@ export class ComplianceController {
     return this.complianceService.updateDoc(shipId, docId, body);
   }
 
+  /**
+   * Withdraw a record. Archives rather than deletes when the catalogue retains
+   * history; `?purge=true` forces a hard delete.
+   */
   @Delete('docs/:docId')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteDoc(
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @Param('docId', ParseUUIDPipe) docId: string,
+    @Query('purge') purge?: string,
   ): Promise<void> {
-    await this.complianceService.deleteDoc(shipId, docId);
+    await this.complianceService.deleteDoc(shipId, docId, {
+      purge: purge === 'true',
+    });
+  }
+
+  /** Put an archived or wrongly-superseded record back in force. */
+  @Post('docs/:docId/restore')
+  @Roles(UserRole.ADMIN)
+  restoreDoc(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+  ) {
+    return this.complianceService.restoreDoc(shipId, docId);
   }
 
   // ── Link_Model: a document ↔ many assets / crew ──

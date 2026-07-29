@@ -115,6 +115,32 @@ export class ComplianceDocEntity {
   @Column({ name: 'identity_flags', type: 'jsonb', nullable: true })
   identityFlags!: Array<Record<string, unknown>> | null;
 
+  /**
+   * Version model (v60 Behaviour Matrix — One Current Version / Retain History
+   * / Auto-archive Previous).
+   *
+   *   current     — counts towards the type's status
+   *   superseded  — replaced by a newer issue; kept for the audit trail
+   *   archived    — withdrawn by an operator instead of being deleted
+   *
+   * Only `current` records are evaluated; the rest stay readable as history.
+   */
+  @Column({ name: 'record_state', type: 'varchar', length: 12, default: 'current' })
+  recordState!: string;
+
+  @Column({ name: 'revision', type: 'integer', default: 1 })
+  revision!: number;
+
+  /** The record this one replaced, and the one that replaced it. */
+  @Column({ name: 'supersedes_doc_id', type: 'uuid', nullable: true })
+  supersedesDocId!: string | null;
+
+  @Column({ name: 'superseded_by_doc_id', type: 'uuid', nullable: true })
+  supersededByDocId!: string | null;
+
+  @Column({ name: 'archived_at', type: 'timestamptz', nullable: true })
+  archivedAt!: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

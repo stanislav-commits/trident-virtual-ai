@@ -201,7 +201,10 @@ export class ComplianceService {
     type: ComplianceDocTypeEntity | null,
   ): Promise<void> {
     const spec = complianceTaskSpec(type?.drivesPms ?? null);
-    if (!spec || !doc.expiryDate) {
+    // Only the issue in force drives maintenance. Without this, backfilling an
+    // expired certificate for the archive would raise a task for a deadline
+    // that a newer issue has already replaced.
+    if (!spec || !doc.expiryDate || doc.recordState !== 'current') {
       await this.pmsService.removeForCompliance(doc.id);
       return;
     }
@@ -344,6 +347,11 @@ export class ComplianceService {
           regBasis: row.regBasis,
           basisNote: row.basisNote,
           drivesPms: row.drivesPms,
+          // version policy (v60 Behaviour Matrix)
+          oneCurrentVersion: row.oneCurrentVersion,
+          retainHistory: row.retainHistory,
+          autoArchivePrevious: row.autoArchivePrevious,
+          mandatoryUpload: row.mandatoryUpload,
         }),
       );
     if (toInsert.length) {
@@ -502,7 +510,7 @@ export class ComplianceService {
         sections.set(type.sectionCode, section);
       }
 
-      const status = this.typeStatus(records, type.applicability);
+      const status = this.typeStatus(records, type.applicability, linksByDoc);
       section.counts[status] += 1;
 
       section.types.push({
@@ -522,6 +530,8 @@ export class ComplianceService {
         regBasis: type.regBasis,
         basisNote: type.basisNote,
         drivesPms: type.drivesPms,
+        oneCurrentVersion: type.oneCurrentVersion,
+        retainHistory: type.retainHistory,
         status,
         records: records.map((doc) => ({
           id: doc.id,
@@ -543,6 +553,10 @@ export class ComplianceService {
               ? Number(doc.extractedConfidence)
               : null,
           identityFlags: doc.identityFlags ?? null,
+          recordState: doc.recordState,
+          revision: doc.revision,
+          supersededByDocId: doc.supersededByDocId,
+          archivedAt: doc.archivedAt ? doc.archivedAt.toISOString() : null,
           links: (linksByDoc.get(doc.id) ?? []).map((l) => ({
             id: l.id,
             assetId: l.assetId,
@@ -700,6 +714,10 @@ export class ComplianceService {
         await this.addLink(shipId, saved.id, { assetId });
       }
     }
+    // A new issue replaces the previous one for the same target (v60: One
+    // Current Version + Auto-archive Previous). Runs after the links exist,
+    // since "same target" is defined by them.
+    await this.supersedePrevious(shipId, saved, type);
     // Document wins, PMS follows — drive the linked maintenance task.
     await this.syncPmsForDoc(shipId, saved, type);
     // Register wins — flag any identity mismatch vs the linked asset.
@@ -707,6 +725,74 @@ export class ComplianceService {
     await this.docRepository.save(saved);
     this.emitChange(shipId, 'created', saved.id);
     return { ...saved, status: this.recordStatus(saved) };
+  }
+
+  /** The set of assets/crew a record covers — '' when it covers the vessel. */
+  private async targetKey(doc: ComplianceDocEntity): Promise<string> {
+    const links = await this.linkRepository.find({ where: { docId: doc.id } });
+    if (!links.length) return doc.assetId ?? 'VESSEL';
+    return links
+      .map((l) => l.assetId ?? l.crewMemberId ?? '')
+      .filter(Boolean)
+      .sort()
+      .join(',');
+  }
+
+  /**
+   * Mark the previous issue superseded when a newer one arrives.
+   *
+   * Only within the same target: on an equipment type, a certificate for the
+   * port crane must not supersede the one for the starboard crane. Only when
+   * the catalogue says the type keeps a single current version, and only when
+   * the incoming record is genuinely newer — an older certificate uploaded late
+   * (backfilling history) supersedes nothing and is filed as history itself.
+   */
+  private async supersedePrevious(
+    shipId: string,
+    incoming: ComplianceDocEntity,
+    type: ComplianceDocTypeEntity,
+  ): Promise<void> {
+    if (!type.oneCurrentVersion || !type.autoArchivePrevious) return;
+
+    const siblings = await this.docRepository.find({
+      where: { shipId, docTypeId: type.id, recordState: 'current' },
+    });
+    const others = siblings.filter((d) => d.id !== incoming.id);
+    if (!others.length) return;
+
+    const incomingTarget = await this.targetKey(incoming);
+    const when = (d: ComplianceDocEntity) =>
+      d.expiryDate ?? d.issueDate ?? d.createdAt.toISOString().slice(0, 10);
+    const incomingWhen = when(incoming);
+
+    const replaced: ComplianceDocEntity[] = [];
+    for (const other of others) {
+      if ((await this.targetKey(other)) !== incomingTarget) continue;
+      if (when(other) > incomingWhen) {
+        // The incoming record is the older one — it is history, not the issue
+        // in force. File it as superseded by the sibling instead.
+        incoming.recordState = 'superseded';
+        incoming.supersededByDocId = other.id;
+        incoming.archivedAt = new Date();
+        await this.docRepository.save(incoming);
+        return;
+      }
+      other.recordState = 'superseded';
+      other.supersededByDocId = incoming.id;
+      other.archivedAt = new Date();
+      replaced.push(other);
+    }
+    if (!replaced.length) return;
+
+    await this.docRepository.save(replaced);
+    incoming.supersedesDocId = replaced[0].id;
+    incoming.revision =
+      Math.max(...replaced.map((d) => d.revision ?? 1)) + 1;
+    await this.docRepository.save(incoming);
+    // The superseded records no longer drive maintenance.
+    for (const doc of replaced) {
+      await this.pmsService.removeForCompliance(doc.id);
+    }
   }
 
   // ── Link_Model (doc ↔ assets / crew) ──
@@ -901,15 +987,53 @@ export class ComplianceService {
     return typeof v === 'string' && v ? v : null;
   }
 
-  async deleteDoc(shipId: string, docId: string): Promise<void> {
+  /**
+   * Withdraw a record. Where the catalogue says to retain history (v60: Retain
+   * History = Yes in 105 of 108 rows) this archives instead of deleting — a
+   * hard delete took the stored file and the extracted text with it, and there
+   * was no way back. `{ purge: true }` is the explicit escape hatch.
+   */
+  async deleteDoc(
+    shipId: string,
+    docId: string,
+    opts?: { purge?: boolean },
+  ): Promise<void> {
     const doc = await this.docRepository.findOne({
       where: { id: docId, shipId },
+      relations: { docType: true },
     });
     if (!doc) throw new NotFoundException('Compliance doc not found');
     // Drop the PMS task this cert drove (the deadline is gone with it).
     await this.pmsService.removeForCompliance(doc.id);
+
+    if (doc.docType?.retainHistory && !opts?.purge) {
+      doc.recordState = 'archived';
+      doc.archivedAt = new Date();
+      await this.docRepository.save(doc);
+      this.emitChange(shipId, 'updated', docId);
+      return;
+    }
     await this.docRepository.delete(doc.id);
     this.emitChange(shipId, 'deleted', docId);
+  }
+
+  /**
+   * Put an archived or superseded record back in force. Used to undo an
+   * archive, and to correct an automatic supersede that picked the wrong issue.
+   */
+  async restoreDoc(shipId: string, docId: string) {
+    const doc = await this.docRepository.findOne({
+      where: { id: docId, shipId },
+      relations: { docType: true },
+    });
+    if (!doc) throw new NotFoundException('Compliance doc not found');
+    doc.recordState = 'current';
+    doc.supersededByDocId = null;
+    doc.archivedAt = null;
+    const saved = await this.docRepository.save(doc);
+    await this.syncPmsForDoc(shipId, saved, doc.docType ?? null);
+    this.emitChange(shipId, 'updated', docId);
+    return { ...saved, status: this.recordStatus(saved) };
   }
 
   /** Update applicability / logic fields on a rulebook row. */
@@ -978,20 +1102,54 @@ export class ComplianceService {
    * as required — the vessel-profile "not required" gate was retired so the
    * full list always shows a real status.
    */
+  /**
+   * Type-level verdict over the CURRENT records, grouped by what each one
+   * covers: worst across targets, best within a target.
+   *
+   * Both halves matter, and the production data shows why. 1.14.1 (crane
+   * servicing) holds 7 records across 4 different assets — one expired unit
+   * must still redden the line, which is the many-units semantics the register
+   * has always had. 1.1.1 (Certificate of Registry) holds 4 records against the
+   * vessel itself — a renewal plus its superseded copies, where the newest is
+   * the truth and the old ones must not keep the line red forever.
+   *
+   * Grouping by link target separates the two without guessing: several
+   * records on one target are versions of the same obligation, records on
+   * different targets are coverage of different things.
+   */
   private typeStatus(
     records: ComplianceDocEntity[],
     applicability: string | null | undefined,
+    linksByDoc?: Map<string, Array<{ assetId: string | null; crewMemberId: string | null }>>,
   ): ComplianceStatus {
-    if (!records.length) {
-      // The applicability matrix decides whether an empty row is a gap.
+    const live = records.filter((doc) => doc.recordState === 'current');
+    if (!live.length) {
+      // The applicability matrix decides whether an empty row is a gap. A type
+      // whose only records are superseded/archived is empty again by design.
       return raisesGap(applicability) ? 'missing' : 'conditional';
     }
-    const order: ComplianceStatus[] = ['expired', 'expiring', 'valid'];
-    for (const status of order) {
-      if (records.some((doc) => this.recordStatus(doc) === status)) {
-        return status;
+
+    const rank: Record<string, number> = { valid: 0, expiring: 1, expired: 2 };
+    const bestPerTarget = new Map<string, number>();
+    for (const doc of live) {
+      const links = linksByDoc?.get(doc.id) ?? [];
+      const target = links.length
+        ? links
+            .map((l) => l.assetId ?? l.crewMemberId ?? '')
+            .filter(Boolean)
+            .sort()
+            .join(',')
+        : (doc.assetId ?? 'VESSEL');
+      const score = rank[this.recordStatus(doc)] ?? 0;
+      const current = bestPerTarget.get(target);
+      // best (lowest rank) wins within a target — the newest valid issue
+      if (current === undefined || score < current) {
+        bestPerTarget.set(target, score);
       }
     }
-    return 'valid';
+
+    // worst (highest rank) across targets
+    const worst = Math.max(...bestPerTarget.values());
+    return (['valid', 'expiring', 'expired'] as const)[worst] ?? 'valid';
   }
 }

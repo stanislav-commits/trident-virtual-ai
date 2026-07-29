@@ -85,6 +85,24 @@ export class ComplianceDocTypeEntity {
   @Column({ name: 'drives_pms', type: 'varchar', length: 40, nullable: true })
   drivesPms!: string | null;
 
+  /**
+   * Version policy (v60 Certificate Behaviour Matrix). `oneCurrentVersion`
+   * decides whether a new issue supersedes the previous one for the same
+   * target; `retainHistory` whether a withdrawn record is archived instead of
+   * deleted; `autoArchivePrevious` whether superseding happens without asking.
+   */
+  @Column({ name: 'one_current_version', type: 'boolean', default: true })
+  oneCurrentVersion!: boolean;
+
+  @Column({ name: 'retain_history', type: 'boolean', default: true })
+  retainHistory!: boolean;
+
+  @Column({ name: 'auto_archive_previous', type: 'boolean', default: true })
+  autoArchivePrevious!: boolean;
+
+  @Column({ name: 'mandatory_upload', type: 'boolean', default: false })
+  mandatoryUpload!: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }
