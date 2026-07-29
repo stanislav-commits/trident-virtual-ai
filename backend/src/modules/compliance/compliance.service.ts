@@ -356,8 +356,23 @@ export class ComplianceService {
   > {
     const docs = await this.docRepository.find({
       where: { shipId },
-      relations: { docType: true, asset: true },
+      relations: { docType: true },
     });
+    // The alert carries one asset for context; take it from the link model and
+    // fall back to the deprecated mirror column for records predating it.
+    const docIds = docs.map((d) => d.id);
+    const links = docIds.length
+      ? await this.linkRepository.find({
+          where: { docId: In(docIds), assetId: Not(IsNull()) },
+          order: { createdAt: 'ASC' },
+        })
+      : [];
+    const firstAssetByDoc = new Map<string, string>();
+    for (const link of links) {
+      if (link.assetId && !firstAssetByDoc.has(link.docId)) {
+        firstAssetByDoc.set(link.docId, link.assetId);
+      }
+    }
     const now = Date.now();
     const out: Array<{
       docId: string;
@@ -384,7 +399,7 @@ export class ComplianceService {
         title,
         expiryDate: d.expiryDate,
         expired,
-        assetId: d.assetId ?? null,
+        assetId: firstAssetByDoc.get(d.id) ?? d.assetId ?? null,
         message: d.issuer ? `Issuer: ${d.issuer}` : null,
       });
     }
@@ -537,15 +552,29 @@ export class ComplianceService {
     return { shipId, sections: ordered };
   }
 
-  /** Records linked to one asset — feeds the asset drawer Certs tab. */
+  /**
+   * Records linked to one asset — feeds the asset drawer Certs tab.
+   *
+   * Resolved through doc_asset_links, not the deprecated single
+   * `compliance_docs.asset_id`: one service certificate covers many units (a
+   * liferaft service report covers every raft on the report), and reading the
+   * mirror column showed such a certificate under one asset only.
+   */
   async listForAsset(
     shipId: string,
     assetId: string,
     user?: AuthenticatedUser | null,
   ) {
+    const links = await this.linkRepository.find({
+      where: { assetId },
+      select: { docId: true },
+    });
+    const docIds = [...new Set(links.map((l) => l.docId))];
+    if (!docIds.length) return [];
+
     const allowed = await this.readableCategories(user, shipId);
     const found = await this.docRepository.find({
-      where: { shipId, assetId },
+      where: { shipId, id: In(docIds) },
       relations: { docType: true, document: true },
       order: { expiryDate: 'DESC' },
     });
