@@ -232,6 +232,96 @@ export class ComplianceController {
     return this.complianceService.restoreDoc(shipId, docId);
   }
 
+  // ── Supporting documents (v60 Rule 4) ──
+
+  @Get('docs/:docId/files')
+  listDocFiles(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+  ) {
+    return this.complianceService.listDocFiles(shipId, docId);
+  }
+
+  /**
+   * Attach a supporting document. Multipart with a `file` part stores the bytes
+   * directly; a JSON body with `documentId` links an existing pipeline document
+   * instead. `kind` / `label` tag what it is (Flag Certificate vs Insurer
+   * Evidence) and which jurisdiction or vessel it covers.
+   */
+  @Post('docs/:docId/files')
+  @Roles(UserRole.ADMIN)
+  @UseInterceptors(
+    FilesInterceptor('file', 1, { limits: { fileSize: 16 * 1024 * 1024 } }),
+  )
+  async addDocFile(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @UploadedFiles() files: UploadedComplianceFile[] | undefined,
+    @Body() body: { documentId?: string; kind?: string; label?: string },
+  ) {
+    const upload = files?.[0];
+    if (upload?.buffer?.length) {
+      return this.complianceService.addDocFile(shipId, docId, {
+        buffer: upload.buffer,
+        fileName: upload.originalname ?? 'document',
+        fileMime: upload.mimetype ?? 'application/octet-stream',
+        kind: body?.kind ?? null,
+        label: body?.label ?? null,
+      });
+    }
+    return this.complianceService.addDocFile(shipId, docId, {
+      documentId: body?.documentId ?? null,
+      kind: body?.kind ?? null,
+      label: body?.label ?? null,
+    });
+  }
+
+  @Patch('docs/:docId/files/:fileId')
+  @Roles(UserRole.ADMIN)
+  updateDocFile(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Body() body: { kind?: string | null; label?: string | null; sortOrder?: number },
+  ) {
+    return this.complianceService.updateDocFile(shipId, docId, fileId, body);
+  }
+
+  @Delete('docs/:docId/files/:fileId')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeDocFile(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+  ): Promise<void> {
+    await this.complianceService.removeDocFile(shipId, docId, fileId);
+  }
+
+  /** Stream one attachment inline. */
+  @Get('docs/:docId/files/:fileId/content')
+  async getDocFileAttachment(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() response: Response,
+  ) {
+    const file = await this.complianceService.getDocFileAttachment(
+      shipId,
+      docId,
+      fileId,
+      user,
+    );
+    response.setHeader('Content-Type', file.contentType);
+    response.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(file.fileName)}"`,
+    );
+    response.setHeader('Content-Length', String(file.buffer.length));
+    response.send(file.buffer);
+  }
+
   // ── Link_Model: a document ↔ many assets / crew ──
 
   @Get('docs/:docId/links')

@@ -7,6 +7,7 @@ import { ComplianceDocMasterEntity } from './entities/compliance-doc-master.enti
 import { ComplianceDocTypeEntity } from './entities/compliance-doc-type.entity';
 import { ComplianceDocEntity } from './entities/compliance-doc.entity';
 import { DocAssetLinkEntity } from './entities/doc-asset-link.entity';
+import { ComplianceDocFileEntity } from './entities/compliance-doc-file.entity';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { PmsModule } from '../pms/pms.module';
 import { IntegrationsModule } from '../../integrations/integrations.module';
@@ -22,6 +23,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
       ComplianceDocEntity,
       ComplianceDocMasterEntity,
       DocAssetLinkEntity,
+      ComplianceDocFileEntity,
       AssetEntity,
       ShipEntity,
     ]),

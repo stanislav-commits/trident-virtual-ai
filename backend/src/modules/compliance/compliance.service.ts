@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'node:crypto';
 import { In, IsNull, Not, Repository } from 'typeorm';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import {
@@ -21,6 +22,10 @@ import { ComplianceDocMasterEntity } from './entities/compliance-doc-master.enti
 import { ComplianceDocTypeEntity } from './entities/compliance-doc-type.entity';
 import { ComplianceDocEntity } from './entities/compliance-doc.entity';
 import { DocAssetLinkEntity } from './entities/doc-asset-link.entity';
+import {
+  COMPLIANCE_ATTACHMENT_KINDS,
+  ComplianceDocFileEntity,
+} from './entities/compliance-doc-file.entity';
 import { PmsService } from '../pms/pms.service';
 import { DocumentsService } from '../documents/documents.service';
 import { DocumentsUploadStorageService } from '../documents/ingestion/documents-upload-storage.service';
@@ -89,6 +94,8 @@ export class ComplianceService {
     private readonly shipRepository: Repository<ShipEntity>,
     @InjectRepository(DocAssetLinkEntity)
     private readonly linkRepository: Repository<DocAssetLinkEntity>,
+    @InjectRepository(ComplianceDocFileEntity)
+    private readonly docFileRepository: Repository<ComplianceDocFileEntity>,
     private readonly pmsService: PmsService,
     private readonly uploadStorage: DocumentsUploadStorageService,
     private readonly documentsService: DocumentsService,
@@ -463,6 +470,22 @@ export class ComplianceService {
       linksByDoc.set(l.docId, list);
     }
 
+    // Supporting-document count per record (v60 Rule 4) — the list itself is
+    // fetched on demand when a record is opened.
+    const attachmentCounts = new Map<string, number>();
+    if (docIds.length) {
+      const rows: Array<{ doc_id: string; n: string }> = await this.docFileRepository
+        .createQueryBuilder('f')
+        .select('f.doc_id', 'doc_id')
+        .addSelect('COUNT(*)', 'n')
+        .where('f.doc_id IN (:...docIds)', { docIds })
+        .groupBy('f.doc_id')
+        .getRawMany();
+      for (const row of rows) {
+        attachmentCounts.set(row.doc_id, Number(row.n));
+      }
+    }
+
     const docsByType = new Map<string, ComplianceDocEntity[]>();
     for (const doc of docs) {
       const list = docsByType.get(doc.docTypeId) ?? [];
@@ -553,6 +576,7 @@ export class ComplianceService {
               ? Number(doc.extractedConfidence)
               : null,
           identityFlags: doc.identityFlags ?? null,
+          attachmentCount: attachmentCounts.get(doc.id) ?? 0,
           recordState: doc.recordState,
           revision: doc.revision,
           supersededByDocId: doc.supersededByDocId,
@@ -793,6 +817,177 @@ export class ComplianceService {
     for (const doc of replaced) {
       await this.pmsService.removeForCompliance(doc.id);
     }
+  }
+
+  // ── Supporting documents (v60 Rule 4) ──
+
+  /**
+   * Attachments on a record: reports, checklists, photos, statements, or a
+   * second certificate belonging to the same obligation. `kind` says what the
+   * attachment is (Flag Certificate vs Insurer Evidence on 1.11.8); `label` is
+   * the free tag the review notes ask for (jurisdiction on the P&I supplements,
+   * vessel name on the MLC repatriation certificates).
+   */
+  async listDocFiles(shipId: string, docId: string) {
+    await this.requireDoc(shipId, docId);
+    const files = await this.docFileRepository.find({
+      where: { docId },
+      relations: { document: true },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+    return files.map((f) => ({
+      id: f.id,
+      fileName: f.fileName ?? f.document?.originalFileName ?? 'document',
+      fileMime: f.fileMime,
+      kind: f.kind,
+      label: f.label,
+      sortOrder: f.sortOrder,
+      documentId: f.documentId,
+      createdAt: f.createdAt.toISOString(),
+    }));
+  }
+
+  async addDocFile(
+    shipId: string,
+    docId: string,
+    input: {
+      documentId?: string | null;
+      /** Raw bytes to store against this attachment (the upload path). */
+      buffer?: Buffer | null;
+      fileName?: string | null;
+      fileMime?: string | null;
+      kind?: string | null;
+      label?: string | null;
+    },
+  ) {
+    await this.requireDoc(shipId, docId);
+    const hasBytes = Boolean(input.buffer?.length);
+    if (!!input.documentId === hasBytes) {
+      throw new BadRequestException(
+        'Provide exactly one of documentId or an uploaded file.',
+      );
+    }
+    const kind = this.normalizeAttachmentKind(input.kind);
+    const last = await this.docFileRepository.find({
+      where: { docId },
+      order: { sortOrder: 'DESC' },
+      take: 1,
+    });
+
+    // The storage key must be unique PER ATTACHMENT. Keying it off the record
+    // alone made every attachment overwrite the previous one's bytes, so the
+    // Flag certificate and the insurer evidence on the same record both served
+    // whichever was uploaded last. The row id is generated up front for that.
+    const id = randomUUID();
+    const storageKey = hasBytes
+      ? await this.uploadStorage.saveUpload(
+          `compliance-attachment-${id}`,
+          input.buffer as Buffer,
+        )
+      : null;
+
+    const saved = await this.docFileRepository.save(
+      this.docFileRepository.create({
+        id,
+        docId,
+        documentId: input.documentId ?? null,
+        fileStorageKey: storageKey,
+        fileName: input.fileName ?? null,
+        fileMime: input.fileMime ?? null,
+        kind,
+        label: input.label?.trim() || null,
+        sortOrder: (last[0]?.sortOrder ?? -1) + 1,
+      }),
+    );
+    this.emitChange(shipId, 'updated', docId);
+    return saved;
+  }
+
+  /** Retag an attachment — its kind, its label, or its position. */
+  async updateDocFile(
+    shipId: string,
+    docId: string,
+    fileId: string,
+    input: { kind?: string | null; label?: string | null; sortOrder?: number },
+  ) {
+    await this.requireDoc(shipId, docId);
+    const file = await this.docFileRepository.findOne({
+      where: { id: fileId, docId },
+    });
+    if (!file) throw new NotFoundException('Attachment not found');
+    if (input.kind !== undefined) {
+      file.kind = this.normalizeAttachmentKind(input.kind);
+    }
+    if (input.label !== undefined) file.label = input.label?.trim() || null;
+    if (input.sortOrder !== undefined) file.sortOrder = input.sortOrder;
+    const saved = await this.docFileRepository.save(file);
+    this.emitChange(shipId, 'updated', docId);
+    return saved;
+  }
+
+  async removeDocFile(shipId: string, docId: string, fileId: string) {
+    await this.requireDoc(shipId, docId);
+    const file = await this.docFileRepository.findOne({
+      where: { id: fileId, docId },
+    });
+    if (!file) return;
+    // Only the directly-stored bytes are ours to drop; a documents-pipeline
+    // file is owned by the Documents module and may be linked elsewhere.
+    if (file.fileStorageKey) {
+      await this.uploadStorage.deleteUpload(file.fileStorageKey);
+    }
+    await this.docFileRepository.delete(file.id);
+    this.emitChange(shipId, 'updated', docId);
+  }
+
+  /** Stream one attachment, gated by the parent record's category. */
+  async getDocFileAttachment(
+    shipId: string,
+    docId: string,
+    fileId: string,
+    user: AuthenticatedUser,
+  ): Promise<{ buffer: Buffer; contentType: string; fileName: string }> {
+    const doc = await this.requireDoc(shipId, docId, { withType: true });
+    await this.assertCanReadType(user, shipId, doc.docType?.archetype);
+    const file = await this.docFileRepository.findOne({
+      where: { id: fileId, docId },
+    });
+    if (!file) throw new NotFoundException('Attachment not found');
+    if (file.documentId) {
+      return this.documentsService.getFile(file.documentId, user);
+    }
+    if (
+      file.fileStorageKey &&
+      (await this.uploadStorage.hasUpload(file.fileStorageKey))
+    ) {
+      return {
+        buffer: await this.uploadStorage.readUpload(file.fileStorageKey),
+        contentType: file.fileMime || 'application/octet-stream',
+        fileName: file.fileName || 'document',
+      };
+    }
+    throw new NotFoundException('This attachment has no stored file.');
+  }
+
+  private normalizeAttachmentKind(kind: string | null | undefined): string | null {
+    if (!kind) return null;
+    const value = kind.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return (COMPLIANCE_ATTACHMENT_KINDS as readonly string[]).includes(value)
+      ? value
+      : 'other';
+  }
+
+  private async requireDoc(
+    shipId: string,
+    docId: string,
+    opts?: { withType?: boolean },
+  ): Promise<ComplianceDocEntity> {
+    const doc = await this.docRepository.findOne({
+      where: { id: docId, shipId },
+      relations: opts?.withType ? { docType: true } : undefined,
+    });
+    if (!doc) throw new NotFoundException('Compliance doc not found');
+    return doc;
   }
 
   // ── Link_Model (doc ↔ assets / crew) ──
