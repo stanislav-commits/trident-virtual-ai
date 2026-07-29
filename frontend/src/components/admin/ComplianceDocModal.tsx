@@ -23,7 +23,6 @@ export interface DocModalValues {
 interface ComplianceDocModalProps {
   typeName: string;
   typeCode: string;
-  archetype: string | null;
   /** The archetype's field block from the schema — drives which fields show. */
   archetypeFields: ArchetypeField[];
   linkCardinality: string | null;
@@ -49,7 +48,6 @@ interface ComplianceDocModalProps {
 export function ComplianceDocModal({
   typeName,
   typeCode,
-  archetype,
   archetypeFields,
   linkCardinality,
   assetOptions,
@@ -151,9 +149,11 @@ export function ComplianceDocModal({
               )}
 
               {schemaFields.length > 0 && (
-                <div className="compliance__form-section">
-                  {archetype ? `${archetype} details` : "Details"}
-                </div>
+                // One heading for every document type — v60 Rule 3: "The editor
+                // section heading must be Certificate Details, not STAT_CERT
+                // DETAILS, so the same form works for statutory, class and
+                // other records."
+                <div className="compliance__form-section">Certificate Details</div>
               )}
               {schemaFields.map((f) => (
                 <label
