@@ -803,6 +803,33 @@ export class ComplianceService {
   }
 
   /**
+   * Two service certificates on an equipment row, neither linked to a unit and
+   * carrying different certificate numbers, are two units — not two issues of
+   * one certificate. Superseding them buries the first unit's certificate: it
+   * leaves the register and the chat register, and the row still reads as
+   * covered. Loading the vessel's own certificates did exactly that: the test
+   * reports for the jetski, aft-garage and rescue cranes arrived unlinked and
+   * two of the three cranes vanished from the register.
+   *
+   * Only applies where the link is missing (`VESSEL` target on a per-unit row).
+   * Once the records are linked, targetKey already keeps the units apart, and a
+   * genuine renewal of the same unit shares its certificate number or arrives
+   * without one — neither case is caught here.
+   */
+  private likelyDifferentUnits(
+    incoming: ComplianceDocEntity,
+    other: ComplianceDocEntity,
+    type: ComplianceDocTypeEntity,
+    target: string,
+  ): boolean {
+    if (target !== 'VESSEL') return false;
+    if ((type.linkCardinality ?? 'vessel') === 'vessel') return false;
+    const a = (incoming.certNo ?? '').trim().toLowerCase();
+    const b = (other.certNo ?? '').trim().toLowerCase();
+    return Boolean(a) && Boolean(b) && a !== b;
+  }
+
+  /**
    * Mark the previous issue superseded when a newer one arrives.
    *
    * Only within the same target: on an equipment type, a certificate for the
@@ -832,6 +859,9 @@ export class ComplianceService {
     const replaced: ComplianceDocEntity[] = [];
     for (const other of others) {
       if ((await this.targetKey(other)) !== incomingTarget) continue;
+      if (this.likelyDifferentUnits(incoming, other, type, incomingTarget)) {
+        continue;
+      }
       if (when(other) > incomingWhen) {
         // The incoming record is the older one — it is history, not the issue
         // in force. File it as superseded by the sibling instead.
