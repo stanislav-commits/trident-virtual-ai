@@ -5,6 +5,7 @@ import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { AssetsController } from './assets.controller';
 import { AssetsService } from './assets.service';
+import { AssetIdService } from './asset-id.service';
 import { AssetDocumentLinkEntity } from './entities/asset-document-link.entity';
 import { AssetSnapshotEntity } from './entities/asset-snapshot.entity';
 import { AssetEntity } from './entities/asset.entity';
@@ -25,7 +26,7 @@ import { SfiModule } from '../sfi/sfi.module';
     SfiModule,
   ],
   controllers: [AssetsController],
-  providers: [AssetsService],
-  exports: [AssetsService],
+  providers: [AssetsService, AssetIdService],
+  exports: [AssetsService, AssetIdService],
 })
 export class AssetsModule {}

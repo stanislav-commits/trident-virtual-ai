@@ -25,6 +25,7 @@ import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { AssetsService } from './assets.service';
+import { AssetIdService, type IdAvailability } from './asset-id.service';
 import { CommitImportDto } from './dto/commit-import.dto';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { QueryAssetsDto } from './dto/query-assets.dto';
@@ -38,7 +39,10 @@ import { UpdateAssetDto } from './dto/update-asset.dto';
 @Controller('ships/:shipId/assets')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AssetsController {
-  constructor(private readonly assetsService: AssetsService) {}
+  constructor(
+    private readonly assetsService: AssetsService,
+    private readonly assetIdService: AssetIdService,
+  ) {}
 
   @Get()
   list(
@@ -75,6 +79,16 @@ export class AssetsController {
     return this.assetsService.nextAssetId(shipId, sfiSub ?? '');
   }
 
+  // Declared BEFORE @Get(':assetId') for the same reason as export-xlsx above.
+  @Get('id-availability')
+  @Roles(UserRole.ADMIN)
+  checkIdAvailability(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Query('assetIdInternal') assetIdInternal: string,
+  ): Promise<IdAvailability> {
+    return this.assetIdService.checkAvailability(shipId, assetIdInternal ?? '');
+  }
+
   @Get(':assetId')
   getOne(
     @Param('shipId', ParseUUIDPipe) shipId: string,
@@ -96,8 +110,9 @@ export class AssetsController {
   create(
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @Body() body: CreateAssetDto,
+    @Query('onConflict') onConflict?: 'shift' | 'replace',
   ) {
-    return this.assetsService.create(shipId, body);
+    return this.assetsService.create(shipId, body, onConflict);
   }
 
   @Patch(':assetId')

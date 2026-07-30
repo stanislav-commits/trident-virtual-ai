@@ -20,6 +20,7 @@ import { AssetDocumentLinkEntity } from './entities/asset-document-link.entity';
 import { AssetSnapshotEntity } from './entities/asset-snapshot.entity';
 import { AssetEntity } from './entities/asset.entity';
 import { SfiService } from '../sfi/sfi.service';
+import { AssetIdService } from './asset-id.service';
 import { ServiceRuleEntity } from './entities/service-rule.entity';
 import type {
   CompleteServiceRuleDto,
@@ -179,6 +180,7 @@ export class AssetsService {
     @InjectRepository(ServiceRuleEntity)
     private readonly serviceRuleRepository: Repository<ServiceRuleEntity>,
     private readonly sfiService: SfiService,
+    private readonly assetIdService: AssetIdService,
     private readonly adminEvents: AdminEventBus,
   ) {}
 
@@ -523,11 +525,48 @@ export class AssetsService {
     return { assetIdInternal: `${head}${seq}`, prefix };
   }
 
-  async create(shipId: string, input: CreateAssetDto): Promise<AssetEntity> {
+  /**
+   * Create an asset, with an answer ready for the id already being taken.
+   *
+   * Register ids are positional — SWX.4.1.05 is the fifth battery pack, not an
+   * arbitrary key — so an operator adding a unit that belongs at 05 is making a
+   * real request, not a mistake. `onConflict` says which of the two honest
+   * outcomes they mean:
+   *   'shift'   — insert here and move 05..N up one place, references included
+   *   'replace' — this physical unit replaced the one on file: overwrite the
+   *               existing row, keeping its uuid so documents, metrics, tasks
+   *               and certificates stay attached to the position
+   * Without it, a taken id is still a 409 — silently doing either would be
+   * worse than refusing.
+   */
+  async create(
+    shipId: string,
+    input: CreateAssetDto,
+    onConflict?: 'shift' | 'replace',
+  ): Promise<AssetEntity> {
     await this.assertShipExists(shipId);
     const existing = await this.assetRepository.findOne({
       where: { shipId, assetIdInternal: input.assetIdInternal },
     });
+    if (existing && onConflict === 'replace') {
+      // Same row, new equipment: the position and everything linked to it
+      // survive, the identity fields do not.
+      Object.assign(existing, this.createPayload(input));
+      const replaced = await this.assetRepository.save(existing);
+      this.emitChange(shipId, 'updated', replaced.id);
+      return replaced;
+    }
+    if (existing && onConflict === 'shift') {
+      return this.assetRepository.manager.transaction(async (tx) => {
+        const repo = tx.getRepository(AssetEntity);
+        await this.assetIdService.shiftUp(tx, shipId, input.assetIdInternal);
+        const inserted = await repo.save(
+          repo.create({ shipId, ...this.createPayload(input) }),
+        );
+        this.emitChange(shipId, 'created', inserted.id);
+        return inserted;
+      });
+    }
     if (existing) {
       throw new ConflictException(
         `Asset ${input.assetIdInternal} already exists on this ship`,
@@ -536,6 +575,21 @@ export class AssetsService {
 
     const entity = this.assetRepository.create({
       shipId,
+      ...this.createPayload(input),
+    });
+
+    const saved = await this.assetRepository.save(entity);
+    this.emitChange(shipId, 'created', saved.id);
+    return saved;
+  }
+
+  /**
+   * The create DTO as entity columns. One place, so the three ways in — plain
+   * create, insert-with-shift, and replace-in-place — cannot drift apart the
+   * way the import mappers already have.
+   */
+  private createPayload(input: CreateAssetDto): Partial<AssetEntity> {
+    return {
       assetIdInternal: input.assetIdInternal,
       displayName: input.displayName,
       sfiGroup: input.sfiGroup ?? null,
@@ -554,11 +608,7 @@ export class AssetsService {
       location: input.location ?? null,
       rinaRef: input.rinaRef ?? null,
       notes: input.notes ?? null,
-    });
-
-    const saved = await this.assetRepository.save(entity);
-    this.emitChange(shipId, 'created', saved.id);
-    return saved;
+    };
   }
 
   async update(
