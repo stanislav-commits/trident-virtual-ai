@@ -5,6 +5,8 @@ import { AssetEntity } from '../assets/entities/asset.entity';
 import { MetricsModule } from '../metrics/metrics.module';
 import { UserEntity } from '../users/entities/user.entity';
 import { ShipOrganizationsService } from './ship-organizations.service';
+import { ShipPhotoService } from './ship-photo.service';
+import { ShipPhotoStorageService } from './ship-photo-storage.service';
 import { ShipContextService } from './ship-context.service';
 import { ShipsCommandService } from './ships-command.service';
 import { ShipsQueryService } from './ships-query.service';
@@ -23,6 +25,8 @@ import { ShipsController } from './ships.controller';
     ShipsCommandService,
     ShipOrganizationsService,
     ShipContextService,
+    ShipPhotoService,
+    ShipPhotoStorageService,
   ],
   exports: [
     ShipsQueryService,
