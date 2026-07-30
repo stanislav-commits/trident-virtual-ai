@@ -10,7 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Not, Repository } from 'typeorm';
 import { DocumentEntity } from '../entities/document.entity';
 import { DocumentParseStatus } from '../enums/document-parse-status.enum';
-import { DocumentDocClass } from '../enums/document-doc-class.enum';
+import { FILE_STORE_CLASSES } from '../enums/document-doc-class.enum';
 import { DocumentsIngestionService } from './documents-ingestion.service';
 
 const DEFAULT_REMOTE_INGESTION_CONCURRENCY = 1;
@@ -117,15 +117,16 @@ export class DocumentsRemoteIngestionDispatcherService
           // documents wait until the extractor attaches the markdown (or
           // fails — failed docs ingest the original PDF as fallback).
           extractionStatus: In(['none', 'done', 'failed']),
-          // PLANS never go to RAGFlow — they are a pure file store (drawings
-          // are opened on demand, their OCR soup would only pollute search).
-          docClass: Not(DocumentDocClass.PLAN),
+          // File-store classes never go to RAGFlow — drawings are opened on
+          // demand and type approvals from the asset; their OCR soup would
+          // only pollute search.
+          docClass: Not(In(FILE_STORE_CLASSES)),
         },
         {
           parseStatus: DocumentParseStatus.PENDING_CONFIG,
           updatedAt: LessThan(staleBefore),
           extractionStatus: In(['none', 'done', 'failed']),
-          docClass: Not(DocumentDocClass.PLAN),
+          docClass: Not(In(FILE_STORE_CLASSES)),
         },
       ],
       order: {

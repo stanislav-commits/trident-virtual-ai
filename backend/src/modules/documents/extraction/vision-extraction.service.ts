@@ -11,7 +11,7 @@ import { LlmService } from '../../../integrations/llm/llm.service';
 import { AssetEntity } from '../../assets/entities/asset.entity';
 import { AssetDocumentLinkEntity } from '../../assets/entities/asset-document-link.entity';
 import { DocumentEntity } from '../entities/document.entity';
-import { DocumentDocClass } from '../enums/document-doc-class.enum';
+import { DocumentDocClass, isFileStoreClass } from '../enums/document-doc-class.enum';
 import { DocumentsUploadStorageService } from '../ingestion/documents-upload-storage.service';
 import { DocumentsRemoteIngestionDispatcherService } from '../ingestion/documents-remote-ingestion-dispatcher.service';
 
@@ -28,7 +28,7 @@ const EXTRACTION_TIMEOUT_MS = 45 * 60 * 1000;
  */
 export function isVisionEligible(docClass: string): boolean {
   return (
-    docClass !== DocumentDocClass.PLAN &&
+    !isFileStoreClass(docClass) &&
     docClass !== DocumentDocClass.PROCEDURE &&
     docClass !== DocumentDocClass.FORM
   );

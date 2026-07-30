@@ -6,6 +6,7 @@ export type DocumentDocClass =
   | "form"
   | "circular"
   | "plan"
+  | "type_approval"
   | "publication"
   | "historical_procedure"
   | "certificate"

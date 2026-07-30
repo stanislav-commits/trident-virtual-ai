@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   listAssetAlerts,
@@ -24,6 +24,7 @@ import { fetchSfiGroups, fetchSfiSubs, type SfiNode } from "../../../api/sfiApi"
 import {
   fetchDocumentFile,
   fetchExtractedMarkdown,
+  uploadDocument,
 } from "../../../api/documentsApi";
 import {
   suggestPmsFromManual,
@@ -266,8 +267,17 @@ export function AssetDrawer({
   // Certs tab (compliance) and drawings to the Overview block, not here.
   const manualDocs =
     related?.documents.filter(
-      (d) => d.docClass !== "certificate" && d.docClass !== "plan",
+      (d) =>
+        d.docClass !== "certificate" &&
+        d.docClass !== "plan" &&
+        d.docClass !== "type_approval",
     ) ?? [];
+  // Manufacturer approvals of the equipment TYPE (MED Module B/D, EC type
+  // examination, declarations of conformity). They approve a model rather than
+  // this unit, never expire, and belong to the asset — v60 keeps them out of
+  // the vessel's certificate register entirely.
+  const typeApprovals =
+    related?.documents.filter((d) => d.docClass === "type_approval") ?? [];
   const drawings = related?.drawings ?? [];
   const [parts, setParts] = useState<InventoryItem[]>([]);
   const [partsPreview, setPartsPreview] = useState<{
@@ -402,6 +412,34 @@ export function AssetDrawer({
     },
     [token, shipId, onRefreshRelated, onError],
   );
+  // Upload a manufacturer type approval straight onto this asset. The
+  // documents upload already takes an assetId and pins the link, and the
+  // `type_approval` class is a file store — no RAGFlow, no vision extraction.
+  const typeApprovalInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingApproval, setUploadingApproval] = useState(false);
+  const handleTypeApprovalPicked = useCallback(
+    async (file: File | null) => {
+      if (!token || !file) return;
+      setUploadingApproval(true);
+      try {
+        await uploadDocument(token, file, {
+          shipId,
+          docClass: "type_approval",
+          assetId: asset.id,
+          // The upload path renames the file to "<brand> <model> — <asset>"
+          // when an assetId is given, so the approval is recognisable in the
+          // documents list without any extra metadata here.
+        });
+        await onRefreshRelated();
+      } catch (e) {
+        onError(e instanceof Error ? e.message : "Failed to upload approval");
+      } finally {
+        setUploadingApproval(false);
+      }
+    },
+    [token, shipId, asset.id, onRefreshRelated, onError],
+  );
+
   const [pickerOpen, setPickerOpen] = useState(false);
   const [manualPickerOpen, setManualPickerOpen] = useState(false);
   const [unbindingId, setUnbindingId] = useState<string | null>(null);
@@ -537,9 +575,18 @@ export function AssetDrawer({
           [
             ["overview", "Overview", null],
             ["metrics", "Metrics", related?.metrics.length ?? null],
-            ["manuals", "Manuals", related?.documents.length ?? null],
+            // Counts must match what each tab actually lists: type approvals
+            // moved to Certs, so counting them under Manuals showed a badge
+            // for documents that tab does not render.
+            ["manuals", "Manuals", related ? manualDocs.length : null],
             ["pms", "PMS", serviceRules?.length ?? null],
-            ["certs", "Certs", assetCerts?.length ?? null],
+            [
+              "certs",
+              "Certs",
+              assetCerts === null && related === null
+                ? null
+                : (assetCerts?.length ?? 0) + typeApprovals.length,
+            ],
             ["parts", "Parts", parts.length || null],
             ["alerts", "Alerts", firingAlerts || null],
           ] as const
@@ -833,6 +880,63 @@ export function AssetDrawer({
 
       {drawerTab === "certs" && (
       <div className="assets-section__drawer-section">
+        {/* Manufacturer approvals of this equipment TYPE. They approve a model
+            rather than the unit fitted here and never expire, so they live on
+            the asset instead of the vessel's certificate register. One file can
+            cover every unit of the model — link it to each. */}
+        <div className="assets-section__certs-head">
+          <span>Type approvals</span>
+          <button
+            type="button"
+            className="compliance__record-open"
+            onClick={() => typeApprovalInputRef.current?.click()}
+            disabled={uploadingApproval || !token}
+            title="Upload a MED Module B/D, EC type examination or declaration of conformity for this equipment"
+          >
+            {uploadingApproval ? "Uploading…" : "+ Upload"}
+          </button>
+        </div>
+        <input
+          ref={typeApprovalInputRef}
+          type="file"
+          accept=".pdf,image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const picked = e.target.files?.[0] ?? null;
+            e.target.value = "";
+            void handleTypeApprovalPicked(picked);
+          }}
+        />
+        {typeApprovals.length === 0 ? (
+          <div className="assets-section__placeholder">
+            No type approvals on this asset yet.
+          </div>
+        ) : (
+          typeApprovals.map((doc) => (
+            <div key={doc.id} className="compliance__record">
+              <span className="compliance__badge compliance__badge--conditional">
+                TYPE
+              </span>
+              <span className="compliance__record-main">
+                {doc.originalFileName}
+              </span>
+              <button
+                type="button"
+                className="compliance__record-open"
+                onClick={() => {
+                  if (token) void fetchDocumentFile(token, doc.id);
+                }}
+                title="Open / preview file"
+              >
+                Open
+              </button>
+            </div>
+          ))
+        )}
+
+        <div className="assets-section__certs-head">
+          <span>Compliance records</span>
+        </div>
         {assetCerts === null && (
           <div className="assets-section__placeholder">Loading…</div>
         )}

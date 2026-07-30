@@ -31,6 +31,9 @@ const DOCUMENT_CLASS_LABELS: Record<DocumentDocClass, string> = {
   form: "Forms & Checklists",
   circular: "Fleet Circulars",
   plan: "Vessel Plans & Drawings",
+  // Uploaded from the asset, not from the Knowledge Base picker — hence the
+  // label but no entry in the options list above.
+  type_approval: "Type Approvals",
   publication: "Publications",
   historical_procedure: "Maintenance",
   certificate: "Certificates",

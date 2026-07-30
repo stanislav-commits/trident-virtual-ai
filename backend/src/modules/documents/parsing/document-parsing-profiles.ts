@@ -147,6 +147,8 @@ const DOC_CLASS_PROFILE_MAP: Record<DocumentDocClass, DocumentParseProfile> = {
   [DocumentDocClass.CIRCULAR]: DocumentParseProfile.MANUAL_LONG,
   // Plans are a file store (extraction is skipped) — profile is a placeholder.
   [DocumentDocClass.PLAN]: DocumentParseProfile.MANUAL_LONG,
+  // Type approvals are a file store too — same placeholder, never parsed.
+  [DocumentDocClass.TYPE_APPROVAL]: DocumentParseProfile.MANUAL_LONG,
   // Platform
   [DocumentDocClass.PUBLICATION]: DocumentParseProfile.REGULATION_BASELINE,
   // Legacy
