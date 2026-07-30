@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, sep } from 'node:path';
 import dataSource from '../typeorm.datasource';
 import { ComplianceDocMasterEntity } from '../../../modules/compliance/entities/compliance-doc-master.entity';
 import { ComplianceDocTypeEntity } from '../../../modules/compliance/entities/compliance-doc-type.entity';
@@ -31,7 +31,20 @@ import {
 
 type MasterRow = Record<string, string | null>;
 
-const SNAPSHOT = join(__dirname, 'data', 'compliance-doc-master.json');
+/**
+ * Next to this file when run from source, and back in `src` when run from a
+ * built `dist` — nest's build compiles TypeScript and leaves JSON assets where
+ * they are, so the deployed copy has no `data/` beside it. Production hit
+ * exactly that after the first deploy.
+ */
+const SNAPSHOT = [
+  join(__dirname, 'data', 'compliance-doc-master.json'),
+  join(
+    __dirname.replace(`${sep}dist${sep}`, `${sep}src${sep}`),
+    'data',
+    'compliance-doc-master.json',
+  ),
+].find((p) => existsSync(p));
 
 /** snake_case column → entity property, for the columns the snapshot carries. */
 const COLUMN_TO_PROPERTY: Record<string, keyof ComplianceDocMasterEntity> = {
@@ -72,6 +85,11 @@ const COLUMN_TO_PROPERTY: Record<string, keyof ComplianceDocMasterEntity> = {
 };
 
 async function run() {
+  if (!SNAPSHOT) {
+    throw new Error(
+      'compliance-doc-master.json not found next to the seed or under src/.',
+    );
+  }
   const rows: MasterRow[] = JSON.parse(readFileSync(SNAPSHOT, 'utf8'));
 
   await dataSource.initialize();
