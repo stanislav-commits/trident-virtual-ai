@@ -20,7 +20,11 @@ import {
 } from './compliance-profile.util';
 import { ComplianceDocMasterEntity } from './entities/compliance-doc-master.entity';
 import { ComplianceDocTypeEntity } from './entities/compliance-doc-type.entity';
-import { ComplianceDocEntity } from './entities/compliance-doc.entity';
+import {
+  CERT_NO_MAX_LENGTH,
+  ComplianceDocEntity,
+  ISSUER_MAX_LENGTH,
+} from './entities/compliance-doc.entity';
 import { DocAssetLinkEntity } from './entities/doc-asset-link.entity';
 import {
   COMPLIANCE_ATTACHMENT_KINDS,
@@ -749,8 +753,8 @@ export class ComplianceService {
       this.docRepository.create({
         shipId,
         docTypeId: input.docTypeId,
-        certNo: input.certNo ?? null,
-        issuer: input.issuer ?? null,
+        certNo: this.capped(input.certNo, CERT_NO_MAX_LENGTH),
+        issuer: this.capped(input.issuer, ISSUER_MAX_LENGTH),
         issueDate: input.issueDate ?? null,
         expiryDate,
         // asset_id is the deprecated single-asset mirror of the M:N links.
@@ -1133,8 +1137,14 @@ export class ComplianceService {
     const authExpiry = this.authExpiry(archetype, nextFields);
 
     Object.assign(doc, {
-      certNo: input.certNo !== undefined ? input.certNo : doc.certNo,
-      issuer: input.issuer !== undefined ? input.issuer : doc.issuer,
+      certNo:
+        input.certNo !== undefined
+          ? this.capped(input.certNo, CERT_NO_MAX_LENGTH)
+          : doc.certNo,
+      issuer:
+        input.issuer !== undefined
+          ? this.capped(input.issuer, ISSUER_MAX_LENGTH)
+          : doc.issuer,
       issueDate: input.issueDate !== undefined ? input.issueDate : doc.issueDate,
       expiryDate:
         authExpiry ??
@@ -1213,6 +1223,20 @@ export class ComplianceService {
     // required markers stay as UI guidance; verify_state / status reflect
     // completeness instead.
     void requiredFields(archetype);
+  }
+
+  /**
+   * Cap a text field to what its column holds. Issuers on real certificates run
+   * past the column width — "Versilia Marine Service s.a.s. di Adolfo Gori & C.,
+   * Viareggio, Italy (liferaft station approved by Decreto N. 1058 …)" — and an
+   * over-long value fails the insert, losing the whole record instead of the
+   * tail of a name. Applies to typed input too: neither endpoint validates
+   * length, so the same string entered by hand would 500 the same way.
+   */
+  private capped(v: string | null | undefined, max: number): string | null {
+    const s = (v ?? '').trim();
+    if (!s) return null;
+    return s.length > max ? `${s.slice(0, max - 1)}…` : s;
   }
 
   /** Value of the archetype's validity date field (→ canonical expiry_date). */

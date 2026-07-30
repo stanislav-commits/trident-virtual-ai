@@ -12,6 +12,10 @@ import { AssetEntity } from '../../assets/entities/asset.entity';
 import { DocumentEntity } from '../../documents/entities/document.entity';
 import { ComplianceDocTypeEntity } from './compliance-doc-type.entity';
 
+/** Column widths, shared with the code that caps values before writing. */
+export const CERT_NO_MAX_LENGTH = 120;
+export const ISSUER_MAX_LENGTH = 160;
+
 /**
  * A concrete compliance record held by the vessel: one issued certificate,
  * approved plan, service report, licence... belonging to a rulebook type.
@@ -45,10 +49,20 @@ export class ComplianceDocEntity {
   @JoinColumn({ name: 'doc_type_id' })
   docType!: ComplianceDocTypeEntity;
 
-  @Column({ name: 'cert_no', type: 'varchar', length: 120, nullable: true })
+  @Column({
+    name: 'cert_no',
+    type: 'varchar',
+    length: CERT_NO_MAX_LENGTH,
+    nullable: true,
+  })
   certNo!: string | null;
 
-  @Column({ name: 'issuer', type: 'varchar', length: 160, nullable: true })
+  @Column({
+    name: 'issuer',
+    type: 'varchar',
+    length: ISSUER_MAX_LENGTH,
+    nullable: true,
+  })
   issuer!: string | null;
 
   @Column({ name: 'issue_date', type: 'date', nullable: true })

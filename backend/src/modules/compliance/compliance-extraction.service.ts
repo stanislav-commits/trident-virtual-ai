@@ -10,6 +10,10 @@ import pdfParse from 'pdf-parse';
 import { LlmService } from '../../integrations/llm/llm.service';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { ComplianceDocTypeEntity } from './entities/compliance-doc-type.entity';
+import {
+  CERT_NO_MAX_LENGTH,
+  ISSUER_MAX_LENGTH,
+} from './entities/compliance-doc.entity';
 import { ComplianceService } from './compliance.service';
 import { archetypeBlock } from './compliance-archetypes';
 import { DocumentsUploadStorageService } from '../documents/ingestion/documents-upload-storage.service';
@@ -151,8 +155,8 @@ export class ComplianceExtractionService {
       sfiCode: type.sfiCode,
       typeName: type.name,
       archetype: type.archetype,
-      certNo: this.str(fields.doc_number),
-      issuer: this.str(fields.issuing_party),
+      certNo: this.str(fields.doc_number, CERT_NO_MAX_LENGTH),
+      issuer: this.str(fields.issuing_party, ISSUER_MAX_LENGTH),
       issueDate: this.date(fields.issue_date),
       fields,
       assetId: link?.id ?? null,
@@ -227,8 +231,8 @@ export class ComplianceExtractionService {
         sfiCode: type.sfiCode,
         typeName: type.name,
         archetype: type.archetype,
-        certNo: this.str(fields.doc_number),
-        issuer: this.str(fields.issuing_party),
+        certNo: this.str(fields.doc_number, CERT_NO_MAX_LENGTH),
+        issuer: this.str(fields.issuing_party, ISSUER_MAX_LENGTH),
         issueDate: this.date(fields.issue_date),
         fields,
         assetId: link?.id ?? null,
@@ -446,9 +450,17 @@ export class ComplianceExtractionService {
     return null;
   }
 
-  private str(v: unknown): string | null {
+  /**
+   * Extracted text, capped so the proposal shown for review is the value that
+   * will be stored — issuers on real certificates run past the column width
+   * ("Versilia Marine Service s.a.s. di Adolfo Gori & C., Viareggio, Italy
+   * (liferaft station approved by Decreto N. 1058 …)"). The storage-side cap
+   * lives in ComplianceService.capped(); this one keeps the two in step.
+   */
+  private str(v: unknown, max = ISSUER_MAX_LENGTH): string | null {
     const s = String(v ?? '').trim();
-    return s || null;
+    if (!s) return null;
+    return s.length > max ? `${s.slice(0, max - 1)}…` : s;
   }
   private date(v: unknown): string | null {
     const s = String(v ?? '').trim();
