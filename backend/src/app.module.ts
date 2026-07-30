@@ -19,6 +19,8 @@ import { AlertsModule } from './modules/alerts/alerts.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
+import { OverviewModule } from './modules/overview/overview.module';
+import { LlmUsageModule } from './modules/llm-usage/llm-usage.module';
 import { SfiModule } from './modules/sfi/sfi.module';
 import { ShipsModule } from './modules/ships/ships.module';
 import { UsersModule } from './modules/users/users.module';
@@ -57,6 +59,8 @@ import { AppController } from './app.controller';
     WebModule,
     ChatModule,
     AdminModule,
+    OverviewModule,
+    LlmUsageModule,
   ],
   controllers: [AppController],
 })

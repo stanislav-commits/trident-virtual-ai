@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import logoImg from "../assets/logo-home.png";
 import {
   UsersIcon,
+  OverviewIcon,
   ShipIcon,
   AssetsIcon,
   DocumentsIcon,
@@ -17,6 +18,7 @@ import {
   MenuIcon,
   XIcon,
 } from "../components/admin/AdminPanelIcons";
+import { OverviewSection } from "../components/admin/OverviewSection";
 import { DocumentsSection } from "../components/admin/DocumentsSection";
 import { PublicationsSection } from "../components/admin/PublicationsSection";
 import { MetricsSection } from "../components/admin/MetricsSection";
@@ -43,6 +45,7 @@ import {
 } from "../utils/routes";
 
 const SECTION_TITLES: Record<AdminSectionRoute, string> = {
+  overview: "Overview",
   users: "Users",
   ships: "Ships",
   assets: "Asset Register",
@@ -134,8 +137,19 @@ export function AdminPanelPage() {
         <ActiveVesselSwitcher />
 
         <nav className="admin-panel__nav" aria-label="Admin sections">
-          {/* Vessel data — everything scoped to the active vessel. */}
+          {/* Vessel data — everything scoped to the active vessel, Overview first
+              because it is the way into the rest of them. */}
           <div className="admin-panel__nav-group-label">Vessel data</div>
+          <button
+            type="button"
+            className={`admin-panel__nav-item ${activeSection === "overview" ? "admin-panel__nav-item--active" : ""}`}
+            onClick={() => handleNavClick("overview")}
+          >
+            <span className="admin-panel__nav-icon">
+              <OverviewIcon />
+            </span>
+            <span className="admin-panel__nav-label">Overview</span>
+          </button>
           <button
             type="button"
             className={`admin-panel__nav-item ${activeSection === "assets" ? "admin-panel__nav-item--active" : ""}`}
@@ -302,13 +316,15 @@ export function AdminPanelPage() {
 
           <div
             className={`admin-panel__content${
-              ["compliance", "maintenance", "tasks", "crew", "inventory", "alerts", "documents", "metrics", "publications"].includes(
+              ["overview", "compliance", "maintenance", "tasks", "crew", "inventory", "alerts", "documents", "metrics", "publications"].includes(
                 activeSection,
               )
                 ? " admin-panel__content--wide"
                 : ""
             }`}
           >
+            {activeSection === "overview" && <OverviewSection token={token} />}
+
             {activeSection === "users" && (
               <UsersSection
                 token={token}

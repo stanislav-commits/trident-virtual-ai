@@ -6,6 +6,10 @@ import { AddVesselModal } from "./AddVesselModal";
  * Global "Active Vessel" switcher (sidebar). The ONLY vessel selector in
  * the admin panel — all tabs follow it through AdminShipContext. The
  * centered "Add vessel workspace" modal lives in <AddVesselModal>.
+ *
+ * Switching only. Editing the vessel is reached from Overview, which is where
+ * the vessel's own details live; a second way in from the sidebar put the same
+ * modal behind two different affordances.
  */
 export function ActiveVesselSwitcher() {
   const { availableShips, selectedShipId, setSelectedShipId } = useAdminShip();
@@ -16,7 +20,6 @@ export function ActiveVesselSwitcher() {
 
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -55,20 +58,6 @@ export function ActiveVesselSwitcher() {
           </span>
           <span className="vessel-switcher__chevron">{open ? "▴" : "▾"}</span>
         </button>
-        {active && (
-          <button
-            type="button"
-            className="vessel-switcher__gear"
-            title="Vessel details & settings"
-            aria-label="Vessel details & settings"
-            onClick={() => {
-              setOpen(false);
-              setEditOpen(true);
-            }}
-          >
-            ⚙
-          </button>
-        )}
       </div>
       {active && <div className="vessel-switcher__meta">{meta(active)}</div>}
 
@@ -105,12 +94,6 @@ export function ActiveVesselSwitcher() {
       )}
 
       {modalOpen && <AddVesselModal onClose={() => setModalOpen(false)} />}
-      {editOpen && active && (
-        <AddVesselModal
-          editShip={active}
-          onClose={() => setEditOpen(false)}
-        />
-      )}
     </div>
   );
 }

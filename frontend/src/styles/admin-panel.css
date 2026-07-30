@@ -11249,3 +11249,455 @@
   margin-top: 6px; font-size: 12px;
   color: var(--status-danger-soft, var(--status-danger));
 }
+
+/* ── Overview section (admin landing per vessel) ────────────────────────────
+   Server-aggregated tiles. The notes under each tile are body copy, not
+   chrome: they must stay readable, so nothing here clips or truncates them. */
+
+.overview__error {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: var(--chat-radius-sm);
+  background: var(--color-error-bg); border: 1px solid var(--color-error-border);
+  color: var(--color-error); font-size: 13px;
+}
+.overview__error p { margin: 0; }
+
+/* Vessel tile — the first cell of the card grid, kept square so the row it
+   opens lines up with the domain cards beside it. */
+.overview__vessel { overflow: hidden; }
+.overview__gear {
+  border: 0; background: transparent; cursor: pointer; padding: 0 2px;
+  font-size: 14px; line-height: 1; color: var(--chat-text-subtle);
+}
+.overview__gear:hover { color: var(--chat-text); }
+.overview__vessel-top {
+  display: flex; gap: 12px; align-items: flex-start; margin-top: 10px;
+}
+/* Wide, not square: a yacht photographed beam-on is a wide subject, and this is
+   the only image on the page. The empty frame IS the upload control. */
+.overview__photo-wrap { position: relative; flex: 0 0 148px; }
+.overview__photo {
+  width: 100%; aspect-ratio: 4 / 3; display: flex; padding: 0;
+  align-items: center; justify-content: center; overflow: hidden;
+  border-radius: var(--chat-radius-sm);
+  background: var(--chat-surface-2);
+  border: 1px dashed var(--chat-border-strong);
+  cursor: pointer;
+}
+.overview__photo:hover:not(:disabled) { border-color: var(--accent); }
+.overview__photo:disabled { cursor: default; }
+.overview__photo--filled { border-style: solid; border-color: var(--chat-border); }
+.overview__photo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.overview__photo-remove {
+  position: absolute; top: 4px; right: 4px;
+  width: 18px; height: 18px; padding: 0; font-size: 13px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; background: rgba(0, 0, 0, 0.55);
+  border: none; border-radius: 50%; cursor: pointer;
+}
+.overview__photo-remove:hover { background: rgba(0, 0, 0, 0.78); }
+.overview__photo-error {
+  margin: 4px 0 0; font-size: 10.5px; line-height: 1.4;
+  color: var(--status-bad, #dc2626);
+}
+.overview__photo-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--chat-text-subtle);
+}
+.overview__vessel-titles {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto;
+}
+.overview__vessel-name {
+  margin: 0; font-size: 16px; font-weight: 650; line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+/* Beside the name: identity and contacts that live in the ships table but were
+   shown nowhere, filling the space the name left empty. */
+.overview__vessel-facts { margin: 4px 0 0; display: flex; flex-direction: column; }
+.overview__vessel-facts > div {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; min-width: 0; padding: 1px 0;
+  border-top: 1px solid var(--chat-border);
+}
+.overview__vessel-facts > div:first-child { border-top: none; }
+.overview__vessel-facts dt {
+  font-size: 11.5px; color: var(--chat-text-muted); flex: 0 0 auto;
+}
+.overview__vessel-facts dd {
+  margin: 0; font-size: 11.5px; font-weight: 600; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.overview__vessel-missing {
+  margin: auto 0 0; padding-top: 8px; font-size: 11px;
+  color: var(--chat-text-subtle);
+}
+.overview__vessel-empty {
+  margin: 2px 0 0; font-size: 11px; line-height: 1.45;
+  color: var(--chat-text-subtle);
+}
+
+.overview__badge {
+  align-self: flex-start;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+  background: var(--chat-surface-3); color: var(--chat-text-muted);
+  border: 1px solid var(--chat-border);
+}
+/* One row per fact, label left and value right — the same shape as the stat
+   rows on every other card, instead of a second two-column layout to read. */
+.overview__specs { margin: 10px 0 0; display: flex; flex-direction: column; }
+.overview__spec {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; min-width: 0; padding: 3px 0;
+  border-top: 1px solid var(--chat-border);
+}
+.overview__spec-label {
+  font-size: 12px; color: var(--chat-text); flex: 0 0 auto;
+}
+.overview__spec-value {
+  margin: 0; font-size: 12px; font-weight: 600; color: var(--chat-text);
+  font-variant-numeric: tabular-nums; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Card grid */
+.overview__grid {
+  /* Twelve columns rather than equal tiles: row one is the vessel (a third) and
+     its usage (the remaining two thirds, edge to edge), and the nine domain
+     cards below are thirds — three rows of three. Eleven tiles still have to land
+     on one screen without scrolling, so they stay dense. Stretch, not start, so
+     each row reads as one band. */
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: stretch;
+}
+.overview__grid > * { grid-column: span 4; }
+.overview__vessel { grid-column: span 4; }
+.overview__card--wide { grid-column: span 8; }
+.overview__card {
+  display: flex; flex-direction: column; padding: 11px 12px;
+  border-radius: var(--chat-radius-card);
+  background: var(--chat-surface); border: 1px solid var(--chat-border);
+}
+.overview__card--clickable { cursor: pointer; }
+.overview__card--clickable:hover,
+.overview__card--clickable:focus-visible {
+  border-color: var(--chat-border-strong);
+  background: var(--chat-surface-2); outline: none;
+}
+.overview__card--clickable:focus-visible { box-shadow: 0 0 0 2px var(--accent-dim); }
+.overview__card--degraded { border-color: var(--status-warn-border); }
+.overview__card--placeholder { border-style: dashed; }
+
+.overview__card-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.overview__card-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--chat-text-muted);
+}
+.overview__card-go { color: var(--chat-text-subtle); font-size: 14px; }
+.overview__card--clickable:hover .overview__card-go { color: var(--chat-accent); }
+
+.overview__headline {
+  display: flex; align-items: baseline; gap: 7px; margin-top: 6px;
+}
+.overview__headline-value {
+  font-size: 25px; font-weight: 650; line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.overview__headline-value--empty { color: var(--chat-text-subtle); }
+.overview__headline-label { font-size: 12px; color: var(--chat-text-muted); }
+
+/* Stats */
+.overview__stats { list-style: none; margin: 10px 0 0; padding: 0; }
+.overview__stat {
+  position: relative;
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 3px 0; border-top: 1px solid var(--chat-border);
+}
+.overview__stat:first-child { border-top: none; }
+.overview__stat-label {
+  font-size: 12px; color: var(--chat-text);
+  display: inline-flex; align-items: baseline; gap: 4px;
+}
+
+/* Hover-or-focus bubble on the stat label. A native title was invisible in
+   practice: slow, and in some setups it never appeared at all. The bubble
+   anchors to the stat ROW, not to the label, so its width is the card's and it
+   can never hang off the panel. */
+.overview__stat-label--hinted { cursor: help; }
+.overview__stat-label--hinted:hover { color: var(--chat-text); }
+.overview__hint-bubble {
+  position: absolute; bottom: calc(100% + 5px); left: 0; right: 0; z-index: 60;
+  padding: 7px 9px;
+  font-size: 11px; font-weight: 400; line-height: 1.45; text-transform: none;
+  letter-spacing: normal; color: var(--chat-text);
+  background: var(--chat-surface); border: 1px solid var(--chat-border-strong);
+  border-radius: 9px; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  opacity: 0; visibility: hidden; transition: opacity 90ms ease;
+  pointer-events: none;
+}
+.overview__stat-label--hinted:hover .overview__hint-bubble,
+.overview__stat-label--hinted:focus-visible .overview__hint-bubble {
+  opacity: 1; visibility: visible;
+}
+
+.overview__stat-hint {
+  display: inline-block; margin-left: 5px; font-size: 10px; font-weight: 700;
+  color: var(--chat-text-subtle); cursor: help;
+}
+.overview__stat-value {
+  font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.overview__stat-value--neutral { color: var(--chat-text); }
+.overview__stat-value--good { color: var(--status-ok); }
+.overview__stat-value--warn { color: var(--status-warn); }
+.overview__stat-value--bad { color: var(--status-danger); }
+
+/* The caveats that used to sit under every card are gone from the UI; the API
+   still carries them, and each stat keeps its own hint. */
+.overview__placeholder-note {
+  margin: 10px 0 0; font-size: 11.5px; line-height: 1.5;
+  color: var(--chat-text-muted);
+}
+
+/* Degraded */
+.overview__degraded-box {
+  margin-top: 12px; padding: 9px 10px; border-radius: var(--chat-radius-sm);
+  background: var(--status-warn-bg); border: 1px solid var(--status-warn-border);
+}
+.overview__degraded-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--status-warn);
+}
+.overview__degraded-reason,
+.overview__degraded-affects {
+  margin: 5px 0 0; font-size: 11.5px; line-height: 1.5;
+  color: var(--chat-text-muted); overflow-wrap: anywhere;
+}
+
+/* AI spend — the one tile with money on it, and the one an invoice is argued
+   about in front of, so it carries every slice the ledger holds. Two columns
+   wide: three breakdowns side by side stay readable, stacked they would push the
+   page into a scroll. */
+.overview__spend-since {
+  font-size: 11px; color: var(--chat-text-muted); margin-left: auto;
+}
+.overview__spend-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px;
+}
+.overview__spend-buckets {
+  list-style: none; margin: 6px 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 2px; min-width: 202px;
+}
+.overview__spend-buckets li {
+  display: flex; align-items: center; gap: 6px; font-size: 12px;
+}
+.overview__spend-bucket-label {
+  color: var(--chat-text-muted); white-space: nowrap;
+}
+.overview__spend-bucket-value {
+  margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600;
+}
+/* The bucket a row belongs to, carried as colour so the per-purpose column can
+   be scanned for "did the crew spend this, or did we". */
+.overview__dot {
+  width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto;
+  background: var(--chat-text-subtle);
+}
+.overview__dot--crew { background: var(--accent); }
+.overview__dot--platform { background: var(--chat-text-subtle); }
+.overview__dot--unattributed,
+.overview__dot--warn { background: var(--status-warn); }
+
+/* Two columns, matching the two lists inside it: with three declared, the empty
+   third took a third of the card and squeezed every label to an ellipsis. */
+.overview__spend-grid {
+  display: grid; gap: 14px; margin-top: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.overview__spend-col { display: flex; flex-direction: column; min-width: 0; }
+.overview__spend-heading {
+  font-size: 10px; font-weight: 650; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--chat-text-muted);
+}
+.overview__spend-empty {
+  font-size: 11px; color: var(--chat-text-subtle); margin-top: 4px;
+}
+.overview__spend-rows { list-style: none; margin: 4px 0 0; padding: 0; }
+.overview__spend-rows li {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; padding: 2px 0; font-size: 12px;
+  border-top: 1px solid var(--chat-border);
+}
+.overview__spend-rows li:first-child { border-top: none; }
+.overview__spend-row-label {
+  display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden;
+}
+.overview__spend-row-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.overview__spend-row-value {
+  font-variant-numeric: tabular-nums; font-weight: 600; flex: 0 0 auto;
+}
+.overview__spend-row--rest { color: var(--chat-text-muted); }
+.overview__spend-row--rest .overview__spend-row-text { text-decoration: underline dotted; }
+.overview__spend-row--rest:hover { color: var(--accent); }
+
+.overview__spend-days { margin-top: 8px; }
+.overview__spend-bars {
+  display: flex; align-items: flex-end; gap: 2px;
+  height: 22px; margin-top: 4px;
+}
+.overview__spend-bar {
+  flex: 1 1 0; min-width: 0; border-radius: 1px;
+  background: var(--accent); opacity: 0.75;
+}
+.overview__spend-bar:hover { opacity: 1; }
+/* A day with no calls keeps its slot as a baseline tick — a sparse month has to
+   look sparse rather than dense-and-small. */
+.overview__spend-bar--empty {
+  height: 2px; background: var(--chat-border-strong); opacity: 1;
+}
+
+/* Period control. Anchored to the card head, popover over the tiles below — the
+   page must not grow a row just because a menu is open. */
+.overview__period { position: relative; margin-left: auto; }
+.overview__period-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 7px; font-size: 11px; font-weight: 600;
+  color: var(--chat-text-muted); background: var(--chat-surface-2);
+  border: 1px solid var(--chat-border); border-radius: 999px; cursor: pointer;
+}
+.overview__period-btn:hover:not(:disabled) {
+  color: var(--chat-text); border-color: var(--chat-border-strong);
+}
+.overview__period-btn:disabled { opacity: 0.6; cursor: default; }
+.overview__period-btn--active { color: var(--accent); border-color: var(--accent); }
+.overview__period-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  width: 210px; padding: 8px; display: flex; flex-direction: column; gap: 3px;
+  background: var(--chat-surface); border: 1px solid var(--chat-border-strong);
+  border-radius: 12px; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+.overview__period-preset {
+  text-align: left; padding: 5px 7px; font-size: 12px; color: var(--chat-text);
+  background: none; border: none; border-radius: 7px; cursor: pointer;
+}
+.overview__period-preset:hover { background: var(--chat-surface-2); }
+.overview__period-fields {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  margin-top: 4px; padding-top: 7px; border-top: 1px solid var(--chat-border);
+}
+.overview__period-fields label {
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--chat-text-muted);
+}
+.overview__period-fields input {
+  width: 100%; padding: 3px 5px; font-size: 11px; color: var(--chat-text);
+  background: var(--chat-surface-2); border: 1px solid var(--chat-border);
+  border-radius: 6px;
+}
+.overview__period-actions {
+  display: flex; justify-content: space-between; gap: 6px; margin-top: 6px;
+}
+.overview__period-reset,
+.overview__period-apply {
+  padding: 4px 9px; font-size: 11px; font-weight: 600;
+  border-radius: 7px; cursor: pointer;
+}
+.overview__period-reset {
+  color: var(--chat-text-muted); background: none; border: none;
+}
+.overview__period-reset:hover { color: var(--chat-text); }
+.overview__period-apply {
+  color: #fff; background: var(--accent); border: 1px solid var(--accent);
+}
+.overview__period-apply:disabled { opacity: 0.45; cursor: default; }
+.overview__spend-error {
+  margin: 6px 0 0; font-size: 11.5px; color: var(--status-bad, #dc2626);
+}
+
+/* What caching is worth, in money, under the headline it modifies. */
+.overview__spend-cache {
+  margin: 4px 0 0; font-size: 11px; line-height: 1.45;
+  color: var(--chat-text-muted);
+}
+.overview__spend-cache-plain { font-weight: 600; color: var(--chat-text); }
+.overview__spend-cache-saved { color: var(--status-good, #16a34a); font-weight: 600; }
+.overview__spend-cache-lost { color: var(--status-warn); font-weight: 600; }
+
+/* Tokens sit between the label and the money: the count is the evidence, the
+   money is the answer, and the eye should reach the money last. */
+.overview__spend-row-tokens,
+.overview__spend-bucket-tokens,
+.overview__spend-model-tokens {
+  font-size: 11px; color: var(--chat-text-muted);
+  font-variant-numeric: tabular-nums; flex: 0 0 auto;
+}
+.overview__spend-bucket-tokens { margin-left: auto; }
+.overview__spend-bucket-value { margin-left: 0; min-width: 52px; text-align: right; }
+.overview__spend-row-value { min-width: 48px; text-align: right; }
+
+/* Models are two or three lines at most, so they read better as one wrapped row
+   than as a third column squeezed against the breakdowns. */
+.overview__spend-models { margin-top: 7px; }
+.overview__spend-model-line {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px;
+}
+.overview__spend-model-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* A picked row. The whole row is the hit target — a separate icon would cost the
+   width the labels need. */
+.overview__spend-row-btn {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; width: 100%; padding: 0; text-align: left;
+  background: none; border: none; color: inherit; font: inherit; cursor: pointer;
+}
+.overview__spend-rows li:hover .overview__spend-row-btn { color: var(--accent); }
+/* Pulled 5px left so the accent bar sits beside the row rather than on top of
+   the bucket dot, without moving the label. */
+/* Colour alone marks the picked row — a filled band read as a selected table
+   row and drew the eye away from the figures. */
+.overview__spend-row--picked .overview__spend-row-btn,
+.overview__spend-row--picked .overview__spend-row-value,
+.overview__spend-row--picked .overview__spend-row-tokens {
+  color: var(--accent);
+}
+.overview__spend-row--picked .overview__spend-row-btn { color: var(--accent); }
+.overview__spend-model {
+  display: inline-flex; align-items: baseline; gap: 6px; font-size: 12px;
+  padding: 1px 5px; margin: -1px -5px; color: inherit; font-family: inherit;
+  background: none; border: none; border-radius: 6px; cursor: pointer;
+}
+.overview__spend-model:hover { background: var(--chat-surface-2); }
+.overview__spend-model--active { color: var(--accent); }
+.overview__spend-model--active .overview__spend-model-value { color: var(--accent); }
+
+
+/* One column: the three breakdowns stack, so the span would only stretch a
+   single-column tile. */
+@media (max-width: 1180px) {
+  .overview__grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .overview__grid > *,
+  .overview__vessel,
+  .overview__card--wide { grid-column: span 3; }
+  .overview__card--wide { grid-column: span 6; }
+}
+@media (max-width: 720px) {
+  .overview__grid { grid-template-columns: 1fr; }
+  .overview__grid > *,
+  .overview__vessel,
+  .overview__card--wide { grid-column: span 1; }
+  .overview__spend-grid { grid-template-columns: 1fr; }
+  .overview__spend-top { flex-direction: column; gap: 4px; }
+}
+
+@media (max-width: 640px) {
+  .overview__photo { flex-basis: 100%; min-height: 104px; }
+  .overview__grid { grid-template-columns: 1fr; }
+}
