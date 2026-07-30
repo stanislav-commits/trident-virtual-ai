@@ -274,7 +274,7 @@ export function AssetDrawer({
     ) ?? [];
   // Manufacturer approvals of the equipment TYPE (MED Module B/D, EC type
   // examination, declarations of conformity). They approve a model rather than
-  // this unit, never expire, and belong to the asset — v60 keeps them out of
+  // this unit, never expire, and belong to the asset — they stay out of
   // the vessel's certificate register entirely.
   const typeApprovals =
     related?.documents.filter((d) => d.docClass === "type_approval") ?? [];
@@ -538,7 +538,7 @@ export function AssetDrawer({
     makeFieldSaver(asset.id, field);
 
   /**
-   * v60 Compliance Document Library row 010: "Add a prompt to verify and
+   * Catalogue rule: "Add a prompt to verify and
    * replace linked type approval/MED/DoC documents whenever the brand, type or
    * model of an asset changes. Existing documents should only remain linked
    * where they still apply to the updated equipment."

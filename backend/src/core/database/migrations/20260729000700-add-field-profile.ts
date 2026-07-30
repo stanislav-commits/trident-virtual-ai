@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * Per-document field visibility from the v60 Certificate Field Matrix.
+ * Per-document field visibility, from the certificate field matrix.
  *
  * The legend leaves no room for interpretation: "☑ = field is displayed and
  * populated from document scan; ☐ = field is hidden for this document type. No
@@ -20,8 +20,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * has 114 distinct values across 117 rows and a few of them are prose rather
  * than field names, so it is shown to the operator rather than parsed.
  */
-export class AddV60FieldProfile20260729000700 implements MigrationInterface {
-  name = 'AddV60FieldProfile20260729000700';
+export class AddFieldProfile20260729000700 implements MigrationInterface {
+  name = 'AddFieldProfile20260729000700';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     for (const table of ['compliance_doc_master', 'compliance_doc_types']) {

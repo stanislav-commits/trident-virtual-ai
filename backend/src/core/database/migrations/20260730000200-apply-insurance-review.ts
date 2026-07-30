@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * The v60 Review Notes decisions for section 1.11 (Insurance).
+ * The agreed review decisions for section 1.11 (Insurance).
  *
  * 1.11.3 — "Merge the separate Greece, Italy and Spain records into one
  * multi-document entry… Replace 1.11.3–1.11.5 with 1.11.3 P&I Regional
@@ -27,8 +27,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * wholesale — this touches only those two rows, only on vessels under 500 GT,
  * and only where nothing has been filed against them.
  */
-export class ApplyV60InsuranceReview20260730000200 implements MigrationInterface {
-  name = 'ApplyV60InsuranceReview20260730000200';
+export class ApplyInsuranceReview20260730000200 implements MigrationInterface {
+  name = 'ApplyInsuranceReview20260730000200';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ── 1.11.3: rename, allow several current documents ──

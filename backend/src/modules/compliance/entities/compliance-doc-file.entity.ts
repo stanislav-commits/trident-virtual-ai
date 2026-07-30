@@ -11,7 +11,7 @@ import { DocumentEntity } from '../../documents/entities/document.entity';
 import { ComplianceDocEntity } from './compliance-doc.entity';
 
 /**
- * A supporting document attached to a compliance record (v60 Rule 4) — a
+ * A supporting document attached to a compliance record — a
  * report, checklist, photo, statement or a second certificate that belongs to
  * the same obligation.
  *
@@ -68,7 +68,7 @@ export class ComplianceDocFileEntity {
   kind!: string | null;
 
   /**
-   * Free tag the review notes ask for: jurisdiction on the P&I supplements
+   * Free tag: jurisdiction on the P&I supplements
    * (1.11.3), vessel name on the MLC repatriation certificates (1.11.6).
    */
   @Column({ name: 'label', type: 'varchar', length: 120, nullable: true })

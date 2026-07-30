@@ -232,7 +232,7 @@ export class ComplianceController {
     return this.complianceService.restoreDoc(shipId, docId);
   }
 
-  // ── Supporting documents (v60 Rule 4) ──
+  // ── Supporting documents ──
 
   @Get('docs/:docId/files')
   listDocFiles(

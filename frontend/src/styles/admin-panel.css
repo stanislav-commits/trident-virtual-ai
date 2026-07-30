@@ -10110,7 +10110,7 @@
   margin: 6px 0 0; font-size: 11px; font-style: italic;
   color: var(--chat-text-muted);
 }
-/* v60 library row 010 — a type approval describes the model that was fitted;
+/* A type approval describes the model that was fitted;
    changing brand or model may invalidate it, so the link needs a human look. */
 .assets-section__approval-review {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -10131,7 +10131,7 @@
 }
 .assets-section__certs-head:first-child { margin-top: 0; }
 
-/* v60 field matrix rendered inline under each record. Dense on purpose: this
+/* Field matrix rendered inline under each record. Dense on purpose: this
    competes with the record row for attention and must not win. */
 .compliance__fields {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -10189,7 +10189,7 @@
 .compliance__type--not-required.compliance__type--open .compliance__type-name {
   opacity: 1;
 }
-/* A row the v60 workbook does not cover — still on the old archetype. */
+/* A row the catalogue does not type yet — still on the old archetype. */
 .compliance__archetype--legacy {
   color: var(--chat-text-muted);
   background: transparent;

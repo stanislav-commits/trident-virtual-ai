@@ -99,10 +99,10 @@ import { ClearReportFalseExpiry20260729000200 } from './migrations/2026072900020
 import { AddVesselMasterData20260729000300 } from './migrations/20260729000300-add-vessel-master-data';
 import { AddComplianceVersioning20260729000400 } from './migrations/20260729000400-add-compliance-versioning';
 import { AddComplianceDocFiles20260729000500 } from './migrations/20260729000500-add-compliance-doc-files';
-import { AddV60DocumentType20260729000600 } from './migrations/20260729000600-add-v60-document-type';
-import { AddV60FieldProfile20260729000700 } from './migrations/20260729000700-add-v60-field-profile';
+import { AddDocumentTypeAxes20260729000600 } from './migrations/20260729000600-add-document-type-axes';
+import { AddFieldProfile20260729000700 } from './migrations/20260729000700-add-field-profile';
 import { AddTypeApprovalDocClass20260730000100 } from './migrations/20260730000100-add-type-approval-doc-class';
-import { ApplyV60InsuranceReview20260730000200 } from './migrations/20260730000200-apply-v60-insurance-review';
+import { ApplyInsuranceReview20260730000200 } from './migrations/20260730000200-apply-insurance-review';
 import { RefileMisfiledInsurance20260730000300 } from './migrations/20260730000300-refile-misfiled-insurance';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
@@ -228,10 +228,10 @@ const dataSource = new DataSource({
     AddVesselMasterData20260729000300,
     AddComplianceVersioning20260729000400,
     AddComplianceDocFiles20260729000500,
-    AddV60DocumentType20260729000600,
-    AddV60FieldProfile20260729000700,
+    AddDocumentTypeAxes20260729000600,
+    AddFieldProfile20260729000700,
     AddTypeApprovalDocClass20260730000100,
-    ApplyV60InsuranceReview20260730000200,
+    ApplyInsuranceReview20260730000200,
     RefileMisfiledInsurance20260730000300,
   ],
   synchronize: false,

@@ -4,7 +4,7 @@ import { prettyLabel, formatDateDMY } from "./compliance/complianceLabels";
 /**
  * The record's fields, laid out in the register itself.
  *
- * v60's Certificate Field Matrix decides which fields a document shows (☑ per
+ * The certificate field matrix decides which fields a document shows (☑ per
  * document, "no optional values"), and the operator should be able to read them
  * without opening anything — the values used to live only inside the edit
  * window, so checking an expiry or a certificate number meant a click and a
@@ -59,11 +59,11 @@ export function ComplianceRecordFields({
   vessel,
 }: {
   record: ComplianceRecord;
-  /** Visible slugs for this document; null when v60 does not cover it. */
+  /** Visible slugs for this document; null when the catalogue defines none. */
   profile: string[] | null | undefined;
   vessel: ComplianceVessel | undefined;
 }) {
-  // Without a v60 profile fall back to whatever the record actually stores, so
+  // Without a profile fall back to whatever the record actually stores, so
   // rows the workbook does not cover still show their values instead of nothing.
   const slugs =
     profile && profile.length

@@ -158,12 +158,12 @@ export function ComplianceTypeRow({
               type.documentType ? "" : " compliance__archetype--legacy"
             }`}
             title={[
-              // v60's type is shown when the workbook covers this row; the old
+              // The catalogue's document type is shown where it has one; the old
               // archetype is what still drives the field block, so both are
               // worth seeing while the two coexist.
               type.documentType
-                ? `v60 type: ${type.documentType}${type.v60Ref ? ` (ref ${type.v60Ref})` : ""}`
-                : "Not covered by the v60 workbook — still on the v9 archetype",
+                ? `Type: ${type.documentType}${type.libraryRef ? ` (ref ${type.libraryRef})` : ""}`
+                : "Not typed by the catalogue yet — still on the v9 archetype",
               `Archetype: ${type.archetype}`,
               type.validityDriver && `Validity: ${type.validityDriver}`,
               type.reminderProfile && `Reminders: ${type.reminderProfile}`,
@@ -225,7 +225,7 @@ export function ComplianceTypeRow({
                 {type.renewalCycle && <span>Renews: {type.renewalCycle}</span>}
               </div>
               {/* The matrix's Special Certificate Data cell: the extra fields
-                  v60 expects on this document. Free text — shown for the
+                  the catalogue expects on this document. Free text — shown for the
                   operator to act on, not parsed into inputs. */}
               {type.specialData && (
                 <p className="compliance__special">
@@ -288,7 +288,7 @@ export function ComplianceTypeRow({
                       ×
                     </button>
                   </div>
-                  {/* v60 field matrix: the document's fields, readable in the
+                  {/* Field matrix: the document's fields, readable in the
                       register itself rather than only inside the edit window. */}
                   <ComplianceRecordFields
                     record={rec}

@@ -268,11 +268,11 @@ export function categoryForDocClass(
 /**
  * Map a compliance document type to its access resource category.
  *
- * Covers both the current 11 archetypes and the v60 Document Type Profiles, so
+ * Covers both the current 11 archetypes and the document-type profiles, so
  * retyping the catalogue cannot silently un-gate a document: an unmapped type
  * falls through to `default` and is NOT access-controlled, which for a name
- * like FLAG_APPROVAL (v60's type for the Ship Security Plan) would open exactly
- * the document v60 marks Restricted. Add every new type here in the same commit
+ * like FLAG_APPROVAL (the type of the Ship Security Plan) would open exactly
+ * the document that must stay restricted. Add every new type here in the same commit
  * that introduces it.
  */
 export function categoryForArchetype(
@@ -281,18 +281,18 @@ export function categoryForArchetype(
   switch ((archetype ?? '').toUpperCase()) {
     // ── statutory / flag / class certificates ──
     case 'STAT_CERT':
-    case 'CLASS_CERT': // v60
-    case 'STAT_RECORD': // v60 — record supplementing a statutory certificate
-    case 'FLAG_APPROVAL': // v60 — incl. the Ship Security Plan
-    case 'FLAG_EXEMPTION': // v60
-    case 'CLASS_APPROVAL': // v60
-    case 'CLASS_EXEMPTION': // v60
+    case 'CLASS_CERT': 
+    case 'STAT_RECORD': // record supplementing a statutory certificate
+    case 'FLAG_APPROVAL': // incl. the Ship Security Plan
+    case 'FLAG_EXEMPTION': 
+    case 'CLASS_APPROVAL': 
+    case 'CLASS_EXEMPTION': 
       return ResourceCategory.COMPLIANCE_STATUTORY;
     // ── equipment ──
     case 'EQUIP_SVC':
     case 'EQUIP_TYPE':
-    case 'TYPE_APPROVAL': // v60
-    case 'COMPLIANCE_SERVICE': // v60 — third-party service agreements
+    case 'TYPE_APPROVAL': 
+    case 'COMPLIANCE_SERVICE': // third-party service agreements
       return ResourceCategory.COMPLIANCE_EQUIPMENT;
     case 'PERSONNEL':
       return ResourceCategory.COMPLIANCE_PERSONNEL;
@@ -302,12 +302,12 @@ export function categoryForArchetype(
     case 'AGREEMENT':
       return ResourceCategory.COMPLIANCE_LEGAL;
     case 'RECORD_BOOK':
-    case 'RECORD': // v60
-    case 'BUILD_RECORD': // v60
+    case 'RECORD': 
+    case 'BUILD_RECORD': 
       return ResourceCategory.COMPLIANCE_RECORDS;
     case 'REPORT':
-    case 'SURVEY_REPORT': // v60
-    case 'CLASS_STATUS': // v60
+    case 'SURVEY_REPORT': 
+    case 'CLASS_STATUS': 
       return ResourceCategory.COMPLIANCE_REPORTS;
     case 'PLAN':
       return ResourceCategory.KB_PLANS;

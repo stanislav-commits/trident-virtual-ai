@@ -62,11 +62,11 @@ const COLUMN_TO_PROPERTY: Record<string, keyof ComplianceDocMasterEntity> = {
   reg_basis: 'regBasis',
   basis_note: 'basisNote',
   drives_pms: 'drivesPms',
-  // v60 axes — see AddV60DocumentType20260729000600
+  // document type + validity axes
   document_type: 'documentType',
   validity_driver: 'validityDriver',
   reminder_profile: 'reminderProfile',
-  v60_ref: 'v60Ref',
+  library_ref: 'libraryRef',
   field_profile: 'fieldProfile',
   special_data: 'specialData',
 };
@@ -111,7 +111,7 @@ async function run() {
        SET "document_type"    = m."document_type",
            "validity_driver"  = m."validity_driver",
            "reminder_profile" = m."reminder_profile",
-           "v60_ref"          = m."v60_ref",
+           "library_ref"          = m."library_ref",
            "field_profile"    = m."field_profile",
            "special_data"     = m."special_data",
            "archetype"        = m."archetype",
@@ -182,7 +182,7 @@ async function run() {
           documentType: row.documentType,
           validityDriver: row.validityDriver,
           reminderProfile: row.reminderProfile,
-          v60Ref: row.v60Ref,
+          libraryRef: row.libraryRef,
           fieldProfile: row.fieldProfile,
           specialData: row.specialData,
         }),

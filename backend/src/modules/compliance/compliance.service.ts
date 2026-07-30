@@ -43,8 +43,8 @@ import {
   identityChecks,
   linkRoleForArchetype,
   requiredFields,
-  V60_FIELD_SPECS,
-  V60_NON_RECORD_FIELDS,
+  CERTIFICATE_FIELD_SPECS,
+  NON_RECORD_FIELDS,
   validityField,
 } from './compliance-archetypes';
 
@@ -356,7 +356,7 @@ export class ComplianceService {
           regBasis: row.regBasis,
           basisNote: row.basisNote,
           drivesPms: row.drivesPms,
-          // version policy (v60 Behaviour Matrix)
+          // version policy
           oneCurrentVersion: row.oneCurrentVersion,
           retainHistory: row.retainHistory,
           autoArchivePrevious: row.autoArchivePrevious,
@@ -473,7 +473,7 @@ export class ComplianceService {
       linksByDoc.set(l.docId, list);
     }
 
-    // Supporting-document count per record (v60 Rule 4) — the list itself is
+    // Supporting-document count per record — the list itself is
     // fetched on demand when a record is opened.
     const attachmentsByDoc = new Map<
       string,
@@ -558,7 +558,7 @@ export class ComplianceService {
         regBasis: type.regBasis,
         basisNote: type.basisNote,
         drivesPms: type.drivesPms,
-        // v60 axes. archetype is still what drives field blocks, PMS specs and
+        // Document type + validity axes. archetype is still what drives field blocks, PMS specs and
         // the access gate — documentType is displayed and will take over when
         // the field profiles land.
         documentType: type.documentType,
@@ -566,7 +566,7 @@ export class ComplianceService {
         specialData: type.specialData,
         validityDriver: type.validityDriver,
         reminderProfile: type.reminderProfile,
-        v60Ref: type.v60Ref,
+        libraryRef: type.libraryRef,
         oneCurrentVersion: type.oneCurrentVersion,
         retainHistory: type.retainHistory,
         status,
@@ -591,7 +591,7 @@ export class ComplianceService {
               : null,
           identityFlags: doc.identityFlags ?? null,
           // Tags, not just a count: one record can hold the yacht's and the
-          // tender's certificate side by side (v60 1.11.6), and "2 files" does
+          // tender's certificate side by side, and "2 files" does
           // not tell the register — or the chat — which is which.
           attachments: attachmentsByDoc.get(doc.id) ?? [],
           attachmentCount: (attachmentsByDoc.get(doc.id) ?? []).length,
@@ -630,9 +630,9 @@ export class ComplianceService {
         byCode(String(a.sfiCode), String(b.sfiCode)),
       );
     }
-    // Vessel identity, sent once. v60's field matrix ticks these on 80-odd
-    // documents and 1.1.1's template says they "should auto-populate from
-    // Vessel Master Data" rather than be typed onto each certificate.
+    // Vessel identity, sent once. The field matrix ticks these on 80-odd
+    // documents; they auto-populate from Vessel Master Data rather than
+    // being typed onto each certificate.
     const vessel = {
       vessel_gt: ship?.grossTonnage ?? null,
       vessel_nt: ship?.netTonnage ?? null,
@@ -774,8 +774,8 @@ export class ComplianceService {
         await this.addLink(shipId, saved.id, { assetId });
       }
     }
-    // A new issue replaces the previous one for the same target (v60: One
-    // Current Version + Auto-archive Previous). Runs after the links exist,
+    // A new issue replaces the previous one for the same target when the
+    // catalogue keeps a single current version and auto-archives the previous. Runs after the links exist,
     // since "same target" is defined by them.
     await this.supersedePrevious(shipId, saved, type);
     // Document wins, PMS follows — drive the linked maintenance task.
@@ -855,13 +855,13 @@ export class ComplianceService {
     }
   }
 
-  // ── Supporting documents (v60 Rule 4) ──
+  // ── Supporting documents ──
 
   /**
    * Attachments on a record: reports, checklists, photos, statements, or a
    * second certificate belonging to the same obligation. `kind` says what the
    * attachment is (Flag Certificate vs Insurer Evidence on 1.11.8); `label` is
-   * the free tag the review notes ask for (jurisdiction on the P&I supplements,
+   * the free tag (jurisdiction on the P&I supplements,
    * vessel name on the MLC repatriation certificates).
    */
   async listDocFiles(shipId: string, docId: string) {
@@ -1175,10 +1175,10 @@ export class ComplianceService {
     return {
       base: BASE_FIELDS,
       archetypes: ARCHETYPE_FIELDS,
-      // v60 field-matrix slots, so the record form can be driven by a
+      // Field-matrix slots, so the record form can be driven by a
       // document's field_profile rather than only by its archetype block.
-      v60Fields: V60_FIELD_SPECS,
-      v60NonRecordFields: [...V60_NON_RECORD_FIELDS],
+      certificateFields: CERTIFICATE_FIELD_SPECS,
+      nonRecordFields: [...NON_RECORD_FIELDS],
     };
   }
 
@@ -1226,8 +1226,8 @@ export class ComplianceService {
   }
 
   /**
-   * Withdraw a record. Where the catalogue says to retain history (v60: Retain
-   * History = Yes in 105 of 108 rows) this archives instead of deleting — a
+   * Withdraw a record. Where the catalogue says to retain history this
+   * archives instead of deleting — a
    * hard delete took the stored file and the extracted text with it, and there
    * was no way back. `{ purge: true }` is the explicit escape hatch.
    */

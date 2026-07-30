@@ -56,8 +56,8 @@ export class ShipEntity {
   netTonnage!: number | null;
 
   /**
-   * Vessel master data printed on statutory certificates. v60 auto-populates
-   * these into the record form instead of having them typed per certificate.
+   * Vessel master data printed on statutory certificates. Auto-populated into
+   * the record form instead of typed onto each certificate.
    * `portOfRegistry` is the legal port on the Certificate of Registry — not
    * `homePort`, which is operational and may differ.
    */
@@ -141,6 +141,19 @@ export class ShipEntity {
    */
   @Column({ name: 'is_platform', type: 'boolean', default: false })
   isPlatform!: boolean;
+
+  /**
+   * Vessel photo metadata. The binary is in object storage; the provider is kept
+   * per row so a read still works after the storage switch is flipped.
+   */
+  @Column({ name: 'photo_provider', type: 'varchar', length: 16, nullable: true })
+  photoProvider!: string | null;
+
+  @Column({ name: 'photo_mime', type: 'varchar', length: 64, nullable: true })
+  photoMime!: string | null;
+
+  @Column({ name: 'photo_updated_at', type: 'timestamptz', nullable: true })
+  photoUpdatedAt!: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

@@ -25,8 +25,8 @@ interface ComplianceItem {
   /** Y / C / R / TBD resolved for THIS vessel — decides what "missing" means. */
   applicabilityVerdict: string | null;
   /**
-   * Supporting documents on the record, with their tags. v60 keeps several
-   * papers under ONE row rather than splitting the row — the SeaWolf X and
+   * Supporting documents on the record, with their tags. Several papers can
+   * live under ONE row rather than splitting the row — the SeaWolf X and
    * SeaWolf Chase repatriation certificates live under 1.11.6 together, and the
    * Greece / Italy / Spain P&I supplements under 1.11.3 tagged by jurisdiction.
    * Without the tags the answer cannot say which paper covers what.

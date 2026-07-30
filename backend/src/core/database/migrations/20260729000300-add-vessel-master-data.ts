@@ -1,13 +1,12 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * Vessel master data — the identity fields v60 auto-populates into certificates.
+ * Vessel master data — the identity fields auto-populated into certificates.
  *
- * The Certificate Field Matrix ticks nine vessel-identity columns across the
- * library (Vessel GT, NT, IMO, Official Number, Call Sign, Flag, Port of
- * Registry, Registered Owner, Principal Dimensions), and 1.1.1's field template
- * says they "should auto-populate from Vessel Master Data" rather than be typed
- * onto each certificate. Five of the nine already exist on `ships`; these are
+ * The certificate field matrix ticks nine vessel-identity columns across the
+ * catalogue (Vessel GT, NT, IMO, Official Number, Call Sign, Flag, Port of
+ * Registry, Registered Owner, Principal Dimensions); they come from Vessel
+ * Master Data rather than being typed onto each certificate. Five of the nine already exist on `ships`; these are
  * the rest.
  *
  * `port_of_registry` is deliberately NOT `home_port`: the port a vessel is

@@ -71,7 +71,7 @@ export interface ArchetypeField {
   auth: boolean;
 }
 
-export interface V60FieldSpec {
+export interface CertificateFieldSpec {
   datatype: string;
   hint: string;
   options?: string[];
@@ -80,10 +80,10 @@ export interface V60FieldSpec {
 export interface ArchetypeSchema {
   base: ArchetypeField[];
   archetypes: Record<string, ArchetypeField[]>;
-  /** v60 field-matrix slots, so the form can follow a document's profile. */
-  v60Fields?: Record<string, V60FieldSpec>;
+  /** Field-matrix slots, so the form can follow a document's profile. */
+  certificateFields?: Record<string, CertificateFieldSpec>;
   /** Profile slugs that are NOT stored per record (vessel identity, links). */
-  v60NonRecordFields?: string[];
+  nonRecordFields?: string[];
 }
 
 export interface ComplianceDocType {
@@ -96,14 +96,14 @@ export interface ComplianceDocType {
   applicabilityVerdict: ApplicabilityVerdict;
   oneCurrentVersion?: boolean;
   retainHistory?: boolean;
-  /** v60 Certificate Field Matrix / Behaviour Matrix. Null where v60 has no row. */
+  /** Document type + validity axes. Null where the catalogue has no entry. */
   documentType?: string | null;
-  /** Visible field slugs from the v60 Certificate Field Matrix (☑ columns). */
+  /** Visible field slugs from the certificate field matrix (☑ columns). */
   fieldProfile?: string[] | null;
   specialData?: string | null;
   validityDriver?: string | null;
   reminderProfile?: string | null;
-  v60Ref?: string | null;
+  libraryRef?: string | null;
   renewalCycle: string | null;
   surveyWindow: string | null;
   updateTrigger: string | null;

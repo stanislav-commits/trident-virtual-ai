@@ -5,8 +5,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * EC type examination, ATEX, declaration of conformity), stored against the
  * asset rather than in the vessel's certificate register.
  *
- * v60: TYPE_APPROVAL "belongs primarily to the equipment type, not the vessel
- * certificate set", Primary Location "Asset Documents". SeaWolf X alone holds
+ * A type approval belongs to the equipment type, not to the vessel certificate
+ * set, and is filed under Asset Documents. SeaWolf X alone holds
  * 33 of these with nowhere to put them, and the library forbids removing them
  * from Compliance until asset-document upload exists — this is that upload.
  *

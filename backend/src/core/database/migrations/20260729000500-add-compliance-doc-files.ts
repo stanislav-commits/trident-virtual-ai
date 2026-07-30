@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * Supporting documents attached to a compliance record — v60 Rule 4:
+ * Supporting documents attached to a compliance record:
  * "Supporting Documents should link reports, checklists, photos and statements
  * to a parent certificate without forcing each file to become a separate
  * certificate record."

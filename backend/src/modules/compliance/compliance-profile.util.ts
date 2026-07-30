@@ -75,9 +75,9 @@ export function deriveFlagRegistry(flag: string | null): string | null {
  *   Y = Required   C = Conditional (see notes)   R = Recommended
  *   N = Not Required   blank = TBD for this vessel
  *
- * Only `required` makes a document a compliance GAP. This is v60's Rule 2 —
- * "Conditional documents must not create a missing-document alert unless
- * applicability has been confirmed for the vessel" — and confirming is exactly
+ * Only `required` makes a document a compliance GAP: a conditional document
+ * must not raise a missing-document alert until applicability is confirmed
+ * for the vessel, and confirming is exactly
  * an operator switching the per-ship type from C to Y (PATCH types/:typeId).
  * Blank is TBD, so it is treated as conditional rather than silently required.
  */

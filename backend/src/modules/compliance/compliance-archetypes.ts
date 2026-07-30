@@ -211,8 +211,8 @@ export function requiredFields(archetype: string | null): string[] {
  *
  * A date field being present is not the same as the document expiring: REPORT,
  * PLAN, PUBLICATION, RECORD_BOOK and EQUIP_TYPE are all dated and none of them
- * expire. This mirrors v60's Rule 1 — what a document IS and how its validity
- * changes are separate dimensions.
+ * expire. What a document IS and how its validity changes are separate
+ * dimensions and must stay separate.
  */
 const VALIDITY_FIELD: Record<string, string | null> = {
   STAT_CERT: 'expiry_date', //   [AUTH]
@@ -301,21 +301,21 @@ export function linkRoleForArchetype(archetype: string | null): string {
 }
 
 /**
- * The v60 Certificate Field Matrix's 22 tick columns, as record fields.
+ * The certificate field matrix's 22 columns, as record fields.
  *
  * `field_profile` on a catalogue row lists which of these a document shows, but
  * the matrix only names them — it says nothing about how to capture them. Five
  * had no home at all in the record model (approval_authority,
  * approval_capacity, survey_window, governing_standard, conditions_reference),
  * so the register displayed a profile it had no way to fill: 52 documents tick
- * Governing Standard, which the review notes explicitly put in place of the old
- * Survey Regime, and 32 tick Conditions Reference.
+ * Governing Standard, which replaces the old Survey Regime, and 32 tick
+ * Conditions Reference.
  *
  * Nine slugs are omitted on purpose — the vessel-identity block is a display
  * mask over Vessel Master Data on `ships`, not values stored per record — as is
  * `linked_entity`, which is the doc_asset_links model.
  */
-export const V60_FIELD_SPECS: Record<
+export const CERTIFICATE_FIELD_SPECS: Record<
   string,
   { datatype: string; hint: string; options?: string[] }
 > = {
@@ -347,7 +347,7 @@ export const V60_FIELD_SPECS: Record<
 };
 
 /** Slugs the profile can list but that are NOT stored on the record. */
-export const V60_NON_RECORD_FIELDS = new Set([
+export const NON_RECORD_FIELDS = new Set([
   'linked_entity',
   'vessel_gt',
   'vessel_nt',

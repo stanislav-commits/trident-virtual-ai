@@ -2,7 +2,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
  * Version / history model for compliance records, plus the catalogue policies
- * that drive it (v60 Certificate Behaviour Matrix).
+ * that drive it (the certificate behaviour matrix).
  *
  * Today a renewal is simply a second row under the same type, and typeStatus
  * takes the WORST status across every row — so a certificate that was renewed

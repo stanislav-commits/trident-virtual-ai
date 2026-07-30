@@ -116,8 +116,8 @@ export class ComplianceDocEntity {
   identityFlags!: Array<Record<string, unknown>> | null;
 
   /**
-   * Version model (v60 Behaviour Matrix — One Current Version / Retain History
-   * / Auto-archive Previous).
+   * Version model — one current version, retained history, auto-archived
+   * previous issue.
    *
    *   current     — counts towards the type's status
    *   superseded  — replaced by a newer issue; kept for the audit trail

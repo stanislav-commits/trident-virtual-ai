@@ -107,7 +107,7 @@ export class ComplianceDocMasterEntity {
   drivesPms!: string | null;
 
   /**
-   * Version policy (v60 Certificate Behaviour Matrix). `oneCurrentVersion`
+   * Version policy. `oneCurrentVersion`
    * decides whether a new issue supersedes the previous one for the same
    * target; `retainHistory` whether a withdrawn record is archived instead of
    * deleted; `autoArchivePrevious` whether superseding happens without asking.
@@ -125,13 +125,12 @@ export class ComplianceDocMasterEntity {
   mandatoryUpload!: boolean;
 
   /**
-   * v60 axes. `documentType` is what the document IS (Certificate Field
-   * Matrix); `validityDriver` + `reminderProfile` are how its status changes
-   * (Certificate Behaviour Matrix) — Rule 1 keeps them separate. Null on rows
+   * `documentType` is what the document IS; `validityDriver` +
+   * `reminderProfile` are how its status changes. They stay separate. Null on rows
    * the workbook does not cover (all of MARPOL, most of 1.12, and everything
-   * from 1.13 on, which leaves the register). `v60Ref` is the workbook row this
-   * one was matched to: the mapping is by NAME, never by code, because v60
-   * renumbered the 1.6/1.7/1.8 block.
+   * from 1.13 on, which leaves the register). `libraryRef` is the source row this
+   * one was matched to: the mapping is by NAME, never by code, because the
+   * source renumbered the 1.6/1.7/1.8 block.
    */
   @Column({ name: 'document_type', type: 'varchar', length: 30, nullable: true })
   documentType!: string | null;
@@ -142,11 +141,11 @@ export class ComplianceDocMasterEntity {
   @Column({ name: 'reminder_profile', type: 'varchar', length: 10, nullable: true })
   reminderProfile!: string | null;
 
-  @Column({ name: 'v60_ref', type: 'varchar', length: 12, nullable: true })
-  v60Ref!: string | null;
+  @Column({ name: 'library_ref', type: 'varchar', length: 12, nullable: true })
+  libraryRef!: string | null;
 
   /**
-   * Which fields this document shows, from the v60 Certificate Field Matrix
+   * Which fields this document shows, from the certificate field matrix
    * (☑ = displayed, ☐ = hidden, no optional values). Per DOCUMENT, not per
    * type: 32 STAT_CERT rows produce 16 different signatures. The nine
    * vessel-identity slugs are a display mask over Vessel Master Data on

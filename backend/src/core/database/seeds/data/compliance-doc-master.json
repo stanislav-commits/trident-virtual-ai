@@ -30,7 +30,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.1.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -45,7 +44,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "Official number; port of registry; registered owner"
+  "special_data": "Official number; port of registry; registered owner",
+  "library_ref": "1.1.1"
  },
  {
   "sfi_code": "1.1.2",
@@ -78,7 +78,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.1.2",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -92,7 +91,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Conditions reference; supporting certificate links"
+  "special_data": "Conditions reference; supporting certificate links",
+  "library_ref": "1.1.2"
  },
  {
   "sfi_code": "1.1.3",
@@ -125,7 +125,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.1.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -140,7 +139,8 @@
    "port_of_registry",
    "principal_dimensions"
   ],
-  "special_data": "GT; NT; principal dimensions; official number"
+  "special_data": "GT; NT; principal dimensions; official number",
+  "library_ref": "1.1.3"
  },
  {
   "sfi_code": "1.1.4",
@@ -173,7 +173,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.1.4",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -188,7 +187,8 @@
    "port_of_registry",
    "principal_dimensions"
   ],
-  "special_data": "Canal tonnage; principal dimensions"
+  "special_data": "Canal tonnage; principal dimensions",
+  "library_ref": "1.1.4"
  },
  {
   "sfi_code": "1.1.5",
@@ -221,7 +221,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.1.5",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -236,7 +235,8 @@
    "port_of_registry",
    "principal_dimensions"
   ],
-  "special_data": "Canal tonnage; principal dimensions"
+  "special_data": "Canal tonnage; principal dimensions",
+  "library_ref": "1.1.5"
  },
  {
   "sfi_code": "1.1.6",
@@ -269,7 +269,6 @@
   "document_type": "BUILD_RECORD",
   "validity_driver": "VD-PERMANENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.1.6",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -277,7 +276,8 @@
    "linked_entity",
    "official_number"
   ],
-  "special_data": "Official number; marking location; verification date"
+  "special_data": "Official number; marking location; verification date",
+  "library_ref": "1.1.6"
  },
  {
   "sfi_code": "1.1.7",
@@ -310,7 +310,6 @@
   "document_type": "BUILD_RECORD",
   "validity_driver": "VD-PERMANENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.1.7",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -319,7 +318,8 @@
    "official_number",
    "registered_owner"
   ],
-  "special_data": "Builder; hull number; place and date of build"
+  "special_data": "Builder; hull number; place and date of build",
+  "library_ref": "1.1.7"
  },
  {
   "sfi_code": "1.1.8",
@@ -352,7 +352,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-PERMANENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.1.8",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -360,7 +359,8 @@
    "linked_entity",
    "vessel_imo"
   ],
-  "special_data": "Survey date; surveyor; scope; certificate supported"
+  "special_data": "Survey date; surveyor; scope; certificate supported",
+  "library_ref": "1.1.8"
  },
  {
   "sfi_code": "1.1.9",
@@ -393,7 +393,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.1.9",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -407,7 +406,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Statement conditions"
+  "special_data": "Statement conditions",
+  "library_ref": "1.1.9"
  },
  {
   "sfi_code": "1.1.10",
@@ -440,7 +440,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.1.10",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -454,7 +453,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Statement conditions"
+  "special_data": "Statement conditions",
+  "library_ref": "1.1.10"
  },
  {
   "sfi_code": "1.2.1",
@@ -487,7 +487,6 @@
   "document_type": "CLASS_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.2.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -499,7 +498,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Class notation; additional class notations; classification society"
+  "special_data": "Class notation; additional class notations; classification society",
+  "library_ref": "1.2.1"
  },
  {
   "sfi_code": "1.2.2",
@@ -532,7 +532,6 @@
   "document_type": "CLASS_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.2.2",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -544,7 +543,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Reason for interim issue; superseded-by link; class notation"
+  "special_data": "Reason for interim issue; superseded-by link; class notation",
+  "library_ref": "1.2.2"
  },
  {
   "sfi_code": "1.2.3",
@@ -577,7 +577,6 @@
   "document_type": "CLASS_STATUS",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.2.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -590,7 +589,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Report date; reporting period; open conditions count; overdue surveys count"
+  "special_data": "Report date; reporting period; open conditions count; overdue surveys count",
+  "library_ref": "1.2.3"
  },
  {
   "sfi_code": "1.2.4",
@@ -623,7 +623,6 @@
   "document_type": "BUILD_RECORD",
   "validity_driver": "VD-PERMANENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.4",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -631,7 +630,8 @@
    "linked_entity",
    "official_number"
   ],
-  "special_data": "Builder; yard; hull number; keel-laying date"
+  "special_data": "Builder; yard; hull number; keel-laying date",
+  "library_ref": "1.2.4"
  },
  {
   "sfi_code": "1.2.5",
@@ -664,7 +664,6 @@
   "document_type": "BUILD_RECORD",
   "validity_driver": "VD-PERMANENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.5",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -672,7 +671,8 @@
    "linked_entity",
    "official_number"
   ],
-  "special_data": "Classification society; first-entry date; original class notation"
+  "special_data": "Classification society; first-entry date; original class notation",
+  "library_ref": "1.2.5"
  },
  {
   "sfi_code": "1.2.6",
@@ -705,7 +705,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.6",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -713,7 +712,8 @@
    "linked_entity",
    "vessel_imo"
   ],
-  "special_data": "Survey date; location; surveyor; scope; findings; related survey due item"
+  "special_data": "Survey date; location; surveyor; scope; findings; related survey due item",
+  "library_ref": "1.2.6"
  },
  {
   "sfi_code": "1.2.7",
@@ -746,7 +746,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.7",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -754,7 +753,8 @@
    "linked_entity",
    "vessel_imo"
   ],
-  "special_data": "Survey date; surveyor; shaft/asset link; method; findings; measurements"
+  "special_data": "Survey date; surveyor; shaft/asset link; method; findings; measurements",
+  "library_ref": "1.2.7"
  },
  {
   "sfi_code": "1.2.8",
@@ -787,7 +787,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.8",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -795,7 +794,8 @@
    "linked_entity",
    "vessel_imo"
   ],
-  "special_data": "Survey date; surveyor; rudder asset; clearances/measurements; findings"
+  "special_data": "Survey date; surveyor; rudder asset; clearances/measurements; findings",
+  "library_ref": "1.2.8"
  },
  {
   "sfi_code": "1.2.9",
@@ -828,14 +828,14 @@
   "document_type": "TYPE_APPROVAL",
   "validity_driver": "VD-PERMANENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.9",
   "field_profile": [
    "document_number",
    "issuing_party",
    "issue_date",
    "linked_entity"
   ],
-  "special_data": "Approval number; manufacturer; model/type; standard; approved sizes/range; linked assets"
+  "special_data": "Approval number; manufacturer; model/type; standard; approved sizes/range; linked assets",
+  "library_ref": "1.2.9"
  },
  {
   "sfi_code": "1.2.10",
@@ -868,7 +868,6 @@
   "document_type": "CLASS_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.10",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -878,7 +877,8 @@
    "linked_entity",
    "conditions_reference"
   ],
-  "special_data": "Approval reference; modification/project link; drawing/revision; approval status; conditions; issue date"
+  "special_data": "Approval reference; modification/project link; drawing/revision; approval status; conditions; issue date",
+  "library_ref": "1.2.10"
  },
  {
   "sfi_code": "1.2.11",
@@ -911,7 +911,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.11",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -921,7 +920,8 @@
    "linked_entity",
    "conditions_reference"
   ],
-  "special_data": "Approval reference; approving Administration/RO; approval capacity; rule/requirement; equivalent arrangement; conditions; linked system"
+  "special_data": "Approval reference; approving Administration/RO; approval capacity; rule/requirement; equivalent arrangement; conditions; linked system",
+  "library_ref": "1.2.11"
  },
  {
   "sfi_code": "1.2.12",
@@ -954,7 +954,6 @@
   "document_type": "CLASS_EXEMPTION",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.12",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -965,7 +964,8 @@
    "expiry_date",
    "conditions_reference"
   ],
-  "special_data": "Reference; related rule; reason; conditions; issue date; expiry if any; linked deficiency"
+  "special_data": "Reference; related rule; reason; conditions; issue date; expiry if any; linked deficiency",
+  "library_ref": "1.2.12"
  },
  {
   "sfi_code": "1.2.13",
@@ -998,7 +998,6 @@
   "document_type": "CLASS_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.2.13",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1008,7 +1007,8 @@
    "linked_entity",
    "conditions_reference"
   ],
-  "special_data": "Approval reference; design/system; approval basis; limitations; conditions; linked risk assessment"
+  "special_data": "Approval reference; design/system; approval basis; limitations; conditions; linked risk assessment",
+  "library_ref": "1.2.13"
  },
  {
   "sfi_code": "1.3.1",
@@ -1041,7 +1041,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.3.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1054,7 +1053,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Certificate category; operating area; passenger limit; endorsements"
+  "special_data": "Certificate category; operating area; passenger limit; endorsements",
+  "library_ref": "1.3.1"
  },
  {
   "sfi_code": "1.3.2",
@@ -1087,7 +1087,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.3.2",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1100,7 +1099,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Certificate category; operating limits; supporting-document links"
+  "special_data": "Certificate category; operating limits; supporting-document links",
+  "library_ref": "1.3.2"
  },
  {
   "sfi_code": "1.3.3",
@@ -1133,7 +1133,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.3.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1146,7 +1145,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Code edition; passenger limit; operating area"
+  "special_data": "Code edition; passenger limit; operating area",
+  "library_ref": "1.3.3"
  },
  {
   "sfi_code": "1.3.4",
@@ -1179,7 +1179,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.3.4",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1192,7 +1191,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Parent certificate number; equipment particulars; issue date"
+  "special_data": "Parent certificate number; equipment particulars; issue date",
+  "library_ref": "1.3.4"
  },
  {
   "sfi_code": "1.3.5",
@@ -1225,7 +1225,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.3.5",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1238,7 +1237,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Certificate scope; endorsements"
+  "special_data": "Certificate scope; endorsements",
+  "library_ref": "1.3.5"
  },
  {
   "sfi_code": "1.3.6",
@@ -1271,7 +1271,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.3.6",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1284,7 +1283,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Certificate scope; endorsements"
+  "special_data": "Certificate scope; endorsements",
+  "library_ref": "1.3.6"
  },
  {
   "sfi_code": "1.3.7",
@@ -1317,7 +1317,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.3.7",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1330,7 +1329,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Parent certificate number; equipment particulars"
+  "special_data": "Parent certificate number; equipment particulars",
+  "library_ref": "1.3.7"
  },
  {
   "sfi_code": "1.3.8",
@@ -1363,7 +1363,6 @@
   "document_type": "CLASS_EXEMPTION",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.3.8",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1374,7 +1373,8 @@
    "expiry_date",
    "conditions_reference"
   ],
-  "special_data": "Approval reference; rule; conditions; issue/expiry dates; linked system"
+  "special_data": "Approval reference; rule; conditions; issue/expiry dates; linked system",
+  "library_ref": "1.3.8"
  },
  {
   "sfi_code": "1.3.9",
@@ -1407,7 +1407,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.3.9",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1417,7 +1416,8 @@
    "linked_entity",
    "conditions_reference"
   ],
-  "special_data": "Letter reference; approving Administration/RO; approval capacity; accepted equipment/configuration; conditions"
+  "special_data": "Letter reference; approving Administration/RO; approval capacity; accepted equipment/configuration; conditions",
+  "library_ref": "1.3.9"
  },
  {
   "sfi_code": "1.3.10",
@@ -1450,7 +1450,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.3.10",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1463,7 +1462,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Passenger number; certificate scope; endorsements"
+  "special_data": "Passenger number; certificate scope; endorsements",
+  "library_ref": "1.3.10"
  },
  {
   "sfi_code": "1.4.1",
@@ -1496,7 +1496,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.4.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1511,7 +1510,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Sea area certified; Governing Standard; Related Form R"
+  "special_data": "Sea area certified; Governing Standard; Related Form R",
+  "library_ref": "1.4.1"
  },
  {
   "sfi_code": "1.4.2",
@@ -1544,7 +1544,6 @@
   "document_type": "STAT_RECORD",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.4.2",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1555,7 +1554,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Related radio certificate; Sea area; validity inherited from parent"
+  "special_data": "Related radio certificate; Sea area; validity inherited from parent",
+  "library_ref": "1.4.2"
  },
  {
   "sfi_code": "1.4.3",
@@ -1588,7 +1588,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.4.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1599,7 +1598,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Survey date; surveyor; survey type; sea area; related certificate and Form R"
+  "special_data": "Survey date; surveyor; survey type; sea area; related certificate and Form R",
+  "library_ref": "1.4.3"
  },
  {
   "sfi_code": "1.4.4",
@@ -1632,7 +1632,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.4.4",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1645,7 +1644,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "MMSI; station class; nature of service; hours of service; Governing Standard"
+  "special_data": "MMSI; station class; nature of service; hours of service; Governing Standard",
+  "library_ref": "1.4.4"
  },
  {
   "sfi_code": "1.4.5",
@@ -1678,7 +1678,6 @@
   "document_type": "COMPLIANCE_SERVICE",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.4.5",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1690,7 +1689,8 @@
    "vessel_call_sign",
    "vessel_flag"
   ],
-  "special_data": "Service type; provider; sea area covered; Governing Standard; related radio certificate"
+  "special_data": "Service type; provider; sea area covered; Governing Standard; related radio certificate",
+  "library_ref": "1.4.5"
  },
  {
   "sfi_code": "1.4.6",
@@ -1723,9 +1723,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.7",
@@ -1758,14 +1758,14 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.4.6",
   "field_profile": [
    "document_number",
    "issuing_party",
    "issue_date",
    "linked_entity"
   ],
-  "special_data": "Report date; report number; approved service company; attending technician; survey/test scope; equipment tested; outcome; findings/NC details where applicable; related statutory radio certificate"
+  "special_data": "Report date; report number; approved service company; attending technician; survey/test scope; equipment tested; outcome; findings/NC details where applicable; related statutory radio certificate",
+  "library_ref": "1.4.6"
  },
  {
   "sfi_code": "1.4.8",
@@ -1798,9 +1798,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.9",
@@ -1833,7 +1833,6 @@
   "document_type": "STAT_RECORD",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.4.7",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1846,7 +1845,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Report number; test completion date; authorised testing ASP; issued on behalf of Flag Administration; result; certified sea areas; linked LRIT transmitting asset; equipment manufacturer/model/serial number; IMN/terminal identity; Governing Standard; validity conditions / review triggers"
+  "special_data": "Report number; test completion date; authorised testing ASP; issued on behalf of Flag Administration; result; certified sea areas; linked LRIT transmitting asset; equipment manufacturer/model/serial number; IMN/terminal identity; Governing Standard; validity conditions / review triggers",
+  "library_ref": "1.4.7"
  },
  {
   "sfi_code": "1.4.10",
@@ -1879,9 +1879,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.11",
@@ -1914,7 +1914,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.4.11",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -1925,7 +1924,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Report number; test date; next annual test due; approved service company; result; linked EPIRB asset; beacon manufacturer/model/serial number; beacon type; protocol/coding type; Hex ID; MMSI or encoded identity; test equipment ID and calibration due; Governing Standard. Battery expiry and HRU expiry are surfaced read-only from the linked asset."
+  "special_data": "Report number; test date; next annual test due; approved service company; result; linked EPIRB asset; beacon manufacturer/model/serial number; beacon type; protocol/coding type; Hex ID; MMSI or encoded identity; test equipment ID and calibration due; Governing Standard. Battery expiry and HRU expiry are surfaced read-only from the linked asset.",
+  "library_ref": "1.4.11"
  },
  {
   "sfi_code": "1.4.12",
@@ -1958,9 +1958,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.13",
@@ -1993,9 +1993,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.14",
@@ -2028,7 +2028,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.4.14",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -2039,7 +2038,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Report number; test date; next annual test due; approved service company; result; linked grab-bag EPIRB asset; beacon manufacturer/model/serial number; beacon type; protocol/coding type; Hex ID; MMSI or encoded identity; test equipment ID and calibration due; Governing Standard. Battery expiry is surfaced read-only from the linked asset; HRU expiry only where a float-free arrangement is actually fitted."
+  "special_data": "Report number; test date; next annual test due; approved service company; result; linked grab-bag EPIRB asset; beacon manufacturer/model/serial number; beacon type; protocol/coding type; Hex ID; MMSI or encoded identity; test equipment ID and calibration due; Governing Standard. Battery expiry is surfaced read-only from the linked asset; HRU expiry only where a float-free arrangement is actually fitted.",
+  "library_ref": "1.4.14"
  },
  {
   "sfi_code": "1.4.15",
@@ -2072,7 +2072,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.4.15",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -2084,7 +2083,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Test date; next annual test due; linked AIS asset; approved testing/service company; result; test location; authorised tester; test-equipment ID and calibration due; findings/remarks; corrective actions; AIS manufacturer/model/type/serial and type-approval/configuration references derived from linked asset; programmed vessel data verified against Vessel Master; Governing Standard"
+  "special_data": "Test date; next annual test due; linked AIS asset; approved testing/service company; result; test location; authorised tester; test-equipment ID and calibration due; findings/remarks; corrective actions; AIS manufacturer/model/type/serial and type-approval/configuration references derived from linked asset; programmed vessel data verified against Vessel Master; Governing Standard",
+  "library_ref": "1.4.15"
  },
  {
   "sfi_code": "1.4.16",
@@ -2117,9 +2117,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.17",
@@ -2152,9 +2152,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.18",
@@ -2187,9 +2187,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.19",
@@ -2222,9 +2222,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.20",
@@ -2257,9 +2257,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.21",
@@ -2292,9 +2292,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.22",
@@ -2327,9 +2327,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.23",
@@ -2362,9 +2362,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.24",
@@ -2397,9 +2397,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.4.25",
@@ -2432,9 +2432,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.5.1",
@@ -2467,7 +2467,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.5.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -2483,7 +2482,8 @@
    "port_of_registry",
    "principal_dimensions"
   ],
-  "special_data": "Length (L); freeboard assignment/type; summer freeboard; deck line reference; load-line marks; freshwater allowance where stated; survey completion date; annual endorsement history; notes/limitations; Governing Standard"
+  "special_data": "Length (L); freeboard assignment/type; summer freeboard; deck line reference; load-line marks; freshwater allowance where stated; survey completion date; annual endorsement history; notes/limitations; Governing Standard",
+  "library_ref": "1.5.1"
  },
  {
   "sfi_code": "1.5.2",
@@ -2516,7 +2516,6 @@
   "document_type": "STAT_RECORD",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.5.2",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -2527,7 +2526,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Linked Load Line Certificate; approval/record reference; current revision; conditions of assignment; affected openings/closing appliances/freeing arrangements; Governing Standard"
+  "special_data": "Linked Load Line Certificate; approval/record reference; current revision; conditions of assignment; affected openings/closing appliances/freeing arrangements; Governing Standard",
+  "library_ref": "1.5.2"
  },
  {
   "sfi_code": "1.5.3",
@@ -2560,7 +2560,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.5.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -2571,7 +2570,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Survey date; attending body; lightship displacement; LCG; VCG; TCG where applicable; trim; outcome/acceptance; report revision; Governing Standard"
+  "special_data": "Survey date; attending body; lightship displacement; LCG; VCG; TCG where applicable; trim; outcome/acceptance; report revision; Governing Standard",
+  "library_ref": "1.5.3"
  },
  {
   "sfi_code": "1.5.4",
@@ -2604,7 +2604,6 @@
   "document_type": "CLASS_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.5.4",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -2617,7 +2616,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Document/reference number; revision; revision date; approval status; approving authority; approval reference/date; superseded revision; linked lightship report; included scope: intact stability, damage stability and loading/ballast conditions; operating limitations; Governing Standard"
+  "special_data": "Document/reference number; revision; revision date; approval status; approving authority; approval reference/date; superseded revision; linked lightship report; included scope: intact stability, damage stability and loading/ballast conditions; operating limitations; Governing Standard",
+  "library_ref": "1.5.4"
  },
  {
   "sfi_code": "1.5.5",
@@ -2650,12 +2650,12 @@
   "document_type": "CLASS_APPROVAL",
   "validity_driver": "VD-NONE",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.5.5",
   "field_profile": [
    "approval_authority",
    "approval_capacity"
   ],
-  "special_data": "Not a separate field profile where damage stability is incorporated in 1.5.4."
+  "special_data": "Not a separate field profile where damage stability is incorporated in 1.5.4.",
+  "library_ref": "1.5.5"
  },
  {
   "sfi_code": "1.5.6",
@@ -2688,9 +2688,9 @@
   "document_type": "PLAN",
   "validity_driver": "VD-NONE",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.5.6",
   "field_profile": null,
-  "special_data": "Not a separate field profile where loading conditions and ballast instructions are incorporated in 1.5.4. This is distinct from any Ballast Water Management Plan."
+  "special_data": "Not a separate field profile where loading conditions and ballast instructions are incorporated in 1.5.4. This is distinct from any Ballast Water Management Plan.",
+  "library_ref": "1.5.6"
  },
  {
   "sfi_code": "1.6.1",
@@ -2723,9 +2723,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.2",
@@ -2758,9 +2758,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.3",
@@ -2793,9 +2793,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.4",
@@ -2828,9 +2828,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.5",
@@ -2863,9 +2863,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.6",
@@ -2898,9 +2898,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.7",
@@ -2933,9 +2933,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.8",
@@ -2968,9 +2968,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.9",
@@ -3003,9 +3003,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.10",
@@ -3038,9 +3038,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.11",
@@ -3073,9 +3073,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.12",
@@ -3108,9 +3108,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.13",
@@ -3143,9 +3143,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.14",
@@ -3178,9 +3178,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.15",
@@ -3213,9 +3213,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.16",
@@ -3248,9 +3248,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.17",
@@ -3283,9 +3283,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.6.18",
@@ -3318,9 +3318,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.1",
@@ -3353,7 +3353,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-12",
-  "v60_ref": "1.6.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -3366,7 +3365,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Certificate number; Flag Administration; survey basis; vessel type; propulsion type; verification method; Governing Standard"
+  "special_data": "Certificate number; Flag Administration; survey basis; vessel type; propulsion type; verification method; Governing Standard",
+  "library_ref": "1.6.1"
  },
  {
   "sfi_code": "1.7.2",
@@ -3399,9 +3399,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.3",
@@ -3434,7 +3434,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.6.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -3447,7 +3446,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Approval number; revision/date; approval status; Required EEXI; Attained EEXI; verification method; EPL/SHaPoLi where fitted; reference speed; Governing Standard"
+  "special_data": "Approval number; revision/date; approval status; Required EEXI; Attained EEXI; verification method; EPL/SHaPoLi where fitted; reference speed; Governing Standard",
+  "library_ref": "1.6.3"
  },
  {
   "sfi_code": "1.7.4",
@@ -3480,7 +3480,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-PERMANENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.6.4",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -3493,7 +3492,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Approval number; revision/date; approval status; applicable EEDI phase; Required EEDI; Attained EEDI; reference speed; calculation method; Governing Standard"
+  "special_data": "Approval number; revision/date; approval status; applicable EEDI phase; Required EEDI; Attained EEDI; reference speed; calculation method; Governing Standard",
+  "library_ref": "1.6.4"
  },
  {
   "sfi_code": "1.7.5",
@@ -3526,9 +3526,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.6",
@@ -3561,7 +3561,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.6.5",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -3574,7 +3573,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Approval/confirmation reference; revision/date; approval or verification status; energy-efficiency measures; implementation responsibilities; Governing Standard"
+  "special_data": "Approval/confirmation reference; revision/date; approval or verification status; energy-efficiency measures; implementation responsibilities; Governing Standard",
+  "library_ref": "1.6.5"
  },
  {
   "sfi_code": "1.7.7",
@@ -3607,9 +3607,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.8",
@@ -3642,9 +3642,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.9",
@@ -3677,9 +3677,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.10",
@@ -3712,9 +3712,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.11",
@@ -3747,9 +3747,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.12",
@@ -3782,9 +3782,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.13",
@@ -3817,9 +3817,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.14",
@@ -3852,9 +3852,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.7.15",
@@ -3887,9 +3887,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.8.1",
@@ -3922,7 +3922,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.7.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -3938,7 +3937,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "Certificate number; Issue date; Expiry date; Issuing authority; Surveyor/organisation; Governing convention; Status; Digital copy"
+  "special_data": "Certificate number; Issue date; Expiry date; Issuing authority; Surveyor/organisation; Governing convention; Status; Digital copy",
+  "library_ref": "1.7.1"
  },
  {
   "sfi_code": "1.8.2",
@@ -3971,7 +3971,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.7.2",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -3987,7 +3986,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "Certificate number; Issue date; Expiry date; Issuing authority; Company; Ship types; Governing convention; Status; Digital copy"
+  "special_data": "Certificate number; Issue date; Expiry date; Issuing authority; Company; Ship types; Governing convention; Status; Digital copy",
+  "library_ref": "1.7.2"
  },
  {
   "sfi_code": "1.8.3",
@@ -4020,7 +4020,6 @@
   "document_type": "STAT_RECORD",
   "validity_driver": "VD-PERMANENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.8.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4031,7 +4030,8 @@
    "vessel_flag",
    "registered_owner"
   ],
-  "special_data": "Declared company; registered owner; IMO company number; effective date; signatory; Governing Standard"
+  "special_data": "Declared company; registered owner; IMO company number; effective date; signatory; Governing Standard",
+  "library_ref": "1.8.3"
  },
  {
   "sfi_code": "1.8.4",
@@ -4064,7 +4064,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.7.4",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4080,7 +4079,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "Certificate number; Issue date; Expiry date; Issuing authority; Security level/limitations; Governing convention; Status; Digital copy"
+  "special_data": "Certificate number; Issue date; Expiry date; Issuing authority; Security level/limitations; Governing convention; Status; Digital copy",
+  "library_ref": "1.7.4"
  },
  {
   "sfi_code": "1.8.5",
@@ -4113,7 +4113,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.8.5",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4126,7 +4125,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Approval number; approval authority/capacity; approval date; revision; revision date; approval status; plan custodian; supersedes/superseded by; Governing Standard"
+  "special_data": "Approval number; approval authority/capacity; approval date; revision; revision date; approval status; plan custodian; supersedes/superseded by; Governing Standard",
+  "library_ref": "1.8.5"
  },
  {
   "sfi_code": "1.8.6",
@@ -4159,7 +4159,6 @@
   "document_type": "RECORD_BOOK",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.7.6",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4173,7 +4172,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "CSR number; Previous CSR number; Issue date; Issuing administration; Change reason; Version history; Digital copy"
+  "special_data": "CSR number; Previous CSR number; Issue date; Issuing administration; Change reason; Version history; Digital copy",
+  "library_ref": "1.7.6"
  },
  {
   "sfi_code": "1.8.7",
@@ -4206,7 +4206,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.7.7",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4222,7 +4221,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "Certificate number; Issue date; Expiry date; Issuing authority; Surveyor/organisation; Governing convention; Status; Digital copy"
+  "special_data": "Certificate number; Issue date; Expiry date; Issuing authority; Surveyor/organisation; Governing convention; Status; Digital copy",
+  "library_ref": "1.7.7"
  },
  {
   "sfi_code": "1.8.8",
@@ -4255,7 +4255,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.8.8",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4268,7 +4267,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Approval/reference number; Flag requirements; exemptions/equivalencies; issue/revision; approval status; linked MLC Certificate; Governing Standard"
+  "special_data": "Approval/reference number; Flag requirements; exemptions/equivalencies; issue/revision; approval status; linked MLC Certificate; Governing Standard",
+  "library_ref": "1.8.8"
  },
  {
   "sfi_code": "1.8.9",
@@ -4301,7 +4301,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.8.9",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4314,7 +4313,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Approval/reference number; owner/company measures; issue/revision; approval status; linked DMLC Part I and MLC Certificate; supersedes/superseded by; Governing Standard"
+  "special_data": "Approval/reference number; owner/company measures; issue/revision; approval status; linked DMLC Part I and MLC Certificate; supersedes/superseded by; Governing Standard",
+  "library_ref": "1.8.9"
  },
  {
   "sfi_code": "1.8.10",
@@ -4347,7 +4347,6 @@
   "document_type": "STAT_RECORD",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.8.10",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4357,7 +4356,8 @@
    "governing_standard",
    "conditions_reference"
   ],
-  "special_data": "Agency/provider; licence/authorisation number; jurisdiction; MLC compliance statement/reference; issue/expiry; audit/inspection date; services covered; conditions; status; Governing Standard"
+  "special_data": "Agency/provider; licence/authorisation number; jurisdiction; MLC compliance statement/reference; issue/expiry; audit/inspection date; services covered; conditions; status; Governing Standard",
+  "library_ref": "1.8.10"
  },
  {
   "sfi_code": "1.8.11",
@@ -4390,7 +4390,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.8.11",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4407,7 +4406,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Document number; vessel operating area/limitations; minimum ranks and numbers; watchkeeping conditions; validity conditions; approval authority/capacity; Governing Standard"
+  "special_data": "Document number; vessel operating area/limitations; minimum ranks and numbers; watchkeeping conditions; validity conditions; approval authority/capacity; Governing Standard",
+  "library_ref": "1.8.11"
  },
  {
   "sfi_code": "1.8.12",
@@ -4440,7 +4440,6 @@
   "document_type": "FLAG_EXEMPTION",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.8.12",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4457,7 +4456,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Dispensation number; affected rank/requirement; reason; conditions; issue/expiry; voyage/area limits; replacement arrangement; approval authority/capacity; Governing Standard"
+  "special_data": "Dispensation number; affected rank/requirement; reason; conditions; issue/expiry; voyage/area limits; replacement arrangement; approval authority/capacity; Governing Standard",
+  "library_ref": "1.8.12"
  },
  {
   "sfi_code": "1.8.13",
@@ -4490,7 +4490,6 @@
   "document_type": "REPORT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.8.13",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4501,7 +4500,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Inspection date/port; authority; inspection type; outcome; deficiency codes; detention status; rectification due dates; closure evidence; linked actions"
+  "special_data": "Inspection date/port; authority; inspection type; outcome; deficiency codes; detention status; rectification due dates; closure evidence; linked actions",
+  "library_ref": "1.8.13"
  },
  {
   "sfi_code": "1.8.14",
@@ -4534,7 +4534,6 @@
   "document_type": "REPORT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.8.14",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4545,7 +4544,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Inspection date/location; Flag inspector; scope; outcome; findings; due dates; closure evidence; linked actions"
+  "special_data": "Inspection date/location; Flag inspector; scope; outcome; findings; due dates; closure evidence; linked actions",
+  "library_ref": "1.8.14"
  },
  {
   "sfi_code": "1.8.15",
@@ -4578,7 +4578,6 @@
   "document_type": "REPORT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.8.15",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4588,7 +4587,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Audit date; auditor; scope; departments/locations; audit criteria; findings by category; corrective actions; due dates; close-out status; next audit due"
+  "special_data": "Audit date; auditor; scope; departments/locations; audit criteria; findings by category; corrective actions; due dates; close-out status; next audit due",
+  "library_ref": "1.8.15"
  },
  {
   "sfi_code": "1.8.16",
@@ -4621,7 +4621,6 @@
   "document_type": "REPORT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.8.16",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4631,7 +4630,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Audit date; auditing body; audit type; scope; findings/observations; corrective actions; due dates; closure/acceptance; linked SMC/DOC"
+  "special_data": "Audit date; auditing body; audit type; scope; findings/observations; corrective actions; due dates; closure/acceptance; linked SMC/DOC",
+  "library_ref": "1.8.16"
  },
  {
   "sfi_code": "1.8.17",
@@ -4664,7 +4664,6 @@
   "document_type": "REPORT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.8.17",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4674,7 +4673,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Audit date; auditor/body; audit type; scope; security findings; corrective actions; due dates; closure; linked ISSC/SSP; access classification"
+  "special_data": "Audit date; auditor/body; audit type; scope; security findings; corrective actions; due dates; closure; linked ISSC/SSP; access classification",
+  "library_ref": "1.8.17"
  },
  {
   "sfi_code": "1.8.18",
@@ -4707,7 +4707,6 @@
   "document_type": "REPORT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.8.18",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4717,7 +4716,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Inspection/audit date; authority/auditor; scope; MLC title/standard references; deficiencies; corrective actions; due dates; close-out; linked MLC Certificate/DMLC"
+  "special_data": "Inspection/audit date; authority/auditor; scope; MLC title/standard references; deficiencies; corrective actions; due dates; close-out; linked MLC Certificate/DMLC",
+  "library_ref": "1.8.18"
  },
  {
   "sfi_code": "1.8.19",
@@ -4750,7 +4750,6 @@
   "document_type": "SURVEY_REPORT",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.8.19",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4761,7 +4760,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Attendance date; attending authority/surveyor; onboard/remote method; location; survey scope; certificates/items attended; evidence reviewed; findings; next actions; report/reference"
+  "special_data": "Attendance date; attending authority/surveyor; onboard/remote method; location; survey scope; certificates/items attended; evidence reviewed; findings; next actions; report/reference",
+  "library_ref": "1.8.19"
  },
  {
   "sfi_code": "1.8.20",
@@ -4794,7 +4794,6 @@
   "document_type": "RECORD_BOOK",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.8.20",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4804,7 +4803,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "NC reference; source; raised date; category/severity; description; root cause; corrective/preventive action; owner; target date; verification; closure date/status"
+  "special_data": "NC reference; source; raised date; category/severity; description; root cause; corrective/preventive action; owner; target date; verification; closure date/status",
+  "library_ref": "1.8.20"
  },
  {
   "sfi_code": "1.9.1",
@@ -4837,7 +4837,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.9.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4849,7 +4848,8 @@
    "vessel_flag",
    "port_of_registry"
   ],
-  "special_data": "Certificate number; certificate type (SSCEC/SSCC); issue date; expiry date; issuing port/authority; areas inspected; evidence/findings; measures applied; Governing Standard"
+  "special_data": "Certificate number; certificate type (SSCEC/SSCC); issue date; expiry date; issuing port/authority; areas inspected; evidence/findings; measures applied; Governing Standard",
+  "library_ref": "1.9.1"
  },
  {
   "sfi_code": "1.9.2",
@@ -4882,7 +4882,6 @@
   "document_type": "RECORD",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.9.2",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4893,7 +4892,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Linked compass asset; compass ID/type; swing date/location; performed by; heading/deviation table; residual deviation; correction method; next review due; report copy"
+  "special_data": "Linked compass asset; compass ID/type; swing date/location; performed by; heading/deviation table; residual deviation; correction method; next review due; report copy",
+  "library_ref": "1.9.2"
  },
  {
   "sfi_code": "1.9.3",
@@ -4926,7 +4926,6 @@
   "document_type": "REPORT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.9.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -4937,7 +4936,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Linked gyro asset; service company; service/test date; technician; scope; readings; adjustments; findings; parts replaced; result; next service due; report copy"
+  "special_data": "Linked gyro asset; service company; service/test date; technician; scope; readings; adjustments; findings; parts replaced; result; next service due; report copy",
+  "library_ref": "1.9.3"
  },
  {
   "sfi_code": "1.9.4",
@@ -4970,9 +4970,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.9.5",
@@ -5005,7 +5005,6 @@
   "document_type": "COMPLIANCE_SERVICE",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.9.5",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5017,7 +5016,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Provider; service/account/contract number; ECDIS/permit system covered; chart coverage; start date; renewal/expiry; update method/frequency; emergency contact; auto-renewal; agreement copy"
+  "special_data": "Provider; service/account/contract number; ECDIS/permit system covered; chart coverage; start date; renewal/expiry; update method/frequency; emergency contact; auto-renewal; agreement copy",
+  "library_ref": "1.9.5"
  },
  {
   "sfi_code": "1.9.6",
@@ -5050,7 +5050,6 @@
   "document_type": "COMPLIANCE_SERVICE",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.9.6",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5059,7 +5058,8 @@
    "expiry_date",
    "conditions_reference"
   ],
-  "special_data": "Provider; account/contract number; service scope; start date; renewal/expiry; licences/users; contact; auto-renewal; agreement copy"
+  "special_data": "Provider; account/contract number; service scope; start date; renewal/expiry; licences/users; contact; auto-renewal; agreement copy",
+  "library_ref": "1.9.6"
  },
  {
   "sfi_code": "1.9.7",
@@ -5092,7 +5092,6 @@
   "document_type": "COMPLIANCE_SERVICE",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.9.7",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5104,7 +5103,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Provider; agreement/plan number; vessel covered; regulatory/plan basis; geographic coverage; 24-hour emergency contacts; start date; renewal/expiry; exercise requirements; agreement copy"
+  "special_data": "Provider; agreement/plan number; vessel covered; regulatory/plan basis; geographic coverage; 24-hour emergency contacts; start date; renewal/expiry; exercise requirements; agreement copy",
+  "library_ref": "1.9.7"
  },
  {
   "sfi_code": "1.9.8",
@@ -5137,9 +5137,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.9.9",
@@ -5172,7 +5172,6 @@
   "document_type": "COMPLIANCE_SERVICE",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.9.9",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5181,7 +5180,8 @@
    "expiry_date",
    "conditions_reference"
   ],
-  "special_data": "Provider; account/contract number; assets/systems covered; sampling schedule; kit/logistics details; start date; renewal/expiry; contact; agreement copy"
+  "special_data": "Provider; account/contract number; assets/systems covered; sampling schedule; kit/logistics details; start date; renewal/expiry; contact; agreement copy",
+  "library_ref": "1.9.9"
  },
  {
   "sfi_code": "1.9.10",
@@ -5214,7 +5214,6 @@
   "document_type": "COMPLIANCE_SERVICE",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.9.10",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5223,7 +5222,8 @@
    "expiry_date",
    "conditions_reference"
   ],
-  "special_data": "Provider; contract/account number; vessel/terminal covered; service plan/bandwidth; start date; renewal/expiry; support contacts; SLA; auto-renewal; agreement copy"
+  "special_data": "Provider; contract/account number; vessel/terminal covered; service plan/bandwidth; start date; renewal/expiry; support contacts; SLA; auto-renewal; agreement copy",
+  "library_ref": "1.9.10"
  },
  {
   "sfi_code": "1.9.11",
@@ -5256,7 +5256,6 @@
   "document_type": "RECORD",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.9.11",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5265,7 +5264,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Linked asset; asset class; manufacturer/model; serial/registration number; capacity; location; parent craft; installation/in-service date; status; supporting documents"
+  "special_data": "Linked asset; asset class; manufacturer/model; serial/registration number; capacity; location; parent craft; installation/in-service date; status; supporting documents",
+  "library_ref": "1.9.11"
  },
  {
   "sfi_code": "1.9.12",
@@ -5298,7 +5298,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": "1.9.12",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5309,7 +5308,8 @@
    "conditions_reference",
    "vessel_flag"
   ],
-  "special_data": "Certificate/recognition number; issuing scheme/body; approved centre/vessel; disciplines/courses; principal/instructors; issue/expiry; conditions; audit date; Governing Standard"
+  "special_data": "Certificate/recognition number; issuing scheme/body; approved centre/vessel; disciplines/courses; principal/instructors; issue/expiry; conditions; audit date; Governing Standard",
+  "library_ref": "1.9.12"
  },
  {
   "sfi_code": "1.9.13",
@@ -5342,9 +5342,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.9.14",
@@ -5377,7 +5377,6 @@
   "document_type": "RECORD",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.9.14",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5388,7 +5387,8 @@
    "vessel_imo",
    "vessel_flag"
   ],
-  "special_data": "Treatment/inspection date; contractor; areas inspected; pest type; findings; treatment/product; safety precautions; follow-up required; next visit due; report copy"
+  "special_data": "Treatment/inspection date; contractor; areas inspected; pest type; findings; treatment/product; safety precautions; follow-up required; next visit due; report copy",
+  "library_ref": "1.9.14"
  },
  {
   "sfi_code": "1.9.15",
@@ -5421,7 +5421,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": null,
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5432,7 +5431,8 @@
    "vessel_flag",
    "vessel_gt"
   ],
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.10.1",
@@ -5465,7 +5465,6 @@
   "document_type": "LEGAL",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5478,7 +5477,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "Seller; buyer; completion date"
+  "special_data": "Seller; buyer; completion date",
+  "library_ref": "1.10.1"
  },
  {
   "sfi_code": "1.10.2",
@@ -5511,7 +5511,6 @@
   "document_type": "LEGAL",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.2",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5523,7 +5522,8 @@
    "vessel_flag",
    "registered_owner"
   ],
-  "special_data": "Country / tax jurisdiction; VAT status; linked Bill of Sale"
+  "special_data": "Country / tax jurisdiction; VAT status; linked Bill of Sale",
+  "library_ref": "1.10.2"
  },
  {
   "sfi_code": "1.10.3",
@@ -5556,14 +5556,14 @@
   "document_type": "LEGAL",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.3",
   "field_profile": [
    "document_number",
    "issuing_party",
    "issue_date",
    "linked_entity"
   ],
-  "special_data": "Registered entity; VAT number; country; registration status"
+  "special_data": "Registered entity; VAT number; country; registration status",
+  "library_ref": "1.10.3"
  },
  {
   "sfi_code": "1.10.4",
@@ -5596,7 +5596,6 @@
   "document_type": "LEGAL",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.4",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5609,7 +5608,8 @@
    "vessel_flag",
    "registered_owner"
   ],
-  "special_data": "Authorised by; authority scope"
+  "special_data": "Authorised by; authority scope",
+  "library_ref": "1.10.4"
  },
  {
   "sfi_code": "1.10.5",
@@ -5642,7 +5642,6 @@
   "document_type": "LEGAL",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.5",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5651,7 +5650,8 @@
    "governing_standard",
    "registered_owner"
   ],
-  "special_data": "Company name; company registration number; jurisdiction; company status"
+  "special_data": "Company name; company registration number; jurisdiction; company status",
+  "library_ref": "1.10.5"
  },
  {
   "sfi_code": "1.10.6",
@@ -5684,13 +5684,13 @@
   "document_type": "LEGAL",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.6",
   "field_profile": [
    "issuing_party",
    "issue_date",
    "linked_entity"
   ],
-  "special_data": "Beneficial owner; KYC status; last review date; next review date"
+  "special_data": "Beneficial owner; KYC status; last review date; next review date",
+  "library_ref": "1.10.6"
  },
  {
   "sfi_code": "1.10.7",
@@ -5723,7 +5723,6 @@
   "document_type": "LEGAL",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.7",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5732,7 +5731,8 @@
    "governing_standard",
    "registered_owner"
   ],
-  "special_data": "Structure type; jurisdiction; ultimate beneficial owner; structure diagram attached"
+  "special_data": "Structure type; jurisdiction; ultimate beneficial owner; structure diagram attached",
+  "library_ref": "1.10.7"
  },
  {
   "sfi_code": "1.10.8",
@@ -5765,7 +5765,6 @@
   "document_type": "LEGAL",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.8",
   "field_profile": [
    "document_number",
    "issue_date",
@@ -5775,7 +5774,8 @@
    "conditions_reference",
    "registered_owner"
   ],
-  "special_data": "Management company; management scope; ISM responsibility; emergency contact"
+  "special_data": "Management company; management scope; ISM responsibility; emergency contact",
+  "library_ref": "1.10.8"
  },
  {
   "sfi_code": "1.10.9",
@@ -5808,7 +5808,6 @@
   "document_type": "LEGAL",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.9",
   "field_profile": [
    "document_number",
    "issue_date",
@@ -5818,7 +5817,8 @@
    "conditions_reference",
    "registered_owner"
   ],
-  "special_data": "Charter type; charter start/end; broker; operational restrictions"
+  "special_data": "Charter type; charter start/end; broker; operational restrictions",
+  "library_ref": "1.10.9"
  },
  {
   "sfi_code": "1.10.10",
@@ -5851,7 +5851,6 @@
   "document_type": "RECORD_BOOK",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.10.10",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5861,7 +5860,8 @@
    "vessel_flag",
    "registered_owner"
   ],
-  "special_data": "Number of active crew; register last updated"
+  "special_data": "Number of active crew; register last updated",
+  "library_ref": "1.10.10"
  },
  {
   "sfi_code": "1.11.1",
@@ -5894,7 +5894,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5904,7 +5903,8 @@
    "vessel_imo",
    "registered_owner"
   ],
-  "special_data": "Policy number; underwriter; cover from; cover to; limit / sum insured; named vessel; insured entity; broker; covered vessel(s); policy status"
+  "special_data": "Policy number; underwriter; cover from; cover to; limit / sum insured; named vessel; insured entity; broker; covered vessel(s); policy status",
+  "library_ref": "1.11.1"
  },
  {
   "sfi_code": "1.11.2",
@@ -5937,7 +5937,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.2",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5947,7 +5946,8 @@
    "vessel_imo",
    "registered_owner"
   ],
-  "special_data": "Policy number; underwriter; cover from; cover to; limit / sum insured; named vessel; insured entity; broker; covered vessel(s); policy status"
+  "special_data": "Policy number; underwriter; cover from; cover to; limit / sum insured; named vessel; insured entity; broker; covered vessel(s); policy status",
+  "library_ref": "1.11.2"
  },
  {
   "sfi_code": "1.11.3",
@@ -5980,7 +5980,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -5991,7 +5990,8 @@
    "registered_owner"
   ],
   "special_data": "Policy number; underwriter; cover from; cover to; named vessel; jurisdiction / country; supplement type; linked P&I policy; policy status; multiple documents permitted",
-  "one_current_version": false
+  "one_current_version": false,
+  "library_ref": "1.11.3"
  },
  {
   "sfi_code": "1.11.6",
@@ -6024,7 +6024,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.6",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6040,7 +6039,8 @@
    "registered_owner"
   ],
   "special_data": "Policy number; underwriter; cover from; cover to; named vessel; insured shipowner; contact for seafarer assistance; certificate status; multiple vessel-specific certificates permitted",
-  "one_current_version": false
+  "one_current_version": false,
+  "library_ref": "1.11.6"
  },
  {
   "sfi_code": "1.11.7",
@@ -6073,10 +6073,10 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
   "special_data": null,
-  "one_current_version": false
+  "one_current_version": false,
+  "library_ref": null
  },
  {
   "sfi_code": "1.11.8",
@@ -6109,7 +6109,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.8",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6124,7 +6123,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "Certificate type (Flag Certificate / Insurer Evidence); linked P&I policy"
+  "special_data": "Certificate type (Flag Certificate / Insurer Evidence); linked P&I policy",
+  "library_ref": "1.11.8"
  },
  {
   "sfi_code": "1.11.9",
@@ -6157,7 +6157,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.9",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6172,7 +6171,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "Policy number; underwriter; cover from; cover to; named vessel; linked NWRC Flag Certificate; certificate status"
+  "special_data": "Policy number; underwriter; cover from; cover to; named vessel; linked NWRC Flag Certificate; certificate status",
+  "library_ref": "1.11.9"
  },
  {
   "sfi_code": "1.11.10",
@@ -6205,9 +6205,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.11.11",
@@ -6240,9 +6240,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.11.12",
@@ -6275,7 +6275,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.12",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6283,7 +6282,8 @@
    "linked_entity",
    "expiry_date"
   ],
-  "special_data": "Policy number; underwriter; cover from; cover to; covered persons; medical cover; travel cover; emergency assistance provider; policy status"
+  "special_data": "Policy number; underwriter; cover from; cover to; covered persons; medical cover; travel cover; emergency assistance provider; policy status",
+  "library_ref": "1.11.12"
  },
  {
   "sfi_code": "1.11.13",
@@ -6316,7 +6316,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.13",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6325,7 +6324,8 @@
    "expiry_date",
    "conditions_reference"
   ],
-  "special_data": "Policy number; underwriter; cover from; cover to; trading area; security provider; policy status"
+  "special_data": "Policy number; underwriter; cover from; cover to; trading area; security provider; policy status",
+  "library_ref": "1.11.13"
  },
  {
   "sfi_code": "1.11.14",
@@ -6358,7 +6358,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.14",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6366,7 +6365,8 @@
    "linked_entity",
    "expiry_date"
   ],
-  "special_data": "Policy number; underwriter; cover from; cover to; covered assets; policy status"
+  "special_data": "Policy number; underwriter; cover from; cover to; covered assets; policy status",
+  "library_ref": "1.11.14"
  },
  {
   "sfi_code": "1.11.15",
@@ -6399,7 +6399,6 @@
   "document_type": "INSURANCE",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.11.15",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6408,7 +6407,8 @@
    "expiry_date",
    "conditions_reference"
   ],
-  "special_data": "Policy number; underwriter; cover from; cover to; charter type; trading area; policy status"
+  "special_data": "Policy number; underwriter; cover from; cover to; charter type; trading area; policy status",
+  "library_ref": "1.11.15"
  },
  {
   "sfi_code": "1.11.16",
@@ -6441,7 +6441,6 @@
   "document_type": "INSURANCE",
   "validity_driver": "VD-TIME",
   "reminder_profile": "RP-01",
-  "v60_ref": null,
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6455,7 +6454,8 @@
   "one_current_version": true,
   "retain_history": true,
   "auto_archive_previous": true,
-  "mandatory_upload": false
+  "mandatory_upload": false,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.1",
@@ -6488,7 +6488,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.12.1",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6503,7 +6502,8 @@
    "port_of_registry",
    "registered_owner"
   ],
-  "special_data": "USCG plan/control number; plan holder/operator; document role (approved plan / USCG approval letter); approval date; annual review date; comprehensive resubmission due; authorised operating zones; Qualified Individual (QI); OSRO; salvage and marine-firefighting providers"
+  "special_data": "USCG plan/control number; plan holder/operator; document role (approved plan / USCG approval letter); approval date; annual review date; comprehensive resubmission due; authorised operating zones; Qualified Individual (QI); OSRO; salvage and marine-firefighting providers",
+  "library_ref": "1.12.1"
  },
  {
   "sfi_code": "1.12.2",
@@ -6536,9 +6536,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.3",
@@ -6571,7 +6571,6 @@
   "document_type": "STAT_CERT",
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": "1.12.3",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -6585,7 +6584,8 @@
    "vessel_flag",
    "registered_owner"
   ],
-  "special_data": "COFR entry number; guarantee limit; responsible operator; P&I club / financial guarantor; coverage period; certificate status; linked NTVRP; linked WQIS acceptance; linked P&I policy"
+  "special_data": "COFR entry number; guarantee limit; responsible operator; P&I club / financial guarantor; coverage period; certificate status; linked NTVRP; linked WQIS acceptance; linked P&I policy",
+  "library_ref": "1.12.3"
  },
  {
   "sfi_code": "1.12.4",
@@ -6618,9 +6618,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.5",
@@ -6653,9 +6653,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.6",
@@ -6688,9 +6688,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.7",
@@ -6723,9 +6723,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.8",
@@ -6758,9 +6758,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.9",
@@ -6793,9 +6793,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.10",
@@ -6828,9 +6828,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.11",
@@ -6863,9 +6863,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.12",
@@ -6898,9 +6898,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.13",
@@ -6933,9 +6933,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.14",
@@ -6968,9 +6968,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.15",
@@ -7003,9 +7003,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.16",
@@ -7038,9 +7038,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.17",
@@ -7073,9 +7073,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.12.18",
@@ -7108,9 +7108,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.1",
@@ -7143,9 +7143,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.2",
@@ -7178,9 +7178,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.3",
@@ -7213,9 +7213,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.4",
@@ -7248,9 +7248,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.5",
@@ -7283,9 +7283,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.6",
@@ -7318,9 +7318,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.7",
@@ -7353,9 +7353,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.8",
@@ -7388,9 +7388,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.9",
@@ -7423,9 +7423,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.10",
@@ -7458,9 +7458,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.11",
@@ -7493,9 +7493,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.12",
@@ -7528,9 +7528,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.13",
@@ -7563,9 +7563,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.14",
@@ -7598,9 +7598,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.15",
@@ -7633,9 +7633,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.16",
@@ -7668,9 +7668,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.17",
@@ -7703,9 +7703,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.18",
@@ -7738,9 +7738,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.19",
@@ -7773,9 +7773,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.20",
@@ -7808,9 +7808,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.21",
@@ -7843,9 +7843,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.22",
@@ -7878,9 +7878,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.23",
@@ -7913,9 +7913,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.24",
@@ -7948,9 +7948,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.25",
@@ -7983,9 +7983,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.26",
@@ -8018,9 +8018,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.27",
@@ -8053,9 +8053,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.13.28",
@@ -8088,9 +8088,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.1",
@@ -8123,9 +8123,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.2",
@@ -8158,9 +8158,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.3",
@@ -8193,9 +8193,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.4",
@@ -8228,9 +8228,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.5",
@@ -8263,9 +8263,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.6",
@@ -8298,9 +8298,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.7",
@@ -8333,9 +8333,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.8",
@@ -8368,9 +8368,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.9",
@@ -8403,9 +8403,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.10",
@@ -8438,9 +8438,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.11",
@@ -8473,9 +8473,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.12",
@@ -8508,9 +8508,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.13",
@@ -8543,9 +8543,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.14",
@@ -8578,9 +8578,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.15",
@@ -8613,9 +8613,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.16",
@@ -8648,9 +8648,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.17",
@@ -8683,9 +8683,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.14.18",
@@ -8718,9 +8718,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.1",
@@ -8753,9 +8753,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.2",
@@ -8788,9 +8788,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.3",
@@ -8823,9 +8823,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.4",
@@ -8858,9 +8858,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.5",
@@ -8893,9 +8893,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.6",
@@ -8928,9 +8928,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.7",
@@ -8963,9 +8963,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.8",
@@ -8998,9 +8998,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.9",
@@ -9033,9 +9033,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.10",
@@ -9068,9 +9068,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.11",
@@ -9103,9 +9103,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.12",
@@ -9138,9 +9138,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.13",
@@ -9173,9 +9173,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.14",
@@ -9208,9 +9208,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.15",
@@ -9243,9 +9243,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.16",
@@ -9278,9 +9278,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.17",
@@ -9313,9 +9313,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.18",
@@ -9348,9 +9348,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.19",
@@ -9383,9 +9383,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.15.20",
@@ -9418,9 +9418,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.1",
@@ -9453,9 +9453,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.2",
@@ -9488,9 +9488,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.3",
@@ -9523,9 +9523,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.4",
@@ -9558,9 +9558,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.5",
@@ -9593,9 +9593,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.6",
@@ -9628,9 +9628,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.7",
@@ -9663,9 +9663,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.8",
@@ -9698,9 +9698,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.9",
@@ -9733,9 +9733,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.10",
@@ -9768,9 +9768,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.11",
@@ -9803,9 +9803,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.12",
@@ -9838,7 +9838,6 @@
   "document_type": "FLAG_APPROVAL",
   "validity_driver": "VD-DEPENDENCY",
   "reminder_profile": "RP-00",
-  "v60_ref": "1.7.5",
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -9849,7 +9848,8 @@
    "governing_standard",
    "conditions_reference"
   ],
-  "special_data": "Approval number; Approval authority; Approval date; Revision; Revision date; Controlled copy reference; Digital copy"
+  "special_data": "Approval number; Approval authority; Approval date; Revision; Revision date; Controlled copy reference; Digital copy",
+  "library_ref": "1.7.5"
  },
  {
   "sfi_code": "1.16.13",
@@ -9882,9 +9882,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.14",
@@ -9917,9 +9917,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.15",
@@ -9952,9 +9952,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.16",
@@ -9987,9 +9987,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.17",
@@ -10022,9 +10022,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.18",
@@ -10057,9 +10057,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.19",
@@ -10092,9 +10092,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.20",
@@ -10127,9 +10127,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.21",
@@ -10162,9 +10162,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.16.22",
@@ -10197,9 +10197,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.1",
@@ -10232,9 +10232,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.2",
@@ -10267,9 +10267,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.3",
@@ -10302,9 +10302,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.4",
@@ -10337,9 +10337,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.5",
@@ -10372,9 +10372,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.6",
@@ -10407,9 +10407,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.7",
@@ -10442,9 +10442,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.8",
@@ -10477,9 +10477,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.9",
@@ -10512,9 +10512,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.10",
@@ -10547,9 +10547,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.11",
@@ -10582,9 +10582,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.12",
@@ -10617,9 +10617,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.13",
@@ -10652,9 +10652,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.14",
@@ -10687,9 +10687,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.15",
@@ -10722,9 +10722,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.16",
@@ -10757,9 +10757,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.17",
@@ -10792,9 +10792,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.18",
@@ -10827,9 +10827,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.19",
@@ -10862,9 +10862,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.20",
@@ -10897,9 +10897,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.21",
@@ -10932,9 +10932,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.22",
@@ -10967,9 +10967,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.23",
@@ -11002,9 +11002,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.24",
@@ -11037,9 +11037,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.25",
@@ -11072,9 +11072,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.26",
@@ -11107,9 +11107,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.27",
@@ -11142,9 +11142,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.28",
@@ -11177,9 +11177,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.29",
@@ -11212,9 +11212,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.30",
@@ -11247,9 +11247,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.31",
@@ -11282,9 +11282,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.32",
@@ -11317,9 +11317,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.33",
@@ -11352,9 +11352,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.34",
@@ -11387,9 +11387,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.35",
@@ -11422,9 +11422,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.36",
@@ -11457,9 +11457,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.37",
@@ -11492,9 +11492,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.38",
@@ -11527,9 +11527,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.39",
@@ -11562,9 +11562,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.40",
@@ -11597,9 +11597,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "1.17.41",
@@ -11632,9 +11632,9 @@
   "document_type": null,
   "validity_driver": null,
   "reminder_profile": null,
-  "v60_ref": null,
   "field_profile": null,
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "2.1.1",
@@ -11667,7 +11667,6 @@
   "document_type": "STAT_RECORD",
   "validity_driver": "VD-EVENT",
   "reminder_profile": "RP-00",
-  "v60_ref": null,
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -11676,7 +11675,8 @@
    "vessel_call_sign",
    "official_number"
   ],
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  },
  {
   "sfi_code": "2.2.1",
@@ -11709,7 +11709,6 @@
   "document_type": "TYPE_APPROVAL",
   "validity_driver": "VD-PERMANENT",
   "reminder_profile": "RP-00",
-  "v60_ref": null,
   "field_profile": [
    "document_number",
    "issuing_party",
@@ -11717,6 +11716,7 @@
    "linked_entity",
    "governing_standard"
   ],
-  "special_data": null
+  "special_data": null,
+  "library_ref": null
  }
 ]

@@ -111,7 +111,7 @@ export class ShipsCommandService {
     if (input.netTonnage !== undefined) {
       ship.netTonnage = input.netTonnage ?? null;
     }
-    // Vessel master data (v60) — identity printed on statutory certificates.
+    // Vessel master data — identity printed on statutory certificates.
     if (input.officialNumber !== undefined) {
       ship.officialNumber = input.officialNumber ?? null;
     }

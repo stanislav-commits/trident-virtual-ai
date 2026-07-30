@@ -10,8 +10,8 @@ export enum DocumentDocClass {
    * Manufacturer approval of an equipment TYPE — MED Module B/D, EC type
    * examination, ATEX, a declaration of conformity. It approves a model, not
    * the unit fitted aboard, so it belongs against the asset rather than in the
-   * vessel's certificate register (v60: TYPE_APPROVAL "belongs primarily to the
-   * equipment type, not the vessel certificate set"). Never expires.
+   * vessel's certificate register: a type approval belongs to the equipment
+   * type, not to the vessel's certificate set. Never expires.
    *
    * A file store like PLAN: nobody full-text searches a type approval, they
    * open it from the asset. See isFileStoreClass().

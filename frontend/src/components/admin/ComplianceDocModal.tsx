@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { XIcon } from "./AdminPanelIcons";
 import { AssetMultiSelect, type AssetOption } from "./AssetMultiSelect";
 import type { ArchetypeField,
-  V60FieldSpec } from "../../api/complianceApi";
+  CertificateFieldSpec } from "../../api/complianceApi";
 import {
   prettyLabel,
   inputTypeFor,
@@ -27,15 +27,15 @@ interface ComplianceDocModalProps {
   /** The archetype's field block from the schema. */
   archetypeFields: ArchetypeField[];
   /**
-   * The document's v60 field profile, when the workbook covers it. It takes
-   * precedence: v60 decides per document which fields exist ("no optional
+   * The document's field profile, when the catalogue defines one. It takes
+   * precedence: the matrix decides per document which fields exist ("no optional
    * values"), and five of its slots — governing_standard, conditions_reference,
    * approval_authority, approval_capacity, survey_window — have no archetype
    * block at all, so a profile-blind form could not capture them.
    */
   fieldProfile?: string[] | null;
-  v60Fields?: Record<string, V60FieldSpec>;
-  v60NonRecordFields?: string[];
+  certificateFields?: Record<string, CertificateFieldSpec>;
+  nonRecordFields?: string[];
   linkCardinality: string | null;
   assetOptions: AssetOption[];
   crewOptions: Array<{ id: string; label: string; rank: string }>;
@@ -61,8 +61,8 @@ export function ComplianceDocModal({
   typeCode,
   archetypeFields,
   fieldProfile,
-  v60Fields,
-  v60NonRecordFields,
+  certificateFields,
+  nonRecordFields,
   linkCardinality,
   assetOptions,
   crewOptions,
@@ -77,30 +77,30 @@ export function ComplianceDocModal({
 }: ComplianceDocModalProps) {
   const blockFields = archetypeFields.filter((f) => f.datatype !== "fk");
   // Profile first, then the archetype fields it does not name. The union is
-  // deliberate: v60's 22 columns have no slot for an archetype's own validity
+  // deliberate: the 22 matrix columns have no slot for an archetype's own validity
   // date (EQUIP_SVC.next_due_date, PERSONNEL.earliest_expiry), and dropping
   // those would cut the value that drives expiry_date and the PMS task.
   const schemaFields: ArchetypeField[] = (() => {
-    if (!fieldProfile?.length || !v60Fields) return blockFields;
+    if (!fieldProfile?.length || !certificateFields) return blockFields;
     // The BASE "Document" section above already renders these three onto the
     // record's own columns; leaving them in the profile list printed each one
     // twice in the same window.
     const skip = new Set([
-      ...(v60NonRecordFields ?? []),
+      ...(nonRecordFields ?? []),
       "document_number",
       "issuing_party",
       "issue_date",
       // The v9 blocks spell one of these differently — same value, one letter
-      // apart from v60's slug, and it slipped through as a duplicate input.
+      // apart from the matrix slug, and it slipped through as a duplicate input.
       "vessel_callsign",
     ]);
     const fromProfile = fieldProfile
-      .filter((slug) => !skip.has(slug) && v60Fields[slug])
+      .filter((slug) => !skip.has(slug) && certificateFields[slug])
       .map((slug) => ({
         field: slug,
-        datatype: v60Fields[slug].datatype,
+        datatype: certificateFields[slug].datatype,
         required: false,
-        hint: v60Fields[slug].hint,
+        hint: certificateFields[slug].hint,
         sotRole: "none",
         sotTarget: "none",
         auth: false,
@@ -112,7 +112,7 @@ export function ComplianceDocModal({
         (f) =>
           !named.has(f.field) &&
           // The v9 blocks carry their own vessel_gt / vessel_imo / call sign
-          // inputs. v60 takes those from Vessel Master Data, and an editable
+          // inputs. those come from Vessel Master Data, and an editable
           // copy here would be a second source of truth for the same value.
           !skip.has(f.field),
       ),
@@ -205,7 +205,7 @@ export function ComplianceDocModal({
               )}
 
               {schemaFields.length > 0 && (
-                // One heading for every document type — v60 Rule 3: "The editor
+                // One heading for every document type: "The editor
                 // section heading must be Certificate Details, not STAT_CERT
                 // DETAILS, so the same form works for statutory, class and
                 // other records."
