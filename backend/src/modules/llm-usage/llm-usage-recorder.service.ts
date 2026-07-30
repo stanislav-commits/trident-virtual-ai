@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { formatError } from '../../common/utils/error.utils';
 import { LlmUsageEntity } from './entities/llm-usage.entity';
 import { currentLlmUsageContext } from './llm-usage.context';
-import { computeCostUsd, findModelPrices } from './llm-price-book';
+import { LlmPriceBookService } from './llm-price-book.service';
 
 /** What a transport reports back about one call. */
 export interface LlmCallUsage {
@@ -38,6 +38,7 @@ export class LlmUsageRecorderService {
   constructor(
     @InjectRepository(LlmUsageEntity)
     private readonly repository: Repository<LlmUsageEntity>,
+    private readonly priceBook: LlmPriceBookService,
   ) {}
 
   record(usage: LlmCallUsage): void {
@@ -64,8 +65,8 @@ export class LlmUsageRecorderService {
       // a transport that does not surface usage yet. Keep the row so the gap is
       // countable, but leave it obvious.
       const context = currentLlmUsageContext();
-      const prices = findModelPrices(usage.model);
-      const cost = computeCostUsd(usage.model, tokens);
+      const prices = this.priceBook.pricesFor(usage.model);
+      const cost = this.priceBook.costUsd(usage.model, tokens);
 
       await this.repository.insert({
         occurredAt: new Date(),

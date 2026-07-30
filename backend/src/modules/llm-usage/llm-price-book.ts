@@ -1,9 +1,11 @@
 /**
- * What a thousand-token slice of each model costs, in USD per million tokens.
+ * The shape of a price and the cache multipliers that go with it.
  *
- * These are copied onto every usage row at the moment of the call, so this file
- * is a source of prices for NEW rows only — editing it never moves a statement
- * that has already been issued.
+ * The rates themselves live in `llm_model_prices`, editable from the admin panel
+ * without a deploy; the table below is what that table is SEEDED with, and what
+ * pricing falls back to if the table cannot be read. Prices are copied onto
+ * every usage row at the moment of the call, so changing one never moves a
+ * statement that has already been issued.
  *
  * The cache multipliers are the part that has bitten us before. Anthropic bills
  * a cache WRITE above the input rate and a cache READ far below it, and the
@@ -41,24 +43,50 @@ function prices(inputPerMTok: number, outputPerMTok: number): ModelPrices {
 }
 
 /**
+ * Cold-start fallback: what the table is seeded with and what pricing falls back
+ * to before the table has been read. Only the models this platform calls — see
+ * the migration for what each one does.
+ */
+export const SEED_PRICE_BOOK: Array<[prefix: string, input: number, output: number]> = [
+  ['claude-sonnet-4', 3, 15],
+  ['gpt-5-mini', 0.25, 2],
+  ['gpt-4.1-mini', 0.15, 0.6],
+  ['gpt-4o', 2.5, 10],
+  ['gpt-4o-mini', 0.15, 0.6],
+  ['text-embedding-3-small', 0.02, 0],
+];
+
+/**
  * Longest prefix wins, so a dated alias (claude-sonnet-4-6-20251114) matches its
  * family entry. Anything unmatched is left UNPRICED rather than being quietly
  * charged at some default: an unknown model on an invoice must be visible, and
  * the old fallback silently priced Claude-family models at a mini model's rate.
  */
-const PRICE_BOOK: Array<[prefix: string, prices: ModelPrices]> = [
-  ['claude-opus-4', prices(5, 25)],
-  ['claude-opus', prices(5, 25)],
-  ['claude-sonnet-4', prices(3, 15)],
-  ['claude-sonnet', prices(3, 15)],
-  ['claude-haiku', prices(1, 5)],
-  ['gpt-5-mini', prices(0.25, 2)],
-  ['gpt-5', prices(1.25, 10)],
-  ['gpt-4.1-mini', prices(0.15, 0.6)],
-  ['gpt-4.1', prices(2, 8)],
-  ['gpt-4o-mini', prices(0.15, 0.6)],
-  ['gpt-4o', prices(2.5, 10)],
-];
+const PRICE_BOOK: Array<[prefix: string, prices: ModelPrices]> = SEED_PRICE_BOOK.map(
+  ([prefix, input, output]) => [prefix, prices(input, output)],
+);
+
+export function pricesFrom(
+  inputPerMTok: number,
+  outputPerMTok: number,
+): ModelPrices {
+  return prices(inputPerMTok, outputPerMTok);
+}
+
+/** Prefix match over an arbitrary book — the table's, or the seed fallback. */
+export function matchPrefix(
+  model: string,
+  book: Array<[prefix: string, prices: ModelPrices]>,
+): ModelPrices | null {
+  const key = model.trim().toLowerCase();
+  let best: { length: number; prices: ModelPrices } | null = null;
+  for (const [prefix, value] of book) {
+    if (key.startsWith(prefix) && (!best || prefix.length > best.length)) {
+      best = { length: prefix.length, prices: value };
+    }
+  }
+  return best?.prices ?? null;
+}
 
 export function findModelPrices(model: string): ModelPrices | null {
   const key = model.trim().toLowerCase();

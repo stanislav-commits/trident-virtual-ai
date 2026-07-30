@@ -99,3 +99,53 @@ export async function fetchShipPhotoUrl(
   if (!r.ok) return null;
   return URL.createObjectURL(await r.blob());
 }
+
+/**
+ * The rate card behind every cost on this page. Editing it changes what NEW
+ * calls cost; rows already recorded carry the rates they were charged at.
+ */
+export interface ModelPrice {
+  modelPrefix: string;
+  inputPerMTok: number;
+  outputPerMTok: number;
+  note: string | null;
+  updatedAt: string;
+}
+
+export async function getModelPrices(token: string): Promise<ModelPrice[]> {
+  const r = await fetchWithAuth("llm-prices", { token });
+  await ok(r, "Load model prices");
+  return r.json();
+}
+
+/** Add a model or re-rate one; the prefix identifies the row. */
+export async function saveModelPrice(
+  token: string,
+  price: {
+    modelPrefix: string;
+    inputPerMTok: number;
+    outputPerMTok: number;
+    note?: string | null;
+  },
+): Promise<ModelPrice[]> {
+  const r = await fetchWithAuth("llm-prices", {
+    token,
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(price),
+  });
+  await ok(r, "Save model price");
+  return r.json();
+}
+
+export async function deleteModelPrice(
+  token: string,
+  modelPrefix: string,
+): Promise<ModelPrice[]> {
+  const r = await fetchWithAuth(`llm-prices/${encodeURIComponent(modelPrefix)}`, {
+    token,
+    method: "DELETE",
+  });
+  await ok(r, "Delete model price");
+  return r.json();
+}
