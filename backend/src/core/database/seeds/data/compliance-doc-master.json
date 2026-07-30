@@ -11660,7 +11660,7 @@
   "update_trigger": null,
   "notes": null,
   "archetype": "STAT_CERT",
-  "link_cardinality": "vessel",
+  "link_cardinality": "single_asset",
   "reg_basis": "Flag Administration — maritime identity assignment",
   "basis_note": "Assigns the tender's Call Sign and MMSI for AIS, VHF/DSC, EPIRB and GMDSS equipment.",
   "drives_pms": "no",
@@ -11671,9 +11671,7 @@
    "document_number",
    "issuing_party",
    "issue_date",
-   "linked_entity",
-   "vessel_call_sign",
-   "official_number"
+   "linked_entity"
   ],
   "special_data": null,
   "library_ref": null
@@ -11702,7 +11700,7 @@
   "update_trigger": null,
   "notes": null,
   "archetype": "EQUIP_TYPE",
-  "link_cardinality": "vessel",
+  "link_cardinality": "single_asset",
   "reg_basis": "Recreational Craft Directive 2013/53/EU",
   "basis_note": "Manufacturer's declaration that the tender complies with the Recreational Craft Directive. Applies to CE-marked tenders.",
   "drives_pms": "no",
