@@ -537,6 +537,34 @@ export function AssetDrawer({
   const save = (field: keyof UpdateAssetInput) =>
     makeFieldSaver(asset.id, field);
 
+  /**
+   * v60 Compliance Document Library row 010: "Add a prompt to verify and
+   * replace linked type approval/MED/DoC documents whenever the brand, type or
+   * model of an asset changes. Existing documents should only remain linked
+   * where they still apply to the updated equipment."
+   *
+   * A type approval approves a MODEL. Change the model and the approval on file
+   * may now describe equipment that is no longer fitted — the link has to be
+   * reviewed by a human, so this asks rather than guessing.
+   */
+  const [approvalReview, setApprovalReview] = useState<{
+    field: string;
+    from: string | null;
+    to: string | null;
+  } | null>(null);
+
+  const saveIdentity = (field: "brand" | "model") => {
+    const saver = makeFieldSaver(asset.id, field);
+    return async (next: string | null) => {
+      const before = asset[field] ?? null;
+      await saver(next);
+      const changed = (before ?? "") !== (next ?? "");
+      if (changed && typeApprovals.length > 0) {
+        setApprovalReview({ field, from: before, to: next ?? null });
+      }
+    };
+  };
+
   return (
     <aside className="assets-section__drawer">
       <div className="assets-section__drawer-head">
@@ -556,6 +584,36 @@ export function AssetDrawer({
               .filter(Boolean)
               .join(" · ") || "—"}
           </div>
+          {approvalReview && (
+            <div className="assets-section__approval-review">
+              <span>
+                {approvalReview.field === "brand" ? "Brand" : "Model"} changed
+                {approvalReview.from ? ` from "${approvalReview.from}"` : ""} to{" "}
+                "{approvalReview.to ?? "—"}". This asset has{" "}
+                {typeApprovals.length}{" "}
+                {typeApprovals.length === 1 ? "type approval" : "type approvals"}{" "}
+                linked — check they still apply to the new equipment.
+              </span>
+              <button
+                type="button"
+                className="compliance__record-open"
+                onClick={() => {
+                  setDrawerTab("certs");
+                  setApprovalReview(null);
+                }}
+              >
+                Review
+              </button>
+              <button
+                type="button"
+                className="compliance__record-open"
+                onClick={() => setApprovalReview(null)}
+                title="They still apply — keep the links"
+              >
+                Still apply
+              </button>
+            </div>
+          )}
           {asset.location && (
             <div className="assets-section__drawer-meta">{asset.location}</div>
           )}
@@ -624,8 +682,8 @@ export function AssetDrawer({
               labels already carry the group/sub NAME, so no separate
               name rows here. */}
           <SfiCascadeRows token={token} asset={asset} onPatch={onPatch} />
-          <OverviewFieldRow label="Brand" value={asset.brand} onSave={save("brand")} />
-          <OverviewFieldRow label="Model" value={asset.model} onSave={save("model")} />
+          <OverviewFieldRow label="Brand" value={asset.brand} onSave={saveIdentity("brand")} />
+          <OverviewFieldRow label="Model" value={asset.model} onSave={saveIdentity("model")} />
           <OverviewFieldRow label="Serial №" value={asset.serialNo} onSave={save("serialNo")} />
           <OverviewFieldRow
             label="Served by"

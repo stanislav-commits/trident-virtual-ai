@@ -10110,6 +10110,16 @@
   margin: 6px 0 0; font-size: 11px; font-style: italic;
   color: var(--chat-text-muted);
 }
+/* v60 library row 010 — a type approval describes the model that was fitted;
+   changing brand or model may invalidate it, so the link needs a human look. */
+.assets-section__approval-review {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 8px 0 0; padding: 8px 10px; border-radius: 6px;
+  background: var(--status-warn-bg); border: 1px solid var(--status-warn-border);
+  color: var(--status-warn); font-size: 11.5px; line-height: 1.4;
+}
+.assets-section__approval-review > span { flex: 1; min-width: 220px; }
+
 /* Section heading inside the asset drawer's Certs tab — type approvals sit
    above the compliance records and need to read as two separate groups. */
 .assets-section__certs-head {

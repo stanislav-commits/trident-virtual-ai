@@ -106,6 +106,7 @@ import { AccessMatrixCellEntity } from '../../modules/access-control/entities/ac
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
 import { ComplianceDocMasterEntity } from '../../modules/compliance/entities/compliance-doc-master.entity';
+import { ComplianceDocTypeEntity } from '../../modules/compliance/entities/compliance-doc-type.entity';
 import { getDatabaseEnv } from './database.config';
 
 const db = getDatabaseEnv();
@@ -138,6 +139,7 @@ const dataSource = new DataSource({
     PmsTaskEntity,
     // Registered so `db:seed:compliance` can rebuild the rulebook catalogue.
     ComplianceDocMasterEntity,
+    ComplianceDocTypeEntity,
   ],
   migrations: [
     InitAccessControlSchema20260418000100,

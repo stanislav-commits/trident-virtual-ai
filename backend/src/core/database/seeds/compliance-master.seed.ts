@@ -3,6 +3,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import dataSource from '../typeorm.datasource';
 import { ComplianceDocMasterEntity } from '../../../modules/compliance/entities/compliance-doc-master.entity';
+import { ComplianceDocTypeEntity } from '../../../modules/compliance/entities/compliance-doc-type.entity';
+import { ShipEntity } from '../../../modules/ships/entities/ship.entity';
+import {
+  deriveFlagRegistry,
+  deriveGtBucket,
+  FLAG_REGISTRY_COLUMN,
+  GT_BUCKET_COLUMN,
+  resolveApplicability,
+} from '../../../modules/compliance/compliance-profile.util';
 
 /**
  * Load the vessel-agnostic compliance rulebook (`compliance_doc_master`) from
@@ -119,12 +128,77 @@ async function run() {
     `SELECT COUNT(*)::text AS n FROM "compliance_doc_types"`,
   );
 
+  // New rulebook rows have to reach the vessels too. instantiateForShip only
+  // runs when an operator triggers it, so a catalogue that gained rows would
+  // otherwise sit in the master table and never appear on any ship.
+  const shipRepository = dataSource.getRepository(ShipEntity);
+  const typeRepository = dataSource.getRepository(ComplianceDocTypeEntity);
+  const masterRows = await repository.find();
+  const ships = await shipRepository.find();
+  let instantiated = 0;
+  for (const ship of ships) {
+    if (ship.isPlatform) continue; // the hidden Publications scope owns no register
+    const existing = await typeRepository.find({
+      where: { shipId: ship.id },
+      select: { sfiCode: true },
+    });
+    if (!existing.length) continue; // never instantiated — leave that to the operator
+    const have = new Set(existing.map((t) => t.sfiCode));
+    const missing = masterRows.filter((m) => !have.has(m.sfiCode));
+    if (!missing.length) continue;
+
+    const bucket = ship.gtBucket ?? deriveGtBucket(ship.grossTonnage, ship.lengthM ? Number(ship.lengthM) : null);
+    const gtKey = bucket ? GT_BUCKET_COLUMN[bucket] : null;
+    const opKey = ship.operationType === 'private' ? 'appPrivate' : 'appCommercial';
+    const flag = ship.flagRegistry ?? deriveFlagRegistry(ship.flag);
+    const flagKey = flag ? FLAG_REGISTRY_COLUMN[flag] : null;
+
+    await typeRepository.save(
+      missing.map((row) =>
+        typeRepository.create({
+          shipId: ship.id,
+          sfiCode: row.sfiCode,
+          sectionCode: row.sectionCode,
+          sectionName: row.sectionName,
+          name: row.name,
+          scope: row.scope,
+          linkedSfi: row.linkedSfi,
+          applicability: gtKey
+            ? resolveApplicability(row, { gtKey, opKey, flagKey })
+            : '',
+          renewalCycle: row.renewalCycle,
+          surveyWindow: row.surveyWindow,
+          updateTrigger: row.updateTrigger,
+          notes: row.notes,
+          archetype: row.archetype,
+          linkCardinality: row.linkCardinality,
+          regBasis: row.regBasis,
+          basisNote: row.basisNote,
+          drivesPms: row.drivesPms,
+          oneCurrentVersion: row.oneCurrentVersion,
+          retainHistory: row.retainHistory,
+          autoArchivePrevious: row.autoArchivePrevious,
+          mandatoryUpload: row.mandatoryUpload,
+          documentType: row.documentType,
+          validityDriver: row.validityDriver,
+          reminderProfile: row.reminderProfile,
+          v60Ref: row.v60Ref,
+          fieldProfile: row.fieldProfile,
+          specialData: row.specialData,
+        }),
+      ),
+      { chunk: 100 },
+    );
+    instantiated += missing.length;
+  }
+
   const total = await repository.count();
   await dataSource.destroy();
 
   console.log(
     `Compliance rulebook seeded: ${created} created, ${updated} updated, ` +
-      `${total} rows total; ${propagated} per-ship rows refreshed`,
+      `${total} rows total; ${propagated} per-ship rows refreshed, ` +
+      `${instantiated} newly instantiated`,
   );
 }
 
