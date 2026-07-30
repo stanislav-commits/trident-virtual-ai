@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ModelPricesModal } from "./ModelPricesModal";
 import {
   deleteShipPhoto,
   fetchShipPhotoUrl,
@@ -397,6 +398,7 @@ function TokensTile({
   );
 
   const shown = range || filter ? custom : tokens;
+  const [pricesOpen, setPricesOpen] = useState(false);
 
   if (!tokens) {
     return (
@@ -442,7 +444,24 @@ function TokensTile({
           busy={busy}
           onApply={(next) => void load(next, filter)}
         />
+        {/* Every figure on this card is tokens x a rate, and the rates are the
+            one part of it an operator has to maintain. The menu sits with the
+            numbers it explains rather than in a settings page nobody opens. */}
+        {token && (
+          <button
+            type="button"
+            className="overview__card-menu"
+            onClick={() => setPricesOpen(true)}
+            title="Model prices"
+            aria-label="Model prices"
+          >
+            ⋯
+          </button>
+        )}
       </div>
+      {pricesOpen && token && (
+        <ModelPricesModal token={token} onClose={() => setPricesOpen(false)} />
+      )}
 
       {rangeError && <p className="overview__spend-error">{rangeError}</p>}
 
@@ -489,6 +508,21 @@ function TokensTile({
                   </span>
                   <span className="overview__spend-bucket-value overview__stat-value--warn">
                     {fmtNumber(shown.unpricedCalls)}
+                  </span>
+                </li>
+              )}
+              {/* Document extraction runs as a separate tool whose log knows
+                  files, not vessels. Its older calls belong to no ship, and
+                  they are the largest single line on the bill — shown here
+                  rather than left off the page. */}
+              {shown.unattributedUsd != null && shown.unattributedUsd > 0 && (
+                <li>
+                  <span className="overview__dot" />
+                  <span className="overview__spend-bucket-label">
+                    Not tied to a vessel
+                  </span>
+                  <span className="overview__spend-bucket-value">
+                    {fmtUsd(shown.unattributedUsd)}
                   </span>
                 </li>
               )}

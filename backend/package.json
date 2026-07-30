@@ -9,6 +9,7 @@
     "db:migrate": "typeorm-ts-node-commonjs -d src/core/database/typeorm.datasource.ts migration:run -t each",
     "db:seed": "ts-node -r tsconfig-paths/register src/core/database/seeds/dev.seed.ts",
     "db:seed:compliance": "ts-node -r tsconfig-paths/register src/core/database/seeds/compliance-master.seed.ts",
+    "db:import-manual-costs": "ts-node --transpile-only -r tsconfig-paths/register src/core/database/scripts/import-manual-costs.ts",
     "db:up": "docker compose up -d postgres",
     "storage:migrate-spaces": "ts-node -r tsconfig-paths/register src/scripts/migrate-uploads-to-spaces.ts",
     "start": "nest start",

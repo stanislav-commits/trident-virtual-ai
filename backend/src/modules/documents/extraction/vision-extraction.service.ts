@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, Repository } from 'typeorm';
 import { LlmService } from '../../../integrations/llm/llm.service';
+import { ManualsCostImportService } from '../../llm-usage/manuals-cost-import.service';
 import { AssetEntity } from '../../assets/entities/asset.entity';
 import { AssetDocumentLinkEntity } from '../../assets/entities/asset-document-link.entity';
 import { DocumentEntity } from '../entities/document.entity';
@@ -125,6 +126,7 @@ export class VisionExtractionService implements OnApplicationBootstrap {
     @InjectRepository(AssetDocumentLinkEntity)
     private readonly assetDocLinkRepository: Repository<AssetDocumentLinkEntity>,
     private readonly llmService: LlmService,
+    private readonly manualsCosts: ManualsCostImportService,
   ) {}
 
   isEnabled(): boolean {
@@ -344,6 +346,13 @@ export class VisionExtractionService implements OnApplicationBootstrap {
         error instanceof Error ? error.message.slice(0, 1000) : String(error),
       );
     } finally {
+      // The extractor bills its own OpenAI key, outside LlmService, and writes
+      // every call to its audit log. Reading that log here is what puts the
+      // heaviest spend on the platform into the ledger — attributed to this
+      // vessel, since the log itself knows only files. In `finally` because a
+      // run that failed halfway still spent what it spent.
+      void this.manualsCosts.importQuietly(document.shipId);
+
       // Always remove the staged temp PDF (and any slice parts) — the
       // original is in storage (spool or Spaces) and RAGFlow gets the
       // markdown. Never let 01-input accumulate, even on a failed run.

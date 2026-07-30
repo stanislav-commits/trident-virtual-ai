@@ -1,6 +1,10 @@
 import { Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { LlmModelPriceEntity } from './entities/llm-model-price.entity';
 import { LlmUsageEntity } from './entities/llm-usage.entity';
+import { LlmPriceBookService } from './llm-price-book.service';
+import { LlmPricesController } from './llm-prices.controller';
+import { ManualsCostImportService } from './manuals-cost-import.service';
 import { LlmUsageQueryService } from './llm-usage-query.service';
 import { LlmUsageRecorderService } from './llm-usage-recorder.service';
 
@@ -12,8 +16,19 @@ import { LlmUsageRecorderService } from './llm-usage-recorder.service';
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([LlmUsageEntity])],
-  providers: [LlmUsageRecorderService, LlmUsageQueryService],
-  exports: [LlmUsageRecorderService, LlmUsageQueryService],
+  imports: [TypeOrmModule.forFeature([LlmUsageEntity, LlmModelPriceEntity])],
+  controllers: [LlmPricesController],
+  providers: [
+    LlmUsageRecorderService,
+    LlmUsageQueryService,
+    LlmPriceBookService,
+    ManualsCostImportService,
+  ],
+  exports: [
+    LlmUsageRecorderService,
+    LlmUsageQueryService,
+    LlmPriceBookService,
+    ManualsCostImportService,
+  ],
 })
 export class LlmUsageModule {}

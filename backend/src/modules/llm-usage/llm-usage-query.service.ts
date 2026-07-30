@@ -84,6 +84,13 @@ export interface ShipUsageMonth {
   cacheReadTokens: number;
   /** Calls whose model is missing from the price book: counted, not costed. */
   unpricedCalls: number;
+  /**
+   * Spend in the same window that no vessel owns. Document extraction runs as a
+   * separate tool whose own log knows files, not fleets, so anything imported
+   * from before the ledger could attribute it lands here. Reported next to the
+   * vessel's own figure rather than dropped: it is on the same invoice.
+   */
+  unattributedUsd: number | null;
   byBucket: UsageBucketTotal[];
   byModel: UsageModelTotal[];
   byPurpose: UsagePurposeTotal[];
@@ -200,6 +207,16 @@ export class LlmUsageQueryService {
         unpriced: number;
       }>();
 
+    // Deliberately not `base()`: that one is scoped to the vessel, and this is
+    // the spend no vessel owns. Same window, same filters do not apply.
+    const unattributed = await this.repository
+      .createQueryBuilder('u')
+      .select('SUM(u.cost_usd)', 'cost')
+      .where('u.ship_id IS NULL')
+      .andWhere('u.occurred_at >= :from', { from })
+      .andWhere('u.occurred_at < :to', { to: rangeEnd })
+      .getRawOne<{ cost: string | null }>();
+
     const perPurpose = await base()
       .select('u.purpose', 'purpose')
       .addSelect('COUNT(*)::int', 'calls')
@@ -274,6 +291,8 @@ export class LlmUsageQueryService {
       cacheWriteTokens: Number(totals?.cache_write ?? 0),
       cacheReadTokens: Number(totals?.cache_read ?? 0),
       unpricedCalls: totals?.unpriced ?? 0,
+      unattributedUsd:
+        unattributed?.cost == null ? null : Number(unattributed.cost),
       byBucket: [...buckets.values()].sort((a, b) => b.tokens - a.tokens),
       byModel: perModel.map((row) => ({
         model: row.model,

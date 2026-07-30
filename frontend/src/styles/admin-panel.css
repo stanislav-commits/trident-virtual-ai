@@ -11701,3 +11701,82 @@
   .overview__photo { flex-basis: 100%; min-height: 104px; }
   .overview__grid { grid-template-columns: 1fr; }
 }
+
+/* ── Model prices (⋯ on the usage card) ──────────────────────────────────── */
+
+/* Sits with the numbers it explains. Quiet until hovered: it is maintenance,
+   not something anyone opens daily. */
+.overview__card-menu {
+  margin-left: 6px; padding: 0 6px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; line-height: 1; color: var(--chat-text-subtle);
+  background: none; border: 1px solid transparent; border-radius: 7px;
+  cursor: pointer; transition: color 90ms ease, border-color 90ms ease;
+}
+.overview__card-menu:hover {
+  color: var(--chat-text); border-color: var(--chat-border-strong);
+}
+
+.prices__backdrop {
+  position: fixed; inset: 0; z-index: 120;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.prices {
+  width: min(560px, 100%); max-height: 82vh; overflow: auto; padding: 18px 20px 16px;
+  background: var(--chat-surface); border: 1px solid var(--chat-border-strong);
+  border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+}
+.prices__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.prices__title { margin: 0; font-size: 15px; font-weight: 600; }
+.prices__close {
+  background: none; border: none; font-size: 20px; line-height: 1;
+  color: var(--chat-text-subtle); cursor: pointer;
+}
+.prices__close:hover { color: var(--chat-text); }
+.prices__lede, .prices__note {
+  margin: 8px 0 0; font-size: 11.5px; line-height: 1.5;
+  color: var(--chat-text-subtle);
+}
+.prices__note code { font-size: 11px; }
+.prices__error {
+  margin: 10px 0 0; padding: 7px 9px; font-size: 11.5px;
+  color: var(--danger); background: var(--danger-soft, rgba(220, 68, 68, 0.1));
+  border-radius: 8px;
+}
+.prices__table { width: 100%; margin-top: 14px; border-collapse: collapse; }
+.prices__table th {
+  padding: 0 8px 6px 0; text-align: left; font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--chat-text-subtle);
+}
+.prices__table th:nth-child(2), .prices__table th:nth-child(3) { width: 92px; }
+.prices__table th:last-child { width: 34px; }
+.prices__row td {
+  padding: 4px 8px 4px 0; border-top: 1px solid var(--chat-border);
+  vertical-align: middle;
+}
+.prices__prefix { font-size: 12.5px; }
+.prices__source {
+  display: block; font-size: 10.5px; color: var(--chat-text-subtle);
+}
+.prices__input {
+  width: 100%; padding: 5px 7px; font: inherit; font-size: 12.5px;
+  color: var(--chat-text); background: var(--chat-bg);
+  border: 1px solid var(--chat-border); border-radius: 7px;
+}
+.prices__input:focus { outline: none; border-color: var(--accent); }
+.prices__input--rate { text-align: right; }
+.prices__row--new .prices__input { background: transparent; }
+.prices__add {
+  padding: 5px 10px; font-size: 11.5px; color: var(--chat-text);
+  background: var(--chat-bg); border: 1px solid var(--chat-border-strong);
+  border-radius: 7px; cursor: pointer;
+}
+.prices__add:hover:not(:disabled) { border-color: var(--accent); }
+.prices__remove {
+  padding: 2px 6px; font-size: 15px; line-height: 1; color: var(--chat-text-subtle);
+  background: none; border: none; cursor: pointer;
+}
+.prices__remove:hover:not(:disabled) { color: var(--danger); }

@@ -135,6 +135,8 @@ export type OverviewTokens = {
   cacheReadTokens: number;
   /** Calls on a model missing from the price book: counted, not costed. */
   unpricedCalls: number;
+  /** Spend in the window that no vessel owns — document extraction, mostly. */
+  unattributedUsd: number | null;
   byBucket: OverviewTokensBucket[];
   byModel: OverviewTokensModel[];
   byPurpose: OverviewTokensPurpose[];
