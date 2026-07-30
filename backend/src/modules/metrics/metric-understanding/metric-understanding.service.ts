@@ -285,18 +285,25 @@ export class MetricUnderstandingService {
       })),
     };
 
-    const parsed = await this.llmService.createJsonChatCompletion<MetricAnalysisJson>({
-      systemPrompt: ANALYZE_METRIC_SYSTEM_PROMPT,
-      userPrompt: renderAnalyzeBundle(bundle),
-      // Pinned to the cheap tier regardless of LLM_MODEL: this is a bulk
-      // classification task (~2000 metrics per ship). On the main model
-      // (gpt-5 class) a full re-analyze costs ~$150; on 4.1-mini ~$7 with
-      // near-identical binding accuracy. Low-confidence results get human
-      // review in the Metrics tab anyway.
-      model: 'gpt-4.1-mini',
-      temperature: 0.1,
-      maxTokens: 800,
-    });
+    // Binding a metric to an asset is a reading of what the metric IS, and the
+    // main model is the one that has to answer questions about it later — so it
+    // is the one that decides. This used to be pinned to a cheap OpenAI tier
+    // for bulk economics; a full re-analyze of ~2000 metrics costs real money
+    // on the main model, and the spend is now on the usage card where that
+    // shows up honestly. Falls back to the sub-model path when Claude is not
+    // configured at all.
+    const parsed =
+      (await this.llmService.createAnthropicJsonCompletion<MetricAnalysisJson>({
+        systemPrompt: ANALYZE_METRIC_SYSTEM_PROMPT,
+        userPrompt: renderAnalyzeBundle(bundle),
+        maxTokens: 800,
+      })) ??
+      (await this.llmService.createJsonChatCompletion<MetricAnalysisJson>({
+        systemPrompt: ANALYZE_METRIC_SYSTEM_PROMPT,
+        userPrompt: renderAnalyzeBundle(bundle),
+        temperature: 0.1,
+        maxTokens: 800,
+      }));
 
     if (!parsed) {
       return {
@@ -379,7 +386,7 @@ export class MetricUnderstandingService {
     }
 
     metric.aiGeneratedAt = new Date();
-    metric.aiModel = process.env.LLM_MODEL ?? 'gpt-4o-mini';
+    metric.aiModel = process.env.LLM_MODEL ?? 'gpt-4.1-mini';
 
     await this.metricRepository.save(metric);
   }
