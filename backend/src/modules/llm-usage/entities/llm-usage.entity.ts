@@ -61,6 +61,13 @@ export class LlmUsageEntity {
   @Column({ name: 'cache_read_tokens', type: 'int', default: 0 })
   cacheReadTokens!: number;
 
+  /**
+   * Length of the audio a transcription call was billed on. Zero for every
+   * token-billed call — the two never mix on one row.
+   */
+  @Column({ name: 'audio_seconds', type: 'int', default: 0 })
+  audioSeconds!: number;
+
   @Column({
     name: 'price_input_per_mtok',
     type: 'numeric',

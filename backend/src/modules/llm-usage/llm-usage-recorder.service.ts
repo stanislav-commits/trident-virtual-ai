@@ -17,6 +17,8 @@ export interface LlmCallUsage {
   /** Explicit ttl '1h' cache writes — twice the price of a 5-minute one. */
   cacheWrite1hTokens?: number;
   cacheReadTokens?: number;
+  /** Audio length for a per-minute model (transcription). */
+  audioSeconds?: number;
   requestId?: string | null;
   latencyMs?: number | null;
   status?: 'ok' | 'error';
@@ -59,6 +61,7 @@ export class LlmUsageRecorderService {
           Math.trunc(usage.cacheWrite1hTokens ?? 0),
         ),
         cacheReadTokens: Math.max(0, Math.trunc(usage.cacheReadTokens ?? 0)),
+        audioSeconds: Math.max(0, Math.trunc(usage.audioSeconds ?? 0)),
       };
 
       // A call that reported nothing at all is not evidence of zero spend, it is

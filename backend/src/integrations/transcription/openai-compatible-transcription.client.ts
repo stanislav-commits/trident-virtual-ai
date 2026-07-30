@@ -31,7 +31,10 @@ export async function createOpenAiCompatibleAudioTranscription(
 
   form.append('model', input.model);
   form.append('file', audioBlob, input.fileName);
-  form.append('response_format', 'json');
+  // verbose_json rather than json: it is the only format that returns the
+  // clip's duration, and transcription bills by the minute — without it the
+  // spend ledger has nothing to price.
+  form.append('response_format', 'verbose_json');
 
   if (input.language) {
     form.append('language', input.language);

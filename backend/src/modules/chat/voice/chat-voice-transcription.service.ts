@@ -15,6 +15,7 @@ import {
   ChatVoiceTranscriptionResponseDto,
   UploadedChatVoiceAudioFile,
 } from './chat-voice.types';
+import { withLlmUsageContext } from '../../llm-usage/llm-usage.context';
 
 @Injectable()
 export class ChatVoiceTranscriptionService {
@@ -29,11 +30,16 @@ export class ChatVoiceTranscriptionService {
     input: CreateChatVoiceTranscriptionDto,
     file: UploadedChatVoiceAudioFile,
   ): Promise<ChatVoiceTranscriptionResponseDto> {
+    // The session's vessel, not the speaker's: an admin has no ship of their
+    // own, and the spend belongs to the vessel whose chat the note was dictated
+    // into.
+    let shipId = user.shipId ?? null;
     if (input.sessionId) {
-      await this.chatSessionsService.findAccessibleSessionOrThrow(
+      const session = await this.chatSessionsService.findAccessibleSessionOrThrow(
         user,
         input.sessionId,
       );
+      shipId = session.shipId ?? shipId;
     }
 
     this.validateDuration(input.durationMs);
@@ -41,13 +47,23 @@ export class ChatVoiceTranscriptionService {
     const requestId = randomUUID();
     const language = this.normalizeLanguage(input.locale);
 
-    const result = await this.transcriptionService.transcribeAudio({
-      buffer: audio.buffer,
-      fileName: audio.fileName,
-      mimeType: audio.mimeType,
-      language,
-      requestId,
-    });
+    // The transcriber bills per minute and records it; attribution has to come
+    // from here, the only place that knows whose voice and which vessel.
+    const result = await withLlmUsageContext(
+      {
+        shipId,
+        userId: user.id ?? null,
+        purpose: 'chat_transcribe',
+      },
+      () =>
+        this.transcriptionService.transcribeAudio({
+          buffer: audio.buffer,
+          fileName: audio.fileName,
+          mimeType: audio.mimeType,
+          language,
+          requestId,
+        }),
+    );
 
     const transcript = result.transcript.trim();
 

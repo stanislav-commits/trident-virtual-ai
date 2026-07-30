@@ -21,6 +21,7 @@ export type LlmUsagePurpose =
   | 'chat_title'
   | 'chat_summary'
   | 'chat_vision'
+  | 'chat_transcribe'
   | 'chat_write_confirm'
   | 'doc_ingest'
   | 'doc_extract'

@@ -37,6 +37,19 @@ export class LlmModelPriceEntity {
   @Column({ name: 'output_per_mtok', type: 'numeric', precision: 10, scale: 4 })
   outputPerMTok!: string;
 
+  /**
+   * Rate per minute of audio, for models that bill on time instead of tokens
+   * (transcription). Null on everything else.
+   */
+  @Column({
+    name: 'per_minute_usd',
+    type: 'numeric',
+    precision: 10,
+    scale: 5,
+    nullable: true,
+  })
+  perMinuteUsd!: string | null;
+
   /** Where the number came from — a pricing page, a contract, a quote. */
   @Column({ name: 'note', type: 'varchar', length: 200, nullable: true })
   note!: string | null;

@@ -108,6 +108,7 @@ import { ApplyInsuranceReview20260730000200 } from './migrations/20260730000200-
 import { RefileMisfiledInsurance20260730000300 } from './migrations/20260730000300-refile-misfiled-insurance';
 import { AddLlmModelPrices20260730000400 } from './migrations/20260730000400-add-llm-model-prices';
 import { AddLlmUsageRequestKey20260730000500 } from './migrations/20260730000500-add-llm-usage-request-key';
+import { AddAudioUsage20260730000600 } from './migrations/20260730000600-add-audio-usage';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -241,6 +242,7 @@ const dataSource = new DataSource({
     RefileMisfiledInsurance20260730000300,
     AddLlmModelPrices20260730000400,
     AddLlmUsageRequestKey20260730000500,
+    AddAudioUsage20260730000600,
   ],
   synchronize: false,
   ssl: db.ssl

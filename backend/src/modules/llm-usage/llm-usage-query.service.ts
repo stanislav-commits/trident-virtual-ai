@@ -106,6 +106,7 @@ const CREW_PURPOSES: LlmUsagePurpose[] = [
   'chat_title',
   'chat_summary',
   'chat_vision',
+  'chat_transcribe',
   'chat_write_confirm',
 ];
 

@@ -15,6 +15,8 @@ export interface ModelPriceRow {
   modelPrefix: string;
   inputPerMTok: number;
   outputPerMTok: number;
+  /** Set only for models billed per minute of audio; null for token models. */
+  perMinuteUsd: number | null;
   note: string | null;
   updatedAt: string;
 }
@@ -60,6 +62,11 @@ export class LlmPriceBookService {
   costUsd(model: string, tokens: TokenCounts): number | null {
     const p = this.pricesFor(model);
     if (!p) return null;
+    // A per-minute model bills on time; its token columns are zero and adding
+    // them would be adding nothing to a number that is already complete.
+    if (p.perMinuteUsd != null) {
+      return ((tokens.audioSeconds ?? 0) / 60) * p.perMinuteUsd;
+    }
     return (
       (tokens.inputTokens * p.inputPerMTok +
         tokens.outputTokens * p.outputPerMTok +
@@ -76,6 +83,7 @@ export class LlmPriceBookService {
       modelPrefix: row.modelPrefix,
       inputPerMTok: Number(row.inputPerMTok),
       outputPerMTok: Number(row.outputPerMTok),
+      perMinuteUsd: row.perMinuteUsd == null ? null : Number(row.perMinuteUsd),
       note: row.note,
       updatedAt: row.updatedAt.toISOString(),
     }));
@@ -87,6 +95,7 @@ export class LlmPriceBookService {
       modelPrefix: string;
       inputPerMTok: number;
       outputPerMTok: number;
+      perMinuteUsd?: number | null;
       note?: string | null;
     },
     userId: string | null,
@@ -116,6 +125,10 @@ export class LlmPriceBookService {
       modelPrefix: prefix,
       inputPerMTok: rate(input.inputPerMTok, 'The input rate'),
       outputPerMTok: rate(input.outputPerMTok, 'The output rate'),
+      perMinuteUsd:
+        input.perMinuteUsd == null || input.perMinuteUsd === 0
+          ? null
+          : rate(input.perMinuteUsd, 'The per-minute rate'),
       note: input.note?.trim()?.slice(0, 200) || null,
       updatedByUserId: userId,
     });
@@ -144,7 +157,11 @@ export class LlmPriceBookService {
       const rows = await this.repository.find();
       this.book = rows.map((row) => [
         row.modelPrefix,
-        pricesFrom(Number(row.inputPerMTok), Number(row.outputPerMTok)),
+        pricesFrom(
+          Number(row.inputPerMTok),
+          Number(row.outputPerMTok),
+          row.perMinuteUsd == null ? null : Number(row.perMinuteUsd),
+        ),
       ]);
       this.loadedAt = Date.now();
     } catch (error) {

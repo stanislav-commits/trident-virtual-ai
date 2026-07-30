@@ -26,19 +26,26 @@ export interface ModelPrices {
   cacheWrite5mPerMTok: number;
   cacheWrite1hPerMTok: number;
   cacheReadPerMTok: number;
+  /** Rate per minute of audio, for models that bill on time (transcription). */
+  perMinuteUsd: number | null;
 }
 
 const CACHE_WRITE_5M_MULTIPLIER = 1.25;
 const CACHE_WRITE_1H_MULTIPLIER = 2;
 const CACHE_READ_MULTIPLIER = 0.1;
 
-function prices(inputPerMTok: number, outputPerMTok: number): ModelPrices {
+function prices(
+  inputPerMTok: number,
+  outputPerMTok: number,
+  perMinuteUsd: number | null = null,
+): ModelPrices {
   return {
     inputPerMTok,
     outputPerMTok,
     cacheWrite5mPerMTok: inputPerMTok * CACHE_WRITE_5M_MULTIPLIER,
     cacheWrite1hPerMTok: inputPerMTok * CACHE_WRITE_1H_MULTIPLIER,
     cacheReadPerMTok: inputPerMTok * CACHE_READ_MULTIPLIER,
+    perMinuteUsd,
   };
 }
 
@@ -56,21 +63,38 @@ export const SEED_PRICE_BOOK: Array<[prefix: string, input: number, output: numb
   ['text-embedding-3-small', 0.02, 0],
 ];
 
+/** Models billed per minute of audio rather than per token. */
+export const SEED_PER_MINUTE_PRICES: Array<[prefix: string, perMinute: number]> = [
+  ['whisper', 0.006],
+];
+
 /**
  * Longest prefix wins, so a dated alias (claude-sonnet-4-6-20251114) matches its
  * family entry. Anything unmatched is left UNPRICED rather than being quietly
  * charged at some default: an unknown model on an invoice must be visible, and
  * the old fallback silently priced Claude-family models at a mini model's rate.
  */
-const PRICE_BOOK: Array<[prefix: string, prices: ModelPrices]> = SEED_PRICE_BOOK.map(
-  ([prefix, input, output]) => [prefix, prices(input, output)],
-);
+const PRICE_BOOK: Array<[prefix: string, prices: ModelPrices]> = [
+  ...SEED_PRICE_BOOK.map(
+    ([prefix, input, output]): [string, ModelPrices] => [
+      prefix,
+      prices(input, output),
+    ],
+  ),
+  ...SEED_PER_MINUTE_PRICES.map(
+    ([prefix, perMinute]): [string, ModelPrices] => [
+      prefix,
+      prices(0, 0, perMinute),
+    ],
+  ),
+];
 
 export function pricesFrom(
   inputPerMTok: number,
   outputPerMTok: number,
+  perMinuteUsd: number | null = null,
 ): ModelPrices {
-  return prices(inputPerMTok, outputPerMTok);
+  return prices(inputPerMTok, outputPerMTok, perMinuteUsd);
 }
 
 /** Prefix match over an arbitrary book — the table's, or the seed fallback. */
@@ -100,6 +124,8 @@ export function findModelPrices(model: string): ModelPrices | null {
 }
 
 export interface TokenCounts {
+  /** Audio length for a per-minute model; 0 for token-billed calls. */
+  audioSeconds?: number;
   inputTokens: number;
   outputTokens: number;
   cacheWrite5mTokens: number;
@@ -114,6 +140,9 @@ export function computeCostUsd(
 ): number | null {
   const p = findModelPrices(model);
   if (!p) return null;
+  if (p.perMinuteUsd != null) {
+    return ((tokens.audioSeconds ?? 0) / 60) * p.perMinuteUsd;
+  }
   const perMillion =
     tokens.inputTokens * p.inputPerMTok +
     tokens.outputTokens * p.outputPerMTok +

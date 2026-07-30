@@ -78,6 +78,9 @@ export function ModelPricesModal({
         modelPrefix: row.modelPrefix,
         inputPerMTok: nextIn,
         outputPerMTok: nextOut,
+        // Carried through untouched: this row's rate is edited in its own
+        // field, and a token edit must not silently drop it.
+        perMinuteUsd: row.perMinuteUsd,
         note: row.note,
       }),
     );
@@ -126,9 +129,9 @@ export function ModelPricesModal({
           </button>
         </div>
         <p className="prices__lede">
-          USD per million tokens. A change applies to the next call — everything
-          already recorded keeps the rate it was charged at, so past reports do
-          not move.
+          USD per million tokens, or per minute for the models that bill on
+          audio. A change applies to the next call — everything already recorded
+          keeps the rate it was charged at, so past reports do not move.
         </p>
 
         {error && <p className="prices__error">{error}</p>}
@@ -251,14 +254,20 @@ function PriceRow({
         />
       </td>
       <td>
-        <input
-          className="prices__input prices__input--rate"
-          inputMode="decimal"
-          value={output}
-          disabled={busy}
-          onChange={(e) => setOutput(e.target.value)}
-          onBlur={() => onSave(row, input, output)}
-        />
+        {row.perMinuteUsd == null ? (
+          <input
+            className="prices__input prices__input--rate"
+            inputMode="decimal"
+            value={output}
+            disabled={busy}
+            onChange={(e) => setOutput(e.target.value)}
+            onBlur={() => onSave(row, input, output)}
+          />
+        ) : (
+          <span className="prices__per-minute">
+            ${row.perMinuteUsd}/min
+          </span>
+        )}
       </td>
       <td>
         <button

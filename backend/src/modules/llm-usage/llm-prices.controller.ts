@@ -41,6 +41,7 @@ export class LlmPricesController {
       modelPrefix: string;
       inputPerMTok: number;
       outputPerMTok: number;
+      perMinuteUsd?: number | null;
       note?: string | null;
     },
     @CurrentUser() user: AuthenticatedUser,

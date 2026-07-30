@@ -1,3 +1,4 @@
+import { LlmUsageRecorderService } from '../../modules/llm-usage/llm-usage-recorder.service';
 import { formatError } from '../../common/utils/error.utils';
 import {
   Injectable,
@@ -13,7 +14,10 @@ import { TranscribeAudioInput, TranscribeAudioResult } from './transcription.typ
 export class TranscriptionService {
   private readonly logger = new Logger(TranscriptionService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly usageRecorder: LlmUsageRecorderService,
+  ) {}
 
   getStatus(): IntegrationStatusDto {
     const provider = this.getProvider();
@@ -45,6 +49,7 @@ export class TranscriptionService {
       );
     }
 
+    const startedAt = Date.now();
     try {
       const result = await createOpenAiCompatibleAudioTranscription({
         apiKey: this.getApiKey(),
@@ -54,6 +59,17 @@ export class TranscriptionService {
         fileName: input.fileName,
         mimeType: input.mimeType,
         language: input.language,
+      });
+
+      // Transcription bills by the minute, not by tokens, so the ledger gets
+      // the clip's length and prices it against the per-minute rate. A clip the
+      // provider did not measure records zero seconds — visible as a call that
+      // cost nothing rather than a guess based on file size.
+      this.usageRecorder.record({
+        provider: this.getProvider(),
+        model: this.getModel(),
+        audioSeconds: Math.round((result.durationMs ?? 0) / 1000),
+        latencyMs: Date.now() - startedAt,
       });
 
       return {

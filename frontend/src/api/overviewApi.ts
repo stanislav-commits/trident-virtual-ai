@@ -108,6 +108,8 @@ export interface ModelPrice {
   modelPrefix: string;
   inputPerMTok: number;
   outputPerMTok: number;
+  /** Set only for models billed per minute of audio (transcription). */
+  perMinuteUsd: number | null;
   note: string | null;
   updatedAt: string;
 }
@@ -125,6 +127,7 @@ export async function saveModelPrice(
     modelPrefix: string;
     inputPerMTok: number;
     outputPerMTok: number;
+    perMinuteUsd?: number | null;
     note?: string | null;
   },
 ): Promise<ModelPrice[]> {
