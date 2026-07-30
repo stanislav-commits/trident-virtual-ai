@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { withLlmUsageContext } from '../../llm-usage/llm-usage.context';
 import { ConfigService } from '@nestjs/config';
 import { stripDuplicateMarkdownTables } from '../../../common/utils/strip-markdown-tables.util';
 import { ChatLlmService } from '../chat-llm.service';
@@ -81,6 +82,29 @@ export class ChatTurnOrchestratorService {
   ) {}
 
   async respond(input: {
+    session: ChatSessionEntity;
+    messages: ChatMessageEntity[];
+    context: ChatConversationContext;
+  }): Promise<{
+    content: string;
+    ragflowContext: Record<string, unknown> | null;
+  }> {
+    // The whole turn runs inside the vessel's attribution, not just the
+    // answering responder: the classifier, the decomposer, the title and the
+    // label translations all spend money before a responder is chosen, and
+    // recorded without a ship they would land under "unattributed". Responders
+    // narrow `purpose` from here and inherit the ship and the actor.
+    return withLlmUsageContext(
+      {
+        shipId: input.session.shipId,
+        userId: input.session.userId,
+        purpose: 'chat_classify',
+      },
+      () => this.respondWithinTurn(input),
+    );
+  }
+
+  private async respondWithinTurn(input: {
     session: ChatSessionEntity;
     messages: ChatMessageEntity[];
     context: ChatConversationContext;

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { withLlmUsageContext } from '../llm-usage/llm-usage.context';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -148,10 +149,14 @@ export class ChatDailyBriefService {
 
   private async runForShip(ship: ShipEntity): Promise<number> {
     const alarmsGroundTruth = await this.alarmsLast24h(ship.id);
-    const result = await this.metricAnalyzerResponderService.answer(
-      ship.id,
-      this.briefQuestion(alarmsGroundTruth),
-      { answerLanguage: this.lang() },
+    const result = await withLlmUsageContext(
+      { shipId: ship.id, purpose: 'daily_brief' },
+      () =>
+        this.metricAnalyzerResponderService.answer(
+          ship.id,
+          this.briefQuestion(alarmsGroundTruth),
+          { answerLanguage: this.lang() },
+        ),
     );
 
     // Same shape the chat responder produces, so MessageBubble renders the

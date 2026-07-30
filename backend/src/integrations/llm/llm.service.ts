@@ -2,7 +2,9 @@ import { formatError } from '../../common/utils/error.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IntegrationStatusDto } from '../../common/dto/integration-status.dto';
+import { LlmUsageRecorderService } from '../../modules/llm-usage/llm-usage-recorder.service';
 import {
+  AnthropicUsageReport,
   createAnthropicPdfCompletion,
   createAnthropicToolCallCompletion,
   createAnthropicVisionCompletion,
@@ -11,7 +13,8 @@ import {
   ChatMessage,
   ChatToolDefinition,
   OpenAiCompatibleToolCallResult,
-  createOpenAiCompatibleChatCompletion,
+  OpenAiCompatibleUsage,
+  createOpenAiCompatibleChatCompletionDetailed,
   createOpenAiCompatibleToolCallCompletion,
 } from '../shared/openai-compatible-http';
 
@@ -49,7 +52,67 @@ interface LlmJsonChatCompletionInput extends LlmChatCompletionInput {
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly usageRecorder: LlmUsageRecorderService,
+  ) {}
+
+  /**
+   * Every model call funnels through this class, which is why the spend ledger
+   * is written here rather than at the twenty-odd call sites. The recorder never
+   * throws and is not awaited: an answer must not fail because accounting did.
+   */
+  private recordMediaUsage(
+    model: string,
+    usage: AnthropicUsageReport,
+    startedAt: number,
+  ): void {
+    this.usageRecorder.record({
+      provider: 'anthropic',
+      model,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cacheWrite5mTokens: usage.cacheWrite5mTokens,
+      cacheWrite1hTokens: usage.cacheWrite1hTokens,
+      cacheReadTokens: usage.cacheReadTokens,
+      latencyMs: Date.now() - startedAt,
+    });
+  }
+
+  private recordTextUsage(
+    provider: string,
+    model: string,
+    usage: OpenAiCompatibleUsage | null,
+    startedAt: number,
+  ): void {
+    if (!usage) return;
+    this.usageRecorder.record({
+      provider,
+      model,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cacheReadTokens: usage.cacheReadTokens,
+      latencyMs: Date.now() - startedAt,
+    });
+  }
+
+  private recordToolCallUsage(
+    provider: string,
+    model: string,
+    result: OpenAiCompatibleToolCallResult,
+    startedAt: number,
+  ): void {
+    this.usageRecorder.record({
+      provider,
+      model,
+      inputTokens: result.promptTokens,
+      outputTokens: result.completionTokens,
+      cacheWrite5mTokens: result.cacheWrite5mTokens,
+      cacheWrite1hTokens: result.cacheWrite1hTokens,
+      cacheReadTokens: result.cacheReadInputTokens,
+      latencyMs: Date.now() - startedAt,
+    });
+  }
 
   getStatus(): IntegrationStatusDto {
     const provider = this.configService.get<string>('integrations.llm.provider', 'openai');
@@ -87,19 +150,23 @@ export class LlmService {
       return null;
     }
 
+    const subModel = this.subLlmModel(input.model);
+    const subStartedAt = Date.now();
     try {
-      return await createOpenAiCompatibleChatCompletion({
+      const result = await createOpenAiCompatibleChatCompletionDetailed({
         apiKey: this.getApiKey(),
         baseUrl: this.getBaseUrl(),
         // Sub-LLM text completion → always OpenAI cheap. If LLM_MODEL is a
         // Claude alias (main responder), fall back to a sensible default
         // since these short text tasks don't benefit from Claude reasoning.
-        model: this.subLlmModel(input.model),
+        model: subModel,
         systemPrompt: input.systemPrompt,
         userPrompt: input.userPrompt,
         temperature: input.temperature,
         maxTokens: input.maxTokens,
       });
+      this.recordTextUsage('openai', subModel, result.usage, subStartedAt);
+      return result.text;
     } catch (error) {
       this.logger.warn(
         `LLM request failed: ${formatError(error)}`,
@@ -127,8 +194,9 @@ export class LlmService {
         return null;
       }
 
+      const mainStartedAt = Date.now();
       try {
-        return await createOpenAiCompatibleChatCompletion({
+        const result = await createOpenAiCompatibleChatCompletionDetailed({
           apiKey: this.getApiKey(),
           baseUrl: this.getBaseUrl(),
           model,
@@ -137,6 +205,8 @@ export class LlmService {
           temperature: input.temperature,
           maxTokens: input.maxTokens,
         });
+        this.recordTextUsage('openai', model, result.usage, mainStartedAt);
+        return result.text;
       } catch (error) {
         this.logger.warn(`Main-model answer failed: ${formatError(error)}`);
         return null;
@@ -198,20 +268,24 @@ export class LlmService {
       return null;
     }
 
+    const jsonModel = this.subLlmModel(input.model);
+    const jsonStartedAt = Date.now();
     try {
-      const raw = await createOpenAiCompatibleChatCompletion({
+      const result = await createOpenAiCompatibleChatCompletionDetailed({
         apiKey: this.getApiKey(),
         baseUrl: this.getBaseUrl(),
         // Same sub-LLM downgrade as createChatCompletion above — JSON
         // extraction tasks don't need Claude.
-        model: this.subLlmModel(input.model),
+        model: jsonModel,
         systemPrompt: input.systemPrompt,
         userPrompt: input.userPrompt,
         temperature: input.temperature,
         maxTokens: input.maxTokens,
         responseFormat: 'json_object',
       });
+      this.recordTextUsage('openai', jsonModel, result.usage, jsonStartedAt);
 
+      const raw = result.text;
       if (!raw) return null;
       return JSON.parse(raw) as T;
     } catch (error) {
@@ -244,11 +318,13 @@ export class LlmService {
     model?: string;
   }): Promise<T | null> {
     if (!this.getAnthropicApiKey()) return null;
+    const jsonModel = input.model?.trim() || this.getModel();
+    const jsonStartedAt = Date.now();
     try {
       const result = await createAnthropicToolCallCompletion({
         apiKey: this.getAnthropicApiKey(),
         baseUrl: this.getAnthropicBaseUrl(),
-        model: input.model?.trim() || this.getModel(),
+        model: jsonModel,
         messages: [
           {
             role: 'system',
@@ -259,6 +335,7 @@ export class LlmService {
         tools: [],
         maxTokens: input.maxTokens ?? 4000,
       });
+      this.recordToolCallUsage('anthropic', jsonModel, result, jsonStartedAt);
       const text = result.content;
       if (!text) return null;
       // Tolerate stray fences / prose around the object.
@@ -284,11 +361,15 @@ export class LlmService {
     mediaType: string,
   ): Promise<string | null> {
     if (!this.isVisionConfigured()) return null;
+    const mediaModel = this.getModel();
+    const mediaStartedAt = Date.now();
     try {
       return await createAnthropicVisionCompletion({
         apiKey: this.getAnthropicApiKey(),
         baseUrl: this.getAnthropicBaseUrl(),
-        model: this.getModel(),
+        model: mediaModel,
+        onUsage: (usage) =>
+          this.recordMediaUsage(mediaModel, usage, mediaStartedAt),
         systemPrompt:
           'You transcribe documents. Output ALL readable text from the ' +
           'image as plain text, preserving labels, numbers, dates, names and ' +
@@ -315,11 +396,15 @@ export class LlmService {
    */
   async extractTextFromPdf(pdfBuffer: Buffer): Promise<string | null> {
     if (!this.isVisionConfigured()) return null;
+    const mediaModel = this.getModel();
+    const mediaStartedAt = Date.now();
     try {
       return await createAnthropicPdfCompletion({
         apiKey: this.getAnthropicApiKey(),
         baseUrl: this.getAnthropicBaseUrl(),
-        model: this.getModel(),
+        model: mediaModel,
+        onUsage: (usage) =>
+          this.recordMediaUsage(mediaModel, usage, mediaStartedAt),
         systemPrompt:
           'You transcribe documents. Output ALL readable text from every ' +
           'page as plain text, preserving labels, numbers, dates, names and ' +
@@ -395,6 +480,7 @@ export class LlmService {
       };
     }
 
+    const startedAt = Date.now();
     try {
       const result = usingAnthropic
         ? await createAnthropicToolCallCompletion({
@@ -416,6 +502,12 @@ export class LlmService {
             temperature: input.temperature,
             maxTokens: input.maxTokens,
           });
+      this.recordToolCallUsage(
+        usingAnthropic ? 'anthropic' : 'openai',
+        effectiveModel,
+        result,
+        startedAt,
+      );
       return { ok: true, result };
     } catch (error) {
       const msg = formatError(error);

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { withLlmUsageContext } from '../llm-usage/llm-usage.context';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, Not, IsNull, Repository } from 'typeorm';
@@ -53,7 +54,10 @@ export class AlertAutoAnalysisService {
   }
 
   private async analyze(alert: AlertEntity): Promise<void> {
-    if (!alert.shipId || alert.source !== 'metric') return;
+    // Captured before the guard: the narrowing is lost inside the closure the
+    // usage context runs the analyzer in.
+    const shipId = alert.shipId;
+    if (!shipId || alert.source !== 'metric') return;
     if (!this.analyzedSeverities().has(alert.severity)) return;
 
     // Cooldown: if this rule already got an analysis recently, a re-fire of
@@ -89,10 +93,12 @@ export class AlertAutoAnalysisService {
     this.logger.log(
       `Auto-analyzing alert "${alert.ruleName}" (${alert.severity}) for ship ${alert.shipId}`,
     );
-    const result = await this.metricAnalyzerResponderService.answer(
-      alert.shipId,
-      question,
-      { answerLanguage: lang },
+    const result = await withLlmUsageContext(
+      { shipId, purpose: 'alert_analysis' },
+      () =>
+        this.metricAnalyzerResponderService.answer(shipId, question, {
+          answerLanguage: lang,
+        }),
     );
 
     // Re-read: the alert may have resolved/updated while the analyzer ran.

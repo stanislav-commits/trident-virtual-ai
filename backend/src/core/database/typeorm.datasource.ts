@@ -95,6 +95,7 @@ import { AddDefectDepartmentTaskLink20260724000300 } from './migrations/20260724
 import { AddPmsTaskPhotos20260724000400 } from './migrations/20260724000400-add-pms-task-photos';
 import { SyncUsersCrew20260724000500 } from './migrations/20260724000500-sync-users-crew';
 import { AddChatMessageAttachments20260725000100 } from './migrations/20260725000100-add-chat-message-attachments';
+import { AddLlmUsage20260728000100 } from './migrations/20260728000100-add-llm-usage';
 import { AddShipPhoto20260729000100 } from './migrations/20260729000100-add-ship-photo';
 import { ClearReportFalseExpiry20260729000200 } from './migrations/20260729000200-clear-report-false-expiry';
 import { AddVesselMasterData20260729000300 } from './migrations/20260729000300-add-vessel-master-data';
@@ -225,6 +226,7 @@ const dataSource = new DataSource({
     AddPmsTaskPhotos20260724000400,
     SyncUsersCrew20260724000500,
     AddChatMessageAttachments20260725000100,
+    AddLlmUsage20260728000100,
     AddShipPhoto20260729000100,
     ClearReportFalseExpiry20260729000200,
     AddVesselMasterData20260729000300,

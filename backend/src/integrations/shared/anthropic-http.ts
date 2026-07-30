@@ -24,6 +24,62 @@ import type {
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
 
+/**
+ * Optional spend callback. Vision and PDF both return plain text, and their one
+ * caller (LlmService) wants the text — so the accounting rides alongside rather
+ * than reshaping the return type.
+ */
+export interface AnthropicUsageReport {
+  inputTokens: number;
+  outputTokens: number;
+  cacheWrite5mTokens: number;
+  cacheWrite1hTokens: number;
+  cacheReadTokens: number;
+}
+
+function reportUsage(
+  payload: AnthropicResponse,
+  onUsage?: (usage: AnthropicUsageReport) => void,
+): void {
+  if (!onUsage) return;
+  const split = splitCacheWrites(payload.usage);
+  onUsage({
+    inputTokens: payload.usage?.input_tokens ?? 0,
+    outputTokens: payload.usage?.output_tokens ?? 0,
+    cacheReadTokens: payload.usage?.cache_read_input_tokens ?? 0,
+    ...split,
+  });
+}
+
+/**
+ * Cache writes, priced apart. A 5-minute write bills at 1.25x input and a
+ * 1-hour write at 2x, and this transport asks for BOTH: the system prefix is
+ * written with ttl '1h' (see splitSystemFromMessages) while a mid-conversation
+ * breakpoint takes the 5-minute default.
+ *
+ * Newer API versions report the split directly. When only the flat total comes
+ * back, it is attributed to the 1-hour bucket — that prefix is the multi-100K
+ * digest and dominates every write this transport makes, so guessing 5m there
+ * would understate the bill by nearly half. It over-states in the rare
+ * message-only case, which is the safer direction for a number we quote.
+ */
+function splitCacheWrites(usage: AnthropicResponse['usage']): {
+  cacheWrite5mTokens: number;
+  cacheWrite1hTokens: number;
+} {
+  const detailed = usage?.cache_creation;
+  if (detailed) {
+    return {
+      cacheWrite5mTokens: detailed.ephemeral_5m_input_tokens ?? 0,
+      cacheWrite1hTokens: detailed.ephemeral_1h_input_tokens ?? 0,
+    };
+  }
+  return {
+    cacheWrite5mTokens: 0,
+    cacheWrite1hTokens: usage?.cache_creation_input_tokens ?? 0,
+  };
+}
+
 export interface AnthropicToolCallInput {
   apiKey: string;
   baseUrl: string;
@@ -81,6 +137,11 @@ interface AnthropicResponse {
     output_tokens?: number;
     cache_creation_input_tokens?: number;
     cache_read_input_tokens?: number;
+    /** Present on newer API versions; the only way to price the two TTLs apart. */
+    cache_creation?: {
+      ephemeral_5m_input_tokens?: number;
+      ephemeral_1h_input_tokens?: number;
+    };
   };
 }
 
@@ -194,6 +255,7 @@ export async function createAnthropicToolCallCompletion(
     completionTokens: payload.usage?.output_tokens ?? 0,
     cacheCreationInputTokens: payload.usage?.cache_creation_input_tokens,
     cacheReadInputTokens: payload.usage?.cache_read_input_tokens,
+    ...splitCacheWrites(payload.usage),
   };
 }
 
@@ -524,6 +586,7 @@ export async function createAnthropicVisionCompletion(input: {
   imageBase64: string;
   mediaType: string;
   maxTokens?: number;
+  onUsage?: (usage: AnthropicUsageReport) => void;
 }): Promise<string | null> {
   const response = await fetch(buildMessagesUrl(input.baseUrl), {
     method: 'POST',
@@ -561,6 +624,7 @@ export async function createAnthropicVisionCompletion(input: {
     );
   }
   const payload = (await response.json()) as AnthropicResponse;
+  reportUsage(payload, input.onUsage);
   let content = '';
   for (const block of payload.content) {
     if (block.type === 'text' && typeof block.text === 'string') {
@@ -584,6 +648,7 @@ export async function createAnthropicPdfCompletion(input: {
   prompt: string;
   pdfBase64: string;
   maxTokens?: number;
+  onUsage?: (usage: AnthropicUsageReport) => void;
 }): Promise<string | null> {
   const response = await fetch(buildMessagesUrl(input.baseUrl), {
     method: 'POST',
@@ -619,6 +684,7 @@ export async function createAnthropicPdfCompletion(input: {
     throw new Error(body || `Anthropic PDF request failed: ${response.status}`);
   }
   const payload = (await response.json()) as AnthropicResponse;
+  reportUsage(payload, input.onUsage);
   let content = '';
   for (const block of payload.content) {
     if (block.type === 'text' && typeof block.text === 'string') {

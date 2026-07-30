@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { MetricAnalyzerResponderService } from '../../metrics/metric-understanding/metric-analyzer-responder.service';
 import { ChatContextQueryResolverService } from '../context/chat-context-query-resolver.service';
 import { ChatProgressBus } from '../progress/chat-progress.bus';
+import { withLlmUsageContext } from '../../llm-usage/llm-usage.context';
 import { ChatAttachmentStorageService } from '../chat-attachment-storage.service';
 import {
   ChatTurnResponderInput,
@@ -21,7 +22,10 @@ export class ChatMetricAnalyzerResponderService {
   ) {}
 
   async respond(input: ChatTurnResponderInput): Promise<ChatTurnResponderOutput> {
-    if (!input.session.shipId) {
+    // Captured once: the narrowing below does not survive into the closure the
+    // usage context runs the analyzer in.
+    const shipId = input.session.shipId;
+    if (!shipId) {
       return {
         askId: input.ask.id,
         intent: input.ask.intent,
@@ -84,10 +88,20 @@ export class ChatMetricAnalyzerResponderService {
     }
 
     try {
-      const result = await this.metricAnalyzerResponderService.answer(
-        input.session.shipId,
-        questionToAnalyze,
+      // Everything this turn spends on models is attributed to the vessel and to
+      // the crew member who asked: the analyzer's own call sites are too deep to
+      // know either, so the context is set once here, at the boundary that does.
+      const result = await withLlmUsageContext(
         {
+          shipId,
+          userId: input.session.userId,
+          purpose: images.length ? 'chat_vision' : 'chat_answer',
+        },
+        () =>
+          this.metricAnalyzerResponderService.answer(
+            shipId,
+            questionToAnalyze,
+            {
           onProgress: (text) =>
             this.chatProgressBus.emit(input.session.id, {
               type: 'tool',
@@ -105,7 +119,8 @@ export class ChatMetricAnalyzerResponderService {
             input.plan.responseLanguage?.trim() ||
             input.context.latestUserMessage?.content?.trim() ||
             null,
-        },
+            },
+          ),
       );
 
       return {

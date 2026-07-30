@@ -37,8 +37,11 @@ export class ChatMessagesService {
   ) {}
 
   private static readonly MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // Anthropic vision limit
+  /** Exactly what Anthropic vision accepts as a `media_type`. HEIC/HEIF —
+   *  the iPhone camera default — used to be allowed here, but nothing converts
+   *  it and the model rejects it, so the upload has to fail loudly instead. */
   private static readonly ALLOWED_ATTACHMENT_MIME =
-    /^image\/(jpeg|png|webp|heic|heif|gif)$/i;
+    /^image\/(jpeg|png|webp|gif)$/i;
 
   /** Store an image for the next message in this session; the client echoes
    *  the returned metadata back on send (whitelist-validated there). */
@@ -53,7 +56,7 @@ export class ChatMessagesService {
     );
     if (!ChatMessagesService.ALLOWED_ATTACHMENT_MIME.test(file.mimetype ?? '')) {
       throw new BadRequestException(
-        'only image files are supported (jpeg, png, webp, heic, gif)',
+        'only jpeg, png, webp and gif images are supported (HEIC photos must be converted first)',
       );
     }
     if ((file.size ?? 0) > ChatMessagesService.MAX_ATTACHMENT_BYTES) {
@@ -139,7 +142,7 @@ export class ChatMessagesService {
       .filter(
         (a) =>
           /^[0-9a-f-]{36}$/i.test(a.id) &&
-          /^image\/(jpeg|png|webp|heic|heif|gif)$/i.test(a.mimeType) &&
+          ChatMessagesService.ALLOWED_ATTACHMENT_MIME.test(a.mimeType) &&
           (a.provider === 'local' || a.provider === 'spaces'),
       )
       .slice(0, 5)

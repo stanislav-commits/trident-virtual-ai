@@ -22,6 +22,43 @@ interface OpenAiCompatibleChatCompletionResponse {
         | null;
     } | null;
   }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    /** OpenAI caches automatically; without this every hit looks like a miss. */
+    prompt_tokens_details?: { cached_tokens?: number };
+  };
+}
+
+/**
+ * What one call cost, as the provider reports it. Kept in the transport rather
+ * than imported from the usage module so integrations stay free of domain
+ * dependencies — `LlmService` is what joins the two.
+ */
+export interface OpenAiCompatibleUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+}
+
+export interface OpenAiCompatibleTextResult {
+  text: string | null;
+  usage: OpenAiCompatibleUsage | null;
+}
+
+function readUsage(
+  payload: OpenAiCompatibleChatCompletionResponse,
+): OpenAiCompatibleUsage | null {
+  const usage = payload.usage;
+  if (!usage) return null;
+  const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
+  return {
+    // prompt_tokens INCLUDES the cached part on OpenAI, unlike Anthropic where
+    // the buckets are disjoint — subtracting keeps the two providers comparable.
+    inputTokens: Math.max(0, (usage.prompt_tokens ?? 0) - cached),
+    outputTokens: usage.completion_tokens ?? 0,
+    cacheReadTokens: cached,
+  };
 }
 
 /**
@@ -32,9 +69,14 @@ function isGpt5Family(model: string): boolean {
   return /^gpt-5(?:[.-]|$)/i.test(model.trim());
 }
 
-export async function createOpenAiCompatibleChatCompletion(
+/**
+ * Text completion that also reports what it cost. The plain
+ * `createOpenAiCompatibleChatCompletion` below delegates here and drops the
+ * usage, so callers that do not care are unaffected.
+ */
+export async function createOpenAiCompatibleChatCompletionDetailed(
   input: OpenAiCompatibleChatCompletionInput,
-): Promise<string | null> {
+): Promise<OpenAiCompatibleTextResult> {
   const response = await fetch(buildChatCompletionsUrl(input.baseUrl), {
     method: 'POST',
     headers: {
@@ -77,7 +119,13 @@ export async function createOpenAiCompatibleChatCompletion(
   const payload =
     (await response.json()) as OpenAiCompatibleChatCompletionResponse;
 
-  return extractChatCompletionText(payload);
+  return { text: extractChatCompletionText(payload), usage: readUsage(payload) };
+}
+
+export async function createOpenAiCompatibleChatCompletion(
+  input: OpenAiCompatibleChatCompletionInput,
+): Promise<string | null> {
+  return (await createOpenAiCompatibleChatCompletionDetailed(input)).text;
 }
 
 // ── Tool-calling (function-calling) variant ────────────────────────────────
@@ -133,6 +181,14 @@ export interface OpenAiCompatibleToolCallResult {
   // uncached remainder; total input = promptTokens + both cache fields.
   cacheCreationInputTokens?: number;
   cacheReadInputTokens?: number;
+  /**
+   * Cache writes split by requested TTL, because they bill differently: a
+   * 5-minute write costs 1.25x input and a 1-hour write 2x. Anthropic reports
+   * the split when it can; when it only reports the flat total, that total lands
+   * in whichever bucket the request actually asked for.
+   */
+  cacheWrite5mTokens?: number;
+  cacheWrite1hTokens?: number;
 }
 
 /** User content blocks → OpenAI wire shape (text runs + image_url data

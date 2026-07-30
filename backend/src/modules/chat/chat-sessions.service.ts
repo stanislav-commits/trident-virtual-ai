@@ -1,4 +1,5 @@
 import { formatError } from '../../common/utils/error.utils';
+import { withLlmUsageContext } from '../llm-usage/llm-usage.context';
 import {
   BadRequestException,
   Injectable,
@@ -283,6 +284,27 @@ export class ChatSessionsService {
       return null;
     }
 
+    // Titling runs AFTER the turn has returned, so it falls outside the turn's
+    // attribution and was landing on the ledger as unattributed spend. The
+    // session is loaded by now, so the vessel and the owner are both known.
+    return withLlmUsageContext(
+      {
+        shipId: session.shipId,
+        userId: session.userId,
+        purpose: 'chat_title',
+      },
+      () => this.titleFromSession(session, activeMessages, input.summary),
+    );
+  }
+
+  private async titleFromSession(
+    session: ChatSessionEntity,
+    activeMessages: ChatMessageEntity[],
+    summary: string | null,
+  ): Promise<string | null> {
+    const userMessageCount = activeMessages.filter(
+      (message) => message.role === ChatMessageRole.USER,
+    ).length;
     const shouldRefine =
       userMessageCount >= CHAT_TITLE_REFINED_MIN_USER_MESSAGES;
 
@@ -298,7 +320,7 @@ export class ChatSessionsService {
       await this.generateContextualTitle({
         session,
         messages: activeMessages.slice(-CHAT_TITLE_RECENT_MESSAGE_LIMIT),
-        summary: input.summary,
+        summary,
         isRefinement: shouldRefine,
       }),
     );
