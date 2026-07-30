@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { GrafanaLlmService } from '../../integrations/grafana-llm/grafana-llm.service';
+import { LlmService } from '../../integrations/llm/llm.service';
 import { ShipEntity } from '../ships/entities/ship.entity';
 import { MetricConceptMemberEntity } from './entities/metric-concept-member.entity';
 import { MetricConceptEntity } from './entities/metric-concept.entity';
@@ -27,7 +27,7 @@ import { MetricConceptType } from './enums/metric-concept-type.enum';
  *    (`AFT-GARAGE-HYDRAULIC`, `WATER-MAKER-1`, `UTA-1` …).
  *
  * 2. `higher_order` (LLM, ~$0.05-0.15)
- *    Asks gpt-4o to propose cross-measurement vessel-wide groupings
+ *    Asks the main model to propose cross-measurement vessel-wide groupings
  *    ("Vessel navigation", "Total electrical load on board", "All HVAC")
  *    out of a small input (the measurement-level composites + the
  *    standalone single concepts that strategy 1 left out). Smaller input
@@ -151,7 +151,7 @@ interface MeasurementFieldPattern {
 @Injectable()
 export class MetricsSemanticClusterService {
   private readonly logger = new Logger(MetricsSemanticClusterService.name);
-  private readonly clusteringModel = 'gpt-4o';
+  /** Clustering runs on the main model, like every other reading of a metric. */
   private readonly maxOutputTokens = 16000;
 
   constructor(
@@ -163,7 +163,7 @@ export class MetricsSemanticClusterService {
     private readonly metricConceptMemberRepository: Repository<MetricConceptMemberEntity>,
     @InjectRepository(ShipMetricCatalogEntity)
     private readonly shipMetricCatalogRepository: Repository<ShipMetricCatalogEntity>,
-    private readonly grafanaLlmService: GrafanaLlmService,
+    private readonly llmService: LlmService,
   ) {}
 
   // =================================================================
@@ -468,9 +468,9 @@ export class MetricsSemanticClusterService {
     result: SemanticClusteringResult,
     dryRun: boolean,
   ): Promise<SemanticClusteringResult> {
-    if (!this.grafanaLlmService.isConfigured()) {
+    if (!this.llmService.isConfigured()) {
       throw new BadRequestException(
-        'LLM is not configured. Set GRAFANA_LLM_BASE_URL / GRAFANA_LLM_API_KEY in env.',
+        'LLM is not configured. Set LLM_MODEL and the provider API key in env.',
       );
     }
     if (items.length === 0) {
@@ -624,7 +624,7 @@ export class MetricsSemanticClusterService {
     const lines = items.map((item) => {
       // Tight descriptions only. Anything longer than this both wastes
       // tokens and tends to repeat the slug/displayName. We chop at 80
-      // chars to keep ~2000 items comfortably under gpt-4o's 128K context.
+      // chars to keep ~2000 items comfortably inside the model's context.
       const desc = (item.description ?? '').replace(/\s+/g, ' ').trim();
       const truncatedDesc = desc.length > 80 ? desc.slice(0, 77) + '...' : desc;
       return [
@@ -667,8 +667,8 @@ export class MetricsSemanticClusterService {
       lines.join('\n'),
     ].join('\n');
 
-    const raw = await this.grafanaLlmService.createChatCompletion({
-      model: this.clusteringModel,
+    const raw = await this.llmService.createChatCompletion({
+      preferMainModel: true,
       systemPrompt,
       userPrompt,
       temperature: 0,

@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { GrafanaLlmModule } from './grafana-llm/grafana-llm.module';
 import { InfluxModule } from './influx/influx.module';
 import { LlmModule } from './llm/llm.module';
 import { PostgresModule } from './postgres/postgres.module';
@@ -16,7 +15,6 @@ import { WindyModule } from './windy/windy.module';
     TranscriptionModule,
     WebSearchModule,
     LlmModule,
-    GrafanaLlmModule,
     WindyModule,
   ],
   exports: [
@@ -26,7 +24,6 @@ import { WindyModule } from './windy/windy.module';
     TranscriptionModule,
     WebSearchModule,
     LlmModule,
-    GrafanaLlmModule,
     WindyModule,
   ],
 })
