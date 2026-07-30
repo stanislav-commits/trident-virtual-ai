@@ -11637,9 +11637,9 @@
   "library_ref": null
  },
  {
-  "sfi_code": "2.1.1",
-  "section_code": "2.1",
-  "section_name": "Tenders — Radio (GMDSS)",
+  "sfi_code": "1.18.1",
+  "section_code": "1.18",
+  "section_name": "Tenders",
   "name": "Assignment of Maritime Identities (Call Sign / MMSI) — Tender",
   "scope": "Vessel",
   "linked_sfi": null,
@@ -11677,9 +11677,9 @@
   "library_ref": null
  },
  {
-  "sfi_code": "2.2.1",
-  "section_code": "2.2",
-  "section_name": "Tenders — Construction & Registration",
+  "sfi_code": "1.18.2",
+  "section_code": "1.18",
+  "section_name": "Tenders",
   "name": "EU Declaration of Conformity — Recreational Craft Directive (2013/53/EU)",
   "scope": "Vessel",
   "linked_sfi": null,
