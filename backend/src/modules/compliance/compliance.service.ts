@@ -475,17 +475,19 @@ export class ComplianceService {
 
     // Supporting-document count per record (v60 Rule 4) — the list itself is
     // fetched on demand when a record is opened.
-    const attachmentCounts = new Map<string, number>();
+    const attachmentsByDoc = new Map<
+      string,
+      Array<{ id: string; kind: string | null; label: string | null; fileName: string | null }>
+    >();
     if (docIds.length) {
-      const rows: Array<{ doc_id: string; n: string }> = await this.docFileRepository
-        .createQueryBuilder('f')
-        .select('f.doc_id', 'doc_id')
-        .addSelect('COUNT(*)', 'n')
-        .where('f.doc_id IN (:...docIds)', { docIds })
-        .groupBy('f.doc_id')
-        .getRawMany();
-      for (const row of rows) {
-        attachmentCounts.set(row.doc_id, Number(row.n));
+      const files = await this.docFileRepository.find({
+        where: { docId: In(docIds) },
+        order: { sortOrder: 'ASC', createdAt: 'ASC' },
+      });
+      for (const f of files) {
+        const list = attachmentsByDoc.get(f.docId) ?? [];
+        list.push({ id: f.id, kind: f.kind, label: f.label, fileName: f.fileName });
+        attachmentsByDoc.set(f.docId, list);
       }
     }
 
@@ -588,7 +590,11 @@ export class ComplianceService {
               ? Number(doc.extractedConfidence)
               : null,
           identityFlags: doc.identityFlags ?? null,
-          attachmentCount: attachmentCounts.get(doc.id) ?? 0,
+          // Tags, not just a count: one record can hold the yacht's and the
+          // tender's certificate side by side (v60 1.11.6), and "2 files" does
+          // not tell the register — or the chat — which is which.
+          attachments: attachmentsByDoc.get(doc.id) ?? [],
+          attachmentCount: (attachmentsByDoc.get(doc.id) ?? []).length,
           recordState: doc.recordState,
           revision: doc.revision,
           supersededByDocId: doc.supersededByDocId,

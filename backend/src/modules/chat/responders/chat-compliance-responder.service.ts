@@ -24,6 +24,14 @@ interface ComplianceItem {
   archetype: string | null;
   /** Y / C / R / TBD resolved for THIS vessel — decides what "missing" means. */
   applicabilityVerdict: string | null;
+  /**
+   * Supporting documents on the record, with their tags. v60 keeps several
+   * papers under ONE row rather than splitting the row — the SeaWolf X and
+   * SeaWolf Chase repatriation certificates live under 1.11.6 together, and the
+   * Greece / Italy / Spain P&I supplements under 1.11.3 tagged by jurisdiction.
+   * Without the tags the answer cannot say which paper covers what.
+   */
+  attachments: Array<{ kind: string | null; label: string | null; fileName: string | null }>;
 }
 
 /**
@@ -209,6 +217,7 @@ export class ChatComplianceResponderService {
               recordId: null,
               archetype,
               applicabilityVerdict,
+              attachments: [],
             });
           }
           continue;
@@ -228,6 +237,13 @@ export class ChatComplianceResponderService {
             recordId: this.str(record.id),
             archetype,
             applicabilityVerdict,
+            attachments: Array.isArray(record.attachments)
+              ? (record.attachments as Array<Record<string, unknown>>).map((a) => ({
+                  kind: this.str(a.kind),
+                  label: this.str(a.label),
+                  fileName: this.str(a.fileName),
+                }))
+              : [],
           });
         }
       }
@@ -322,6 +338,7 @@ export class ChatComplianceResponderService {
       'A document counts as missing ONLY if it appears in that second block. That block is already filtered by the vessel applicability matrix (its size, flag and commercial/private operation), so it excludes documents that do not apply to this vessel and documents that are only conditionally required until someone confirms they apply here.',
       'When asked what is missing, what is outstanding, or what the vessel still needs: answer from the REQUIRED ... NOT ON FILE block ONLY. Name the individual documents, grouped by section. Never answer with section names alone, never list a whole section as missing, and never count documents that are not in that block. If the block says none, say nothing is missing.',
       'If no record in the register is relevant to the question, say so plainly — do NOT invent documents, dates, issuers, or numbers.',
+      'A record can hold several attached papers, listed after "attached:" with their tags. One row deliberately covers more than one document — the yacht\'s and the tender\'s certificate under the same row, or one supplement per jurisdiction. When the question is about a particular vessel, jurisdiction or paper, answer from the matching attachment and name its tag; never assume a record covers only the vessel itself.',
       'The register records only WHETHER a document is on file. It does not record why one is absent, what the consequences are, or how urgent it is. Never state a reason for an absence, an operational or legal impact, a penalty, or an urgency/priority rating — none of that is in the data. Report what is missing, plus the renewal cycle and survey window where the register gives them.',
       'Be concise and practical. Lead with expired/expiring/missing items when the user asks what needs attention. Quote expiry dates and document/certificate numbers when present.',
       input.responseLanguage
@@ -374,6 +391,17 @@ export class ChatComplianceResponderService {
       if (item.assetName) parts.push(`equipment: ${item.assetName}`);
       if (item.surveyWindow) parts.push(`survey window: ${item.surveyWindow}`);
       if (item.renewalCycle) parts.push(`renewal: ${item.renewalCycle}`);
+      if (item.attachments.length) {
+        // What is actually filed under this record. One row legitimately holds
+        // several papers — the yacht's and the tender's, or one per
+        // jurisdiction — and the tag is the only thing that tells them apart.
+        const tags = item.attachments.map((a) =>
+          [a.label, a.kind ? a.kind.replace(/_/g, ' ') : null, a.fileName]
+            .filter(Boolean)
+            .join(' — '),
+        );
+        parts.push(`attached (${tags.length}): ${tags.join('; ')}`);
+      }
 
       let line = parts.join(' | ');
       const text = item.recordId ? texts.get(item.recordId) : null;
