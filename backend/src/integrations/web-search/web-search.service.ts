@@ -1,4 +1,3 @@
-import { formatError } from '../../common/utils/error.utils';
 import {
   Injectable,
   Logger,
@@ -12,38 +11,8 @@ import {
   WebSearchResult,
 } from './web-search.types';
 
-interface ResponsesApiOutputTextAnnotation {
-  type?: string;
-  title?: string;
-  url?: string;
-}
-
-interface ResponsesApiMessageContentItem {
-  type?: string;
-  text?: string;
-  annotations?: ResponsesApiOutputTextAnnotation[];
-}
-
-interface ResponsesApiOutputItem {
-  type?: string;
-  content?: ResponsesApiMessageContentItem[];
-  action?: {
-    sources?: Array<{
-      type?: string;
-      url?: string;
-    }>;
-  };
-}
-
-interface ResponsesApiPayload {
-  error?: {
-    message?: string;
-  } | null;
-  output?: ResponsesApiOutputItem[];
-}
-
 /**
- * Caps for the web_search tool (both providers). Keeping these tight beats
+ * Caps for the web_search tool. Keeping these tight beats
  * letting the model wander: latency stays bounded, the model is forced to
  * settle for the best of a few hits instead of stretching to 100+ random
  * sources, and the source panel users see is scannable.
@@ -79,71 +48,37 @@ export class WebSearchService {
   constructor(private readonly configService: ConfigService) {}
 
   getStatus(): IntegrationStatusDto {
-    const hasApiKey = Boolean(this.getApiKey());
-    const anthropicActive = this.shouldUseAnthropic();
+    const active = this.shouldUseAnthropic();
+    const mainModel = this.configService
+      .get<string>('integrations.llm.model', '')
+      .trim();
     return {
       name: 'web-search',
-      configured: hasApiKey || anthropicActive,
+      configured: active,
       reachable: false,
-      details: anthropicActive
-        ? `Anthropic native web search active (main model "${this.configService.get<string>('integrations.llm.model', '')}"); OpenAI Responses ("${this.getModel()}") as fallback.`
-        : hasApiKey
-          ? `OpenAI Responses web search is configured with model "${this.getModel()}".`
-          : 'WEB_SEARCH_API_KEY or LLM_API_KEY must be configured for OpenAI web search.',
+      details: active
+        ? `Anthropic native web search, run by the main model ("${mainModel}").`
+        : 'Web search needs a Claude main model (LLM_MODEL) and ANTHROPIC_API_KEY.',
     };
   }
 
+  /**
+   * Web answers come from Anthropic's server-side web_search tool, run by the
+   * SAME model that talks to the user: it formulates the queries, reads the
+   * results and writes the answer in its own voice with inline citations.
+   *
+   * There is no second provider behind it. A detached summary from another
+   * model, glued in when the first one failed, is not the same answer with a
+   * different logo on it — it reasons differently, cites differently and
+   * cannot see the conversation. A failure here surfaces as a failure.
+   */
   async search(input: WebSearchQueryInput): Promise<WebSearchResult> {
-    // When the main chat model is Claude, run web search natively through
-    // Anthropic's server-side web_search tool: the SAME model that talks to
-    // the user formulates the queries, reads the results, and writes the
-    // answer in its own voice with inline citations — instead of a detached
-    // gpt-5-mini summary glued in afterwards. Falls back to the OpenAI
-    // Responses path on any Anthropic failure so web answers never go dark.
-    if (this.shouldUseAnthropic()) {
-      try {
-        return await this.searchViaAnthropic(input);
-      } catch (error) {
-        this.logger.warn(
-          `Anthropic web search failed, falling back to OpenAI: ${
-            formatError(error)
-          }`,
-        );
-      }
-    }
-
-    if (!this.getApiKey()) {
+    if (!this.shouldUseAnthropic()) {
       throw new ServiceUnavailableException(
-        'OpenAI web search is not configured yet.',
+        'Web search needs a Claude main model and an Anthropic API key.',
       );
     }
-
-    const payload = await this.createResponse(input);
-    const answer = this.extractAnswer(payload);
-    // Annotation refs = URLs the model cited INLINE (signal). Search-call
-    // refs = every URL the search tool happened to visit (mostly noise — the
-    // 100+ "View all references" dropdown the user complained about). Prefer
-    // citations, top up with at most a couple of search refs if we have
-    // fewer than 3, hard cap to keep the panel scannable.
-    const contextReferences = this.capContextReferences(
-      this.extractContextReferences(payload),
-      MAX_RETURNED_REFERENCES,
-    );
-
-    return {
-      answer:
-        answer ??
-        'OpenAI web search is configured, but no answer was returned for this request.',
-      references: contextReferences.map((reference) => ({
-        source: 'web',
-        title: reference.sourceTitle ?? 'Web source',
-        uri: reference.sourceUrl,
-        snippet: reference.snippet,
-      })),
-      contextReferences,
-      provider: 'openai-responses-web-search',
-      model: this.getModel(),
-    };
+    return this.searchViaAnthropic(input);
   }
 
   // ── Anthropic branch ──────────────────────────────────────────────────
@@ -293,47 +228,6 @@ export class WebSearchService {
     return [...cited, ...others.slice(0, remaining)];
   }
 
-  private async createResponse(
-    input: WebSearchQueryInput,
-  ): Promise<ResponsesApiPayload> {
-    const model = this.getModel();
-    const body: Record<string, unknown> = {
-      model,
-      tool_choice: 'auto',
-      tools: [{ type: 'web_search' }],
-      include: ['web_search_call.action.sources'],
-      max_tool_calls: MAX_WEB_SEARCH_TOOL_CALLS,
-      input: this.buildInputPrompt(input),
-    };
-
-    if (this.supportsReasoningEffort(model)) {
-      body.reasoning = { effort: 'low' };
-    }
-
-    const response = await fetch(this.buildResponsesUrl(), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.getApiKey()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-
-    const payload = (await response.json()) as ResponsesApiPayload;
-
-    if (!response.ok) {
-      const message =
-        payload?.error?.message?.trim() ||
-        `OpenAI Responses request failed: ${response.status} ${response.statusText}`;
-
-      this.logger.warn(`OpenAI web search request failed: ${message}`);
-      throw new ServiceUnavailableException(
-        'OpenAI web search is temporarily unavailable.',
-      );
-    }
-
-    return payload;
-  }
 
   private buildInputPrompt(input: WebSearchQueryInput): string {
     const localeHint = input.locale?.trim()
@@ -376,103 +270,6 @@ export class WebSearchService {
     ].join('\n');
   }
 
-  private extractAnswer(payload: ResponsesApiPayload): string | null {
-    const contentItems = this.getMessageContentItems(payload);
-    const text = contentItems
-      .filter((item) => item.type === 'output_text')
-      .map((item) => item.text?.trim() ?? '')
-      .filter(Boolean)
-      .join('\n')
-      .trim();
-
-    return text || null;
-  }
-
-  private extractContextReferences(
-    payload: ResponsesApiPayload,
-  ): WebSearchContextReference[] {
-    const annotationReferences = this.extractAnnotationReferences(payload);
-    const searchCallReferences = this.extractSearchCallReferences(payload);
-
-    return this.dedupeReferences([
-      ...annotationReferences,
-      ...searchCallReferences,
-    ]);
-  }
-
-  private extractAnnotationReferences(
-    payload: ResponsesApiPayload,
-  ): WebSearchContextReference[] {
-    const references: WebSearchContextReference[] = [];
-
-    for (const [contentIndex, item] of this.getMessageContentItems(payload).entries()) {
-      const annotations = Array.isArray(item.annotations) ? item.annotations : [];
-
-      for (const [annotationIndex, annotation] of annotations.entries()) {
-        if (
-          annotation?.type !== 'url_citation' ||
-          typeof annotation.url !== 'string' ||
-          !annotation.url.trim()
-        ) {
-          continue;
-        }
-
-        references.push({
-          id: `web-annotation-${contentIndex + 1}-${annotationIndex + 1}`,
-          sourceTitle:
-            typeof annotation.title === 'string' && annotation.title.trim()
-              ? annotation.title.trim()
-              : this.buildUrlTitle(annotation.url),
-          sourceUrl: annotation.url.trim(),
-        });
-      }
-    }
-
-    return references;
-  }
-
-  private extractSearchCallReferences(
-    payload: ResponsesApiPayload,
-  ): WebSearchContextReference[] {
-    const references: WebSearchContextReference[] = [];
-    const outputItems = Array.isArray(payload.output) ? payload.output : [];
-
-    for (const [itemIndex, item] of outputItems.entries()) {
-      if (item?.type !== 'web_search_call') {
-        continue;
-      }
-
-      const sources = Array.isArray(item.action?.sources) ? item.action.sources : [];
-
-      for (const [sourceIndex, source] of sources.entries()) {
-        if (
-          source?.type !== 'url' ||
-          typeof source.url !== 'string' ||
-          !source.url.trim()
-        ) {
-          continue;
-        }
-
-        references.push({
-          id: `web-source-${itemIndex + 1}-${sourceIndex + 1}`,
-          sourceTitle: this.buildUrlTitle(source.url),
-          sourceUrl: source.url.trim(),
-        });
-      }
-    }
-
-    return references;
-  }
-
-  private getMessageContentItems(
-    payload: ResponsesApiPayload,
-  ): ResponsesApiMessageContentItem[] {
-    const outputItems = Array.isArray(payload.output) ? payload.output : [];
-
-    return outputItems
-      .filter((item) => item?.type === 'message')
-      .flatMap((item) => (Array.isArray(item.content) ? item.content : []));
-  }
 
   private dedupeReferences(
     references: WebSearchContextReference[],
@@ -500,39 +297,5 @@ export class WebSearchService {
     } catch {
       return 'Web source';
     }
-  }
-
-  private getApiKey(): string {
-    return (
-      this.configService
-        .get<string>('integrations.webSearch.apiKey', '')
-        .trim() ||
-      this.configService.get<string>('integrations.llm.apiKey', '').trim()
-    );
-  }
-
-  private getBaseUrl(): string {
-    return (
-      this.configService
-        .get<string>('integrations.webSearch.baseUrl', '')
-        .trim() || 'https://api.openai.com/v1'
-    );
-  }
-
-  private buildResponsesUrl(): string {
-    const baseUrl = this.getBaseUrl().replace(/\/+$/, '');
-    return baseUrl.endsWith('/responses') ? baseUrl : `${baseUrl}/responses`;
-  }
-
-  private getModel(): string {
-    return this.configService
-      .get<string>('integrations.webSearch.model', 'gpt-5-mini')
-      .trim();
-  }
-
-  private supportsReasoningEffort(model: string): boolean {
-    const normalized = model.trim().toLowerCase();
-
-    return /^(?:gpt-5|o[134])\b/u.test(normalized);
   }
 }

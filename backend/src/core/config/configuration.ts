@@ -151,11 +151,8 @@ export default function configuration() {
           120_000,
         ),
       },
-      webSearch: {
-        baseUrl: process.env.WEB_SEARCH_BASE_URL ?? '',
-        apiKey: process.env.WEB_SEARCH_API_KEY ?? '',
-        model: process.env.WEB_SEARCH_MODEL ?? 'gpt-5-mini',
-      },
+      // Web search is Anthropic's server-side tool, run by the main model, so
+      // it has no keys or model of its own — see WebSearchService.
       llm: {
         provider: process.env.LLM_PROVIDER ?? 'openai',
         baseUrl: process.env.LLM_BASE_URL ?? '',
@@ -177,12 +174,6 @@ export default function configuration() {
         baseUrl: process.env.TRANSCRIPTION_BASE_URL ?? '',
         model: process.env.TRANSCRIPTION_MODEL ?? 'whisper-1',
         apiKey: process.env.TRANSCRIPTION_API_KEY ?? '',
-      },
-      grafanaLlm: {
-        baseUrl: process.env.GRAFANA_LLM_BASE_URL ?? '',
-        apiKey:
-          process.env.GRAFANA_LLM_API_KEY ?? process.env.GRAFANA_SA_TOKEN ?? '',
-        model: process.env.GRAFANA_LLM_MODEL ?? 'gpt-4o',
       },
       // Grafana alerting webhook -> Trident. Shared secret authenticates the
       // webhook (no JWT). autoTaskSeverity: at/above this severity a firing
