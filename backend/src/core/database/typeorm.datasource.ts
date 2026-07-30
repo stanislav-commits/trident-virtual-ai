@@ -103,6 +103,7 @@ import { AddV60DocumentType20260729000600 } from './migrations/20260729000600-ad
 import { AddV60FieldProfile20260729000700 } from './migrations/20260729000700-add-v60-field-profile';
 import { AddTypeApprovalDocClass20260730000100 } from './migrations/20260730000100-add-type-approval-doc-class';
 import { ApplyV60InsuranceReview20260730000200 } from './migrations/20260730000200-apply-v60-insurance-review';
+import { RefileMisfiledInsurance20260730000300 } from './migrations/20260730000300-refile-misfiled-insurance';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -231,6 +232,7 @@ const dataSource = new DataSource({
     AddV60FieldProfile20260729000700,
     AddTypeApprovalDocClass20260730000100,
     ApplyV60InsuranceReview20260730000200,
+    RefileMisfiledInsurance20260730000300,
   ],
   synchronize: false,
   ssl: db.ssl
