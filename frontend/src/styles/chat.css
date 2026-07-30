@@ -4774,10 +4774,13 @@
 .chat-confirm__btn:disabled { opacity: .5; cursor: default; }
 .chat-confirm__hint { margin: 8px 0 0; font-size: 11.5px; color: var(--chat-text-subtle); }
 
-/* Unambiguous date display ("1 Aug 2026") over the native picker. */
+/* Quick shortcuts plus a calendar button, with the chosen date spelled out
+   underneath ("1 Aug 2026") because the native picker shows the OS locale. */
 .capanel__date { position: relative; }
 .capanel__date-btn { text-align: left; cursor: pointer; }
 .capanel__date-empty { color: var(--chat-text-subtle); }
+.capanel__date-chip { display: inline-flex; align-items: center; padding: 5px 11px; }
+.capanel__date-value { margin-top: 6px; font-size: 12px; color: var(--chat-text-muted); }
 .capanel__date-native {
   position: absolute; inset: 0; width: 100%; height: 100%;
   opacity: 0; pointer-events: none; border: 0; padding: 0;

@@ -265,12 +265,44 @@ function AssetPicker({
   );
 }
 
+function CalendarIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M8 3v4" /><path d="M16 3v4" /><path d="M3 10h18" />
+    </svg>
+  );
+}
+
+/** The three dates a due date almost always is, as on the phone. */
+const QUICK_DUE = [
+  { label: "Today", days: 0 },
+  { label: "Tomorrow", days: 1 },
+  { label: "In a week", days: 7 },
+];
+
 /**
- * Native <input type="date"> renders in whatever format the BROWSER's OS
- * locale dictates — Chrome ignores both the document lang and
- * navigator.language, so a due date showed as 08/01/2026 and read as
- * 8 January to half the crew. This shows an unambiguous "1 Aug 2026" and
- * still opens the real calendar (the native input is kept, just hidden).
+ * A calendar day, not an instant. `toISOString` reads the day in UTC, which in
+ * London makes "Today" mean yesterday for the first hour after midnight.
+ */
+function isoInDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const month = `${d.getMonth() + 1}`.padStart(2, "0");
+  const day = `${d.getDate()}`.padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * The three shortcuts plus a calendar button for anything else — the same row
+ * the mobile form shows, so a due date is one click on either.
+ *
+ * The calendar itself stays NATIVE: <input type="date"> is the platform's own
+ * picker, and there is no reason to draw a month grid over it. What it must not
+ * do is render the value, because native <input type="date"> uses the BROWSER's
+ * OS locale — Chrome ignores both the document lang and navigator.language, so
+ * a due date showed as 08/01/2026 and read as 8 January to half the crew. The
+ * chosen date is therefore spelled out underneath as "1 Aug 2026".
  */
 function DateField({
   value,
@@ -289,6 +321,10 @@ function DateField({
         year: "numeric",
       })
     : "";
+  const quick = QUICK_DUE.map((q) => ({ ...q, iso: isoInDays(q.days) }));
+  // A date that is none of the shortcuts came from the calendar, so the
+  // calendar button is the one that reads as chosen.
+  const custom = !!value && !quick.some((q) => q.iso === value);
   const openPicker = () => {
     const el = ref.current;
     if (!el || disabled) return;
@@ -298,14 +334,29 @@ function DateField({
   };
   return (
     <div className="capanel__date">
-      <button
-        type="button"
-        className="capanel__input capanel__date-btn"
-        onClick={openPicker}
-        disabled={disabled}
-      >
-        {label || <span className="capanel__date-empty">Pick a date</span>}
-      </button>
+      <div className="capanel__chips">
+        {quick.map((q) => (
+          <button
+            key={q.label}
+            type="button"
+            className={`capanel__chip${value === q.iso ? " capanel__chip--on" : ""}`}
+            onClick={() => onChange(q.iso)}
+            disabled={disabled}
+          >
+            {q.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={`capanel__chip capanel__date-chip${custom ? " capanel__chip--on" : ""}`}
+          onClick={openPicker}
+          disabled={disabled}
+          aria-label="Pick another date"
+          title="Pick another date"
+        >
+          <CalendarIcon />
+        </button>
+      </div>
       <input
         ref={ref}
         type="date"
@@ -316,6 +367,7 @@ function DateField({
         tabIndex={-1}
         aria-hidden
       />
+      {!!label && <div className="capanel__date-value">Due {label}</div>}
     </div>
   );
 }
