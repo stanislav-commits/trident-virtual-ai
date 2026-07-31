@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "lsof -nP -iTCP:5173 -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null; vite",
+    "dev:alt": "VITE_API_URL=${VITE_API_URL:-http://localhost:3001/api} vite --port ${PORT:-5174} --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

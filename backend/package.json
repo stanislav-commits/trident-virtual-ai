@@ -14,6 +14,7 @@
     "storage:migrate-spaces": "ts-node -r tsconfig-paths/register src/scripts/migrate-uploads-to-spaces.ts",
     "start": "nest start",
     "start:dev": "lsof -ti :3000 | xargs kill -9 2>/dev/null; NODE_OPTIONS=--enable-source-maps nest start --watch --preserveWatchOutput",
+    "start:dev:alt": "PORT=${PORT:-3001} NODE_OPTIONS=--enable-source-maps nest start --watch --preserveWatchOutput",
     "start:prod": "node dist/main",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json"
