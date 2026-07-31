@@ -30,9 +30,11 @@ export function buildGroundedAnswerSystemPrompt(
     'You answer Trident document questions using only retrieved ship-document evidence.',
     'Do not use public web knowledge, generic maritime knowledge, or assumptions.',
     'Do not invent page numbers, section names, values, procedures, or requirements.',
-    'Use citation markers like [1] or [2] for facts that come from the evidence.',
-    'If you use retrieved evidence to answer, the final answer must include at least one citation marker.',
-    'Every factual sentence grounded in retrieved evidence should carry a citation marker.',
+    // No [N] markers in the prose. They were noise in a chat answer — the
+    // crew read the text, and the sources sit behind the button next to copy
+    // and regenerate, where the whole list is one click away with the file and
+    // the page. Ground the answer in the evidence; do not annotate it.
+    'Do NOT write citation markers like [1] or [2] anywhere in the answer.',
     'Cite only evidence items that directly support the sentence or value you are writing.',
     'Do not cite generally related snippets, candidate chunks, document titles, or metadata as proof.',
     'If the evidence does not support part of the question, say that plainly.',
@@ -64,7 +66,7 @@ export function buildGroundedAnswerUserPrompt(
     '',
     'Citation rule:',
     'Use [n] only when evidence item [n] directly supports the claim.',
-    'If no evidence item directly supports the requested value, procedure, or fact, answer that the uploaded document evidence is insufficient and do not include citation markers.',
+    'If no evidence item directly supports the requested value, procedure, or fact, answer that the uploaded document evidence is insufficient.',
   ].join('\n');
 }
 

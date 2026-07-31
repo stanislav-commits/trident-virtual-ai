@@ -1,10 +1,8 @@
 import type { DocumentAnswerGroundingValidation } from './document-answer-grounding';
 import {
-  extractCitedEvidenceRanks,
   validateDocumentAnswerGrounding,
 } from './document-answer-grounding';
 import { DocumentRetrievalResponseDto } from '../../../documents/dto/document-retrieval-response.dto';
-import { shouldExposeDocumentContextReferences } from './document-context-references';
 
 export interface GroundedDocumentAnswer {
   summary: string;
@@ -26,9 +24,6 @@ export interface DocumentAnswerLlm {
   completeText(input: DocumentAnswerCompletionRequest): Promise<string | null>;
 }
 
-const missingCitationReason =
-  'The answer uses retrieved document evidence but does not include citation markers.';
-
 export async function acceptOrRepairGroundedReply(input: {
   reply: string;
   retrieval: DocumentRetrievalResponseDto;
@@ -46,56 +41,6 @@ export async function acceptOrRepairGroundedReply(input: {
   if (firstValidation.isGrounded) {
     return {
       summary: input.reply,
-      groundingStatus: 'grounded',
-    };
-  }
-
-  if (firstValidation.reason === missingCitationReason) {
-    const retry = await input.chatLlmService.completeText({
-      ...input.request,
-      temperature: 0,
-      userPrompt: buildCitationRepairPrompt(
-        input.request.userPrompt,
-        input.reply,
-        input.preserveMarkdownStructure === true,
-      ),
-    });
-
-    if (retry) {
-      const retryValidation = validateGeneratedDocumentAnswer(
-        retry,
-        input.retrieval,
-        input.supportedNumericContext,
-      );
-
-      if (retryValidation.isGrounded) {
-        return {
-          summary: retry,
-          groundingStatus: 'grounded',
-        };
-      }
-
-      if (retryValidation.reason !== missingCitationReason) {
-        return {
-          summary: buildInsufficientGroundingSummary(
-            input.retrieval,
-            retryValidation.reason,
-          ),
-          groundingStatus: 'insufficient',
-          groundingReason: retryValidation.reason,
-        };
-      }
-    }
-
-    // The model produced a content-grounded answer (grounding validation passed)
-    // but omitted the [N] citation marker even after one repair pass — common
-    // with smaller models on short factual answers. Discarding a correct answer
-    // and dumping raw evidence is worse for the user than the missing marker, so
-    // keep the best grounded draft and append the top evidence citation instead.
-    const groundedDraft = retry?.trim() ? retry : input.reply;
-
-    return {
-      summary: appendTopEvidenceCitation(groundedDraft, input.retrieval),
       groundingStatus: 'grounded',
     };
   }
@@ -150,76 +95,15 @@ function validateGeneratedDocumentAnswer(
     return groundingValidation;
   }
 
-  if (
-    retrieval.evidenceQuality === 'strong' &&
-    shouldExposeDocumentContextReferences(retrieval) &&
-    extractCitedEvidenceRanks(reply).size === 0
-  ) {
-    return {
-      isGrounded: false as const,
-      reason: missingCitationReason,
-    };
-  }
-
+  // Answers no longer carry [N] markers — the sources live behind the button
+  // next to copy and regenerate, with the file and the page. A missing marker
+  // used to cost a second model call and, when the repair pass also came back
+  // without one, a citation glued onto the end of an otherwise good answer.
   return groundingValidation;
 }
 
-function buildCitationRepairPrompt(
-  originalUserPrompt: string,
-  previousReply: string,
-  preserveMarkdownStructure: boolean,
-): string {
-  return [
-    originalUserPrompt,
-    '',
-    'The previous draft omitted required citation markers.',
-    'Rewrite the answer using only the same retrieved evidence.',
-    'Keep the same language, but add citation markers like [1] to every evidence-backed factual claim.',
-    ...(preserveMarkdownStructure
-      ? ['Preserve the previous draft Markdown structure and labeled bullet layout while adding citations.']
-      : []),
-    'Do not add new facts, sources, metrics, or web knowledge.',
-    '',
-    'Previous draft:',
-    previousReply,
-  ].join('\n');
-}
 
-function appendTopEvidenceCitation(
-  reply: string,
-  retrieval: DocumentRetrievalResponseDto,
-): string {
-  const draft = reply.trim();
 
-  if (!draft) {
-    return buildCitedEvidenceFallbackSummary(retrieval);
-  }
-
-  if (extractCitedEvidenceRanks(draft).size > 0) {
-    return draft;
-  }
-
-  const topRank = retrieval.results[0]?.rank;
-
-  return topRank ? `${draft} [${topRank}]` : draft;
-}
-
-function buildCitedEvidenceFallbackSummary(
-  retrieval: DocumentRetrievalResponseDto,
-): string {
-  const citedResults = retrieval.results.slice(0, 3);
-
-  if (!citedResults.length) {
-    return buildFallbackEvidenceSummary(retrieval);
-  }
-
-  return [
-    'I found relevant ship-document evidence, but the answer model did not return a fully cited response. Directly supported evidence:',
-    ...citedResults.map(
-      (result) => `- ${truncate(result.snippet, 260)} [${result.rank}]`,
-    ),
-  ].join('\n');
-}
 
 function buildInsufficientGroundingSummary(
   retrieval: DocumentRetrievalResponseDto,
@@ -233,10 +117,3 @@ function buildInsufficientGroundingSummary(
   ].join(' ');
 }
 
-function truncate(value: string, limit: number): string {
-  if (value.length <= limit) {
-    return value;
-  }
-
-  return `${value.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
-}

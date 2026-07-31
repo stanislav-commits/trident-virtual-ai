@@ -28,9 +28,7 @@ export function buildCompositeDocumentAnswerSystemPrompt(): string {
     'You answer Trident document-only composite questions using only retrieved ship-document evidence.',
     'Do not use public web knowledge, metrics, telemetry, generic maritime knowledge, or assumptions.',
     'Keep document-backed claims tied to the component evidence that supports them.',
-    'Use citation markers like [1] or [2] for facts that come from the evidence.',
-    'If you use retrieved evidence to answer, the final answer must include at least one citation marker.',
-    'Every factual sentence grounded in retrieved evidence should carry a citation marker.',
+    'Do NOT write citation markers like [1] or [2] anywhere in the answer.',
     'Cite only evidence items that directly support the sentence or value you are writing.',
     'Do not cite generally related snippets, candidate chunks, document titles, or metadata as proof.',
     'If one component has weak or no supporting evidence, state that this part is limited or could not be confirmed from uploaded documents.',
@@ -74,7 +72,7 @@ export function buildCompositeDocumentAnswerUserPrompt(
     '- For procedure, checklist, or synthesize mode, produce a unified answer only from cited evidence and call out unsupported parts.',
     '- For summarize_by_source mode, keep the answer grouped by component/source.',
     '- Do not reuse citations from one component to support another component.',
-    '- If all components have no usable evidence, say the uploaded documents do not provide enough support and do not include citation markers.',
+    '- If all components have no usable evidence, say the uploaded documents do not provide enough support.',
   ].join('\n');
 }
 

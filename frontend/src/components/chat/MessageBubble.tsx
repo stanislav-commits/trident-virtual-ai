@@ -1,7 +1,7 @@
 import { useCallback, useRef, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import type {
@@ -21,11 +21,7 @@ import ChatMapBlock from "./ChatMapBlock";
 import ChatTableBlock from "./ChatTableBlock";
 import ChatKpiBlock from "./ChatKpiBlock";
 import {
-  type ChatDocumentOpenTarget,
-  findCitationByMarker,
-  getChatDocumentOpenTarget,
   isDisplayableChatSourceReference,
-  openChatDocumentSource,
 } from "./chatSourceReferences";
 
 /**
@@ -163,9 +159,21 @@ function AlertMessageCard({ card }: { card: AlertCard }) {
   );
 }
 
-/** Replace [1], [2] etc. with <cite-ref> custom elements so ReactMarkdown preserves them */
-function injectCiteRefs(text: string): string {
-  return text.replace(/\[(\d+)\]/g, '<cite-ref data-idx="$1"></cite-ref>');
+/**
+ * Strip [1], [2] markers out of an answer.
+ *
+ * Answers no longer ask for them and the prompt forbids them, but two things
+ * still produce them: messages written before that change, and a model that
+ * cites out of habit. Either way the crew read prose, not footnotes — the
+ * sources are one button away with the file and the page. Punctuation left
+ * stranded by the removal ("the valve [1], then…") is tidied up as well.
+ */
+function stripCiteRefs(text: string): string {
+  return text
+    .replace(/\s*\[\d+\](?=[\s.,;:!?)\]]|$)/g, "")
+    .replace(/\[\d+\]/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([.,;:!?])/g, "$1");
 }
 
 function normalizeMathLikeFormatting(text: string): string {
@@ -248,70 +256,6 @@ function extractInlineButtonActions(text: string): {
     .trim();
 
   return { cleanedText, actions };
-}
-
-function CitationBadge({
-  idx,
-  citations,
-  onOpen,
-}: {
-  idx: number;
-  citations: ChatContextReferenceDto[];
-  onOpen?: (target: ChatDocumentOpenTarget) => void;
-}) {
-  const ref = findCitationByMarker(citations, idx);
-  if (!isDisplayableChatSourceReference(ref)) {
-    // The marker pointed at evidence that never made it to the panel. Keep the
-    // number visible but inert — silently deleting it left sentences reading
-    // "…open the sea valve  and start the pump".
-    return <sup className="chat-cite-badge chat-cite-badge--dangling">{idx}</sup>;
-  }
-
-  const title = `${ref.sourceTitle || "Document"}${ref.pageNumber ? ` \u2014 p. ${ref.pageNumber}` : ""}`;
-  const openTarget = getChatDocumentOpenTarget(ref);
-  const canOpen = !!(openTarget && onOpen);
-  const normalizedTitle = normalizeMojibakePunctuation(title);
-
-  return (
-    <span
-      className={`chat-cite-badge${canOpen ? " chat-cite-badge--clickable" : ""}`}
-      title={normalizedTitle}
-      role={canOpen ? "button" : undefined}
-      tabIndex={canOpen ? 0 : undefined}
-      onClick={canOpen ? () => onOpen(openTarget) : undefined}
-      onKeyDown={
-        canOpen
-          ? (event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onOpen(openTarget);
-              }
-            }
-          : undefined
-      }
-    >
-      {idx}
-    </span>
-  );
-}
-
-function useMdComponents(
-  citations: ChatContextReferenceDto[],
-  onOpen?: (target: ChatDocumentOpenTarget) => void,
-): Components {
-  return useMemo(
-    () =>
-      ({
-        "cite-ref": (props: { "data-idx"?: string | number }) => {
-          const idx = Number(props["data-idx"]);
-          if (!idx) return null;
-          return (
-            <CitationBadge idx={idx} citations={citations} onOpen={onOpen} />
-          );
-        },
-      }) as Components,
-    [citations, onOpen],
-  );
 }
 
 /** Bearer-authenticated thumbnail of a photo the user attached ("+ attach").
@@ -569,13 +513,6 @@ export function MessageBubble({
     if (role === "assistant" && onRegenerate) onRegenerate(id);
   }, [role, id, onRegenerate]);
 
-  const handleOpenDocument = useCallback(
-    (target: ChatDocumentOpenTarget) => {
-      void openChatDocumentSource(target, token);
-    },
-    [token],
-  );
-  const mdComponents = useMdComponents(refs, handleOpenDocument);
   const alertCard = role === "user" ? parseAlertMessage(content) : null;
   const taskCard = role === "user" && !alertCard ? parseTaskMessage(content) : null;
   // A task/alert "Ask AI" message renders as its own bordered card — skip the
@@ -605,11 +542,8 @@ export function MessageBubble({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw]}
-            components={mdComponents}
           >
-            {displayableRefs.length > 0
-              ? injectCiteRefs(renderedAssistantContent)
-              : renderedAssistantContent}
+            {stripCiteRefs(renderedAssistantContent)}
           </ReactMarkdown>
           </div>
         ) : alertCard ? (
