@@ -1690,6 +1690,20 @@
     color 0.15s ease;
 }
 
+/* The sources button carries a count, so it is wider than the icon-only
+   actions next to it. */
+.chat-message__action--with-count {
+  width: auto;
+  padding: 0 8px;
+  gap: 5px;
+}
+
+.chat-message__action-count {
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
 .chat-message__action:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--chat-text);

@@ -19,6 +19,42 @@ interface SourceCitationsProps {
 const DEFAULT_VISIBLE_SOURCES = 3;
 
 /**
+ * Turn a retrieval snippet into something a person can read.
+ *
+ * Chunks come out of the index as they went in — often a slab of HTML table
+ * markup ("<table><caption> EM 011 POWER FAILURE</caption> <tr><td>…"). Shown
+ * raw under an answer it reads as a bug, not as evidence. Tags out, entities
+ * decoded, whitespace collapsed, and clipped to a sentence or two: enough to
+ * recognise the passage, not a second copy of the document.
+ */
+const SNIPPET_MAX_CHARS = 220;
+
+function readableSnippet(raw?: string | null): string | null {
+  if (!raw) return null;
+  const text = raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length < 3) return null;
+  if (text.length <= SNIPPET_MAX_CHARS) return text;
+  const clipped = text.slice(0, SNIPPET_MAX_CHARS);
+  const lastStop = Math.max(
+    clipped.lastIndexOf(". "),
+    clipped.lastIndexOf("! "),
+    clipped.lastIndexOf("? "),
+  );
+  return `${lastStop > 80 ? clipped.slice(0, lastStop + 1) : clipped.trimEnd()}…`;
+}
+
+
+
+/**
  * Display citations/sources for assistant messages
  * Shows documents, pages, and relevant snippets
  */
@@ -195,9 +231,9 @@ export function SourceCitations({
                   )}
                 </div>
               </div>
-              {primaryCitation.snippet && (
+              {readableSnippet(primaryCitation.snippet) && (
                 <div className="chat-source-item__snippet">
-                  {primaryCitation.snippet}
+                  {readableSnippet(primaryCitation.snippet)}
                 </div>
               )}
               {items.length > 1 && (

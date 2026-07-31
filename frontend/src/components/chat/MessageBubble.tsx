@@ -20,7 +20,6 @@ import ChatChartBlock from "./ChatChartBlock";
 import ChatMapBlock from "./ChatMapBlock";
 import ChatTableBlock from "./ChatTableBlock";
 import ChatKpiBlock from "./ChatKpiBlock";
-import { SourceCitations } from "./SourceCitations";
 import {
   type ChatDocumentOpenTarget,
   getChatDocumentOpenTarget,
@@ -682,16 +681,6 @@ export function MessageBubble({
         )}
       </div>
 
-      {/* Show citations for assistant messages that have them */}
-      {role === "assistant" &&
-        displayableRefs.length > 0 && (
-          <div className="chat-message__sources">
-            <SourceCitations
-              citations={displayableRefs}
-              onOpenPanel={onOpenSourcesPanel}
-            />
-          </div>
-        )}
 
       {isLoading && (
         <div className="typing-dots">
@@ -730,6 +719,35 @@ export function MessageBubble({
             </svg>
           </button>
         )}
+        {role === "assistant" &&
+          displayableRefs.length > 0 &&
+          onOpenSourcesPanel && (
+            <button
+              type="button"
+              className="chat-message__action chat-message__action--with-count"
+              onClick={() => onOpenSourcesPanel(displayableRefs)}
+              title={`Sources (${displayableRefs.length})`}
+              aria-label={`Show ${displayableRefs.length} sources`}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+              <span className="chat-message__action-count">
+                {displayableRefs.length}
+              </span>
+            </button>
+          )}
         {role === "assistant" && onRegenerate && !isLoading && (
           <button
             type="button"
