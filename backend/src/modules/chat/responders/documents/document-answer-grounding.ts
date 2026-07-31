@@ -129,7 +129,9 @@ function isNumericValueClaimSupportedByResults(
 
 function extractNumericValueClaims(answerText: string): NumericValueClaim[] {
   const withoutCitations = answerText.replace(/\[\d{1,2}\]/g, ' ');
-  const numberPattern = String.raw`\d+(?:[.,]\d+)?(?:\s*(?:\u00f7|[-\u2013\u2014]|to)\s*\d+(?:[.,]\d+)?)?`;
+  // (?:[.,]\d+)* rather than ? — "1,234,567" carries two grouping commas and
+  // must be captured whole, or the claim is checked as "1,234" and fails.
+  const numberPattern = String.raw`\d+(?:[.,]\d+)*(?:\s*(?:\u00f7|[-\u2013\u2014]|to)\s*\d+(?:[.,]\d+)*)?`;
   const unitPattern = [
     'l/min',
     'l/h',
@@ -320,8 +322,27 @@ function isNumericValueClaimSupportedByContext(
   );
 }
 
+/**
+ * Collapse English thousands separators before commas are read as decimals.
+ *
+ * The claim normalizer maps every comma to a decimal point, so the model's
+ * "1,000 rpm" became "1.000" while the manual's snippet said "1000 rpm" — no
+ * match, the whole answer condemned as ungrounded, and the turn fell through
+ * to a web search (production, 2026-07-31, the second "how to start
+ * generator?" of the evening). A comma followed by exactly three digits is a
+ * grouping comma, not a decimal one; "3,5 bar" keeps behaving as the decimal
+ * comma it is.
+ */
+function collapseThousandsSeparators(value: string): string {
+  let out = value;
+  while (/\d,\d{3}(?!\d)/.test(out)) {
+    out = out.replace(/(\d),(\d{3})(?!\d)/g, '$1$2');
+  }
+  return out;
+}
+
 function normalizeNumericGroundingText(value: string): string {
-  return value
+  return collapseThousandsSeparators(value)
     .toLowerCase()
     .replace(/\u00a0/g, ' ')
     .replace(/,/g, '.')
@@ -348,7 +369,7 @@ function normalizeNumericGroundingText(value: string): string {
 }
 
 function normalizeNumericValue(value: string): string {
-  return value
+  return collapseThousandsSeparators(value)
     .toLowerCase()
     .replace(/\u00a0/g, ' ')
     .replace(/,/g, '.')
