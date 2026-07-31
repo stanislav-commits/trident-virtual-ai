@@ -56,6 +56,7 @@ function prices(
  */
 export const SEED_PRICE_BOOK: Array<[prefix: string, input: number, output: number]> = [
   ['claude-sonnet-4', 3, 15],
+  ['claude-haiku-4-5', 1, 5], // admin panel background work
   ['gpt-5-mini', 0.25, 2],
   ['gpt-4.1-mini', 0.15, 0.6],
   ['gpt-4.1-nano', 0.1, 0.4], // chat titles only

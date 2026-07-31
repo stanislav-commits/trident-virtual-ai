@@ -1,4 +1,5 @@
 import { formatError } from '../../../common/utils/error.utils';
+import { withLlmUsageContext } from '../../llm-usage/llm-usage.context';
 import {
   BadRequestException,
   Injectable,
@@ -72,7 +73,12 @@ export class MetricUnderstandingService {
     if (!metric) {
       throw new NotFoundException(`Metric ${metricId} not found`);
     }
-    return this.analyzeMetricEntity(metric);
+    // Attribution AND routing: the purpose is what sends admin-panel work to
+    // the small model, and what stops it landing on the bill as unattributed.
+    return withLlmUsageContext(
+      { shipId: metric.shipId, purpose: 'metric_describe' },
+      () => this.analyzeMetricEntity(metric),
+    );
   }
 
   async analyzeForShipBackground(

@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import pdfParse from 'pdf-parse';
 import { LlmService } from '../../integrations/llm/llm.service';
+import { withLlmUsageContext } from '../llm-usage/llm-usage.context';
 import { AssetEntity } from '../assets/entities/asset.entity';
 import { ComplianceDocTypeEntity } from './entities/compliance-doc-type.entity';
 import {
@@ -123,6 +124,18 @@ export class ComplianceExtractionService {
    * reviews/edits it in the modal and confirms, which persists the record.
    */
   async extractForType(
+    shipId: string,
+    typeId: string,
+    documentId: string,
+    user: AuthenticatedUser,
+  ): Promise<IngestProposal> {
+    return withLlmUsageContext(
+      { shipId, userId: user.id ?? null, purpose: 'compliance_extract' },
+      () => this.extractForTypeInner(shipId, typeId, documentId, user),
+    );
+  }
+
+  private async extractForTypeInner(
     shipId: string,
     typeId: string,
     documentId: string,

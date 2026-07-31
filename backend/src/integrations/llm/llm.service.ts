@@ -1,4 +1,8 @@
 import { formatError } from '../../common/utils/error.utils';
+import {
+  currentLlmUsageContext,
+  type LlmUsagePurpose,
+} from '../../modules/llm-usage/llm-usage.context';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IntegrationStatusDto } from '../../common/dto/integration-status.dto';
@@ -87,6 +91,35 @@ function parseJsonLoosely<T>(raw: string): T | null {
   }
   return null;
 }
+
+
+/**
+ * Which model does which job.
+ *
+ * The crew's answers run on the main model — that is what the vessel is
+ * judged by. The admin panel's background work (metric labelling, catalogue
+ * clustering, certificate field extraction, alarm analysis, import parsing)
+ * runs on the small Anthropic model: same family, same behaviour, a fraction
+ * of the cost, and none of it is read as an answer. Document extraction and
+ * chat titles stay on OpenAI, which is what they were tuned against.
+ *
+ * Routing by PURPOSE rather than by a flag at every call site: the purpose is
+ * already carried through the turn for the ledger, and a table in one file is
+ * something you can read top to bottom and check against the bill.
+ */
+const ADMIN_PANEL_PURPOSES = new Set<LlmUsagePurpose>([
+  'metric_describe',
+  'metric_analyze',
+  'compliance_extract',
+  'alert_analysis',
+  'grafana_assist',
+]);
+
+const OPENAI_PURPOSES = new Set<LlmUsagePurpose>([
+  'doc_ingest',
+  'doc_extract',
+  'chat_title',
+]);
 
 @Injectable()
 export class LlmService {
@@ -187,39 +220,29 @@ export class LlmService {
     // already indexed. The cheapest call in the turn was deciding the quality
     // of the whole answer.
     //
-    // Main model, then Anthropic's small model, then nothing.
-    //
-    // There used to be an OpenAI leg after these. It never earned its keep:
-    // when the Anthropic credit ran out the OpenAI key was out too, so the
-    // turn failed anyway — after burning a second round-trip — and the crew
-    // saw the billing error regardless. A fallback that only fires when it
-    // cannot help is just latency and a second bill to reconcile.
-    //
-    // Failing here returns null, and the caller surfaces the real reason.
-    if (!input.preferCheapModel) {
-      const mainAnswer = await this.createMainModelTextCompletion(input);
-      if (mainAnswer !== null) {
-        return mainAnswer;
-      }
-
-      return this.createFallbackModelTextCompletion(input);
+    // No fallback ladder. There used to be one — OpenAI, then Anthropic's
+    // small model — and neither earned its keep: when the credit ran out both
+    // keys were out, so the turn failed anyway, after burning extra
+    // round-trips, and the crew saw the billing error regardless. A failure
+    // here returns null and the caller surfaces the real reason.
+    const routed = this.routeByPurpose(input);
+    if (routed.provider === 'anthropic') {
+      return this.createMainModelTextCompletion({
+        ...input,
+        model: routed.model,
+      });
     }
 
     if (!this.isConfigured()) {
       return null;
     }
 
-    const subModel = input.preferCheapModel
-      ? this.getTitleModel()
-      : this.subLlmModel(input.model);
+    const subModel = routed.model;
     const subStartedAt = Date.now();
     try {
       const result = await createOpenAiCompatibleChatCompletionDetailed({
         apiKey: this.getApiKey(),
         baseUrl: this.getBaseUrl(),
-        // Sub-LLM text completion → always OpenAI cheap. If LLM_MODEL is a
-        // Claude alias (main responder), fall back to a sensible default
-        // since these short text tasks don't benefit from Claude reasoning.
         model: subModel,
         systemPrompt: input.systemPrompt,
         userPrompt: input.userPrompt,
@@ -329,23 +352,45 @@ export class LlmService {
     // calls return is a routing decision or a structured extraction, and both
     // are worth getting right. Anthropic has no response_format, so the schema
     // is carried by the prompt and the text is parsed here.
-    const mainJson = await this.createMainModelTextCompletion(input);
-    if (mainJson !== null) {
-      const parsed = parseJsonLoosely<T>(mainJson);
-      if (parsed !== null) return parsed;
-      this.logger.warn(
-        'Main-model JSON completion did not parse — trying the small Anthropic model.',
-      );
+    const routed = this.routeByPurpose(input);
+    if (routed.provider === 'anthropic') {
+      const json = await this.createMainModelTextCompletion({
+        ...input,
+        model: routed.model,
+      });
+      if (json === null) return null;
+      const parsed = parseJsonLoosely<T>(json);
+      if (parsed === null) {
+        this.logger.warn('Main-model JSON completion did not parse.');
+      }
+      return parsed;
     }
 
-    const fallbackJson = await this.createFallbackModelTextCompletion(input);
-    if (fallbackJson !== null) {
-      const parsed = parseJsonLoosely<T>(fallbackJson);
-      if (parsed !== null) return parsed;
+    // OpenAI leg: document extraction, which is what it was tuned against and
+    // where response_format=json_object guarantees a parseable object.
+    if (!this.isConfigured()) {
+      return null;
     }
-
-    // No OpenAI leg here either — see createChatCompletion.
-    return null;
+    const jsonStartedAt = Date.now();
+    try {
+      const result = await createOpenAiCompatibleChatCompletionDetailed({
+        apiKey: this.getApiKey(),
+        baseUrl: this.getBaseUrl(),
+        model: routed.model,
+        systemPrompt: input.systemPrompt,
+        userPrompt: input.userPrompt,
+        temperature: input.temperature,
+        maxTokens: input.maxTokens,
+        responseFormat: 'json_object',
+      });
+      this.recordTextUsage('openai', routed.model, result.usage, jsonStartedAt);
+      const raw = result.text;
+      if (!raw) return null;
+      return parseJsonLoosely<T>(raw);
+    } catch (error) {
+      this.logger.warn(`LLM JSON completion failed: ${formatError(error)}`);
+      return null;
+    }
   }
 
   /** Whether image/vision extraction can run (needs an Anthropic key). */
@@ -370,7 +415,10 @@ export class LlmService {
     model?: string;
   }): Promise<T | null> {
     if (!this.getAnthropicApiKey()) return null;
-    const jsonModel = input.model?.trim() || this.getModel();
+    // Same purpose routing as the other entry points — this one is called
+    // directly by the metric analyzer, and without it admin-panel work stayed
+    // on the main model no matter what the table said.
+    const jsonModel = input.model?.trim() || this.anthropicModelForPurpose();
     const jsonStartedAt = Date.now();
     try {
       const result = await createAnthropicToolCallCompletion({
@@ -618,28 +666,44 @@ export class LlmService {
    */
 
   /**
-   * The degraded path: Anthropic's small model.
-   *
-   * Reached when the main model fails — rate limit, overload, a bad response.
-   * It used to be gpt-5-mini, which meant an outage silently changed which
-   * vendor's judgement the vessel was running on. Haiku keeps the platform on
-   * one family; it is cheap enough to be a fallback and close enough in
-   * behaviour that a degraded answer still reads like the platform.
+   * Which model and provider this call belongs to — see the tables above.
+   * An explicit `model` from the caller always wins.
    */
-  private async createFallbackModelTextCompletion(
-    input: LlmChatCompletionInput,
-  ): Promise<string | null> {
-    const fallbackModel = this.getFallbackModel();
-    if (!this.getAnthropicApiKey() || !isAnthropicModel(fallbackModel)) {
-      return null;
+  private routeByPurpose(input: LlmChatCompletionInput): {
+    provider: 'anthropic' | 'openai';
+    model: string;
+  } {
+    const explicit = input.model?.trim();
+    if (explicit) {
+      return {
+        provider: isAnthropicModel(explicit) ? 'anthropic' : 'openai',
+        model: explicit,
+      };
     }
-    this.logger.warn(
-      `Falling back to the small Anthropic model "${fallbackModel}".`,
-    );
-    return this.createMainModelTextCompletion({
-      ...input,
-      model: fallbackModel,
-    });
+
+    const { purpose } = currentLlmUsageContext();
+
+    // Chat titles: the caller says so directly, and the purpose says so too.
+    if (input.preferCheapModel || purpose === 'chat_title') {
+      return { provider: 'openai', model: this.getTitleModel() };
+    }
+
+    if (OPENAI_PURPOSES.has(purpose)) {
+      return { provider: 'openai', model: this.subLlmModel() };
+    }
+
+    if (ADMIN_PANEL_PURPOSES.has(purpose)) {
+      const adminModel = this.getAdminModel();
+      if (this.getAnthropicApiKey() && isAnthropicModel(adminModel)) {
+        return { provider: 'anthropic', model: adminModel };
+      }
+    }
+
+    const mainModel = this.getModel();
+    return {
+      provider: isAnthropicModel(mainModel) ? 'anthropic' : 'openai',
+      model: mainModel,
+    };
   }
 
   /** The cheapest model on the card — chat titles and nothing else. */
@@ -651,10 +715,24 @@ export class LlmService {
     );
   }
 
-  private getFallbackModel(): string {
+  /**
+   * Sonnet, or Haiku when the purpose belongs to the admin panel. For the
+   * Anthropic-only entry points, where provider is not in question.
+   */
+  private anthropicModelForPurpose(): string {
+    const { purpose } = currentLlmUsageContext();
+    if (ADMIN_PANEL_PURPOSES.has(purpose)) {
+      const adminModel = this.getAdminModel();
+      if (isAnthropicModel(adminModel)) return adminModel;
+    }
+    return this.getModel();
+  }
+
+  /** The admin panel's background work — small, same family as the answers. */
+  private getAdminModel(): string {
     return (
       this.configService
-        .get<string>('integrations.llm.fallbackModel', '')
+        .get<string>('integrations.llm.adminModel', '')
         .trim() || 'claude-haiku-4-5-20251001'
     );
   }

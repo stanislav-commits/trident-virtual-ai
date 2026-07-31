@@ -165,11 +165,10 @@ export default function configuration() {
         // model on the card is right for it — nobody reads a title as an
         // answer, and it never feeds a decision.
         titleModel: process.env.LLM_TITLE_MODEL ?? 'gpt-4.1-nano',
-        // Degraded path when the main model is unavailable. Anthropic on
-        // purpose: an outage should not change which vendor's judgement the
-        // vessel runs on.
-        fallbackModel:
-          process.env.LLM_FALLBACK_MODEL ?? 'claude-haiku-4-5-20251001',
+        // The admin panel's background work — metric labelling, catalogue
+        // clustering, certificate extraction, alarm analysis. Small and cheap,
+        // but the same family as the answers, so behaviour stays predictable.
+        adminModel: process.env.LLM_ADMIN_MODEL ?? 'claude-haiku-4-5-20251001',
         apiKey: process.env.LLM_API_KEY ?? '',
         // Anthropic Claude — auto-routed when model starts with "claude-".
         // Set ANTHROPIC_API_KEY in .env + LLM_MODEL=claude-sonnet-4-6 (etc.)
