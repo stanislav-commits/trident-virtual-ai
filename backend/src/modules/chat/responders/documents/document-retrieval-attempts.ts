@@ -72,7 +72,10 @@ export function buildDocumentClassAttempts(
     return dedupeAttempts(attempts);
   }
 
-  const primary = mergeClasses(policy.primary, []);
+  const primary = mergeClasses(
+    policy.primary,
+    manualClassWhenEquipmentSpecific(documentsRoute, policy.primary),
+  );
   const fallback = mergeClasses(policy.secondary, []);
 
   if (primary.length) {
@@ -127,6 +130,47 @@ export function shouldSkipAttemptForCurrentRetrieval(input: {
       (result) => result.docClass === DocumentDocClass.HISTORICAL_PROCEDURE,
     )
   );
+}
+
+
+/**
+ * A procedure or fault question about EQUIPMENT must search the equipment's
+ * manual in the same pass as the vessel's own procedures.
+ *
+ * The step_by_step policy puts SMS procedures, circulars, publications and
+ * regulations first and leaves the manual as a fallback. That is right for
+ * "what is our blackout procedure" — a question about how this vessel does
+ * things — and wrong for "how do I start the generator", where the answer
+ * lives in the manufacturer's manual. The fallback never ran either: the SMS
+ * pass came back 'strong', and a later attempt only replaces it by beating it.
+ * So on 2026-07-30 the crew got the generic engine-room checklist and "refer
+ * to the Mase manual held on board", while that manual sat parsed and indexed
+ * in the vessel's own library.
+ *
+ * The trigger is the router naming a piece of equipment — a generator, a
+ * watermaker, a gearbox. NOT the crew naming a brand: nobody types "how do I
+ * start the Volvo Penta Mase VS 350 SV", they type "how do I start the
+ * generator", and there are two of them on board.
+ */
+function manualClassWhenEquipmentSpecific(
+  documentsRoute: ChatSemanticDocumentsRoute,
+  primaryClasses: DocumentDocClass[],
+): DocumentDocClass[] {
+  if (primaryClasses.includes(DocumentDocClass.MANUAL)) return [];
+
+  const equipmentNamed =
+    documentsRoute.equipmentOrSystemHints.length > 0 ||
+    documentsRoute.manufacturerHints.length > 0 ||
+    documentsRoute.modelHints.length > 0;
+  if (!equipmentNamed) return [];
+
+  const proceduralQuestion =
+    documentsRoute.questionType ===
+      DocumentRetrievalQuestionType.STEP_BY_STEP_PROCEDURE ||
+    documentsRoute.questionType ===
+      DocumentRetrievalQuestionType.TROUBLESHOOTING;
+
+  return proceduralQuestion ? [DocumentDocClass.MANUAL] : [];
 }
 
 function shouldTryManualMaintenanceFallback(
