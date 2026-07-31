@@ -397,8 +397,11 @@ export async function createAsset(
   token: string,
   shipId: string,
   input: CreateAssetInput,
+  /** What to do when the register id is taken — see checkAssetIdAvailability. */
+  onConflict?: "shift" | "replace",
 ): Promise<AssetItem> {
-  const response = await fetchWithAuth(`ships/${shipId}/assets`, {
+  const query = onConflict ? `?onConflict=${onConflict}` : "";
+  const response = await fetchWithAuth(`ships/${shipId}/assets${query}`, {
     token,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -596,4 +599,66 @@ export async function fetchAssetServiceRules(
     );
   }
   return (await response.json()) as AssetServiceRule[];
+}
+
+/**
+ * Apply one value to many assets. Identity fields are deliberately absent —
+ * an asset id, name or serial is a per-unit fact and setting it in bulk could
+ * only ever be a mistake.
+ */
+export interface BulkAssetPatch {
+  location?: string | null;
+  department?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  notes?: string | null;
+}
+
+export async function bulkUpdateAssets(
+  token: string,
+  shipId: string,
+  assetIds: string[],
+  patch: BulkAssetPatch,
+): Promise<{ updated: number }> {
+  const r = await fetchWithAuth(`ships/${shipId}/assets/bulk`, {
+    token,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ assetIds, ...patch }),
+  });
+  if (!r.ok) {
+    const txt = await r.text();
+    throw new Error(`Bulk update failed (${r.status}): ${txt.slice(0, 200)}`);
+  }
+  return r.json();
+}
+
+/** What creating on a taken register id would mean — see AssetIdService. */
+export interface IdAvailability {
+  assetIdInternal: string;
+  free: boolean;
+  occupiedBy: { id: string; displayName: string } | null;
+  shift: {
+    subPrefix: string;
+    affected: number;
+    firstMove: string | null;
+    lastMove: string | null;
+    referencesRewritten: number;
+  } | null;
+}
+
+export async function checkAssetIdAvailability(
+  token: string,
+  shipId: string,
+  assetIdInternal: string,
+): Promise<IdAvailability> {
+  const r = await fetchWithAuth(
+    `ships/${shipId}/assets/id-availability?assetIdInternal=${encodeURIComponent(assetIdInternal)}`,
+    { token },
+  );
+  if (!r.ok) {
+    const txt = await r.text();
+    throw new Error(`Id check failed (${r.status}): ${txt.slice(0, 200)}`);
+  }
+  return r.json();
 }

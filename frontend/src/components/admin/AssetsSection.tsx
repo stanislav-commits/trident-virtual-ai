@@ -20,6 +20,7 @@ import {
 import { fetchSfiTaxonomy } from "../../api/sfiApi";
 import { useAssetsAdminData } from "../../hooks/admin/useAssetsAdminData";
 import { useAdminEvents } from "../../hooks/admin/adminEvents";
+import { BulkEditBar } from "./assets/BulkEditBar";
 import { AssetDrawer } from "./assets/AssetDrawer";
 import { ImportPreviewModal } from "./assets/ImportPreviewModal";
 import { EditableCell } from "./assets/EditableCell";
@@ -108,6 +109,17 @@ export function AssetsSection({ token }: AssetsSectionProps) {
   const [coverageFilter, setCoverageFilter] = useState<
     "all" | "none" | "no-manual" | "no-metric"
   >("all");
+  /**
+   * Rows ticked for a bulk action. Ids rather than indices: the visible set is
+   * re-derived on every filter change and a selection must survive that — you
+   * pick a few in one sub-group, switch to another, and apply to both.
+   */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sort, setSort] = useState<{
+    key: "assetIdInternal" | "displayName" | "brand" | "model" | "location";
+    dir: "asc" | "desc";
+  } | null>(null);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   // Cmd/Ctrl+K focuses the sidebar search from anywhere in the section.
   useEffect(() => {
@@ -271,6 +283,70 @@ export function AssetsSection({ token }: AssetsSectionProps) {
     }
     return xs;
   }, [assetsInGroup, selectedSub, searchActive, coverageFilter]);
+
+  /**
+   * Column sort, applied last so it overrides the canonical hierarchy order.
+   * Null means "leave the register in its own order" — which is the right
+   * default for a positional id like SWX.4.1.05.
+   */
+  const sortedAssets = useMemo(() => {
+    if (!sort) return visibleAssets;
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...visibleAssets].sort((a, b) => {
+      const av = (a[sort.key] ?? "").toString();
+      const bv = (b[sort.key] ?? "").toString();
+      // Empty cells sink regardless of direction: a column is sorted to find
+      // values, and a wall of blanks at the top helps nobody.
+      if (!av && !bv) return 0;
+      if (!av) return 1;
+      if (!bv) return -1;
+      return av.localeCompare(bv, undefined, { numeric: true }) * dir;
+    });
+  }, [visibleAssets, sort]);
+
+  const toggleSort = useCallback(
+    (key: NonNullable<typeof sort>["key"]) => {
+      setSort((prev) =>
+        prev?.key !== key
+          ? { key, dir: "asc" }
+          : prev.dir === "asc"
+            ? { key, dir: "desc" }
+            : null,
+      );
+    },
+    [],
+  );
+
+  const selectedAssets = useMemo(
+    () => sortedAssets.filter((a) => selectedIds.has(a.id)),
+    [sortedAssets, selectedIds],
+  );
+  const allVisibleSelected =
+    sortedAssets.length > 0 && selectedAssets.length === sortedAssets.length;
+
+  const toggleRow = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAllVisible = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const ids = sortedAssets.map((a) => a.id);
+      const every = ids.every((id) => next.has(id));
+      // Only the rows on screen are touched — a selection made in another
+      // sub-group is not silently thrown away by a header click here.
+      for (const id of ids) {
+        if (every) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  }, [sortedAssets]);
 
   // Reset subgroup when group changes
   useEffect(() => {
@@ -738,6 +814,25 @@ export function AssetsSection({ token }: AssetsSectionProps) {
         })}
       </nav>
 
+      {selectedIds.size > 0 && token && effectiveShipId && (
+        <BulkEditBar
+          token={token}
+          shipId={effectiveShipId}
+          selectedIds={[...selectedIds]}
+          onDone={(updated) => {
+            setSelectedIds(new Set());
+            void reload();
+            setError(
+              updated === 0
+                ? "Nothing was updated."
+                : "",
+            );
+          }}
+          onClear={() => setSelectedIds(new Set())}
+        />
+      )}
+
+
       {/* ─── MAIN: SIDEBAR + TABLE + DRAWER ─── */}
       <div className="assets-section__body">
         {/* LEFT SIDEBAR */}
@@ -853,15 +948,47 @@ export function AssetsSection({ token }: AssetsSectionProps) {
             <table className="assets-section__table">
               <thead>
                 <tr>
-                  <th>SFI</th>
-                  <th>Name</th>
-                  <th>Mfr</th>
-                  <th>Model</th>
-                  <th>Location</th>
+                  <th className="assets-section__th-check">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        // Indeterminate is a DOM property, not an attribute —
+                        // React cannot set it declaratively.
+                        if (el) {
+                          el.indeterminate =
+                            selectedAssets.length > 0 && !allVisibleSelected;
+                        }
+                      }}
+                      onChange={toggleAllVisible}
+                      aria-label="Select every row in view"
+                    />
+                  </th>
+                  {(
+                    [
+                      ["assetIdInternal", "SFI"],
+                      ["displayName", "Name"],
+                      ["brand", "Mfr"],
+                      ["model", "Model"],
+                      ["location", "Location"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <th
+                      key={key}
+                      className="assets-section__th-sortable"
+                      onClick={() => toggleSort(key)}
+                      title={`Sort by ${label}`}
+                    >
+                      {label}
+                      <span className="assets-section__sort-mark">
+                        {sort?.key === key ? (sort.dir === "asc" ? "▲" : "▼") : ""}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {visibleAssets.map((a) => {
+                {sortedAssets.map((a) => {
                   const groupKey = (a.sfiGroup ?? "")
                     .toString()
                     .split(".")[0]
@@ -892,6 +1019,17 @@ export function AssetsSection({ token }: AssetsSectionProps) {
                       title={`Manual: ${a.manualCount ?? 0} · Metrics: ${a.metricCount ?? 0}`}
                       onClick={() => setSelectedAssetId(a.id)}
                     >
+                      <td
+                        className="assets-section__cell-check"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(a.id)}
+                          onChange={() => toggleRow(a.id)}
+                          aria-label={`Select ${a.assetIdInternal}`}
+                        />
+                      </td>
                       <td className="assets-section__cell-mono">
                         <span
                           className="assets-section__row-dot"
@@ -934,10 +1072,10 @@ export function AssetsSection({ token }: AssetsSectionProps) {
                     </tr>
                   );
                 })}
-                {visibleAssets.length === 0 && !loading && (
+                {sortedAssets.length === 0 && !loading && (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="assets-section__placeholder"
                       style={{ padding: "32px 16px" }}
                     >

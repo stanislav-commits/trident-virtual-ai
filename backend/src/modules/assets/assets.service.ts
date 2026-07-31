@@ -14,6 +14,7 @@ import { ShipEntity } from '../ships/entities/ship.entity';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { ImportResultDto } from './dto/import-result.dto';
 import { QueryAssetsDto } from './dto/query-assets.dto';
+import { BulkUpdateAssetsDto } from './dto/bulk-update.dto';
 import { RelatedAssetResult } from './dto/related-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 import { AssetDocumentLinkEntity } from './entities/asset-document-link.entity';
@@ -672,6 +673,45 @@ export class AssetsService {
     const saved = await this.assetRepository.save(asset);
     this.emitChange(shipId, 'updated', assetUuid);
     return saved;
+  }
+
+  /**
+   * Set one value on many assets at once.
+   *
+   * Scoped to the ship in the WHERE clause, not just checked beforehand: the ids
+   * come from a browser and a stale or forged one must not reach another
+   * vessel's register. Returns the number actually changed rather than the
+   * number asked for, so the caller reports what happened.
+   */
+  async bulkUpdate(
+    shipId: string,
+    input: BulkUpdateAssetsDto,
+  ): Promise<{ updated: number }> {
+    await this.assertShipExists(shipId);
+    const { assetIds, ...fields } = input;
+
+    const patch: Record<string, string | null> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === undefined) continue;
+      // '' from a cleared form field means "empty this", same as null.
+      patch[key] =
+        typeof value === 'string' && value.trim() === '' ? null : (value as string | null);
+    }
+    if (!Object.keys(patch).length) {
+      throw new BadRequestException('No fields to apply.');
+    }
+
+    const result = await this.assetRepository
+      .createQueryBuilder()
+      .update(AssetEntity)
+      .set(patch)
+      .where('ship_id = :shipId', { shipId })
+      .andWhere('id IN (:...assetIds)', { assetIds })
+      .execute();
+
+    const updated = result.affected ?? 0;
+    if (updated > 0) this.emitChange(shipId, 'updated');
+    return { updated };
   }
 
   async remove(shipId: string, assetUuid: string): Promise<void> {

@@ -11787,3 +11787,78 @@
   display: block; text-align: right; font-size: 12px;
   color: var(--chat-text-subtle);
 }
+
+/* ── Bulk edit (asset register) ──────────────────────────────────────────── */
+
+/* Appears only with a selection, above the table it acts on — the count is the
+   first thing read, because it is what makes the action safe or alarming. */
+.bulkbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 8px; padding: 8px 10px;
+  background: var(--chat-surface); border: 1px solid var(--accent);
+  border-radius: 10px;
+}
+.bulkbar__count {
+  font-size: 12px; font-weight: 600; color: var(--accent);
+  white-space: nowrap;
+}
+.bulkbar__field, .bulkbar__value {
+  padding: 5px 8px; font: inherit; font-size: 12.5px;
+  color: var(--chat-text); background: var(--chat-bg);
+  border: 1px solid var(--chat-border); border-radius: 7px;
+}
+.bulkbar__value { min-width: 220px; }
+.bulkbar__value:focus, .bulkbar__field:focus {
+  outline: none; border-color: var(--accent);
+}
+.bulkbar__apply {
+  padding: 5px 12px; font-size: 12.5px; font-weight: 600;
+  color: #fff; background: var(--accent);
+  border: 1px solid var(--accent); border-radius: 7px; cursor: pointer;
+}
+.bulkbar__apply:disabled { opacity: 0.6; cursor: default; }
+.bulkbar__clear-field, .bulkbar__dismiss {
+  padding: 5px 10px; font-size: 12.5px; color: var(--chat-text-subtle);
+  background: none; border: 1px solid var(--chat-border); border-radius: 7px;
+  cursor: pointer;
+}
+.bulkbar__clear-field:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+.bulkbar__dismiss:hover { color: var(--chat-text); }
+.bulkbar__error { font-size: 11.5px; color: var(--danger); }
+
+/* Checkbox column: narrow, and its clicks must not open the drawer. */
+.assets-section__th-check, .assets-section__cell-check {
+  width: 30px; text-align: center; padding-right: 0;
+}
+.assets-section__th-sortable { cursor: pointer; user-select: none; }
+.assets-section__th-sortable:hover { color: var(--chat-text); }
+.assets-section__sort-mark {
+  margin-left: 4px; font-size: 9px; color: var(--accent);
+}
+
+/* ── Taken register id: the choice, not an error ─────────────────────────── */
+
+/* Amber rather than red: a taken positional id is usually a deliberate "this
+   belongs at 05", and the operator is being asked which way out — not told off. */
+.id-conflict {
+  margin: 12px 0 0; padding: 10px 12px;
+  background: var(--chat-bg); border: 1px solid var(--warn, #c98a2b);
+  border-radius: 10px;
+}
+.id-conflict__lede { margin: 0; font-size: 12.5px; color: var(--chat-text); }
+.id-conflict__detail {
+  margin: 6px 0 0; font-size: 11.5px; line-height: 1.5;
+  color: var(--chat-text-subtle);
+}
+.id-conflict__actions {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+}
+.id-conflict__shift, .id-conflict__replace, .id-conflict__cancel {
+  padding: 6px 11px; font-size: 12px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--chat-border-strong); background: var(--chat-surface);
+  color: var(--chat-text);
+}
+.id-conflict__shift { border-color: var(--accent); color: var(--accent); }
+.id-conflict__replace:hover { border-color: var(--danger); color: var(--danger); }
+.id-conflict__cancel { color: var(--chat-text-subtle); }
+.id-conflict__shift:disabled, .id-conflict__replace:disabled { opacity: 0.6; cursor: default; }

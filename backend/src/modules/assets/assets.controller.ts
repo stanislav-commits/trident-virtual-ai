@@ -29,6 +29,7 @@ import { AssetIdService, type IdAvailability } from './asset-id.service';
 import { CommitImportDto } from './dto/commit-import.dto';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { QueryAssetsDto } from './dto/query-assets.dto';
+import { BulkUpdateAssetsDto } from './dto/bulk-update.dto';
 import {
   CompleteServiceRuleDto,
   CreateServiceRuleDto,
@@ -113,6 +114,19 @@ export class AssetsController {
     @Query('onConflict') onConflict?: 'shift' | 'replace',
   ) {
     return this.assetsService.create(shipId, body, onConflict);
+  }
+
+  /**
+   * Apply one value to many assets. Declared before @Patch(':assetId') so
+   * "bulk" is never read as an asset id.
+   */
+  @Patch('bulk')
+  @Roles(UserRole.ADMIN)
+  bulkUpdate(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Body() body: BulkUpdateAssetsDto,
+  ) {
+    return this.assetsService.bulkUpdate(shipId, body);
   }
 
   @Patch(':assetId')

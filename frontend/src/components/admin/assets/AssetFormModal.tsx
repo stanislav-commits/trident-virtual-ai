@@ -1,9 +1,11 @@
 import { createPortal } from "react-dom";
 import { useEffect, useState, type FormEvent } from "react";
 import {
+  checkAssetIdAvailability,
   createAsset,
   fetchNextAssetId,
   type CreateAssetInput,
+  type IdAvailability,
 } from "../../../api/assetsApi";
 import { fetchSfiGroups, fetchSfiSubs, type SfiNode } from "../../../api/sfiApi";
 import { AssetsIcon, XIcon } from "../AdminPanelIcons";
@@ -43,6 +45,13 @@ export function AssetFormModal({
   const [form, setForm] = useState({ ...EMPTY });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * What a taken id would mean, fetched before the create is attempted. The
+   * register's ids are positional, so landing on one that exists is usually a
+   * deliberate "this belongs at 05" rather than a typo — the answer is a choice,
+   * not an error.
+   */
+  const [conflict, setConflict] = useState<IdAvailability | null>(null);
 
   // SFI taxonomy — cascading group → sub-group pickers from the catalog.
   const [groups, setGroups] = useState<SfiNode[]>([]);
@@ -147,11 +156,55 @@ export function AssetFormModal({
     }
 
     try {
+      const availability = await checkAssetIdAvailability(
+        token,
+        shipId,
+        payload.assetIdInternal,
+      );
+      if (!availability.free) {
+        // Stop and ask. Neither outcome is safe to assume: one moves other
+        // rows, the other overwrites an existing unit.
+        setConflict(availability);
+        setSubmitting(false);
+        return;
+      }
       await createAsset(token, shipId, payload);
       onCreated(payload.assetIdInternal);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
       setSubmitting(false);
+    }
+  };
+
+  /** Create once the operator has said which way out of the collision. */
+  const resolveConflict = async (onConflict: "shift" | "replace") => {
+    setSubmitting(true);
+    setError(null);
+    const payload: CreateAssetInput = {
+      assetIdInternal: form.assetIdInternal.trim(),
+      displayName: form.displayName.trim(),
+    };
+    for (const key of [
+      "sfiGroup",
+      "sfiGroupName",
+      "sfiSub",
+      "sfiSubName",
+      "brand",
+      "model",
+      "serialNo",
+      "location",
+      "notes",
+    ] as Array<keyof CreateAssetInput>) {
+      const v = (form[key as keyof typeof EMPTY] as string).trim();
+      if (v) (payload as Record<string, unknown>)[key] = v;
+    }
+    try {
+      await createAsset(token, shipId, payload, onConflict);
+      onCreated(payload.assetIdInternal);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Create failed");
+      setSubmitting(false);
+      setConflict(null);
     }
   };
 
@@ -338,6 +391,64 @@ export function AssetFormModal({
               disabled={submitting}
             />
           </div>
+
+          {conflict && (
+            <div className="id-conflict">
+              <p className="id-conflict__lede">
+                <strong>{conflict.assetIdInternal}</strong> is already{" "}
+                {conflict.occupiedBy?.displayName}.
+              </p>
+              {conflict.shift ? (
+                <p className="id-conflict__detail">
+                  Inserting here moves {conflict.shift.affected} asset
+                  {conflict.shift.affected === 1 ? "" : "s"} up one place —{" "}
+                  {conflict.shift.firstMove} … {conflict.shift.lastMove}
+                  {conflict.shift.referencesRewritten > 0 && (
+                    <>
+                      , and rewrites {conflict.shift.referencesRewritten}{" "}
+                      reference
+                      {conflict.shift.referencesRewritten === 1 ? "" : "s"} to
+                      them
+                    </>
+                  )}
+                  .
+                </p>
+              ) : (
+                <p className="id-conflict__detail">
+                  This id is outside the numbered scheme, so there is no
+                  sequence to shift.
+                </p>
+              )}
+              <div className="id-conflict__actions">
+                {conflict.shift && (
+                  <button
+                    type="button"
+                    className="id-conflict__shift"
+                    disabled={submitting}
+                    onClick={() => void resolveConflict("shift")}
+                  >
+                    Insert here, move the rest up
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="id-conflict__replace"
+                  disabled={submitting}
+                  onClick={() => void resolveConflict("replace")}
+                  title="Keeps the documents, metrics, tasks and certificates attached to this position"
+                >
+                  Replace {conflict.occupiedBy?.displayName}
+                </button>
+                <button
+                  type="button"
+                  className="id-conflict__cancel"
+                  onClick={() => setConflict(null)}
+                >
+                  Pick another id
+                </button>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="assets-section__banner assets-section__banner--err">
