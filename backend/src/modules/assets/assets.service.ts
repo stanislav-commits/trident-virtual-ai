@@ -771,6 +771,12 @@ export class AssetsService {
     // commissioned_date, location_asset_id, rina_ref and the v14.6 location
     // fields (zone/deck_role/deck_level/space_*) and inspection_obligation —
     // all retired / empty and never part of the agreed register format.
+    //
+    // Every column here is also READ back by mapRowToDraft. That symmetry is
+    // the point of the sheet: export, edit a column for 400 rows in Excel,
+    // import. A column the export writes and the import ignores silently
+    // discards the operator's work — which is what sfi_group_name and
+    // drawing_code did until they were added to the draft mapping.
     const COLUMNS: Array<[string, (a: AssetEntity) => unknown]> = [
       ['asset_id_internal', (a) => a.assetIdInternal],
       ['display_name', (a) => a.displayName],
@@ -784,6 +790,7 @@ export class AssetsService {
       ['model', (a) => a.model],
       ['serial_no', (a) => a.serialNo],
       ['location', (a) => a.location],
+      ['department', (a) => a.department],
       ['drawing_ref', (a) => a.drawingRef],
       ['drawing_code', (a) => a.drawingCode],
       ['notes', (a) => a.notes],
@@ -1310,8 +1317,10 @@ export class AssetsService {
     Object.assign(existing, {
       displayName: draft.displayName,
       sfiGroup: draft.sfiGroup ?? existing.sfiGroup,
+      sfiGroupName: draft.sfiGroupName ?? existing.sfiGroupName,
       sfiSub: draft.sfiSub ?? existing.sfiSub,
       sfiSubName: draft.sfiSubName ?? existing.sfiSubName,
+      drawingCode: draft.drawingCode ?? existing.drawingCode,
       parentAssetId: draft.parentAssetId ?? existing.parentAssetId,
       servedByAssetId: draft.servedByAssetId ?? existing.servedByAssetId,
       locationAssetId: draft.locationAssetId ?? existing.locationAssetId,
@@ -1653,6 +1662,7 @@ export class AssetsService {
       assetIdInternal: get('assetIdInternal'),
       displayName: get('displayName'),
       sfiGroup,
+      sfiGroupName: get('sfiGroupName'),
       sfiSub: rawSub,
       sfiSubName: get('sfiSubName'),
       parentAssetId: get('parentAssetId'),
@@ -1664,6 +1674,7 @@ export class AssetsService {
       criticality,
       commissionedDate,
       location: get('location'),
+      department: get('department'),
       rinaRef: get('rinaRef'),
       notes: get('notes'),
       zone,
@@ -1672,6 +1683,7 @@ export class AssetsService {
       spaceInstance: get('spaceInstance'),
       spaceLabel: get('spaceLabel'),
       drawingRef: get('drawingRef'),
+      drawingCode: get('drawingCode'),
       inspectionObligation: get('inspectionObligation'),
       parentAutoPopulated: parseBool(get('parentAutoPopulated')),
       criticalityAutoPopulated: parseBool(get('criticalityAutoPopulated')),
