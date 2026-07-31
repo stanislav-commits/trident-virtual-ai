@@ -25,6 +25,11 @@ interface ChatTextCompletionInput {
    * cheap sub-model.
    */
   useMainModel?: boolean;
+  /**
+   * Send this one to the cheap sub-model on purpose. Only chat titles: three
+   * words naming a conversation, where the small model changed nothing.
+   */
+  useCheapModel?: boolean;
 }
 
 @Injectable()
@@ -39,6 +44,7 @@ export class ChatLlmService {
         temperature: input.temperature,
         maxTokens: input.maxTokens,
         preferMainModel: input.useMainModel,
+        preferCheapModel: input.useCheapModel,
       });
     // The turn runs inside a 'chat_classify' context so nothing lands
     // unattributed before a responder is picked. Only the metric analyzer

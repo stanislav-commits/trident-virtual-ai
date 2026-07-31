@@ -4061,9 +4061,6 @@ export class MetricAnalyzerResponderService {
       userPrompt,
       temperature: 0,
       maxTokens: 240,
-      // Sub-LLM parsing — pin to cheap OpenAI regardless of the main
-      // responder's model (Claude is overkill for free-text field extraction).
-      model: 'gpt-4.1-mini',
     });
 
     if (!result) {
@@ -4247,8 +4244,6 @@ export class MetricAnalyzerResponderService {
       temperature: 0,
       // Bigger output budget — per_asset breakdown can be long.
       maxTokens: Math.min(8000, 200 + matched.length * 80),
-      // Sub-LLM parsing — pin to cheap OpenAI regardless of main model.
-      model: 'gpt-4.1-mini',
     });
 
     if (!result) {

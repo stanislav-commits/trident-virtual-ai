@@ -58,6 +58,7 @@ export const SEED_PRICE_BOOK: Array<[prefix: string, input: number, output: numb
   ['claude-sonnet-4', 3, 15],
   ['gpt-5-mini', 0.25, 2],
   ['gpt-4.1-mini', 0.15, 0.6],
+  ['gpt-4.1-nano', 0.1, 0.4], // chat titles only
   ['gpt-4o', 2.5, 10],
   ['gpt-4o-mini', 0.15, 0.6],
   ['text-embedding-3-small', 0.02, 0],

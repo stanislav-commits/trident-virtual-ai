@@ -40,6 +40,12 @@ interface LlmChatCompletionInput {
    * a user-facing answer", which is what decides the usage purpose upstream.
    */
   preferMainModel?: boolean;
+  /**
+   * Send this call to the cheap OpenAI sub-model on purpose. Chat titles are
+   * the one job where the small model changed nothing: three words naming a
+   * conversation, never read by the crew as an answer.
+   */
+  preferCheapModel?: boolean;
 }
 
 interface LlmJsonChatCompletionInput extends LlmChatCompletionInput {
@@ -181,18 +187,29 @@ export class LlmService {
     // already indexed. The cheapest call in the turn was deciding the quality
     // of the whole answer.
     //
-    // The sub-model below is now only a fallback for when the main model is
-    // unavailable — better a cheap answer than none.
-    const mainAnswer = await this.createMainModelTextCompletion(input);
-    if (mainAnswer !== null) {
-      return mainAnswer;
+    // When the main model is unavailable the fallback is Anthropic's small
+    // model, not OpenAI: a degraded turn should still reason the way the rest
+    // of the platform does. OpenAI is only reached if Anthropic is not
+    // configured at all.
+    if (!input.preferCheapModel) {
+      const mainAnswer = await this.createMainModelTextCompletion(input);
+      if (mainAnswer !== null) {
+        return mainAnswer;
+      }
+
+      const fallbackAnswer = await this.createFallbackModelTextCompletion(input);
+      if (fallbackAnswer !== null) {
+        return fallbackAnswer;
+      }
     }
 
     if (!this.isConfigured()) {
       return null;
     }
 
-    const subModel = this.subLlmModel(input.model);
+    const subModel = input.preferCheapModel
+      ? this.getTitleModel()
+      : this.subLlmModel(input.model);
     const subStartedAt = Date.now();
     try {
       const result = await createOpenAiCompatibleChatCompletionDetailed({
@@ -315,8 +332,14 @@ export class LlmService {
       const parsed = parseJsonLoosely<T>(mainJson);
       if (parsed !== null) return parsed;
       this.logger.warn(
-        'Main-model JSON completion did not parse — falling back to the sub-model.',
+        'Main-model JSON completion did not parse — trying the small Anthropic model.',
       );
+    }
+
+    const fallbackJson = await this.createFallbackModelTextCompletion(input);
+    if (fallbackJson !== null) {
+      const parsed = parseJsonLoosely<T>(fallbackJson);
+      if (parsed !== null) return parsed;
     }
 
     if (!this.isConfigured()) {
@@ -619,6 +642,49 @@ export class LlmService {
    * truly mechanical bulk tasks (metric binding analysis) pin 4.1-mini
    * explicitly via callerOverride.
    */
+
+  /**
+   * The degraded path: Anthropic's small model.
+   *
+   * Reached when the main model fails — rate limit, overload, a bad response.
+   * It used to be gpt-5-mini, which meant an outage silently changed which
+   * vendor's judgement the vessel was running on. Haiku keeps the platform on
+   * one family; it is cheap enough to be a fallback and close enough in
+   * behaviour that a degraded answer still reads like the platform.
+   */
+  private async createFallbackModelTextCompletion(
+    input: LlmChatCompletionInput,
+  ): Promise<string | null> {
+    const fallbackModel = this.getFallbackModel();
+    if (!this.getAnthropicApiKey() || !isAnthropicModel(fallbackModel)) {
+      return null;
+    }
+    this.logger.warn(
+      `Falling back to the small Anthropic model "${fallbackModel}".`,
+    );
+    return this.createMainModelTextCompletion({
+      ...input,
+      model: fallbackModel,
+    });
+  }
+
+  /** The cheapest model on the card — chat titles and nothing else. */
+  private getTitleModel(): string {
+    return (
+      this.configService
+        .get<string>('integrations.llm.titleModel', '')
+        .trim() || 'gpt-4.1-nano'
+    );
+  }
+
+  private getFallbackModel(): string {
+    return (
+      this.configService
+        .get<string>('integrations.llm.fallbackModel', '')
+        .trim() || 'claude-haiku-4-5-20251001'
+    );
+  }
+
   private subLlmModel(callerOverride?: string): string {
     const explicit = callerOverride?.trim();
     if (explicit) {

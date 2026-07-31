@@ -444,6 +444,10 @@ export class ChatSessionsService {
     isRefinement: boolean;
   }): Promise<string | null> {
     return this.chatLlmService.completeText({
+      // Titles stay on the cheap sub-model: naming a conversation in three
+      // words is not a judgement call, and it is the one job where the small
+      // model never cost anything in quality.
+      useCheapModel: true,
       systemPrompt: [
         'You create short chat titles for Trident conversations.',
         'The title must describe the broad conversation topic, not copy or paraphrase only the first user question.',
