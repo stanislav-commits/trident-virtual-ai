@@ -749,6 +749,8 @@ export class MetricAnalyzerResponderService {
         return await this.toolGetComplianceStatus(tc, args, shipId, iteration);
       case 'get_inventory':
         return await this.toolGetInventory(tc, args, shipId, iteration);
+      case 'get_crew':
+        return await this.toolGetCrew(tc, args, shipId, iteration);
       case 'compare_periods':
         return await this.toolComparePeriods(tc, args, orgName, catalogIndex, iteration);
       case 'infer_runtime_from_power':
@@ -5565,6 +5567,92 @@ export class MetricAnalyzerResponderService {
    * the names of assets each item is linked to, so an equipment query surfaces
    * its linked spares.
    */
+  /**
+   * Who is on the vessel, from the crew roster.
+   *
+   * The assistant used to answer "how many crew are on board?" with "I have no
+   * access to a crew management system" and send the Master to look in the
+   * logbook — while the roster sat in the platform's own Crew tab (2026-07-31).
+   * There was no tool for it, so the honest answer was also a wrong one.
+   *
+   * Names, ranks and departments only. Emails and phone numbers stay out: the
+   * question is who is aboard, and a chat answer is not the place to spill
+   * personal contact details.
+   */
+  private async toolGetCrew(
+    tc: OpenAiToolCall,
+    args: Record<string, unknown>,
+    shipId: string,
+    iteration: number,
+  ): Promise<{
+    toolCallId: string;
+    payload: Record<string, unknown>;
+    otherCall: OtherToolCallAudit;
+  }> {
+    const t0 = Date.now();
+    const callArgs = args ?? {};
+    const department =
+      typeof callArgs.department === 'string'
+        ? callArgs.department.toLowerCase().trim()
+        : null;
+    const query =
+      typeof callArgs.query === 'string'
+        ? callArgs.query.toLowerCase().trim()
+        : '';
+
+    const rows = await this.crewRepository.find({
+      where: { shipId },
+      order: { rankLevel: 'ASC' },
+    });
+    const active = rows.filter((row) => row.active);
+
+    let matched = active;
+    if (department) {
+      matched = matched.filter(
+        (row) => row.department.toLowerCase() === department,
+      );
+    }
+    if (query) {
+      matched = matched.filter(
+        (row) =>
+          row.name.toLowerCase().includes(query) ||
+          row.rank.toLowerCase().includes(query),
+      );
+    }
+
+    const byDepartment: Record<string, number> = {};
+    for (const row of active) {
+      byDepartment[row.department] = (byDepartment[row.department] ?? 0) + 1;
+    }
+
+    const payload = {
+      status: 'ok',
+      total_active: active.length,
+      by_department: byDepartment,
+      crew: matched.map((row) => ({
+        name: row.name,
+        rank: row.rank,
+        department: row.department,
+        has_platform_login: Boolean(row.userId),
+      })),
+      // Said plainly so the answer does not present a roster as a muster count.
+      note: 'This is the crew list held on the platform, not a sign-on/sign-off log. Inactive roster entries are excluded.',
+    };
+
+    return {
+      toolCallId: tc.id,
+      payload,
+      otherCall: {
+        tool: 'get_crew',
+        iteration,
+        args: callArgs,
+        ok: true,
+        latencyMs: Date.now() - t0,
+        resultSummary: `${matched.length} of ${active.length} crew`,
+      },
+    };
+  }
+
   private async toolGetInventory(
     tc: OpenAiToolCall,
     args: Record<string, unknown>,

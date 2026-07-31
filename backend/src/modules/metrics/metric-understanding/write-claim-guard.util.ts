@@ -88,6 +88,45 @@ function splitSentences(text: string): string[] {
 }
 
 /**
+ * Drop markdown table rows before looking for a claim.
+ *
+ * A table has no terminal punctuation, so the whole block reads as ONE
+ * sentence and every word in it shares a sentence with every other. A crew
+ * list answered on 2026-07-31 — "Per the crew list, there are 4 crew members
+ * on board" plus a name/rank/department table — tripped the guard on words
+ * that were columns of data, and the crew got a correction about a write
+ * nobody had claimed. A table is data being shown, never a claim of having
+ * written something.
+ */
+function stripTableRows(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !/^\s*\|/.test(line))
+    .join('\n');
+}
+
+/**
+ * How close the noun and the verb must sit to read as one claim.
+ *
+ * "task created", "created the task", "hours reading logged" are claims.
+ * A paragraph that mentions a watchkeeping rank early and the word "recorded"
+ * forty words later is not — but sharing a sentence was enough to trip the
+ * guard, and the guard replaces the whole answer.
+ */
+const CLAIM_PROXIMITY_CHARS = 60;
+
+function nounAndVerbAreAdjacent(sentence: string): boolean {
+  const nouns = [...sentence.matchAll(new RegExp(WRITE_NOUN_PATTERN, 'giu'))];
+  const verbs = [...sentence.matchAll(new RegExp(SUCCESS_VERB_PATTERN, 'giu'))];
+  return nouns.some((noun) =>
+    verbs.some(
+      (verb) =>
+        Math.abs((noun.index ?? 0) - (verb.index ?? 0)) <= CLAIM_PROXIMITY_CHARS,
+    ),
+  );
+}
+
+/**
  * Does this final answer claim that a register write has been completed?
  * Requires a write-register noun plus a success verb form IN THE SAME
  * SENTENCE, with no sentence-level negation cue — a bare "✅" is
@@ -96,11 +135,12 @@ function splitSentences(text: string): string[] {
  * fabrication matches the verb pattern anyway.
  */
 export function claimsRegisterWriteSuccess(answer: string): boolean {
-  return splitSentences(answer).some(
+  return splitSentences(stripTableRows(answer)).some(
     (sentence) =>
       WRITE_NOUN_PATTERN.test(sentence) &&
       SUCCESS_VERB_PATTERN.test(sentence) &&
-      !SENTENCE_NEGATION_PATTERN.test(sentence),
+      !SENTENCE_NEGATION_PATTERN.test(sentence) &&
+      nounAndVerbAreAdjacent(sentence),
   );
 }
 

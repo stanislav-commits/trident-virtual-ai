@@ -277,6 +277,29 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'get_crew',
+      description:
+        "The vessel's crew list. Returns everyone on the roster with their name, rank and department, plus the headcount. Use for 'how many crew are on board', 'who is the chief engineer', 'is there an ETO', 'how many in the engine department'. This is the roster the platform holds — it is NOT a sign-on/sign-off log, so say the count is per the crew list rather than a muster count. Contact details are deliberately not returned.",
+      parameters: {
+        type: 'object',
+        properties: {
+          department: {
+            type: 'string',
+            description:
+              'Optional department filter: deck, engine, interior, galley, bridge, ratings, other.',
+          },
+          query: {
+            type: 'string',
+            description:
+              'Optional name or rank to look for (e.g. "chief engineer", "Diego").',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'compare_periods',
       description:
         'Side-by-side comparison of a metric across two windows. Returns value_a, value_b, abs_diff, pct_change_percent (signed, A vs B). Use for "May vs April / this week vs last week" questions.',
