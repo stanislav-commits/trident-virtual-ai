@@ -3584,7 +3584,7 @@
 
 .chat-kpi__ring-value {
   fill: var(--chat-text);
-  font-size: 14px;
+  /* Size is set per gauge in ChatKpiBlock — long values need a smaller one. */
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }

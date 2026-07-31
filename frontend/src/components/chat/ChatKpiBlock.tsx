@@ -31,11 +31,29 @@ function formatValue(item: ChatKpiItemDto): string {
 const R = 34;
 const CIRCUMFERENCE = 2 * Math.PI * R;
 
+/**
+ * Shrink the number to fit inside the ring.
+ *
+ * The size was fixed at 14px, which is fine for "88 °C" and overflows the
+ * ring for "122.8 °C", "29456" or "164 days" — the text ran out over the
+ * stroke and the row of gauges read as broken. The usable width inside a
+ * 34px radius with a 7px stroke is about 55px; these steps keep every value
+ * inside it.
+ */
+function ringFontSize(text: string): number {
+  if (text.length <= 4) return 15;
+  if (text.length <= 6) return 13;
+  if (text.length <= 8) return 11;
+  return 9.5;
+}
+
 function KpiGauge({ item }: { item: ChatKpiItemDto }) {
   const span = item.max - item.min || 1;
   const pct = Math.max(0, Math.min(100, ((item.value - item.min) / span) * 100));
   const color = STATUS_COLOR[autoStatus(item)];
   const offset = CIRCUMFERENCE * (1 - pct / 100);
+  const value = formatValue(item);
+  const hasSubLabel = item.format === "percent";
 
   return (
     <div className="chat-kpi__card">
@@ -66,11 +84,27 @@ function KpiGauge({ item }: { item: ChatKpiItemDto }) {
           strokeDashoffset={offset}
           transform="rotate(-90 44 44)"
         />
-        <text x="44" y="41" textAnchor="middle" className="chat-kpi__ring-value">
-          {formatValue(item)}
+        {/* Centred on the ring's own centre via the baseline rather than a
+            hand-tuned y, so a value with no sub-label sits in the middle
+            instead of floating above it. */}
+        <text
+          x="44"
+          y={hasSubLabel ? 40 : 44}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={ringFontSize(value)}
+          className="chat-kpi__ring-value"
+        >
+          {value}
         </text>
-        {item.format === "percent" && (
-          <text x="44" y="56" textAnchor="middle" className="chat-kpi__ring-sub">
+        {hasSubLabel && (
+          <text
+            x="44"
+            y="55"
+            textAnchor="middle"
+            dominantBaseline="central"
+            className="chat-kpi__ring-sub"
+          >
             {item.min}–{item.max}
             {item.unit ?? ""}
           </text>
