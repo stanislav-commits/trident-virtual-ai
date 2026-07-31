@@ -15,6 +15,7 @@ import { DocumentEntity } from '../entities/document.entity';
 import { DocumentDocClass, isFileStoreClass } from '../enums/document-doc-class.enum';
 import { DocumentsUploadStorageService } from '../ingestion/documents-upload-storage.service';
 import { DocumentsRemoteIngestionDispatcherService } from '../ingestion/documents-remote-ingestion-dispatcher.service';
+import { withLlmUsageContext } from '../../llm-usage/llm-usage.context';
 
 const execFileAsync = promisify(execFile);
 
@@ -173,6 +174,15 @@ export class VisionExtractionService implements OnApplicationBootstrap {
       where: { id: documentId },
     });
     if (!document) return;
+    return withLlmUsageContext(
+      { shipId: document.shipId ?? null, purpose: 'doc_extract' },
+      () => this.runExtractionForDocument(document),
+    );
+  }
+
+  private async runExtractionForDocument(
+    document: DocumentEntity,
+  ): Promise<void> {
     // A doc can reach the queue twice (defer timer + bootstrap re-queue,
     // rerun clicks) — only 'pending'/'running' actually need work.
     if (

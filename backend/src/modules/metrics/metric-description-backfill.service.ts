@@ -13,6 +13,7 @@ import {
   parseMetricCatalogKey,
   shouldBackfillMetricDescription,
 } from './metric-description.utils';
+import { withLlmUsageContext } from '../llm-usage/llm-usage.context';
 
 interface DescriptionBackfillBatchResult {
   generated: number;
@@ -146,13 +147,17 @@ export class MetricDescriptionBackfillService
 
       const parsedKey = parseMetricCatalogKey(entry.key);
       const measurement = parsedKey.measurement ?? '';
-      const description = await this.metricDescriptionService.generateDescription({
-        key: entry.key,
-        bucket: entry.bucket,
-        measurement,
-        field: entry.field,
-        label: measurement ? `${measurement}.${entry.field}` : entry.field,
-      });
+      const description = await withLlmUsageContext(
+        { shipId: entry.shipId ?? null, purpose: 'metric_describe' },
+        () =>
+          this.metricDescriptionService.generateDescription({
+            key: entry.key,
+            bucket: entry.bucket,
+            measurement,
+            field: entry.field,
+            label: measurement ? `${measurement}.${entry.field}` : entry.field,
+          }),
+      );
 
       if (!description) {
         const cooldownMs = this.metricDescriptionService.getBackfillCooldownMs();

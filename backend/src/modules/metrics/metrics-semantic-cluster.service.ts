@@ -13,6 +13,7 @@ import { MetricConceptEntity } from './entities/metric-concept.entity';
 import { ShipMetricCatalogEntity } from './entities/ship-metric-catalog.entity';
 import { MetricAggregationRule } from './enums/metric-aggregation-rule.enum';
 import { MetricConceptType } from './enums/metric-concept-type.enum';
+import { withLlmUsageContext } from '../llm-usage/llm-usage.context';
 
 /**
  * Builds COMPOSITE metric concepts that bundle multiple single concepts into
@@ -171,6 +172,16 @@ export class MetricsSemanticClusterService {
   // =================================================================
 
   async clusterShipConcepts(
+    shipId: string,
+    options: ClusterOptions = {},
+  ): Promise<SemanticClusteringResult> {
+    return withLlmUsageContext(
+      { shipId, purpose: 'metric_describe' },
+      () => this.clusterShipConceptsInner(shipId, options),
+    );
+  }
+
+  private async clusterShipConceptsInner(
     shipId: string,
     options: ClusterOptions = {},
   ): Promise<SemanticClusteringResult> {

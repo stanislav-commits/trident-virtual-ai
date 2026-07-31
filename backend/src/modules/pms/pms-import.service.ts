@@ -15,6 +15,7 @@ import { PmsService, UpsertPmsTaskInput } from './pms.service';
 import { AssetHoursService } from './asset-hours.service';
 import { addInterval } from './date-interval.util';
 import { departmentForRole } from '../crew/crew-ranks';
+import { withLlmUsageContext } from '../llm-usage/llm-usage.context';
 
 /** A spare part extracted from a task's embedded parts table. */
 export interface PmsImportPartDraft {
@@ -286,6 +287,17 @@ export class PmsImportService {
    * manual is about that equipment). Intervals are suggestions to review.
    */
   async suggestFromManual(
+    shipId: string,
+    assetId: string,
+    markdown: string,
+  ): Promise<PmsImportPreview> {
+    return withLlmUsageContext(
+      { shipId, purpose: 'doc_extract' },
+      () => this.suggestFromManualInner(shipId, assetId, markdown),
+    );
+  }
+
+  private async suggestFromManualInner(
     shipId: string,
     assetId: string,
     markdown: string,

@@ -10,6 +10,7 @@ import pdfParse from 'pdf-parse';
 import * as XLSX from 'xlsx';
 import { InventoryItemEntity } from './entities/inventory-item.entity';
 import { LlmService } from '../../integrations/llm/llm.service';
+import { withLlmUsageContext } from '../llm-usage/llm-usage.context';
 
 /** One reviewable stock line in the Trident inventory standard. */
 export interface InventoryImportDraft {
@@ -97,6 +98,17 @@ export class InventoryImportService {
   // ── preview ──
 
   async preview(
+    shipId: string,
+    file: UploadedImportFile | null,
+    rawText?: string,
+  ): Promise<InventoryImportPreview> {
+    return withLlmUsageContext(
+      { shipId, purpose: 'doc_extract' },
+      () => this.previewInner(shipId, file, rawText),
+    );
+  }
+
+  private async previewInner(
     shipId: string,
     file: UploadedImportFile | null,
     rawText?: string,
