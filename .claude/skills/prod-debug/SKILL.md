@@ -59,4 +59,14 @@ Secret: `grep '^GRAFANA_WEBHOOK_SECRET=' /var/www/trident-virtual-ai/backend/.en
 
 ## Deploy
 
-Push to main auto-deploys (GH Action `deploy.yml` → `scripts/deploy.sh`, ~30s outage). Migrations do NOT auto-run: `npm run db:migrate` on the droplet when needed (backup first for destructive ones).
+Push to main auto-deploys (GH Action `deploy.yml` → `scripts/deploy.sh`, ~30s outage). **Migrations DO auto-run** — `npm run db:migrate` is a step in `deploy.sh`, and `set -euo pipefail` means a failing migration fails the deploy.
+
+**Do not judge a deploy by the commit on the droplet.** `git reset --hard` runs in the first seconds; the migrations run ~90s later, after both builds. Reading the database in between shows a schema the new code has already been built against, which looks exactly like a broken deploy and is not one (2026-07-31).
+
+Read the deploy log instead — every run appends to it, START to COMPLETE, with `DEPLOY FAILED (exit N)` if it dies:
+
+```bash
+ssh -i ~/.ssh/id_ed25519_tridentV2 root@139.59.130.215 'tail -40 /var/log/trident-deploy.log'
+```
+
+Step order in `deploy.sh`: clean → backend deps → frontend deps → backend build → frontend build → **migrations** → PM2 restart → nginx reload → healthcheck.

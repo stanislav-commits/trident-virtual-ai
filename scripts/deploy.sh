@@ -8,9 +8,40 @@ FRONTEND_DIR="$REPO_DIR/frontend"
 PROCESS_NAME="${PROCESS_NAME:-trident-backend}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/api/health}"
 
+# Everything this script prints also goes to a file on the droplet.
+#
+# Without it the only record of a deploy is the GitHub Action log, so on the
+# machine itself there is no way to tell a finished deploy from one still
+# building — and `git log` is no help, because the reset happens in the first
+# seconds while the migrations run ninety seconds later. Reading the repo state
+# mid-deploy and concluding the migration step had failed is exactly the
+# mistake this file exists to prevent (2026-07-31).
+#
+# Falls back to the repo's parent directory when /var/log is not writable, so a
+# permissions problem degrades the logging rather than the deploy.
+DEPLOY_LOG="${DEPLOY_LOG:-/var/log/trident-deploy.log}"
+if ! { [ -e "$DEPLOY_LOG" ] && [ -w "$DEPLOY_LOG" ]; } &&
+   ! touch "$DEPLOY_LOG" 2>/dev/null; then
+  DEPLOY_LOG="$(dirname "$REPO_DIR")/trident-deploy.log"
+  touch "$DEPLOY_LOG" 2>/dev/null || DEPLOY_LOG=/dev/null
+fi
+exec > >(tee -a "$DEPLOY_LOG") 2>&1
+
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
+
+# A deploy that dies mid-way must say so in the file. Without this the log ends
+# on whatever step failed and reads like a deploy still in progress.
+on_exit() {
+  local code=$?
+  if [ "$code" -ne 0 ]; then
+    log "DEPLOY FAILED (exit $code) at commit $(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')"
+  fi
+}
+trap on_exit EXIT
+
+log "=== DEPLOY START $(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo '?') → log $DEPLOY_LOG"
 
 require_file() {
   local file="$1"
@@ -95,4 +126,4 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 
-log "Deploy complete at commit $(git -C "$REPO_DIR" rev-parse --short HEAD)"
+log "=== DEPLOY COMPLETE at commit $(git -C "$REPO_DIR" rev-parse --short HEAD)"
