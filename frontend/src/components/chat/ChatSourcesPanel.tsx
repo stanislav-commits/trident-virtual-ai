@@ -46,6 +46,8 @@ export function ChatSourcesPanel({
   const [loading, setLoading] = useState(false);
 
   // Revoked when the viewer closes or the panel unmounts — not per render.
+  // A tab opened from this URL keeps working while the panel is open, which is
+  // what "open in a new tab" is for: printing, saving, reading it full-width.
   useEffect(
     () => () => {
       if (openDoc) URL.revokeObjectURL(openDoc.objectUrl);
@@ -109,15 +111,28 @@ export function ChatSourcesPanel({
               : `${groupedSourceCount} source${groupedSourceCount === 1 ? "" : "s"} for this answer`}
           </p>
         </div>
-        <button
-          type="button"
-          className="chat-sources-panel__close"
-          onClick={openDoc ? closeViewer : onClose}
-          aria-label={openDoc ? "Back to sources" : "Close sources panel"}
-          title={openDoc ? "Back to sources" : undefined}
-        >
-          {openDoc ? "‹" : "×"}
-        </button>
+        <div className="chat-sources-panel__header-actions">
+          {openDoc && (
+            <button
+              type="button"
+              className="chat-sources-panel__close"
+              onClick={() => window.open(openDoc.src, "_blank", "noopener")}
+              aria-label="Open in a new tab"
+              title="Open in a new tab — to print or save it"
+            >
+              ↗
+            </button>
+          )}
+          <button
+            type="button"
+            className="chat-sources-panel__close"
+            onClick={openDoc ? closeViewer : onClose}
+            aria-label={openDoc ? "Back to sources" : "Close sources panel"}
+            title={openDoc ? "Back to sources" : undefined}
+          >
+            {openDoc ? "‹" : "×"}
+          </button>
+        </div>
       </div>
 
       <div className="chat-sources-panel__body">
