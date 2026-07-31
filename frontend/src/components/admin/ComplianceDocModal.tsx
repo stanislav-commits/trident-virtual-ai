@@ -7,7 +7,7 @@ import type { ArchetypeField,
 import {
   prettyLabel,
   inputTypeFor,
-  foldToSchema,
+  foldToSchemaSplit,
 } from "./compliance/complianceLabels";
 
 export interface DocModalValues {
@@ -118,13 +118,25 @@ export function ComplianceDocModal({
       ),
     ];
   })();
-  const [values, setValues] = useState<DocModalValues>(() => ({
-    ...initial,
-    fields: foldToSchema(
+  // `rest` holds stored values the form does not render (profile-hidden or
+  // legacy keys). They ride along untouched and merge back on save — the
+  // backend replaces `fields` wholesale, so leaving them out DELETES them.
+  const [{ values, rest }, setState] = useState<{
+    values: DocModalValues;
+    rest: Record<string, string>;
+  }>(() => {
+    const split = foldToSchemaSplit(
       schemaFields.map((f) => f.field),
       initial.fields,
-    ),
-  }));
+    );
+    return {
+      values: { ...initial, fields: split.folded },
+      rest: split.rest,
+    };
+  });
+  const setValues = (
+    update: (s: DocModalValues) => DocModalValues,
+  ): void => setState((s) => ({ ...s, values: update(s.values) }));
 
   const linksCrew = linkCardinality === "person";
   const linksVessel = linkCardinality === "vessel";
@@ -278,7 +290,9 @@ export function ComplianceDocModal({
             type="button"
             className="compliance__action-btn compliance__action-btn--primary"
             disabled={saving}
-            onClick={() => onSave(values)}
+            onClick={() =>
+              onSave({ ...values, fields: { ...rest, ...values.fields } })
+            }
           >
             {saving ? "Saving…" : mode === "create" ? "Confirm & save" : "Save changes"}
           </button>

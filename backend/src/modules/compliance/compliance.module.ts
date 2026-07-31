@@ -14,6 +14,7 @@ import { IntegrationsModule } from '../../integrations/integrations.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { DocumentsUploadStorageService } from '../documents/ingestion/documents-upload-storage.service';
 import { ComplianceExtractionService } from './compliance-extraction.service';
+import { ComplianceEventsModule } from './compliance-events.module';
 import { AccessControlModule } from '../access-control/access-control.module';
 
 @Module({
@@ -31,6 +32,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
     IntegrationsModule,
     DocumentsModule,
     AccessControlModule,
+    ComplianceEventsModule,
   ],
   controllers: [ComplianceController],
   providers: [

@@ -35,6 +35,7 @@ import { DocumentsUploadStorageService } from '../documents/ingestion/documents-
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { AdminEventBus } from '../admin-events/admin-event.bus';
 import { AccessControlService } from '../access-control/access-control.service';
+import { ComplianceEventsService } from './compliance-events.service';
 import {
   categoryForArchetype,
   ResourceCategory,
@@ -106,6 +107,7 @@ export class ComplianceService {
     private readonly documentsService: DocumentsService,
     private readonly adminEvents: AdminEventBus,
     private readonly accessControlService: AccessControlService,
+    private readonly eventsService: ComplianceEventsService,
   ) {}
 
   private emitChange(
@@ -374,6 +376,51 @@ export class ComplianceService {
   }
 
   /**
+   * Records carrying a review flag or invalidated by an event — fed to the
+   * same bell reconcile as expiry reminders (v60 Phase 4). The fingerprint
+   * carries the event id, so clearing the flag resolves the alert on the next
+   * sync and a NEW event on the same record fires fresh.
+   */
+  async flaggedCertificates(shipId: string): Promise<
+    Array<{
+      docId: string;
+      title: string;
+      expiryDate: string | null;
+      expired: boolean;
+      assetId: string | null;
+      message: string | null;
+      milestone: string;
+      severity: string;
+      fingerprint: string;
+    }>
+  > {
+    const docs = await this.docRepository.find({
+      where: { shipId, reviewFlag: Not(IsNull()) },
+      relations: { docType: true },
+    });
+    return docs
+      .filter((d) => d.recordState === 'current' || d.recordState === 'invalid')
+      .map((d) => {
+        const flag = (d.reviewFlag ?? {}) as Record<string, unknown>;
+        const invalid = d.recordState === 'invalid';
+        const name = d.docType?.name ?? 'Certificate';
+        return {
+          docId: d.id,
+          title: invalid
+            ? `${name} is no longer valid — arrange retest/replacement`
+            : `${name} needs review`,
+          expiryDate: d.expiryDate,
+          expired: invalid,
+          assetId: d.assetId ?? null,
+          message: typeof flag.reason === 'string' ? flag.reason : null,
+          milestone: invalid ? 'invalidated' : 'review',
+          severity: invalid ? 'critical' : 'warning',
+          fingerprint: `certflag:${d.id}:${String(flag.eventId ?? flag.code ?? 'flag')}`,
+        };
+      });
+  }
+
+  /**
    * The reminder each certificate currently owes (v60 Phase 3). One entry per
    * CURRENT record whose reminder profile calls for a timed reminder at its
    * days-to-expiry — the RP-01 ladder (90/60/30/14/7/1 days, then overdue).
@@ -610,6 +657,7 @@ export class ComplianceService {
               ? Number(doc.extractedConfidence)
               : null,
           identityFlags: doc.identityFlags ?? null,
+          reviewFlag: doc.reviewFlag ?? null,
           // Tags, not just a count: one record can hold the yacht's and the
           // tender's certificate side by side, and "2 files" does
           // not tell the register — or the chat — which is which.
@@ -763,8 +811,10 @@ export class ComplianceService {
           ).filter((id): id is string => Boolean(id));
 
     // The [AUTH] validity field is the canonical expiry for status.
-    const expiryDate =
-      this.authExpiry(type.archetype, fields) ?? input.expiryDate ?? null;
+    const expiryDate = this.ruleSixExpiry(
+      type,
+      this.authExpiry(type.archetype, fields) ?? input.expiryDate ?? null,
+    );
     const saved = await this.docRepository.save(
       this.docRepository.create({
         shipId,
@@ -903,6 +953,9 @@ export class ComplianceService {
     for (const doc of replaced) {
       await this.pmsService.removeForCompliance(doc.id);
     }
+    // DEP-CHILD (v60 Phase 4): a new issue replaced the record in force, so
+    // every child document that references this one must be looked at.
+    await this.eventsService.onParentReplaced(shipId, type);
   }
 
   // ── Supporting documents ──
@@ -1192,9 +1245,11 @@ export class ComplianceService {
           ? this.capped(input.issuer, ISSUER_MAX_LENGTH)
           : doc.issuer,
       issueDate: input.issueDate !== undefined ? input.issueDate : doc.issueDate,
-      expiryDate:
+      expiryDate: this.ruleSixExpiry(
+        type,
         authExpiry ??
-        (input.expiryDate !== undefined ? input.expiryDate : doc.expiryDate),
+          (input.expiryDate !== undefined ? input.expiryDate : doc.expiryDate),
+      ),
       assetId: input.assetId !== undefined ? input.assetId : doc.assetId,
       documentId:
         input.documentId !== undefined ? input.documentId : doc.documentId,
@@ -1296,6 +1351,23 @@ export class ComplianceService {
   }
 
   /**
+   * v60 Rule 6: a document whose validity is event/dependency/permanent-driven
+   * must not carry a "fictitious expiry date" — its status comes from triggers
+   * and linked records, and a date copied off the paper made it read EXPIRED
+   * (the LRIT Conformance Test case). The date is data, so it stays in
+   * `fields`; only the derived status column is withheld. Types the crosswalk
+   * never typed (NULL driver) keep the pre-v60 behaviour.
+   */
+  private ruleSixExpiry(
+    type: ComplianceDocTypeEntity | null,
+    expiry: string | null,
+  ): string | null {
+    const driver = type?.validityDriver ?? null;
+    if (!expiry || !driver || driver === 'VD-TIME') return expiry;
+    return null;
+  }
+
+  /**
    * Withdraw a record. Where the catalogue says to retain history this
    * archives instead of deleting — a
    * hard delete took the stored file and the extracted text with it, and there
@@ -1338,6 +1410,10 @@ export class ComplianceService {
     doc.recordState = 'current';
     doc.supersededByDocId = null;
     doc.archivedAt = null;
+    // Putting a record back in force is the operator overruling whatever
+    // filed it away — including a TO-INVALID event flag (v60 Phase 4), which
+    // must not come back as a stale banner on a record declared good.
+    doc.reviewFlag = null;
     const saved = await this.docRepository.save(doc);
     await this.syncPmsForDoc(shipId, saved, doc.docType ?? null);
     this.emitChange(shipId, 'updated', docId);

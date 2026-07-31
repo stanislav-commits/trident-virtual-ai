@@ -141,6 +141,10 @@ export class ComplianceDocMasterEntity {
   @Column({ name: 'reminder_profile', type: 'varchar', length: 10, nullable: true })
   reminderProfile!: string | null;
 
+  /** Event codes the type reacts to — see ComplianceDocTypeEntity. */
+  @Column({ name: 'trigger_codes', type: 'text', array: true, default: '{}' })
+  triggerCodes!: string[];
+
   @Column({ name: 'library_ref', type: 'varchar', length: 12, nullable: true })
   libraryRef!: string | null;
 

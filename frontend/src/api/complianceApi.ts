@@ -53,12 +53,37 @@ export interface ComplianceRecord {
   }> | null;
   /**
    * Version model. Absent on records saved before it existed — treat a missing
-   * value as `current`.
+   * value as `current`. `invalid` = a TO-INVALID compliance event fired
+   * (equipment replaced / unserviceable): the paper exists but no longer
+   * satisfies compliance.
    */
-  recordState?: "current" | "superseded" | "archived";
+  recordState?: "current" | "superseded" | "archived" | "invalid";
   revision?: number;
   supersededByDocId?: string | null;
   archivedAt?: string | null;
+  /** TO-REVIEW outcome of a compliance event; null = clean. */
+  reviewFlag?: {
+    code?: string;
+    eventId?: string;
+    reason?: string;
+    flaggedAt?: string;
+  } | null;
+}
+
+export interface ComplianceEventCode {
+  code: string;
+  label: string;
+  outcome: "review" | "invalid";
+  assetScoped: boolean;
+}
+
+export interface ComplianceEventDto {
+  id: string;
+  code: string;
+  source: string;
+  note: string | null;
+  affectedCount: number;
+  occurredAt: string;
 }
 
 export interface ArchetypeField {
@@ -481,4 +506,48 @@ export async function instantiateCompliance(
   );
   await ensureOk(response, "Generate rulebook");
   return (await response.json()) as { created: number; skipped: number };
+}
+
+// ── Compliance events (v60 Phase 4) ──
+
+export async function fetchComplianceEventCodes(
+  token: string,
+  shipId: string,
+): Promise<ComplianceEventCode[]> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/events/codes`,
+    { token, method: "GET" },
+  );
+  await ensureOk(response, "Event codes");
+  return (await response.json()) as ComplianceEventCode[];
+}
+
+export async function recordComplianceEvent(
+  token: string,
+  shipId: string,
+  input: { code: string; note?: string | null; assetId?: string | null },
+): Promise<{ event: ComplianceEventDto; affected: number }> {
+  const response = await fetchWithAuth(`ships/${shipId}/compliance/events`, {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  await ensureOk(response, "Record event");
+  return (await response.json()) as {
+    event: ComplianceEventDto;
+    affected: number;
+  };
+}
+
+export async function clearComplianceReviewFlag(
+  token: string,
+  shipId: string,
+  docId: string,
+): Promise<void> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/docs/${docId}/review-flag`,
+    { token, method: "DELETE" },
+  );
+  await ensureOk(response, "Clear review flag");
 }

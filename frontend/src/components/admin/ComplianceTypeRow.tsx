@@ -24,6 +24,8 @@ interface ComplianceTypeRowProps {
   onEditRecord: (docId: string) => void;
   onDeleteRecord: (docId: string) => void;
   onRestoreRecord: (docId: string) => void;
+  /** Operator assessed a flagged record — clear its review flag. */
+  onClearReviewFlag: (docId: string) => void;
   /** Vessel identity — the nine identity fields are a mask over it. */
   vessel: ComplianceVessel | undefined;
   onOpenFile: (docId: string) => void;
@@ -86,6 +88,7 @@ export function ComplianceTypeRow({
   onEditRecord,
   onDeleteRecord,
   onRestoreRecord,
+  onClearReviewFlag,
   vessel,
   onOpenFile,
 }: ComplianceTypeRowProps) {
@@ -103,9 +106,13 @@ export function ComplianceTypeRow({
 
   const recordCount = type.records.length;
   // A record with no explicit state predates the version model — treat it as
-  // in force rather than hiding it.
+  // in force rather than hiding it. `invalid` (a TO-INVALID event fired) stays
+  // in the MAIN list, not history: it must scream for a retest, not hide.
   const currentRecords = type.records.filter(
-    (r) => !r.recordState || r.recordState === "current",
+    (r) =>
+      !r.recordState ||
+      r.recordState === "current" ||
+      r.recordState === "invalid",
   );
   const historyRecords = type.records.filter(
     (r) => r.recordState === "superseded" || r.recordState === "archived",
@@ -305,6 +312,39 @@ export function ComplianceTypeRow({
                             `${prettyLabel(m.field)}: doc "${m.documentValue}" vs register "${m.registerValue}"`,
                         )
                         .join("; ")}
+                    </div>
+                  )}
+                  {/* Compliance event outcome (v60 Phase 4): TO-INVALID paints
+                      the record dead; TO-REVIEW asks a person to look at it.
+                      Clearing is the operator saying "assessed". */}
+                  {(rec.reviewFlag || rec.recordState === "invalid") && (
+                    <div
+                      className={
+                        rec.recordState === "invalid"
+                          ? "compliance__event-flag compliance__event-flag--invalid"
+                          : "compliance__event-flag"
+                      }
+                    >
+                      <span>
+                        {rec.recordState === "invalid"
+                          ? "No longer valid — "
+                          : "Review required — "}
+                        {rec.reviewFlag?.reason ??
+                          "a compliance event affected this record"}
+                      </span>
+                      {rec.reviewFlag && (
+                        <button
+                          type="button"
+                          className="compliance__event-flag-clear"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onClearReviewFlag(rec.id);
+                          }}
+                          title="Mark as assessed and clear the flag"
+                        >
+                          Assessed ✓
+                        </button>
+                      )}
                     </div>
                   )}
                   {/* Linked assets / crew (Link_Model) */}

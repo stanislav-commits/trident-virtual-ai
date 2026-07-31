@@ -32,7 +32,14 @@ export class AlertsSchedulerService {
     let certTotal = 0;
     for (const ship of ships) {
       try {
-        const certs = await this.complianceService.expiringCertificates(ship.id);
+        // One reconcile set: expiry-ladder reminders (Phase 3) plus records
+        // flagged/invalidated by compliance events (Phase 4). They must go in
+        // together — the reconcile resolves any firing certificate alert
+        // whose fingerprint is absent from the set it is given.
+        const certs = [
+          ...(await this.complianceService.expiringCertificates(ship.id)),
+          ...(await this.complianceService.flaggedCertificates(ship.id)),
+        ];
         await this.alertsService.reconcileCertificateAlerts(ship.id, certs);
         certTotal += certs.length;
       } catch (error) {

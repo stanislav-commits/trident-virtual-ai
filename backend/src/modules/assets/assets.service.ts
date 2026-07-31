@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -20,6 +21,7 @@ import {
 } from './enums/asset-location-vocab';
 import { AdminEventBus } from '../admin-events/admin-event.bus';
 import { AssetSnapshotService } from './asset-snapshot.service';
+import { ComplianceEventsService } from '../compliance/compliance-events.service';
 import {
   buildRegisterWorkbook,
   naturalCompareIds,
@@ -27,6 +29,8 @@ import {
 
 @Injectable()
 export class AssetsService {
+  private readonly logger = new Logger(AssetsService.name);
+
   constructor(
     @InjectRepository(AssetEntity)
     private readonly assetRepository: Repository<AssetEntity>,
@@ -37,6 +41,7 @@ export class AssetsService {
     private readonly assetIdService: AssetIdService,
     private readonly adminEvents: AdminEventBus,
     private readonly snapshots: AssetSnapshotService,
+    private readonly complianceEvents: ComplianceEventsService,
   ) {}
 
   private emitChange(
@@ -299,6 +304,15 @@ export class AssetsService {
   ): Promise<AssetEntity> {
     const asset = await this.getOne(shipId, assetUuid);
 
+    // Identity before the edit — a change of brand/model/serial means the
+    // physical unit was replaced, and the test reports and type approvals
+    // issued for the OLD unit stop being evidence (v60 Phase 4 producer).
+    const unitBefore = {
+      brand: asset.brand,
+      model: asset.model,
+      serialNo: asset.serialNo,
+    };
+
     if (
       input.assetIdInternal !== undefined &&
       input.assetIdInternal !== asset.assetIdInternal
@@ -350,6 +364,31 @@ export class AssetsService {
 
     const saved = await this.assetRepository.save(asset);
     this.emitChange(shipId, 'updated', assetUuid);
+
+    const unitReplaced =
+      (saved.brand ?? null) !== (unitBefore.brand ?? null) ||
+      (saved.model ?? null) !== (unitBefore.model ?? null) ||
+      (saved.serialNo ?? null) !== (unitBefore.serialNo ?? null);
+    if (unitReplaced) {
+      try {
+        await this.complianceEvents.record(shipId, {
+          code: 'equipment_replaced',
+          source: 'asset',
+          assetId: saved.id,
+          note: `${saved.displayName ?? saved.assetIdInternal ?? 'Asset'}: identity changed (${[
+            unitBefore.brand !== saved.brand ? `brand ${unitBefore.brand ?? '—'} → ${saved.brand ?? '—'}` : null,
+            unitBefore.model !== saved.model ? `model ${unitBefore.model ?? '—'} → ${saved.model ?? '—'}` : null,
+            unitBefore.serialNo !== saved.serialNo ? `serial ${unitBefore.serialNo ?? '—'} → ${saved.serialNo ?? '—'}` : null,
+          ]
+            .filter(Boolean)
+            .join(', ')})`,
+        });
+      } catch (error) {
+        this.logger.error(
+          `equipment_replaced event for asset ${saved.id} failed: ${String(error)}`,
+        );
+      }
+    }
     return saved;
   }
 

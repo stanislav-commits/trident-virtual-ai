@@ -26,11 +26,17 @@ export function prettyLabel(field: string): string {
  * a compound schema field (e.g. `vessel_gt/imo/callsign/flag`) by its parts
  * (`vessel_gt`, `vessel_imo`), so gather those into the compound key instead of
  * losing them. Simple keys match exactly.
+ *
+ * `rest` is every stored entry the fold did NOT place on the form — keys a
+ * field profile hides, or legacy keys no current schema names. The edit modal
+ * must merge them back into the save payload: `updateDoc` replaces `fields`
+ * wholesale, so a value that never reached the form was silently deleted on
+ * the next save (the v60 Phase 2b data-loss trap).
  */
-export function foldToSchema(
+export function foldToSchemaSplit(
   fieldKeys: string[],
   raw: Record<string, string>,
-): Record<string, string> {
+): { folded: Record<string, string>; rest: Record<string, string> } {
   const out: Record<string, string> = {};
   const used = new Set<string>();
   for (const k of fieldKeys) {
@@ -62,7 +68,19 @@ export function foldToSchema(
     }
     if (pieces.length) out[k] = pieces.join(", ");
   }
-  return out;
+  const rest: Record<string, string> = {};
+  for (const [rk, rv] of Object.entries(raw)) {
+    if (!used.has(rk) && rv != null && rv !== "") rest[rk] = rv;
+  }
+  return { folded: out, rest };
+}
+
+/** The folded view alone — for surfaces that merge over the raw set anyway. */
+export function foldToSchema(
+  fieldKeys: string[],
+  raw: Record<string, string>,
+): Record<string, string> {
+  return foldToSchemaSplit(fieldKeys, raw).folded;
 }
 
 /** ISO (yyyy-mm-dd…) → display dd/mm/yyyy; non-dates pass through. */

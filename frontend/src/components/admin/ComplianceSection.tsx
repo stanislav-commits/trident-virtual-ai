@@ -14,6 +14,9 @@ import {
   commitComplianceDocs,
   openComplianceDocFile,
   updateComplianceDoc,
+  fetchComplianceEventCodes,
+  recordComplianceEvent,
+  clearComplianceReviewFlag,
 } from "../../api/complianceApi";
 import type {
   ComplianceDocType,
@@ -22,6 +25,7 @@ import type {
   ArchetypeSchema,
   IngestProposal,
   CommitProposal,
+  ComplianceEventCode,
 } from "../../api/complianceApi";
 import { ComplianceIngestModal } from "./ComplianceIngestModal";
 import { ComplianceDocModal, type DocModalValues } from "./ComplianceDocModal";
@@ -594,6 +598,59 @@ export function ComplianceSection({ token }: { token: string | null }) {
     }
   };
 
+  const clearReviewFlag = async (docId: string) => {
+    if (!token || !shipId) return;
+    try {
+      await clearComplianceReviewFlag(token, shipId, docId);
+      void reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to clear the flag");
+    }
+  };
+
+  // ── "Log event" (v60 Phase 4): record a vessel/operational event ──
+  const [eventModalOpen, setEventModalOpen] = useState(false);
+  const [eventCodes, setEventCodes] = useState<ComplianceEventCode[]>([]);
+  const [eventCode, setEventCode] = useState("");
+  const [eventNote, setEventNote] = useState("");
+  const [eventSaving, setEventSaving] = useState(false);
+  const [eventResult, setEventResult] = useState<string | null>(null);
+
+  const openEventModal = async () => {
+    setEventModalOpen(true);
+    setEventResult(null);
+    if (!eventCodes.length && token && shipId) {
+      try {
+        setEventCodes(await fetchComplianceEventCodes(token, shipId));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load event codes");
+      }
+    }
+  };
+
+  const submitEvent = async () => {
+    if (!token || !shipId || !eventCode) return;
+    setEventSaving(true);
+    setEventResult(null);
+    try {
+      const { affected } = await recordComplianceEvent(token, shipId, {
+        code: eventCode,
+        note: eventNote || null,
+      });
+      setEventResult(
+        affected === 0
+          ? "Recorded. No records on file react to this event."
+          : `Recorded — ${affected} record${affected === 1 ? "" : "s"} flagged for review.`,
+      );
+      setEventNote("");
+      void reload();
+    } catch (e) {
+      setEventResult(e instanceof Error ? e.message : "Failed to record event");
+    } finally {
+      setEventSaving(false);
+    }
+  };
+
   const openFile = async (docId: string) => {
     if (!token || !shipId) return;
     try {
@@ -664,6 +721,14 @@ export function ComplianceSection({ token }: { token: string | null }) {
           </div>
         </div>
         <div className="compliance__head-controls">
+          <button
+            type="button"
+            className="compliance__action-btn"
+            onClick={() => void openEventModal()}
+            title="Record a vessel/operational event (flag change, structural alteration, equipment replaced…) — the register flags every affected document."
+          >
+            Log event
+          </button>
           <div className="compliance__upload-wrap">
             <button
               type="button"
@@ -767,6 +832,80 @@ export function ComplianceSection({ token }: { token: string | null }) {
           onSave={(values) => void saveDocModal(values)}
           onCancel={closeDocModal}
         />
+      )}
+
+      {eventModalOpen && (
+        <div
+          className="admin-panel__modal-overlay"
+          onClick={() => setEventModalOpen(false)}
+        >
+          <div
+            className="admin-panel__modal compliance__event-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="admin-panel__modal-header">
+              <h3>Log a compliance event</h3>
+              <button
+                type="button"
+                className="admin-panel__icon-btn"
+                onClick={() => setEventModalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="compliance__event-modal-body">
+              <p className="compliance__event-modal-hint">
+                Something changed on the vessel — the register flags every
+                document the change may affect, so nothing relies on paper
+                issued for the old state.
+              </p>
+              <label className="compliance__field">
+                <span className="compliance__field-label">Event</span>
+                <select
+                  value={eventCode}
+                  onChange={(e) => setEventCode(e.target.value)}
+                >
+                  <option value="">Select an event…</option>
+                  {eventCodes.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="compliance__field">
+                <span className="compliance__field-label">Note (optional)</span>
+                <input
+                  value={eventNote}
+                  placeholder="what happened, where, who reported it…"
+                  onChange={(e) => setEventNote(e.target.value)}
+                />
+              </label>
+              {eventResult && (
+                <div className="compliance__event-modal-result">
+                  {eventResult}
+                </div>
+              )}
+            </div>
+            <div className="admin-panel__modal-footer">
+              <button
+                type="button"
+                className="compliance__action-btn"
+                onClick={() => setEventModalOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="compliance__action-btn compliance__action-btn--primary"
+                onClick={() => void submitEvent()}
+                disabled={!eventCode || eventSaving}
+              >
+                {eventSaving ? "Recording…" : "Record event"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {error && <div className="compliance__error">{error}</div>}
@@ -941,6 +1080,7 @@ export function ComplianceSection({ token }: { token: string | null }) {
                   }}
                   onDeleteRecord={(docId) => void removeRecord(docId)}
                   onRestoreRecord={(docId) => void restoreRecord(docId)}
+                  onClearReviewFlag={(docId) => void clearReviewFlag(docId)}
                   vessel={overview?.vessel}
                   onOpenFile={(docId) => void openFile(docId)}
                 />

@@ -10016,6 +10016,50 @@
   background: var(--status-danger-bg, color-mix(in srgb, var(--status-danger, #d9534f) 12%, transparent));
   border-radius: 6px; padding: 4px 8px;
 }
+/* v60 Phase 4: outcome of a compliance event on a record. Amber = review
+   required (record still in force); red = invalidated (stops satisfying). */
+.compliance__event-flag {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-left: 4px; font-size: 11px; color: var(--status-warn, #d98a00);
+  background: color-mix(in srgb, var(--status-warn, #d98a00) 12%, transparent);
+  border-radius: 6px; padding: 4px 8px;
+}
+.compliance__event-flag--invalid {
+  color: var(--status-danger, #d9534f);
+  background: var(--status-danger-bg, color-mix(in srgb, var(--status-danger, #d9534f) 12%, transparent));
+}
+.compliance__event-flag-clear {
+  background: transparent; border: 1px solid currentColor; color: inherit;
+  border-radius: 10px; padding: 1px 8px; font-size: 10.5px; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+.compliance__event-flag-clear:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.compliance__event-modal { max-width: 460px; }
+.compliance__event-modal .admin-panel__modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px 0;
+}
+.compliance__event-modal .admin-panel__modal-header h3 { margin: 0; }
+.compliance__event-modal .admin-panel__modal-footer {
+  display: flex; justify-content: flex-end; gap: 8px; padding: 0 18px 16px;
+}
+.compliance__event-modal-body {
+  display: flex; flex-direction: column; gap: 12px; padding: 14px 18px;
+}
+.compliance__event-modal-hint {
+  margin: 0; font-size: 12px; color: var(--chat-text-muted); line-height: 1.45;
+}
+.compliance__event-modal-body select {
+  background: var(--chat-surface-2); border: 1px solid var(--chat-border);
+  color: var(--chat-text); border-radius: 8px; padding: 7px 10px; font-size: 13px;
+}
+.compliance__event-modal-result {
+  font-size: 12px; color: var(--status-ok, #3f9d63);
+  background: color-mix(in srgb, var(--status-ok, #3f9d63) 10%, transparent);
+  border-radius: 6px; padding: 6px 10px;
+}
 .compliance__links {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   margin-left: 4px;

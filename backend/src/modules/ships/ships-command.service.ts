@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MetricsCatalogService } from '../metrics/metrics-catalog.service';
@@ -9,9 +14,12 @@ import { UpdateShipDto } from './dto/update-ship.dto';
 import { ShipEntity } from './entities/ship.entity';
 import { type ShipResponseDto, toShipResponse } from './ship-response.mapper';
 import { AdminEventBus } from '../admin-events/admin-event.bus';
+import { ComplianceEventsService } from '../compliance/compliance-events.service';
 
 @Injectable()
 export class ShipsCommandService {
+  private readonly logger = new Logger(ShipsCommandService.name);
+
   constructor(
     @InjectRepository(ShipEntity)
     private readonly shipsRepository: Repository<ShipEntity>,
@@ -19,6 +27,7 @@ export class ShipsCommandService {
     private readonly usersRepository: Repository<UserEntity>,
     private readonly metricsCatalogService: MetricsCatalogService,
     private readonly adminEvents: AdminEventBus,
+    private readonly complianceEvents: ComplianceEventsService,
   ) {}
 
   /** Ships are platform-scoped — shipId is null. */
@@ -61,6 +70,18 @@ export class ShipsCommandService {
     if (!ship) {
       throw new NotFoundException('Ship not found');
     }
+
+    // Snapshot the identity fields statutory certificates are issued against —
+    // compared after the assignments to produce compliance events (v60
+    // Phase 4: flag change / particulars change flag the affected records).
+    const before = {
+      flag: ship.flag,
+      name: ship.name,
+      registeredOwner: ship.registeredOwner,
+      companyName: ship.companyName,
+      classSociety: ship.classSociety,
+      grossTonnage: ship.grossTonnage,
+    };
 
     const nextOrganizationName =
       typeof input.organizationName === 'string'
@@ -151,7 +172,54 @@ export class ShipsCommandService {
     }
 
     this.emitChange('updated');
+    await this.emitComplianceEvents(savedShip, before);
     return toShipResponse(savedShip);
+  }
+
+  /**
+   * v60 Phase 4 producer: identity changes on the vessel flag the compliance
+   * records that were issued against the old identity. Flag change is its own
+   * code (tonnage certificate, CSR); the rest fold into one particulars
+   * event. Failures log and never block the save — the register reacting is
+   * secondary to the edit itself.
+   */
+  private async emitComplianceEvents(
+    ship: ShipEntity,
+    before: {
+      flag: string | null;
+      name: string;
+      registeredOwner: string | null;
+      companyName: string | null;
+      classSociety: string | null;
+      grossTonnage: number | null;
+    },
+  ): Promise<void> {
+    try {
+      if ((ship.flag ?? null) !== before.flag && (ship.flag || before.flag)) {
+        await this.complianceEvents.record(ship.id, {
+          code: 'flag_change',
+          source: 'ship',
+          note: `Flag changed: ${before.flag ?? '—'} → ${ship.flag ?? '—'}`,
+        });
+      }
+      const particularsChanged =
+        ship.name !== before.name ||
+        (ship.registeredOwner ?? null) !== before.registeredOwner ||
+        (ship.companyName ?? null) !== before.companyName ||
+        (ship.classSociety ?? null) !== before.classSociety ||
+        (ship.grossTonnage ?? null) !== before.grossTonnage;
+      if (particularsChanged) {
+        await this.complianceEvents.record(ship.id, {
+          code: 'vessel_particulars_change',
+          source: 'ship',
+          note: 'Vessel particulars changed (name / owner / company / class / tonnage)',
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Compliance events for ship ${ship.id} failed: ${String(error)}`,
+      );
+    }
   }
 
   async remove(id: string): Promise<void> {

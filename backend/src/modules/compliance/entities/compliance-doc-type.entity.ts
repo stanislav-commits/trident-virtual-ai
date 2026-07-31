@@ -120,6 +120,16 @@ export class ComplianceDocTypeEntity {
   @Column({ name: 'reminder_profile', type: 'varchar', length: 10, nullable: true })
   reminderProfile!: string | null;
 
+  /**
+   * Event codes this document reacts to (v60 Phase 4): when a
+   * compliance event with one of these codes is recorded for the ship, the
+   * type's current records get the code's outcome (TO-REVIEW flag or
+   * TO-INVALID). Seeded from the Behaviour Matrix "Trigger Date / Event"
+   * column; the free-text `updateTrigger` stays as the human-readable source.
+   */
+  @Column({ name: 'trigger_codes', type: 'text', array: true, default: '{}' })
+  triggerCodes!: string[];
+
   @Column({ name: 'library_ref', type: 'varchar', length: 12, nullable: true })
   libraryRef!: string | null;
 

@@ -32,6 +32,7 @@ import {
   ComplianceExtractionService,
   CommitProposal,
 } from './compliance-extraction.service';
+import { ComplianceEventsService } from './compliance-events.service';
 
 interface UploadedComplianceFile {
   buffer?: Buffer;
@@ -45,6 +46,7 @@ export class ComplianceController {
   constructor(
     private readonly complianceService: ComplianceService,
     private readonly extractionService: ComplianceExtractionService,
+    private readonly eventsService: ComplianceEventsService,
   ) {}
 
   /** Batch AI: read PDFs (or {items:[{filename,text}]}) → proposals, NO save. */
@@ -176,6 +178,53 @@ export class ComplianceController {
   @Get('archetypes')
   archetypes() {
     return this.complianceService.archetypeSchema();
+  }
+
+  // ── Compliance events (v60 Phase 4) ──
+
+  /** The event vocabulary — codes + labels for the "log event" UI. */
+  @Get('events/codes')
+  eventCodes() {
+    return this.eventsService.listCodes();
+  }
+
+  @Get('events')
+  @Roles(UserRole.ADMIN)
+  listEvents(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.eventsService.listEvents(
+      shipId,
+      limit ? parseInt(limit, 10) || 50 : 50,
+    );
+  }
+
+  /** Record a vessel/operational event and apply it to the register. */
+  @Post('events')
+  @Roles(UserRole.ADMIN)
+  recordEvent(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Body() body: { code: string; note?: string | null; assetId?: string | null },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.eventsService.record(shipId, {
+      code: body?.code ?? '',
+      note: body?.note ?? null,
+      assetId: body?.assetId ?? null,
+      createdBy: user.id,
+    });
+  }
+
+  /** The operator assessed a flagged record — clear its review flag. */
+  @Delete('docs/:docId/review-flag')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async clearReviewFlag(
+    @Param('shipId', ParseUUIDPipe) shipId: string,
+    @Param('docId', ParseUUIDPipe) docId: string,
+  ) {
+    await this.eventsService.clearReviewFlag(shipId, docId);
   }
 
   @Get('assets/:assetId/docs')

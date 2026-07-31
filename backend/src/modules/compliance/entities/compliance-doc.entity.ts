@@ -136,11 +136,24 @@ export class ComplianceDocEntity {
    *   current     — counts towards the type's status
    *   superseded  — replaced by a newer issue; kept for the audit trail
    *   archived    — withdrawn by an operator instead of being deleted
+   *   invalid     — a TO-INVALID trigger fired (equipment replaced /
+   *                 unserviceable); the paper exists but can no longer be
+   *                 relied on, so it stops satisfying compliance (v60 Phase 4)
    *
    * Only `current` records are evaluated; the rest stay readable as history.
    */
   @Column({ name: 'record_state', type: 'varchar', length: 12, default: 'current' })
   recordState!: string;
+
+  /**
+   * TO-REVIEW outcome of a compliance event (v60 Phase 4): a trigger fired
+   * that may affect this record — flag change, structural alteration, parent
+   * certificate replaced — and someone must assess it. `{ code, eventId,
+   * reason, flaggedAt }`; null = clean. Cleared by an operator from the
+   * register once assessed.
+   */
+  @Column({ name: 'review_flag', type: 'jsonb', nullable: true })
+  reviewFlag!: Record<string, unknown> | null;
 
   @Column({ name: 'revision', type: 'integer', default: 1 })
   revision!: number;

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ComplianceEventsModule } from '../compliance/compliance-events.module';
 import { DocumentEntity } from '../documents/entities/document.entity';
 import { ShipMetricCatalogEntity } from '../metrics/entities/ship-metric-catalog.entity';
 import { ShipEntity } from '../ships/entities/ship.entity';
@@ -28,6 +29,10 @@ import { SfiModule } from '../sfi/sfi.module';
       DocumentEntity,
     ]),
     SfiModule,
+    // v60 Phase 4: replacing a unit (brand/model/serial change) produces an
+    // equipment_replaced compliance event. Leaf-shaped events module —
+    // see ComplianceEventsModule on why not the full ComplianceModule.
+    ComplianceEventsModule,
   ],
   controllers: [AssetsController],
   providers: [
