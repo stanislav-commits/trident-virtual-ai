@@ -651,8 +651,13 @@ export class PmsService {
 
   private static readonly MAX_PHOTOS_PER_TASK = 10;
   private static readonly MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB
-  private static readonly ALLOWED_PHOTO_MIME =
-    /^image\/(jpeg|png|webp|heic|heif|gif)$/i;
+  /**
+   * No HEIC/HEIF: Chrome and Firefox cannot render them, so an accepted iPhone
+   * original looked broken in the web admin to everyone but Safari users. The
+   * mobile app never sends HEIC (its pickers re-encode to JPEG), so the only
+   * source was a web-admin file input — reject it with a clear message there.
+   */
+  private static readonly ALLOWED_PHOTO_MIME = /^image\/(jpeg|png|webp|gif)$/i;
 
   async addPhoto(
     shipId: string,
@@ -672,7 +677,9 @@ export class PmsService {
       throw new BadRequestException('file is required');
     }
     if (!PmsService.ALLOWED_PHOTO_MIME.test(file.mimetype ?? '')) {
-      throw new BadRequestException('only image files are allowed');
+      throw new BadRequestException(
+        'only JPEG, PNG, WebP or GIF photos are allowed (HEIC does not display in most browsers — export as JPEG first)',
+      );
     }
     if (file.size > PmsService.MAX_PHOTO_BYTES) {
       throw new BadRequestException('photo is larger than 10 MB');
