@@ -15,7 +15,6 @@ import {
   FLAG_REGISTRY_COLUMN,
   GT_BUCKET_COLUMN,
   hideFromRegister,
-  raisesGap,
   resolveApplicability,
 } from './compliance-profile.util';
 import { ComplianceDocMasterEntity } from './entities/compliance-doc-master.entity';
@@ -52,19 +51,13 @@ import {
   validityField,
 } from './compliance-archetypes';
 
-/**
- * `conditional` is not a health state — it means the register cannot say the
- * document is missing, because the applicability matrix has not established
- * that this vessel needs it (C / R / TBD). See applicabilityVerdict().
- */
-export type ComplianceStatus =
-  | 'valid'
-  | 'expiring'
-  | 'expired'
-  | 'missing'
-  | 'conditional';
-
-const EXPIRING_DAYS = 90;
+export type { ComplianceStatus } from './compliance-status.util';
+import {
+  EXPIRING_DAYS,
+  recordStatus,
+  typeStatus,
+  type ComplianceStatus,
+} from './compliance-status.util';
 
 export interface UpsertComplianceDocInput {
   docTypeId: string;
@@ -542,7 +535,7 @@ export class ComplianceService {
         sections.set(type.sectionCode, section);
       }
 
-      const status = this.typeStatus(records, type.applicability, linksByDoc);
+      const status = typeStatus(records, type.applicability, linksByDoc);
       section.counts[status] += 1;
 
       section.types.push({
@@ -580,7 +573,7 @@ export class ComplianceService {
           issuer: doc.issuer,
           issueDate: doc.issueDate,
           expiryDate: doc.expiryDate,
-          status: this.recordStatus(doc),
+          status: recordStatus(doc),
           assetId: doc.assetId,
           assetName: doc.asset?.displayName ?? null,
           documentId: doc.documentId,
@@ -695,7 +688,7 @@ export class ComplianceService {
       issuer: doc.issuer,
       issueDate: doc.issueDate,
       expiryDate: doc.expiryDate,
-      status: this.recordStatus(doc),
+      status: recordStatus(doc),
       documentId: doc.documentId,
       documentFileName: doc.document?.originalFileName ?? null,
       // Same rule as the overview: pipeline-stored OR directly-stored file.
@@ -788,7 +781,7 @@ export class ComplianceService {
     saved.identityFlags = await this.computeIdentityFlags(saved, type);
     await this.docRepository.save(saved);
     this.emitChange(shipId, 'created', saved.id);
-    return { ...saved, status: this.recordStatus(saved) };
+    return { ...saved, status: recordStatus(saved) };
   }
 
   /** The set of assets/crew a record covers — '' when it covers the vessel. */
@@ -1207,7 +1200,7 @@ export class ComplianceService {
     saved.identityFlags = await this.computeIdentityFlags(saved, type ?? null);
     await this.docRepository.save(saved);
     this.emitChange(shipId, 'updated', docId);
-    return { ...saved, status: this.recordStatus(saved) };
+    return { ...saved, status: recordStatus(saved) };
   }
 
   /** Archetype field schema (BASE + per-archetype blocks) for UI forms. */
@@ -1325,7 +1318,7 @@ export class ComplianceService {
     const saved = await this.docRepository.save(doc);
     await this.syncPmsForDoc(shipId, saved, doc.docType ?? null);
     this.emitChange(shipId, 'updated', docId);
-    return { ...saved, status: this.recordStatus(saved) };
+    return { ...saved, status: recordStatus(saved) };
   }
 
   /** Update applicability / logic fields on a rulebook row. */
@@ -1378,15 +1371,6 @@ export class ComplianceService {
     );
   }
 
-  private recordStatus(doc: ComplianceDocEntity): ComplianceStatus {
-    if (!doc.expiryDate) return 'valid'; // permanent / no-expiry docs
-    const expiry = new Date(doc.expiryDate);
-    const now = new Date();
-    if (expiry.getTime() < now.getTime()) return 'expired';
-    const days = (expiry.getTime() - now.getTime()) / 86_400_000;
-    return days <= EXPIRING_DAYS ? 'expiring' : 'valid';
-  }
-
   /**
    * Type-level verdict: 'missing' when there are no records; otherwise the
    * WORST record status (one expired liferaft cert makes the whole LSA line
@@ -1409,39 +1393,5 @@ export class ComplianceService {
    * records on one target are versions of the same obligation, records on
    * different targets are coverage of different things.
    */
-  private typeStatus(
-    records: ComplianceDocEntity[],
-    applicability: string | null | undefined,
-    linksByDoc?: Map<string, Array<{ assetId: string | null; crewMemberId: string | null }>>,
-  ): ComplianceStatus {
-    const live = records.filter((doc) => doc.recordState === 'current');
-    if (!live.length) {
-      // The applicability matrix decides whether an empty row is a gap. A type
-      // whose only records are superseded/archived is empty again by design.
-      return raisesGap(applicability) ? 'missing' : 'conditional';
-    }
 
-    const rank: Record<string, number> = { valid: 0, expiring: 1, expired: 2 };
-    const bestPerTarget = new Map<string, number>();
-    for (const doc of live) {
-      const links = linksByDoc?.get(doc.id) ?? [];
-      const target = links.length
-        ? links
-            .map((l) => l.assetId ?? l.crewMemberId ?? '')
-            .filter(Boolean)
-            .sort()
-            .join(',')
-        : (doc.assetId ?? 'VESSEL');
-      const score = rank[this.recordStatus(doc)] ?? 0;
-      const current = bestPerTarget.get(target);
-      // best (lowest rank) wins within a target — the newest valid issue
-      if (current === undefined || score < current) {
-        bestPerTarget.set(target, score);
-      }
-    }
-
-    // worst (highest rank) across targets
-    const worst = Math.max(...bestPerTarget.values());
-    return (['valid', 'expiring', 'expired'] as const)[worst] ?? 'valid';
-  }
 }
