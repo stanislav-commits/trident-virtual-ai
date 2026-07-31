@@ -45,6 +45,37 @@ export async function acceptOrRepairGroundedReply(input: {
     };
   }
 
+  // One unverifiable figure used to condemn the whole answer. The validator
+  // caught "1,000 rpm" that it could not find in the evidence and the entire
+  // start-up procedure — ten strong manual snippets behind it — was thrown
+  // away for a web search (production, 2026-07-31). Whether the figure was a
+  // formatting mismatch or the model reaching for general knowledge, the
+  // right response is the same: one corrective pass that keeps the procedure
+  // and drops the number nobody can back, not a five-minute detour to the
+  // open internet.
+  if (isNumericGroundingFailure(firstValidation.reason)) {
+    const retry = await input.chatLlmService.completeText({
+      ...input.request,
+      temperature: 0,
+      userPrompt: buildNumericRepairPrompt(
+        input.request.userPrompt,
+        input.reply,
+        firstValidation.reason,
+      ),
+    });
+
+    if (retry) {
+      const retryValidation = validateGeneratedDocumentAnswer(
+        retry,
+        input.retrieval,
+        input.supportedNumericContext,
+      );
+      if (retryValidation.isGrounded) {
+        return { summary: retry, groundingStatus: 'grounded' };
+      }
+    }
+  }
+
   return {
     summary: buildInsufficientGroundingSummary(
       input.retrieval,
@@ -53,6 +84,29 @@ export async function acceptOrRepairGroundedReply(input: {
     groundingStatus: 'insufficient',
     groundingReason: firstValidation.reason,
   };
+}
+
+function isNumericGroundingFailure(reason?: string): boolean {
+  return /^The answer included "/.test(reason ?? '');
+}
+
+function buildNumericRepairPrompt(
+  originalUserPrompt: string,
+  previousReply: string,
+  reason?: string,
+): string {
+  return [
+    originalUserPrompt,
+    '',
+    `A grounding check rejected the previous draft: ${reason ?? 'a figure could not be verified against the evidence.'}`,
+    'Rewrite the answer using ONLY the same retrieved evidence.',
+    'Keep every step and instruction that the evidence supports.',
+    'Remove or reword any numeric value that does not appear in the evidence snippets — do not replace it with another figure from memory.',
+    'Do not add new facts, sources, or web knowledge.',
+    '',
+    'Previous draft:',
+    previousReply,
+  ].join('\n');
 }
 
 export function buildFallbackEvidenceSummary(
