@@ -17,6 +17,12 @@ interface SourceCitationsProps {
   citations: ChatContextReferenceDto[];
   mode?: "inline" | "panel";
   onOpenPanel?: (citations: ChatContextReferenceDto[]) => void;
+  /**
+   * Open the document in place rather than in a new tab. Returns false when
+   * the caller cannot handle it (a legacy manual, a failed fetch), and the
+   * new-tab path takes over.
+   */
+  onOpenDocument?: (citation: ChatContextReferenceDto) => Promise<boolean>;
 }
 
 const DEFAULT_VISIBLE_SOURCES = 3;
@@ -73,6 +79,7 @@ export function SourceCitations({
   citations,
   mode = "inline",
   onOpenPanel,
+  onOpenDocument,
 }: SourceCitationsProps) {
   const { token } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -126,9 +133,12 @@ export function SourceCitations({
       const target = getChatDocumentOpenTarget(citation);
       if (!target) return;
 
-      void openChatDocumentSource(target, token);
+      void (async () => {
+        if (onOpenDocument && (await onOpenDocument(citation))) return;
+        await openChatDocumentSource(target, token);
+      })();
     },
-    [token],
+    [token, onOpenDocument],
   );
 
   const groupedEntries = useMemo(

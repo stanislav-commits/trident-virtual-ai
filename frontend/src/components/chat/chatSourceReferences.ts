@@ -229,3 +229,25 @@ export const CHAT_SOURCE_KIND_LABEL: Record<ChatSourceKind, string> = {
   form: "Form",
   other: "Source",
 };
+
+/**
+ * Find the source a [N] marker in the answer points at.
+ *
+ * The number is the evidence item's own index in the retrieval batch, carried
+ * in its id — "document-7", "web-source-2". The panel list is a FILTERED view
+ * of that batch, so position and number stop matching as soon as anything is
+ * dropped: an answer citing [7] with four cards left had its marker resolve to
+ * citations[6], find nothing, and vanish from the text mid-sentence
+ * (2026-07-30). Match on the id first, fall back to position for older
+ * messages whose ids carry no number.
+ */
+export function findCitationByMarker(
+  citations: ChatContextReferenceDto[],
+  marker: number,
+): ChatContextReferenceDto | undefined {
+  const byId = citations.find((citation) => {
+    const id = typeof citation.id === "string" ? citation.id.trim() : "";
+    return /-(\d+)$/.exec(id)?.[1] === String(marker);
+  });
+  return byId ?? citations[marker - 1];
+}

@@ -22,6 +22,7 @@ import ChatTableBlock from "./ChatTableBlock";
 import ChatKpiBlock from "./ChatKpiBlock";
 import {
   type ChatDocumentOpenTarget,
+  findCitationByMarker,
   getChatDocumentOpenTarget,
   isDisplayableChatSourceReference,
   openChatDocumentSource,
@@ -258,9 +259,12 @@ function CitationBadge({
   citations: ChatContextReferenceDto[];
   onOpen?: (target: ChatDocumentOpenTarget) => void;
 }) {
-  const ref = citations[idx - 1];
+  const ref = findCitationByMarker(citations, idx);
   if (!isDisplayableChatSourceReference(ref)) {
-    return null;
+    // The marker pointed at evidence that never made it to the panel. Keep the
+    // number visible but inert — silently deleting it left sentences reading
+    // "…open the sea valve  and start the pump".
+    return <sup className="chat-cite-badge chat-cite-badge--dangling">{idx}</sup>;
   }
 
   const title = `${ref.sourceTitle || "Document"}${ref.pageNumber ? ` \u2014 p. ${ref.pageNumber}` : ""}`;
