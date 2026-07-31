@@ -207,6 +207,9 @@ export class AssetImportService {
       ['sfiGroup', 'sfiGroup'],
       ['sfiSub', 'sfiSub'],
       ['sfiSubName', 'sfiSubName'],
+      ['sfiGroupName', 'sfiGroupName'],
+      ['drawingCode', 'drawingCode'],
+      ['department', 'department'],
       ['parentAssetId', 'parentAssetId'],
       ['servedByAssetId', 'servedByAssetId'],
       ['locationAssetId', 'locationAssetId'],
@@ -448,8 +451,16 @@ export class AssetImportService {
       assetIdInternal: draft.assetIdInternal,
       displayName: draft.displayName,
       sfiGroup: draft.sfiGroup,
+      // sfi_group_name, drawing_code and department were missing here while
+      // applyDraftToExisting wrote all three: a row already in the register
+      // kept its values, a NEW row silently lost them. Both mappings have to
+      // cover every column the sheet carries, or an import is lossy in a way
+      // that only shows up on the rows nobody is watching.
+      sfiGroupName: draft.sfiGroupName,
       sfiSub: draft.sfiSub,
       sfiSubName: draft.sfiSubName,
+      drawingCode: draft.drawingCode,
+      department: draft.department,
       parentAssetId: draft.parentAssetId,
       servedByAssetId: draft.servedByAssetId,
       locationAssetId: draft.locationAssetId,
