@@ -5,14 +5,17 @@ interface SourceAwareSectionEntry {
   repeatedLeadingText?: string | null;
 }
 
-// Explicit demarcation for web-derived content in a flowing answer. Callers
-// that render a document→web fallback pass this as options.webLeadIn so a
-// surviving web section is clearly labelled as open/public information rather
-// than reading as if it came from the vessel's own documents. When it is
-// supplied, the web model's own mandated "This is from public sources…" caveat
-// is stripped first so the two do not stack into a double disclaimer.
-export const OPEN_SOURCE_WEB_LEAD_IN =
-  "**Open / public web sources** (not from your ship's documents):";
+/**
+ * Kept as an empty string so existing callers stay wired up while the label
+ * itself is gone.
+ *
+ * It used to head every web-derived section — "**Open / public web sources**
+ * (not from your ship's documents):". The crew do not care which shelf the
+ * answer came off, and the sources button says so anyway, with a Web badge on
+ * each card. Provenance belongs in the sources panel, not in the middle of an
+ * answer someone is trying to read.
+ */
+export const OPEN_SOURCE_WEB_LEAD_IN = "";
 
 /**
  * Flowing-prose alternative to two sequential `formatSourceAwareSection`
@@ -44,9 +47,9 @@ export function composeFlowingSourceProse(
       ),
     )
     .map(softenWebProse)
-    // When we add our own upfront label, drop the web model's mandated
-    // "This is from public sources…" caveat so they don't stack.
-    .map((s) => (options.webLeadIn ? stripPublicSourcesCaveat(s) : s))
+    // Always strip it: the model is told not to write the caveat, but older
+    // sessions and the occasional relapse still produce it.
+    .map(stripPublicSourcesCaveat)
     .filter(Boolean);
 
   // Dedupe docs and webs, dropping any web section identical to a doc section,
@@ -60,7 +63,7 @@ export function composeFlowingSourceProse(
 
   const parts = [...dedupedDocs];
 
-  if (dedupedWebs.length && options.webLeadIn) {
+  if (dedupedWebs.length && options.webLeadIn?.trim()) {
     parts.push(options.webLeadIn);
   }
 
@@ -76,7 +79,16 @@ export function composeFlowingSourceProse(
 // tail ("manuals", "PMS or manual", extra clauses) are still fully removed.
 function stripPublicSourcesCaveat(value: string): string {
   return value
-    .replace(/\s*\bthis is from public sources[^.\n]*\.?/giu, ' ')
+    // Anchored to the start of a sentence: the old pattern matched from the
+    // phrase to the next full stop wherever it appeared, and when the model
+    // wove it into a sentence listing domains it ate the opening half and left
+    // "** com, marinersgalaxy.com, …), not from the vessel's own manual.**"
+    // in the answer.
+    .replace(
+      /(^|[.!?]\s+|\n)\s*this is from public sources[^.\n]*\.?/giu,
+      '$1',
+    )
+    .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]+\n/g, '\n')
     .trim();

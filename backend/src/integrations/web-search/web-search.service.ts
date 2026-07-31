@@ -261,7 +261,11 @@ export class WebSearchService {
       '',
       'ANSWER FORMAT:',
       '- 1-2 short paragraphs. No bullet lists unless directly useful. No filler.',
-      '- Always state the limitation: "This is from public sources, not the vessel\'s own manual or PMS."',
+      // No "this is from public sources" line. The crew asked a question and
+      // want the answer; where it came from is shown by the sources button,
+      // and the sentence was surviving into answers half-eaten by the strip
+      // that was meant to remove it (2026-07-31).
+      '- Do NOT add a disclaimer about where the information comes from.',
       '- DO NOT request the vessel name from the user — use the vessel context above. If the context is thin, answer in generic marine engineering terms and flag that explicitly.',
       '',
       localeHint,
