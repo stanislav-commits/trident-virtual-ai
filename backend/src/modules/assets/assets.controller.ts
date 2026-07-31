@@ -25,6 +25,7 @@ import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { AssetsService } from './assets.service';
+import { AssetImportService } from './asset-import.service';
 import { AssetIdService, type IdAvailability } from './asset-id.service';
 import { CommitImportDto } from './dto/commit-import.dto';
 import { CreateAssetDto } from './dto/create-asset.dto';
@@ -43,6 +44,7 @@ export class AssetsController {
   constructor(
     private readonly assetsService: AssetsService,
     private readonly assetIdService: AssetIdService,
+    private readonly assetImportService: AssetImportService,
   ) {}
 
   @Get()
@@ -165,7 +167,7 @@ export class AssetsController {
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.assetsService.importFromXlsx(shipId, file.buffer);
+    return this.assetImportService.importFromXlsx(shipId, file.buffer);
   }
 
   @Post('import-xlsx/preview')
@@ -175,7 +177,7 @@ export class AssetsController {
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.assetsService.previewImportFromXlsx(shipId, file.buffer);
+    return this.assetImportService.previewImportFromXlsx(shipId, file.buffer);
   }
 
   @Post('import-xlsx/commit')
@@ -187,7 +189,7 @@ export class AssetsController {
     @Body() body: CommitImportDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.assetsService.commitImportFromXlsx(
+    return this.assetImportService.commitImportFromXlsx(
       shipId,
       file.buffer,
       body,
