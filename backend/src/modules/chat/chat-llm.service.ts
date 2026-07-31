@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { LlmService } from '../../integrations/llm/llm.service';
+import { withLlmUsageContext } from '../llm-usage/llm-usage.context';
 import { CHAT_ANSWER_HYGIENE_RULE } from '../../common/chat-answer-hygiene.const';
 import { formatConversationContext } from './context/chat-context-prompt.utils';
 import { ChatConversationContext } from './context/chat-conversation-context.types';
@@ -31,13 +32,24 @@ export class ChatLlmService {
   constructor(private readonly llmService: LlmService) {}
 
   async completeText(input: ChatTextCompletionInput): Promise<string | null> {
-    return this.llmService.createChatCompletion({
-      systemPrompt: input.systemPrompt,
-      userPrompt: input.userPrompt,
-      temperature: input.temperature,
-      maxTokens: input.maxTokens,
-      preferMainModel: input.useMainModel,
-    });
+    const call = () =>
+      this.llmService.createChatCompletion({
+        systemPrompt: input.systemPrompt,
+        userPrompt: input.userPrompt,
+        temperature: input.temperature,
+        maxTokens: input.maxTokens,
+        preferMainModel: input.useMainModel,
+      });
+    // The turn runs inside a 'chat_classify' context so nothing lands
+    // unattributed before a responder is picked. Only the metric analyzer
+    // narrowed that to 'chat_answer', so every OTHER responder's answer — the
+    // document, PMS, compliance and files ones — was billed as routing. The
+    // ledger then read as if the cheap sub-model did the work and Claude only
+    // classified, which is the opposite of what happened (2026-07-30 22:10:
+    // a Claude answer about a Mase generator, $0.02, filed under chat_classify).
+    return input.useMainModel
+      ? withLlmUsageContext({ purpose: 'chat_answer' }, call)
+      : call();
   }
 
   async generateConversationReply(
