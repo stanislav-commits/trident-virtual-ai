@@ -5,6 +5,9 @@ export interface ChatContextReferenceDto {
   documentId?: string;
   shipManualId?: string;
   shipId?: string | null;
+  /** Compliance record id + whether a file is attached to it. */
+  recordId?: string;
+  hasFile?: boolean;
   chunkId?: string;
   score?: number;
   pageNumber?: number;

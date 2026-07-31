@@ -1,5 +1,6 @@
 import { fetchWithAuth } from "../../api/core";
 import { fetchDocumentFile } from "../../api/documentsApi";
+import { fetchComplianceDocFileBlob } from "../../api/complianceApi";
 import type { ChatContextReferenceDto } from "../../types/chat";
 
 export type ChatDocumentOpenTarget =
@@ -11,7 +12,18 @@ export type ChatDocumentOpenTarget =
       kind: "legacy_manual";
       shipId: string;
       manualId: string;
+    }
+  | {
+      /**
+       * A certificate in the compliance register. Its file is served by the
+       * compliance endpoint, not the documents one, which is why the chat
+       * could show these as sources and open none of them.
+       */
+      kind: "compliance_doc";
+      shipId: string;
+      recordId: string;
     };
+
 
 export function isHttpUrl(value?: string): value is string {
   return typeof value === "string" && /^https?:\/\//i.test(value.trim());
@@ -125,6 +137,23 @@ export function getChatDocumentOpenTarget(
     };
   }
 
+  // A certificate is openable only when a paper is actually attached to the
+  // record. hasFile comes from the responder; older messages predate it, and
+  // for those the record id alone is enough to try.
+  const record = citation.recordId?.trim();
+  if (
+    getChatSourceKind(citation) === "certificate" &&
+    shipId &&
+    record &&
+    citation.hasFile !== false
+  ) {
+    return {
+      kind: "compliance_doc",
+      shipId,
+      recordId: record,
+    };
+  }
+
   return null;
 }
 
@@ -163,7 +192,9 @@ export async function openChatDocumentSource(
     const blob =
       target.kind === "document"
         ? await fetchDocumentFile(token, target.documentId)
-        : await fetchLegacyManualFile(token, target.shipId, target.manualId);
+        : target.kind === "compliance_doc"
+          ? await fetchComplianceDocFileBlob(token, target.shipId, target.recordId)
+          : await fetchLegacyManualFile(token, target.shipId, target.manualId);
     const url = URL.createObjectURL(blob);
     openedWindow.location.href = url;
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);

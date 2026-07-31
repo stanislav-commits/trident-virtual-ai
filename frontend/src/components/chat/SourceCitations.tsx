@@ -292,6 +292,16 @@ export function SourceCitations({
                   >
                     {CHAT_SOURCE_KIND_LABEL[getChatSourceKind(primaryCitation)]}
                   </span>
+                  {/* A register entry with no paper attached. Said plainly,
+                      because 136 of the vessel's 137 certificate records are
+                      like this and a card that looks clickable and does
+                      nothing reads as a broken link. */}
+                  {getChatSourceKind(primaryCitation) === "certificate" &&
+                    !canOpenDocument && (
+                      <span className="chat-source-item__kind chat-source-item__kind--empty">
+                        no file
+                      </span>
+                    )}
                   {pages.length > 0 && (
                     <span className="chat-source-item__page">
                       p.&nbsp;{pages.join(", ")}

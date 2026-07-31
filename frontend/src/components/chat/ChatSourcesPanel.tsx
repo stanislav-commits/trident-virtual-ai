@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { fetchDocumentFile } from "../../api/documentsApi";
+import { fetchComplianceDocFileBlob } from "../../api/complianceApi";
 import type { ChatContextReferenceDto } from "../../types/chat";
 import {
   getChatDocumentOpenTarget,
@@ -60,12 +61,25 @@ export function ChatSourcesPanel({
       const target = getChatDocumentOpenTarget(citation);
       // Legacy manuals still open in a tab: they are served by a different
       // endpoint and are rare enough not to be worth a second code path here.
-      if (!target || target.kind !== "document" || !token) return false;
+      if (
+        !target ||
+        (target.kind !== "document" && target.kind !== "compliance_doc") ||
+        !token
+      ) {
+        return false;
+      }
 
       setLoading(true);
       setLoadError(null);
       try {
-        const blob = await fetchDocumentFile(token, target.documentId);
+        const blob =
+          target.kind === "document"
+            ? await fetchDocumentFile(token, target.documentId)
+            : await fetchComplianceDocFileBlob(
+                token,
+                target.shipId,
+                target.recordId,
+              );
         // Force the pdf type: a generic blob type makes the viewer offer a
         // download instead of rendering the file.
         const typed = /\.pdf$/i.test(citation.sourceTitle ?? "")

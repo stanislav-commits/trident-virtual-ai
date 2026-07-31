@@ -7,6 +7,14 @@ export interface ChatContextReferenceResponseDto {
   documentId?: string;
   shipManualId?: string;
   shipId?: string | null;
+  /**
+   * A compliance record's own id, and whether a paper is actually attached.
+   * The chat can cite a certificate, and the client needs both to fetch the
+   * file — without them every certificate card looked clickable and opened
+   * nothing (2026-07-31).
+   */
+  recordId?: string;
+  hasFile?: boolean;
   chunkId?: string;
   score?: number;
   pageNumber?: number;
@@ -147,6 +155,8 @@ function normalizeContextReference(
       typeof entry.shipId === 'string' || entry.shipId === null
         ? (entry.shipId as string | null)
         : undefined,
+    recordId: typeof entry.recordId === 'string' ? entry.recordId : undefined,
+    hasFile: typeof entry.hasFile === 'boolean' ? entry.hasFile : undefined,
     chunkId: typeof entry.chunkId === 'string' ? entry.chunkId : undefined,
     score: typeof entry.score === 'number' ? entry.score : undefined,
     pageNumber:

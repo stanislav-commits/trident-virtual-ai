@@ -1749,6 +1749,11 @@
   white-space: nowrap;
 }
 
+.chat-source-item__kind--empty {
+  opacity: 0.7;
+  font-style: italic;
+}
+
 .chat-source-item__kind--web {
   border-color: rgba(120, 160, 255, 0.45);
   color: rgb(150, 180, 255);

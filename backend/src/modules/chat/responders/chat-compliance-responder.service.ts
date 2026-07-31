@@ -119,7 +119,7 @@ export class ChatComplianceResponderService {
         expiring,
         missing,
       },
-      contextReferences: this.buildContextReferences(included),
+      contextReferences: this.buildContextReferences(included, shipId),
     };
   }
 
@@ -443,7 +443,10 @@ export class ChatComplianceResponderService {
     return out.join('\n');
   }
 
-  private buildContextReferences(items: ComplianceItem[]): unknown[] {
+  private buildContextReferences(
+    items: ComplianceItem[],
+    shipId: string | null,
+  ): unknown[] {
     return items
       .filter((item) => item.recordId)
       .map((item, index) => ({
@@ -452,6 +455,13 @@ export class ChatComplianceResponderService {
         rank: index + 1,
         sourceTitle: item.typeName,
         recordId: item.recordId,
+        // The file lives behind ships/:shipId/compliance/docs/:id/file, so the
+        // client needs the vessel as well as the record to fetch it — and it
+        // needs to know whether there IS a file: only 1 of 137 records on the
+        // vessel has one attached, and a card that looks clickable and does
+        // nothing is worse than one that says the paper is not on file.
+        shipId,
+        hasFile: item.attachments.length > 0,
         status: item.status,
         snippet: [
           item.status.toUpperCase(),

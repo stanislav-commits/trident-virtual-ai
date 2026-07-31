@@ -365,6 +365,21 @@ export async function extractComplianceForType(
   return (await response.json()) as IngestProposal;
 }
 
+/** The raw file behind a compliance record — the chat sources panel renders
+ *  it inline, so it needs the blob rather than an object URL. */
+export async function fetchComplianceDocFileBlob(
+  token: string,
+  shipId: string,
+  docId: string,
+): Promise<Blob> {
+  const response = await fetchWithAuth(
+    `ships/${shipId}/compliance/docs/${docId}/file`,
+    { token, method: "GET" },
+  );
+  await ensureOk(response, "Load file");
+  return response.blob();
+}
+
 /**
  * Fetch a compliance record's original file (authenticated) as a blob object
  * URL for inline preview. Caller must URL.revokeObjectURL when done.
