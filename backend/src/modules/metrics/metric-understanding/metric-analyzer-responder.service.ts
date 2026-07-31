@@ -5567,6 +5567,9 @@ export class MetricAnalyzerResponderService {
    * the names of assets each item is linked to, so an equipment query surfaces
    * its linked spares.
    */
+  /** After this long without an edit, a roster is worth double-checking. */
+  private static readonly CREW_ROSTER_STALE_DAYS = 30;
+
   /**
    * Who is on the vessel, from the crew roster.
    *
@@ -5574,6 +5577,14 @@ export class MetricAnalyzerResponderService {
    * access to a crew management system" and send the Master to look in the
    * logbook — while the roster sat in the platform's own Crew tab (2026-07-31).
    * There was no tool for it, so the honest answer was also a wrong one.
+   *
+   * `active` is the Crew tab's "Active aboard" switch — it means this person
+   * is on board now, not merely on the books. The first version of this tool
+   * called its own data "not a real-time muster count", and the assistant
+   * dutifully hedged an answer that was in fact current (2026-07-31). The
+   * roster is only as fresh as the crew keep it, which is worth saying when
+   * asked — but it is the vessel's record of who is aboard, and the answer
+   * should not disown it.
    *
    * Names, ranks and departments only. Emails and phone numbers stay out: the
    * question is who is aboard, and a chat answer is not the place to spill
@@ -5625,9 +5636,33 @@ export class MetricAnalyzerResponderService {
       byDepartment[row.department] = (byDepartment[row.department] ?? 0) + 1;
     }
 
+    // How stale the answer might be. The roster is only as current as the crew
+    // keep it, so the answer should be able to say when it was last touched
+    // rather than implying a live feed.
+    const lastChange = rows.reduce<Date | null>((latest, row) => {
+      const at = row.updatedAt ?? row.createdAt ?? null;
+      return at && (!latest || at > latest) ? at : latest;
+    }, null);
+
+    // A date in the payload was not enough: told to "mention it when not
+    // recent", the model left it out even on a five-month-old roster. So the
+    // staleness is decided here and handed over as a finished sentence — a
+    // ready line gets repeated, a judgement call gets dropped.
+    const daysSinceChange = lastChange
+      ? Math.floor((Date.now() - lastChange.getTime()) / 86_400_000)
+      : null;
+    const staleNotice =
+      lastChange && daysSinceChange !== null && daysSinceChange >
+          MetricAnalyzerResponderService.CREW_ROSTER_STALE_DAYS
+        ? `The crew list was last updated on ${lastChange.toISOString().slice(0, 10)} (${daysSinceChange} days ago), so confirm with the Master if anyone has signed on or off since.`
+        : null;
+
     const payload = {
       status: 'ok',
-      total_active: active.length,
+      on_board: active.length,
+      total_on_roster: rows.length,
+      roster_updated_at: lastChange ? lastChange.toISOString() : null,
+      ...(staleNotice ? { stale_notice: staleNotice } : {}),
       by_department: byDepartment,
       crew: matched.map((row) => ({
         name: row.name,
@@ -5635,8 +5670,7 @@ export class MetricAnalyzerResponderService {
         department: row.department,
         has_platform_login: Boolean(row.userId),
       })),
-      // Said plainly so the answer does not present a roster as a muster count.
-      note: 'This is the crew list held on the platform, not a sign-on/sign-off log. Inactive roster entries are excluded.',
+      note: "on_board counts the crew flagged 'Active aboard' in the Crew tab — the vessel's own record of who is on board now. Answer it as the current headcount. Crew flagged inactive (signed off) are excluded. If stale_notice is present you MUST repeat it verbatim at the end of the answer; if it is absent the roster is current and needs no caveat.",
     };
 
     return {

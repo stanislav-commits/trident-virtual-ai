@@ -279,7 +279,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'get_crew',
       description:
-        "The vessel's crew list. Returns everyone on the roster with their name, rank and department, plus the headcount. Use for 'how many crew are on board', 'who is the chief engineer', 'is there an ETO', 'how many in the engine department'. This is the roster the platform holds — it is NOT a sign-on/sign-off log, so say the count is per the crew list rather than a muster count. Contact details are deliberately not returned.",
+        "Who is on board. Returns the crew flagged 'Active aboard' in the Crew tab with name, rank and department, plus the headcount and a per-department breakdown. Use for 'how many crew are on board', 'who is the chief engineer', 'is there an ETO', 'how many in the engine department'. This IS the vessel's record of its current crew — answer with the number, do not hedge it as merely a list. Crew who have signed off are excluded. When the reply carries a stale_notice, repeat it — the roster has not been touched in a while. Contact details are deliberately not returned.",
       parameters: {
         type: 'object',
         properties: {

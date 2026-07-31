@@ -187,20 +187,22 @@ export class LlmService {
     // already indexed. The cheapest call in the turn was deciding the quality
     // of the whole answer.
     //
-    // When the main model is unavailable the fallback is Anthropic's small
-    // model, not OpenAI: a degraded turn should still reason the way the rest
-    // of the platform does. OpenAI is only reached if Anthropic is not
-    // configured at all.
+    // Main model, then Anthropic's small model, then nothing.
+    //
+    // There used to be an OpenAI leg after these. It never earned its keep:
+    // when the Anthropic credit ran out the OpenAI key was out too, so the
+    // turn failed anyway — after burning a second round-trip — and the crew
+    // saw the billing error regardless. A fallback that only fires when it
+    // cannot help is just latency and a second bill to reconcile.
+    //
+    // Failing here returns null, and the caller surfaces the real reason.
     if (!input.preferCheapModel) {
       const mainAnswer = await this.createMainModelTextCompletion(input);
       if (mainAnswer !== null) {
         return mainAnswer;
       }
 
-      const fallbackAnswer = await this.createFallbackModelTextCompletion(input);
-      if (fallbackAnswer !== null) {
-        return fallbackAnswer;
-      }
+      return this.createFallbackModelTextCompletion(input);
     }
 
     if (!this.isConfigured()) {
@@ -342,36 +344,8 @@ export class LlmService {
       if (parsed !== null) return parsed;
     }
 
-    if (!this.isConfigured()) {
-      return null;
-    }
-
-    const jsonModel = this.subLlmModel(input.model);
-    const jsonStartedAt = Date.now();
-    try {
-      const result = await createOpenAiCompatibleChatCompletionDetailed({
-        apiKey: this.getApiKey(),
-        baseUrl: this.getBaseUrl(),
-        // Same sub-LLM downgrade as createChatCompletion above — JSON
-        // extraction tasks don't need Claude.
-        model: jsonModel,
-        systemPrompt: input.systemPrompt,
-        userPrompt: input.userPrompt,
-        temperature: input.temperature,
-        maxTokens: input.maxTokens,
-        responseFormat: 'json_object',
-      });
-      this.recordTextUsage('openai', jsonModel, result.usage, jsonStartedAt);
-
-      const raw = result.text;
-      if (!raw) return null;
-      return JSON.parse(raw) as T;
-    } catch (error) {
-      this.logger.warn(
-        `LLM JSON completion failed: ${formatError(error)}`,
-      );
-      return null;
-    }
+    // No OpenAI leg here either — see createChatCompletion.
+    return null;
   }
 
   /** Whether image/vision extraction can run (needs an Anthropic key). */
