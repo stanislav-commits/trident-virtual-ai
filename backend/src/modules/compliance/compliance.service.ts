@@ -53,11 +53,17 @@ import {
 
 export type { ComplianceStatus } from './compliance-status.util';
 import {
-  EXPIRING_DAYS,
   recordStatus,
   typeStatus,
   type ComplianceStatus,
 } from './compliance-status.util';
+import {
+  milestoneSeverity,
+  reminderFingerprint,
+  reminderMilestone,
+  type ReminderMilestone,
+  type ReminderSeverity,
+} from './compliance-reminders.util';
 
 export interface UpsertComplianceDocInput {
   docTypeId: string;
@@ -368,8 +374,10 @@ export class ComplianceService {
   }
 
   /**
-   * Flat list of certificates expiring (within EXPIRING_DAYS) or already
-   * expired — drives certificate-reminder alerts in the bell.
+   * The reminder each certificate currently owes (v60 Phase 3). One entry per
+   * CURRENT record whose reminder profile calls for a timed reminder at its
+   * days-to-expiry — the RP-01 ladder (90/60/30/14/7/1 days, then overdue).
+   * Superseded and archived issues never remind: the record in force does.
    */
   async expiringCertificates(shipId: string): Promise<
     Array<{
@@ -379,12 +387,17 @@ export class ComplianceService {
       expired: boolean;
       assetId: string | null;
       message: string | null;
+      milestone: ReminderMilestone;
+      severity: ReminderSeverity;
+      fingerprint: string;
     }>
   > {
-    const docs = await this.docRepository.find({
-      where: { shipId },
-      relations: { docType: true },
-    });
+    const docs = (
+      await this.docRepository.find({
+        where: { shipId },
+        relations: { docType: true },
+      })
+    ).filter((d) => !d.recordState || d.recordState === 'current');
     // The alert carries one asset for context; take it from the link model and
     // fall back to the deprecated mirror column for records predating it.
     const docIds = docs.map((d) => d.id);
@@ -408,14 +421,21 @@ export class ComplianceService {
       expired: boolean;
       assetId: string | null;
       message: string | null;
+      milestone: ReminderMilestone;
+      severity: ReminderSeverity;
+      fingerprint: string;
     }> = [];
     for (const d of docs) {
       if (!d.expiryDate) continue;
       const days = Math.ceil(
         (new Date(d.expiryDate).getTime() - now) / 86_400_000,
       );
-      if (days > EXPIRING_DAYS) continue; // comfortably valid
-      const expired = days < 0;
+      const milestone = reminderMilestone(
+        d.docType?.reminderProfile ?? null,
+        days,
+      );
+      if (!milestone) continue; // RP-00, or comfortably far from expiry
+      const expired = milestone === 'overdue';
       const name = d.docType?.name ?? 'Certificate';
       const cert = d.certNo ? ` (${d.certNo})` : '';
       const title = expired
@@ -428,6 +448,9 @@ export class ComplianceService {
         expired,
         assetId: firstAssetByDoc.get(d.id) ?? d.assetId ?? null,
         message: d.issuer ? `Issuer: ${d.issuer}` : null,
+        milestone,
+        severity: milestoneSeverity(milestone),
+        fingerprint: reminderFingerprint(d.id, milestone, d.expiryDate),
       });
     }
     return out;

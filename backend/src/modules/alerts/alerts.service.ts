@@ -320,10 +320,15 @@ export class AlertsService {
   }
 
   /**
-   * Reconcile certificate-expiry reminder alerts for a ship against the current
-   * expiring/expired certificate set: fire (upsert) one per expiring cert and
-   * resolve any whose cert is no longer expiring (renewed / removed). Cert
-   * alerts share the bell with metric alarms but carry source='certificate'.
+   * Reconcile certificate reminder alerts for a ship against the reminders the
+   * register currently owes (v60 Phase 3). One alert per document PER
+   * MILESTONE: the fingerprint carries the milestone, so a certificate walking
+   * down the RP-01 ladder (90 → 60 → 30 → 14 → 7 → 1 → overdue) retires the
+   * previous reminder and fires a fresh one — "create reminders on each listed
+   * day" — with the severity escalating along the way. Anything firing whose
+   * fingerprint the register no longer owes (renewed, removed, milestone
+   * passed) resolves. Cert alerts share the bell with metric alarms but carry
+   * source='certificate'.
    */
   async reconcileCertificateAlerts(
     shipId: string,
@@ -334,27 +339,28 @@ export class AlertsService {
       expired: boolean;
       assetId: string | null;
       message?: string | null;
+      milestone: string;
+      severity: string;
+      fingerprint: string;
     }>,
   ): Promise<void> {
-    const currentIds = new Set(certs.map((c) => c.docId));
+    const owedFingerprints = new Set(certs.map((c) => c.fingerprint));
     const active = await this.alertRepository.find({
       where: { shipId, source: 'certificate', status: 'firing' },
     });
     for (const a of active) {
-      if (!a.complianceDocId || !currentIds.has(a.complianceDocId)) {
+      if (!a.fingerprint || !owedFingerprints.has(a.fingerprint)) {
         a.status = 'resolved';
         a.resolvedAt = new Date();
         await this.alertRepository.save(a);
       }
     }
     for (const c of certs) {
-      const fingerprint = `cert:${c.docId}`;
-      const severity = c.expired ? 'critical' : 'warning';
       const existing = await this.alertRepository.findOne({
-        where: { fingerprint, status: 'firing' },
+        where: { fingerprint: c.fingerprint, status: 'firing' },
       });
       if (existing) {
-        existing.severity = severity;
+        existing.severity = c.severity;
         existing.title = c.title.slice(0, 300);
         existing.message = c.message ?? existing.message;
         existing.assetId = c.assetId ?? existing.assetId;
@@ -370,14 +376,18 @@ export class AlertsService {
           complianceDocId: c.docId,
           metricKey: null,
           ruleName: c.title.slice(0, 255),
-          severity,
+          severity: c.severity,
           status: 'firing',
           value: null,
           title: c.title.slice(0, 300),
           message: c.message ?? null,
           department: null,
-          labels: { kind: 'certificate', expiryDate: c.expiryDate ?? '' },
-          fingerprint,
+          labels: {
+            kind: 'certificate',
+            expiryDate: c.expiryDate ?? '',
+            milestone: c.milestone,
+          },
+          fingerprint: c.fingerprint,
           startedAt: new Date(),
           resolvedAt: null,
           lastSeenAt: new Date(),
