@@ -247,3 +247,27 @@ export async function regenerateChatResponse(
   }
   return res.json();
 }
+
+/**
+ * Write today's morning brief and return the session it landed in.
+ *
+ * Deliberately explicit: the schedule only posts a notification saying what
+ * happened overnight, and the brief itself — the expensive part — is written
+ * when the crew asks for it here.
+ */
+export async function generateDailyBrief(
+  token: string,
+  shipId: string,
+): Promise<{ sessionId: string }> {
+  const res = await fetchWithAuth(chatApiPath("daily-brief/generate"), {
+    token,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ shipId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? "Failed to write the brief");
+  }
+  return res.json();
+}

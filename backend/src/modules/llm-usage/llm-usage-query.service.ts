@@ -108,6 +108,11 @@ const CREW_PURPOSES: LlmUsagePurpose[] = [
   'chat_vision',
   'chat_transcribe',
   'chat_write_confirm',
+  // The morning brief is only written when someone presses the button on the
+  // notification, so it is a person reading their vessel — not the platform
+  // maintaining itself. It sat under platform upkeep while the schedule wrote
+  // it for everyone unasked (changed 2026-07-31).
+  'daily_brief',
 ];
 
 /**

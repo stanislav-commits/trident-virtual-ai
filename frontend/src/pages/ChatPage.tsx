@@ -12,6 +12,7 @@ import { useChatSessions } from "../hooks/useChatSessions";
 import { useChatMessages } from "../hooks/useChatMessages";
 import { useChatProgress } from "../hooks/useChatProgress";
 import {
+  generateDailyBrief,
   getChatSession,
   getChatSessions,
   regenerateChatResponse,
@@ -593,6 +594,65 @@ export function ChatPage() {
     ],
   );
 
+  /**
+   * The morning-brief button. The notification is only an announcement — the
+   * brief itself is written here, on demand, and lands in the reader's own
+   * brief session. When it already exists ('daily-brief', not
+   * 'daily-brief-pending') this just opens it.
+   */
+  const [briefBusy, setBriefBusy] = useState(false);
+  const handleBrief = useCallback(
+    (alert: Alert) => {
+      if (!token) return;
+      const closePanel = () => {
+        if (alertsTimer.current) {
+          window.clearTimeout(alertsTimer.current);
+          alertsTimer.current = null;
+        }
+        alertsOpenRef.current = false;
+        setAlertsClosing(false);
+        setShowAlerts(false);
+      };
+
+      // Ship-scoped by construction: the brief notification always carries
+      // the vessel it was counted for.
+      if (alert.ruleName === "daily-brief-pending" && alert.shipId) {
+        setBriefBusy(true);
+        void generateDailyBrief(token, alert.shipId)
+          .then(({ sessionId }) => {
+            closePanel();
+            navigate(appRoutes.chatSession(sessionId));
+          })
+          .catch(() => {
+            /* the bell entry keeps the overnight summary either way */
+          })
+          .finally(() => setBriefBusy(false));
+        return;
+      }
+
+      closePanel();
+      // Already written: the standing session is "Morning Brief" (default) or
+      // "Утренний брифинг" when DAILY_BRIEF_LANGUAGE=ru — try both.
+      void getChatSessions(token, { search: "Morning Brief", limit: 1 })
+        .then((res) =>
+          res.sessions[0]
+            ? res.sessions
+            : getChatSessions(token, {
+                search: "Утренний брифинг",
+                limit: 1,
+              }).then((r) => r.sessions),
+        )
+        .then((sessionsFound) => {
+          const target = sessionsFound[0];
+          if (target) navigate(appRoutes.chatSession(target.id));
+        })
+        .catch(() => {
+          /* ignore — the bell entry itself still shows the summary */
+        });
+    },
+    [token, navigate],
+  );
+
   // "Ask AI" on an alert: close the alerts panel and send a context-rich
   // question into the chat so the assistant (with asset/metric/manual tools)
   // returns recommendations grounded in the alerting equipment.
@@ -605,33 +665,6 @@ export function ChatPage() {
       alertsOpenRef.current = false;
       setAlertsClosing(false);
       setShowAlerts(false);
-
-      // The morning brief already has its full write-up (with KPI/table
-      // blocks) sitting in its own standing chat session — opening it beats
-      // re-asking the assistant to explain a "daily_brief" notification as
-      // if it were a metric alarm.
-      if (alert.source === "daily_brief") {
-        if (!token) return;
-        // The standing session is "Morning Brief" (default) or
-        // "Утренний брифинг" when DAILY_BRIEF_LANGUAGE=ru — try both.
-        void getChatSessions(token, { search: "Morning Brief", limit: 1 })
-          .then((res) =>
-            res.sessions[0]
-              ? res.sessions
-              : getChatSessions(token, {
-                  search: "Утренний брифинг",
-                  limit: 1,
-                }).then((r) => r.sessions),
-          )
-          .then((sessionsFound) => {
-            const target = sessionsFound[0];
-            if (target) navigate(appRoutes.chatSession(target.id));
-          })
-          .catch(() => {
-            /* ignore — the bell entry itself still shows the verdict */
-          });
-        return;
-      }
 
       const subject = alert.assetName ?? "the affected equipment";
       // Encode the alert as a marker the chat renders as a card; the text that
@@ -650,7 +683,7 @@ export function ChatPage() {
         `practical — only mention related tasks or parts if they are clearly relevant.`;
       void handleSend(prompt);
     },
-    [handleSend, token, navigate],
+    [handleSend],
   );
 
   // "Ask AI" on a maintenance task: close the PMS panel and send a
@@ -867,6 +900,8 @@ export function ChatPage() {
                 closing={alertsClosing}
                 noAnim={panelSwap}
                 onAskAi={handleAskAlertAi}
+                onBrief={handleBrief}
+                briefBusy={briefBusy}
               />
             )}
             {actionPanel && (
@@ -938,6 +973,8 @@ export function ChatPage() {
                 closing={alertsClosing}
                 noAnim={panelSwap}
                 onAskAi={handleAskAlertAi}
+                onBrief={handleBrief}
+                briefBusy={briefBusy}
               />
             )}
             {actionPanel && (

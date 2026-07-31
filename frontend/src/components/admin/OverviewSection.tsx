@@ -483,6 +483,11 @@ function TokensTile({
               </div>
               <CacheSaving tokens={shown} />
             </div>
+            {/* The three lists below (buckets, purpose, person) are the SAME
+                money split three ways. Without saying so, one morning brief
+                shows up as "Platform upkeep", "Morning brief" AND "Automatic
+                (no user)" and reads like three separate charges. */}
+            <span className="overview__spend-heading">Who it is for</span>
             <ul className="overview__spend-buckets">
               {shown.byBucket.map((bucket) => (
                 <li key={bucket.bucket}>
@@ -531,7 +536,7 @@ function TokensTile({
 
           <div className="overview__spend-grid">
             <SpendList
-              heading="By purpose"
+              heading="By purpose — same total, split by job"
               active={filter?.kind === "purpose" ? filter.value : null}
               onPick={pick}
               rows={shown.byPurpose.map((row) => ({
@@ -549,7 +554,7 @@ function TokensTile({
               }))}
             />
             <SpendList
-              heading="By person"
+              heading="By person — same total, split by who asked"
               active={filter?.kind === "user" ? filter.value : null}
               onPick={pick}
               rows={shown.byUser.map((row) => ({

@@ -18,6 +18,10 @@ interface AlertsSidePanelProps {
   /** Suppress the width open/close animation (when swapped in for another panel). */
   noAnim?: boolean;
   onAskAi: (alert: Alert) => void;
+  /** Press on a morning-brief notification: write it, or open what exists. */
+  onBrief: (alert: Alert) => void;
+  /** True while the brief is being written, so the button can say so. */
+  briefBusy?: boolean;
 }
 
 /** The auto-analysis prompt asks for "Cause: …" / "Immediate action: …" on
@@ -102,12 +106,21 @@ function AlarmCard({
   onAcknowledge,
   onAskAi,
   onDismiss,
+  onBrief,
+  briefBusy,
 }: {
   alarm: Alert;
   onAcknowledge: (a: Alert) => void;
   onAskAi: (a: Alert) => void;
   onDismiss: (a: Alert) => void;
+  onBrief: (a: Alert) => void;
+  briefBusy: boolean;
 }) {
+  // The morning notification is an offer until someone takes it up:
+  // 'daily-brief-pending' means nothing has been written yet, and pressing
+  // the button is what spends the tokens.
+  const isBrief = alarm.source === "daily_brief";
+  const briefPending = alarm.ruleName === "daily-brief-pending";
   const [expanded, setExpanded] = useState(false);
   const sev = SEV[sevOf(alarm)];
   const status = statusOf(alarm);
@@ -209,15 +222,36 @@ function AlarmCard({
               Acknowledge
             </button>
           )}
-          <button
-            type="button"
-            className="alarm-btn alarm-btn--ai"
-            onClick={() => onAskAi(alarm)}
-            title="AI analysis"
-            aria-label="AI analysis"
-          >
-            <IconSparkles />
-          </button>
+          {isBrief ? (
+            <button
+              type="button"
+              className="alarm-btn alarm-btn--ai alarm-btn--brief"
+              onClick={() => onBrief(alarm)}
+              disabled={briefBusy}
+              title={
+                briefPending
+                  ? "Write the full brief now"
+                  : "Open the brief in chat"
+              }
+            >
+              <IconSparkles />
+              {briefBusy
+                ? "Writing…"
+                : briefPending
+                  ? "Generate brief"
+                  : "Open brief"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="alarm-btn alarm-btn--ai"
+              onClick={() => onAskAi(alarm)}
+              title="AI analysis"
+              aria-label="AI analysis"
+            >
+              <IconSparkles />
+            </button>
+          )}
           <button type="button" className="alarm-btn alarm-btn--dismiss" onClick={() => onDismiss(alarm)}>
             <IconX />
             Dismiss
@@ -228,7 +262,7 @@ function AlarmCard({
   );
 }
 
-export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi }: AlertsSidePanelProps) {
+export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi, onBrief, briefBusy }: AlertsSidePanelProps) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(false);
   // Open on Active — an alarm panel is about what needs attention NOW.
@@ -418,6 +452,8 @@ export function AlertsSidePanel({ token, shipId, closing, noAnim, onAskAi }: Ale
               onAcknowledge={(x) => void ack(x)}
               onAskAi={onAskAi}
               onDismiss={dismiss}
+              onBrief={onBrief}
+              briefBusy={briefBusy ?? false}
             />
           ))}
         </div>

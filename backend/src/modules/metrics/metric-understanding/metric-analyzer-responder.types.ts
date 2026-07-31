@@ -163,6 +163,13 @@ export interface AnswerQuestionResult {
   shipId: string;
   question: string;
   answer: string;
+  /**
+   * Prose the model wrote in rounds that also made tool calls, oldest first.
+   * Discarded for chat answers (it is narration), but a long report is written
+   * in instalments and the caller may need to stitch it back — see the daily
+   * brief, which lost its first three sections to this.
+   */
+  intermediateText: string[];
   toolCalls: ToolCallAudit[];        // query_metric calls (kept verbatim)
   otherToolCalls: OtherToolCallAudit[]; // lookup_asset / find_asset_metrics / list_assets_by_sfi
   charts: ChatChart[];               // render_chart output, drawn client-side

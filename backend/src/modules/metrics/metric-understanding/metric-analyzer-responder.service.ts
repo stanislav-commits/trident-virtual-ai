@@ -195,6 +195,14 @@ export class MetricAnalyzerResponderService {
        * tools engaged (observed 2026-07-27). This is the language anchor.
        */
       answerLanguage?: string | null;
+      /**
+       * Report mode: no write tools offered, and the write-claim guard is not
+       * applied. The morning brief runs this way — it exists to describe the
+       * vessel, never to change it, and a report that says "5 tasks were
+       * completed last week" tripped the guard into replacing the whole brief
+       * with a correction about a write nobody attempted (2026-07-31).
+       */
+      readOnly?: boolean;
     },
   ): Promise<AnswerQuestionResult> {
     const t0 = Date.now();
@@ -258,7 +266,10 @@ export class MetricAnalyzerResponderService {
     const catalogIndex = this.buildCatalogIndex(catalog);
     const digest = this.renderCatalogDigest(catalog);
 
-    const tools: ChatToolDefinition[] = TOOL_DEFINITIONS;
+    const intermediateText: string[] = [];
+    const tools: ChatToolDefinition[] = opts?.readOnly
+      ? TOOL_DEFINITIONS.filter((tool) => !WRITE_TOOL_NAMES.has(tool.function.name))
+      : TOOL_DEFINITIONS;
 
     const now = new Date();
     const todayIso = now.toISOString().slice(0, 10);
@@ -412,6 +423,14 @@ export class MetricAnalyzerResponderService {
         // we must ALSO cap the assistant message's tool_calls — otherwise
         // OpenAI rejects the next round with "tool_call_ids did not have
         // response messages".
+        // Prose written alongside tool calls. Normally throw-away narration
+        // ("let me check the tanks"), but a long report — the morning brief —
+        // is genuinely written in instalments between calls, and keeping only
+        // the last one delivered a brief that began mid-sentence at section 4
+        // (2026-07-31). Kept here so readOnly callers can stitch it back.
+        if (round.content?.trim()) {
+          intermediateText.push(round.content.trim());
+        }
         const totalRequested = round.toolCalls.length;
         const calls = round.toolCalls.slice(0, MAX_PARALLEL_TOOL_CALLS_PER_ROUND);
         const dropped = totalRequested - calls.length;
@@ -505,7 +524,11 @@ export class MetricAnalyzerResponderService {
       const hasSuccessfulWrite = otherAudit.some(
         (call) => WRITE_TOOL_NAMES.has(call.tool) && call.ok,
       );
-      if (!hasSuccessfulWrite && claimsRegisterWriteSuccess(candidateAnswer)) {
+      if (
+        !opts?.readOnly &&
+        !hasSuccessfulWrite &&
+        claimsRegisterWriteSuccess(candidateAnswer)
+      ) {
         if (!writeClaimGuardTriggered) {
           writeClaimGuardTriggered = true;
           this.logger.warn(
@@ -600,6 +623,7 @@ export class MetricAnalyzerResponderService {
       shipId,
       question,
       answer: finalAnswer,
+      intermediateText,
       toolCalls: audit,
       otherToolCalls: otherAudit,
       charts,

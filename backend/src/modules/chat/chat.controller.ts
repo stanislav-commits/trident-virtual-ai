@@ -44,13 +44,29 @@ export class ChatController {
     private readonly chatDailyBriefService: ChatDailyBriefService,
   ) {}
 
-  /** Manually trigger the morning brief (admin only) — same job the cron
-   *  runs; useful for testing and for an on-demand refresh. */
-  @Post('daily-brief/run')
+  /**
+   * Re-post today's brief notification (admin only) — the same announcement
+   * the cron makes, counted from the alarm log and the task list. Costs
+   * nothing: it does not write the brief.
+   */
+  @Post('daily-brief/announce')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
-  runDailyBrief() {
-    return this.chatDailyBriefService.runForAllShips();
+  announceDailyBrief() {
+    return this.chatDailyBriefService.announceForAllShips();
+  }
+
+  /**
+   * Write today's full brief for one vessel and return the session it landed
+   * in. This is the expensive half, so it happens only when a person presses
+   * the button on the notification — and bills to that person.
+   */
+  @Post('daily-brief/generate')
+  generateDailyBrief(
+    @Body() body: { shipId: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.chatDailyBriefService.generateForShip(body.shipId, user.id);
   }
 
   /**
