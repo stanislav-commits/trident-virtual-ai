@@ -28,7 +28,10 @@ import { AssetsService } from './assets.service';
 import { AssetImportService } from './asset-import.service';
 import { AssetLinksService } from './asset-links.service';
 import { AssetIdService, type IdAvailability } from './asset-id.service';
-import { CommitImportDto } from './dto/commit-import.dto';
+import {
+  CommitImportDto,
+  toCommitImportOptions,
+} from './dto/commit-import.dto';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { QueryAssetsDto } from './dto/query-assets.dto';
 import { BulkUpdateAssetsDto } from './dto/bulk-update.dto';
@@ -194,7 +197,7 @@ export class AssetsController {
     return this.assetImportService.commitImportFromXlsx(
       shipId,
       file.buffer,
-      body,
+      toCommitImportOptions(body),
       user.id,
     );
   }

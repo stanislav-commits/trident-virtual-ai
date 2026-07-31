@@ -13,7 +13,7 @@ import type {
   ImportPreviewRename,
   ImportPreviewSfiWarning,
 } from './dto/import-preview.dto';
-import type { CommitImportDto } from './dto/commit-import.dto';
+import type { CommitImportOptions } from './dto/commit-import.dto';
 import { lowerTrim } from './assets.normalization';
 import { parseXlsxToDrafts } from './asset-xlsx.codec';
 import { AssetSnapshotService } from './asset-snapshot.service';
@@ -275,7 +275,7 @@ export class AssetImportService {
   async commitImportFromXlsx(
     shipId: string,
     buffer: Buffer,
-    opts: CommitImportDto,
+    opts: CommitImportOptions,
     userId: string | null,
   ): Promise<ImportResultDto & { snapshotId: string | null; deleted: number; merged: number }> {
     await this.assertShipExists(shipId);
@@ -381,7 +381,7 @@ export class AssetImportService {
       }
 
       // Orphan deletion. Skip orphans already merged via rename above.
-      if (opts.deleteOrphans) {
+      if (opts.deleteOrphans === true) {
         const mergedIds = new Set(renames.map((r) => r.oldId));
         const orphansToDelete = orphansBefore
           .filter((o) => !mergedIds.has(o.id))
