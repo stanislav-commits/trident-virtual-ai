@@ -34,10 +34,10 @@ interface LlmChatCompletionInput {
   maxTokens?: number;
   model?: string;
   /**
-   * Route this completion to the MAIN model (native Claude when LLM_MODEL is a
-   * claude-* alias) instead of the cheap OpenAI sub-model. Set for user-facing
-   * ANSWER synthesis; leave unset for planning/classification/title/summary
-   * tasks that should stay on the fast, cheap sub-model.
+   * Historical flag: it used to send a call to the main model instead of the
+   * cheap sub-model. Every text call now goes to the main model, so this no
+   * longer changes routing. Kept because callers still set it to say "this is
+   * a user-facing answer", which is what decides the usage purpose upstream.
    */
   preferMainModel?: boolean;
 }
@@ -46,6 +46,40 @@ interface LlmJsonChatCompletionInput extends LlmChatCompletionInput {
   // Optional shape hint for the caller's TypeScript expectations. The actual
   // JSON.parse'd value is returned without runtime validation.
   schemaHint?: string;
+}
+
+
+/**
+ * Parse JSON the model may have wrapped in prose or a ```json fence.
+ *
+ * OpenAI enforces response_format=json_object; Anthropic has no equivalent, so
+ * a main-model JSON call can come back with the object framed by a sentence.
+ * Rather than lose the call to a strict parse, take the outermost {...} block.
+ */
+function parseJsonLoosely<T>(raw: string): T | null {
+  const text = raw.trim();
+  const attempt = (candidate: string): T | null => {
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      return null;
+    }
+  };
+  const direct = attempt(text);
+  if (direct !== null) return direct;
+
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  if (fenced) {
+    const parsed = attempt(fenced.trim());
+    if (parsed !== null) return parsed;
+  }
+
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  if (first !== -1 && last > first) {
+    return attempt(text.slice(first, last + 1));
+  }
+  return null;
 }
 
 @Injectable()
@@ -136,14 +170,22 @@ export class LlmService {
   async createChatCompletion(
     input: LlmChatCompletionInput,
   ): Promise<string | null> {
-    // User-facing answer synthesis runs on the MAIN model (native Claude when
-    // LLM_MODEL is claude-*). On any failure we degrade to the cheap sub-model
-    // below rather than returning nothing.
-    if (input.preferMainModel) {
-      const mainAnswer = await this.createMainModelTextCompletion(input);
-      if (mainAnswer !== null) {
-        return mainAnswer;
-      }
+    // EVERY text call runs on the main model (native Claude when LLM_MODEL is
+    // claude-*), answers and housekeeping alike.
+    //
+    // Routing, classification and titles used to run on a cheap OpenAI
+    // sub-model. It was not just a bill: the router decides which documents a
+    // question may draw on, and on 2026-07-30 it read "how do I start the Mase
+    // generator?" as a vessel-procedure question and excluded the equipment
+    // manuals — so the crew was told to consult a manual the platform had
+    // already indexed. The cheapest call in the turn was deciding the quality
+    // of the whole answer.
+    //
+    // The sub-model below is now only a fallback for when the main model is
+    // unavailable — better a cheap answer than none.
+    const mainAnswer = await this.createMainModelTextCompletion(input);
+    if (mainAnswer !== null) {
+      return mainAnswer;
     }
 
     if (!this.isConfigured()) {
@@ -264,6 +306,19 @@ export class LlmService {
   async createJsonChatCompletion<T = unknown>(
     input: LlmJsonChatCompletionInput,
   ): Promise<T | null> {
+    // Main model first, same reasoning as createChatCompletion: the JSON these
+    // calls return is a routing decision or a structured extraction, and both
+    // are worth getting right. Anthropic has no response_format, so the schema
+    // is carried by the prompt and the text is parsed here.
+    const mainJson = await this.createMainModelTextCompletion(input);
+    if (mainJson !== null) {
+      const parsed = parseJsonLoosely<T>(mainJson);
+      if (parsed !== null) return parsed;
+      this.logger.warn(
+        'Main-model JSON completion did not parse — falling back to the sub-model.',
+      );
+    }
+
     if (!this.isConfigured()) {
       return null;
     }
