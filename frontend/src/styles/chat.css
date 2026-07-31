@@ -1704,6 +1704,34 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Where a source came from, said in one word — the crew need to know whether
+   an answer rests on the vessel's own paperwork or on the open web before
+   they act on it. */
+.chat-source-item__kind {
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 0.5px solid var(--chat-border, rgba(255, 255, 255, 0.14));
+  color: var(--chat-text-subtle);
+  white-space: nowrap;
+}
+
+.chat-source-item__kind--web {
+  border-color: rgba(120, 160, 255, 0.45);
+  color: rgb(150, 180, 255);
+}
+
+.chat-source-item--collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
 .chat-message__action:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--chat-text);

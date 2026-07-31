@@ -2,11 +2,14 @@ import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import type { ChatContextReferenceDto } from "../../types/chat";
 import {
+  CHAT_SOURCE_KIND_LABEL,
   getChatDocumentOpenTarget,
   getChatSourceGroupKey,
+  getChatSourceKind,
   isDisplayableChatSourceReference,
   isHttpUrl,
   openChatDocumentSource,
+  type ChatSourceKind,
 } from "./chatSourceReferences";
 import "../../styles/chat.css";
 
@@ -17,6 +20,14 @@ interface SourceCitationsProps {
 }
 
 const DEFAULT_VISIBLE_SOURCES = 3;
+
+/**
+ * Past this many sources of one kind, the list stops being evidence and starts
+ * being a data dump. A question about expiring certificates cited eighty of
+ * them, one card each, under a four-line answer — collapsed to a single row
+ * with a count, expandable for anyone who wants the list.
+ */
+const COLLAPSE_KIND_ABOVE = 6;
 
 /**
  * Turn a retrieval snippet into something a person can read.
@@ -65,6 +76,9 @@ export function SourceCitations({
 }: SourceCitationsProps) {
   const { token } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedKinds, setExpandedKinds] = useState<Set<ChatSourceKind>>(
+    new Set(),
+  );
   const displayableCitations = useMemo(
     () => citations.filter(isDisplayableChatSourceReference),
     [citations],
@@ -135,23 +149,70 @@ export function SourceCitations({
     [displayableCitations],
   );
 
+  /**
+   * Kinds that appear too many times to list one by one. Collapsing happens
+   * per kind, so a handful of ship documents stay visible even when eighty
+   * certificates alongside them are folded into one row.
+   */
+  const collapsedKinds = useMemo(() => {
+    const counts = new Map<ChatSourceKind, number>();
+    for (const [, items] of groupedEntries) {
+      const kind = getChatSourceKind(items[0]);
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
+    return new Set(
+      [...counts.entries()]
+        .filter(([kind, count]) => count > COLLAPSE_KIND_ABOVE && !expandedKinds.has(kind))
+        .map(([kind]) => kind),
+    );
+  }, [groupedEntries, expandedKinds]);
+
+  const collapsedSummaries = useMemo(() => {
+    const summary = new Map<ChatSourceKind, number>();
+    for (const [, items] of groupedEntries) {
+      const kind = getChatSourceKind(items[0]);
+      if (collapsedKinds.has(kind)) {
+        summary.set(kind, (summary.get(kind) ?? 0) + 1);
+      }
+    }
+    return [...summary.entries()];
+  }, [groupedEntries, collapsedKinds]);
+
   if (displayableCitations.length === 0) {
     return null;
   }
 
+  const listedEntries = groupedEntries.filter(
+    ([, items]) => !collapsedKinds.has(getChatSourceKind(items[0])),
+  );
   const hasHiddenSources =
-    mode === "inline" && groupedEntries.length > DEFAULT_VISIBLE_SOURCES;
+    mode === "inline" && listedEntries.length > DEFAULT_VISIBLE_SOURCES;
   const visibleEntries =
     mode === "panel"
-      ? groupedEntries
+      ? listedEntries
       : isExpanded
-        ? groupedEntries
-        : groupedEntries.slice(0, DEFAULT_VISIBLE_SOURCES);
+        ? listedEntries
+        : listedEntries.slice(0, DEFAULT_VISIBLE_SOURCES);
 
   return (
     <div className="chat-sources">
       <div className="chat-sources__header">Sources</div>
       <div className="chat-sources__list">
+        {collapsedSummaries.map(([kind, count]) => (
+          <button
+            key={`collapsed-${kind}`}
+            type="button"
+            className="chat-source-item chat-source-item--collapsed"
+            onClick={() =>
+              setExpandedKinds((prev) => new Set(prev).add(kind))
+            }
+          >
+            <span className="chat-source-item__title-text">
+              {CHAT_SOURCE_KIND_LABEL[kind]} records — {count}
+            </span>
+            <span className="chat-source-item__open-icon">{"\u2304"}</span>
+          </button>
+        ))}
         {visibleEntries.map(([source, items]) => {
           const primaryCitation = items[0];
           if (!primaryCitation) {
@@ -216,6 +277,11 @@ export function SourceCitations({
                   )}
                 </div>
                 <div className="chat-source-item__meta">
+                  <span
+                    className={`chat-source-item__kind chat-source-item__kind--${getChatSourceKind(primaryCitation)}`}
+                  >
+                    {CHAT_SOURCE_KIND_LABEL[getChatSourceKind(primaryCitation)]}
+                  </span>
                   {pages.length > 0 && (
                     <span className="chat-source-item__page">
                       p.&nbsp;{pages.join(", ")}

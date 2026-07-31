@@ -190,3 +190,42 @@ async function fetchLegacyManualFile(
 
   return response.blob();
 }
+
+/**
+ * What KIND of source this is, for the badge and for grouping.
+ *
+ * A crew member reading an answer wants to know whether it came from the
+ * vessel's own paperwork or from the open web before they act on it — the
+ * answer currently has to say so in prose, which the model sometimes forgets.
+ */
+export type ChatSourceKind =
+  | "web"
+  | "certificate"
+  | "document"
+  | "form"
+  | "other";
+
+export function getChatSourceKind(
+  citation: ChatContextReferenceDto,
+): ChatSourceKind {
+  const id = normalizedField(citation, "id");
+  const sourceType = normalizedField(citation, "sourceType");
+
+  if (sourceType === "compliance_doc" || id.startsWith("compliance-doc")) {
+    return "certificate";
+  }
+  if (id.startsWith("form-")) return "form";
+  if (isHttpUrl(citation.sourceUrl) || id.startsWith("web-")) return "web";
+  if (citation.documentId || citation.shipManualId || sourceType === "document") {
+    return "document";
+  }
+  return "other";
+}
+
+export const CHAT_SOURCE_KIND_LABEL: Record<ChatSourceKind, string> = {
+  web: "Web",
+  certificate: "Certificate",
+  document: "Ship document",
+  form: "Form",
+  other: "Source",
+};
