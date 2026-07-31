@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useRef, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -509,12 +509,57 @@ export function MessageBubble({
   const suggestionActions =
     clarificationActions.length > 0 ? clarificationActions : inlineButtonActions;
 
+  /**
+   * Copy what the reader sees, not what the model wrote.
+   *
+   * The button used to put the raw markdown on the clipboard, so pasting an
+   * answer into an email or a report brought '#', '**' and '|' along and lost
+   * every heading, list and table on the way. The clipboard takes two flavours
+   * at once: text/html for anywhere that understands formatting (Word, Gmail,
+   * Notion), and text/plain for anywhere that does not — both taken from the
+   * rendered DOM, so they match the screen.
+   */
+  const bodyRef = useRef<HTMLDivElement>(null);
   const handleCopy = useCallback(() => {
-    const text = content.trim();
-    if (text && onCopy) onCopy(text);
-    else if (text) {
-      navigator.clipboard.writeText(text).catch(() => {});
+    const node = bodyRef.current;
+    const fallbackText = content.trim();
+
+    if (!node) {
+      if (fallbackText && onCopy) onCopy(fallbackText);
+      else if (fallbackText) {
+        navigator.clipboard.writeText(fallbackText).catch(() => {});
+      }
+      return;
     }
+
+    // React leaves a run of blank text nodes between blocks; pasted into Word
+    // they become empty paragraphs.
+    const html = node.innerHTML.replace(/\n{2,}/g, '\n');
+    // innerText, not textContent: it respects line breaks and list structure
+    // the way the browser lays them out, which is what someone pasting into a
+    // plain-text field expects to see.
+    const plain = (node.innerText || fallbackText).trim();
+
+    if (onCopy) onCopy(plain);
+
+    const writeRich = async () => {
+      if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
+        await navigator.clipboard.writeText(plain);
+        return;
+      }
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+        }),
+      ]);
+    };
+
+    void writeRich().catch(() => {
+      // Firefox before 127 has no ClipboardItem, and a denied permission ends
+      // up here too — plain text still beats nothing.
+      navigator.clipboard.writeText(plain).catch(() => {});
+    });
   }, [content, onCopy]);
 
   const handleRegenerate = useCallback(() => {
@@ -553,6 +598,7 @@ export function MessageBubble({
           </div>
         )}
         {role === "assistant" ? (
+          <div ref={bodyRef} className="chat-message__body">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw]}
@@ -562,6 +608,7 @@ export function MessageBubble({
               ? injectCiteRefs(renderedAssistantContent)
               : renderedAssistantContent}
           </ReactMarkdown>
+          </div>
         ) : alertCard ? (
           <AlertMessageCard card={alertCard} />
         ) : taskCard ? (
