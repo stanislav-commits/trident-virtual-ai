@@ -14,12 +14,6 @@ import { UpdateAssetDto } from './dto/update-asset.dto';
 import { AssetSnapshotEntity } from './entities/asset-snapshot.entity';
 import { AssetEntity } from './entities/asset.entity';
 import { AssetIdService } from './asset-id.service';
-import { ServiceRuleEntity } from './entities/service-rule.entity';
-import type {
-  CompleteServiceRuleDto,
-  CreateServiceRuleDto,
-  UpdateServiceRuleDto,
-} from './dto/service-rule.dto';
 import {
   isValidDeckRoleCode,
   isValidZoneCode,
@@ -40,8 +34,6 @@ export class AssetsService {
     private readonly shipRepository: Repository<ShipEntity>,
     @InjectRepository(AssetSnapshotEntity)
     private readonly assetSnapshotRepository: Repository<AssetSnapshotEntity>,
-    @InjectRepository(ServiceRuleEntity)
-    private readonly serviceRuleRepository: Repository<ServiceRuleEntity>,
     private readonly assetIdService: AssetIdService,
     private readonly adminEvents: AdminEventBus,
     private readonly snapshots: AssetSnapshotService,
@@ -447,114 +439,6 @@ export class AssetsService {
     return buildRegisterWorkbook(ship.name, assets);
   }
 
-  // ── Service rules (PMS core) ─────────────────────────────────────────────
-
-  async listServiceRules(
-    shipId: string,
-    assetUuid: string,
-  ): Promise<ServiceRuleEntity[]> {
-    await this.getOne(shipId, assetUuid); // asserts ship + asset
-    return this.serviceRuleRepository.find({
-      where: { shipId, assetId: assetUuid },
-      order: { taskName: 'ASC' },
-    });
-  }
-
-  async createServiceRule(
-    shipId: string,
-    assetUuid: string,
-    dto: CreateServiceRuleDto,
-  ): Promise<ServiceRuleEntity> {
-    await this.getOne(shipId, assetUuid);
-    if (dto.intervalHours == null && dto.intervalMonths == null) {
-      throw new BadRequestException(
-        'At least one of intervalHours / intervalMonths is required',
-      );
-    }
-    const existing = await this.serviceRuleRepository.findOne({
-      where: { assetId: assetUuid, taskName: dto.taskName },
-    });
-    if (existing) {
-      throw new ConflictException(
-        `Rule "${dto.taskName}" already exists for this asset`,
-      );
-    }
-    return this.serviceRuleRepository.save(
-      this.serviceRuleRepository.create({
-        shipId,
-        assetId: assetUuid,
-        taskName: dto.taskName,
-        intervalHours: dto.intervalHours ?? null,
-        intervalMonths: dto.intervalMonths ?? null,
-        lastDoneAt: dto.lastDoneAt ? new Date(dto.lastDoneAt) : null,
-        lastDoneRuntimeHours: dto.lastDoneRuntimeHours ?? null,
-        source: dto.source ?? 'manual',
-        notes: dto.notes ?? null,
-      }),
-    );
-  }
-
-  async updateServiceRule(
-    shipId: string,
-    ruleId: string,
-    dto: UpdateServiceRuleDto,
-  ): Promise<ServiceRuleEntity> {
-    const rule = await this.serviceRuleRepository.findOne({
-      where: { id: ruleId, shipId },
-    });
-    if (!rule) throw new NotFoundException(`Service rule ${ruleId} not found`);
-    if (dto.taskName !== undefined) rule.taskName = dto.taskName;
-    if (dto.intervalHours !== undefined) rule.intervalHours = dto.intervalHours;
-    if (dto.intervalMonths !== undefined) rule.intervalMonths = dto.intervalMonths;
-    if (dto.lastDoneAt !== undefined) {
-      rule.lastDoneAt = dto.lastDoneAt ? new Date(dto.lastDoneAt) : null;
-    }
-    if (dto.lastDoneRuntimeHours !== undefined) {
-      rule.lastDoneRuntimeHours = dto.lastDoneRuntimeHours;
-    }
-    if (dto.notes !== undefined) rule.notes = dto.notes;
-    if (rule.intervalHours == null && rule.intervalMonths == null) {
-      throw new BadRequestException(
-        'Rule must keep at least one of intervalHours / intervalMonths',
-      );
-    }
-    // Any manual edit confirms the rule — clear the ai_extracted flag so
-    // it counts as human-verified from here on.
-    rule.source = 'manual';
-    return this.serviceRuleRepository.save(rule);
-  }
-
-  /** "Mark done": stamps the completion baseline. */
-  async completeServiceRule(
-    shipId: string,
-    ruleId: string,
-    dto: CompleteServiceRuleDto,
-  ): Promise<ServiceRuleEntity> {
-    const rule = await this.serviceRuleRepository.findOne({
-      where: { id: ruleId, shipId },
-    });
-    if (!rule) throw new NotFoundException(`Service rule ${ruleId} not found`);
-    rule.lastDoneAt = dto.doneAt ? new Date(dto.doneAt) : new Date();
-    if (dto.runtimeHours !== undefined) {
-      rule.lastDoneRuntimeHours = dto.runtimeHours;
-    }
-    if (dto.notes) {
-      rule.notes = rule.notes
-        ? `${rule.notes}\n[done ${rule.lastDoneAt.toISOString().slice(0, 10)}] ${dto.notes}`
-        : `[done ${rule.lastDoneAt.toISOString().slice(0, 10)}] ${dto.notes}`;
-    }
-    return this.serviceRuleRepository.save(rule);
-  }
-
-  async deleteServiceRule(shipId: string, ruleId: string): Promise<void> {
-    const rule = await this.serviceRuleRepository.findOne({
-      where: { id: ruleId, shipId },
-    });
-    if (!rule) throw new NotFoundException(`Service rule ${ruleId} not found`);
-    await this.serviceRuleRepository.remove(rule);
-  }
-
-  // ── helpers ──────────────────────────────────────────────────────────────
   private async assertShipExists(shipId: string): Promise<void> {
     const ship = await this.shipRepository.findOne({ where: { id: shipId } });
     if (!ship) {

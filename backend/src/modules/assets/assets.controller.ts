@@ -27,6 +27,7 @@ import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { AssetsService } from './assets.service';
 import { AssetImportService } from './asset-import.service';
 import { AssetLinksService } from './asset-links.service';
+import { AssetServiceRulesService } from './asset-service-rules.service';
 import { AssetIdService, type IdAvailability } from './asset-id.service';
 import {
   CommitImportDto,
@@ -50,6 +51,7 @@ export class AssetsController {
     private readonly assetIdService: AssetIdService,
     private readonly assetImportService: AssetImportService,
     private readonly assetLinksService: AssetLinksService,
+    private readonly assetServiceRules: AssetServiceRulesService,
   ) {}
 
   @Get()
@@ -234,7 +236,7 @@ export class AssetsController {
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @Param('assetId', ParseUUIDPipe) assetId: string,
   ) {
-    return this.assetsService.listServiceRules(shipId, assetId);
+    return this.assetServiceRules.listServiceRules(shipId, assetId);
   }
 
   @Post(':assetId/service-rules')
@@ -244,7 +246,7 @@ export class AssetsController {
     @Param('assetId', ParseUUIDPipe) assetId: string,
     @Body() body: CreateServiceRuleDto,
   ) {
-    return this.assetsService.createServiceRule(shipId, assetId, body);
+    return this.assetServiceRules.createServiceRule(shipId, assetId, body);
   }
 
   @Patch('service-rules/:ruleId')
@@ -254,7 +256,7 @@ export class AssetsController {
     @Param('ruleId', ParseUUIDPipe) ruleId: string,
     @Body() body: UpdateServiceRuleDto,
   ) {
-    return this.assetsService.updateServiceRule(shipId, ruleId, body);
+    return this.assetServiceRules.updateServiceRule(shipId, ruleId, body);
   }
 
   @Post('service-rules/:ruleId/complete')
@@ -264,7 +266,7 @@ export class AssetsController {
     @Param('ruleId', ParseUUIDPipe) ruleId: string,
     @Body() body: CompleteServiceRuleDto,
   ) {
-    return this.assetsService.completeServiceRule(shipId, ruleId, body);
+    return this.assetServiceRules.completeServiceRule(shipId, ruleId, body);
   }
 
   @Delete('service-rules/:ruleId')
@@ -274,6 +276,6 @@ export class AssetsController {
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @Param('ruleId', ParseUUIDPipe) ruleId: string,
   ): Promise<void> {
-    await this.assetsService.deleteServiceRule(shipId, ruleId);
+    await this.assetServiceRules.deleteServiceRule(shipId, ruleId);
   }
 }

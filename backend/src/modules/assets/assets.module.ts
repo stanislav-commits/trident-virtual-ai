@@ -8,6 +8,7 @@ import { AssetsService } from './assets.service';
 import { AssetIdService } from './asset-id.service';
 import { AssetImportService } from './asset-import.service';
 import { AssetLinksService } from './asset-links.service';
+import { AssetServiceRulesService } from './asset-service-rules.service';
 import { AssetSnapshotService } from './asset-snapshot.service';
 import { AssetDocumentLinkEntity } from './entities/asset-document-link.entity';
 import { AssetSnapshotEntity } from './entities/asset-snapshot.entity';
@@ -34,6 +35,7 @@ import { SfiModule } from '../sfi/sfi.module';
     AssetIdService,
     AssetImportService,
     AssetLinksService,
+    AssetServiceRulesService,
     AssetSnapshotService,
   ],
   exports: [
