@@ -116,4 +116,7 @@ export class CreateAssetDto {
 
   // ── Catch-all bucket ──
   @IsOptional() @IsObject() extras?: Record<string, unknown>;
+
+  /** engine | deck | interior | galley — who maintains it. */
+  @IsOptional() @IsString() @MaxLength(16) department?: string;
 }

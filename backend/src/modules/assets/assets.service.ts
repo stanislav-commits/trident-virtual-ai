@@ -59,6 +59,7 @@ const COLUMN_ALIASES: Record<keyof CreateAssetDto, string[]> = {
   criticality:      ['criticality', 'criticality_class'],
   commissionedDate: ['commissioned_date', 'install date', 'installation date', 'installed', 'commissioned'],
   location:         ['location', 'compartment'],
+  department:       ['department', 'dept'],
   rinaRef:          ['rina_ref', 'class', 'class society', 'classification society'],
   notes:            ['notes', 'remark', 'remarks', 'comments'],
   // v14.6 location schema
@@ -606,6 +607,7 @@ export class AssetsService {
       criticality: input.criticality ?? null,
       commissionedDate: input.commissionedDate ?? null,
       location: input.location ?? null,
+      department: input.department ?? null,
       rinaRef: input.rinaRef ?? null,
       notes: input.notes ?? null,
     };
@@ -648,6 +650,7 @@ export class AssetsService {
     if (input.criticality !== undefined) asset.criticality = input.criticality;
     if (input.commissionedDate !== undefined) asset.commissionedDate = input.commissionedDate;
     if (input.location !== undefined) asset.location = input.location;
+    if (input.department !== undefined) asset.department = input.department;
     if (input.rinaRef !== undefined) asset.rinaRef = input.rinaRef;
     if (input.notes !== undefined) asset.notes = input.notes;
     // v14.6 fields
@@ -1278,6 +1281,7 @@ export class AssetsService {
       criticality: draft.criticality ?? existing.criticality,
       commissionedDate: draft.commissionedDate ?? existing.commissionedDate,
       location: draft.location ?? existing.location,
+      department: draft.department ?? existing.department,
       rinaRef: draft.rinaRef ?? existing.rinaRef,
       notes: draft.notes ?? existing.notes,
       zone: draft.zone ?? existing.zone,

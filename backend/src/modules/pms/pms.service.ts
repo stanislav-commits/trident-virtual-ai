@@ -587,7 +587,18 @@ export class PmsService {
       typeof input.description === 'string' && input.description.trim()
         ? input.description.trim()
         : null;
-    const department = input.department ?? null;
+    // The equipment's own department wins over the reporter's: the same broken
+    // pump is engine work whether a deckhand or an engineer walked past it.
+    // Falls back to the caller's department when the asset carries none, and to
+    // nothing at all when neither knows — a general task, as before.
+    let department = input.department ?? null;
+    if (input.assetId) {
+      const asset = await this.assetRepository.findOne({
+        where: { id: input.assetId, shipId },
+        select: { department: true },
+      });
+      department = asset?.department ?? department;
+    }
 
     let defectId: string | null = null;
     if (input.type === 'defect') {

@@ -74,6 +74,14 @@ export class AssetEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   location!: string | null;
 
+  /**
+   * Which department maintains this equipment. Seeded from the SFI group and
+   * correctable per asset — it is a fact about the machine, not about whoever
+   * happened to walk past it when it broke.
+   */
+  @Column({ name: 'department', type: 'varchar', length: 16, nullable: true })
+  department!: string | null;
+
   @Column({ name: 'rina_ref', type: 'varchar', length: 100, nullable: true })
   rinaRef!: string | null;
 

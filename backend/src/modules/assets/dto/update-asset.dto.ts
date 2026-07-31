@@ -106,4 +106,7 @@ export class UpdateAssetDto {
   // ── Maintenance ──
   @IsOptional() @IsString() @MaxLength(255) drawingRef?: string | null;
   @IsOptional() @IsString()                 inspectionObligation?: string | null;
+
+  /** engine | deck | interior | galley — who maintains it. */
+  @IsOptional() @IsString() @MaxLength(16) department?: string;
 }
