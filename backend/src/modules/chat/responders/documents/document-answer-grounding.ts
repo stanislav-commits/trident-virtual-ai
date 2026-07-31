@@ -55,30 +55,35 @@ export function validateDocumentAnswerGrounding(
     return { isGrounded: true };
   }
 
+  // Which evidence a numeric claim is checked against.
+  //
+  // Answers no longer carry [N] markers, so "cited evidence" is now simply the
+  // evidence that was retrieved for this answer. The old rule — no markers, no
+  // grounding — silently condemned every document answer containing a number
+  // the moment the markers were dropped from the prompt: the check failed, the
+  // answer was replaced with "the uploaded document evidence is insufficient",
+  // and the turn fell through to a web search. That is what "how to start
+  // generator?" hit on production on 2026-07-31, five minutes and an answer
+  // off the open internet while the Mase manual sat in the retrieval results.
+  //
+  // Markers are still honoured when present (older messages, a model that
+  // cites out of habit) — they narrow the check rather than gate it.
   const citedRanks = extractCitedEvidenceRanks(answerText);
-  if (!citedRanks.size) {
-    return {
-      isGrounded: false,
-      reason:
-        'The answer contains concrete numeric or technical values but does not cite supporting evidence.',
-    };
-  }
-
-  const citedEvidenceResults = retrieval.results.filter((result) =>
-    citedRanks.has(result.rank),
-  );
+  const evidenceForClaims = citedRanks.size
+    ? retrieval.results.filter((result) => citedRanks.has(result.rank))
+    : retrieval.results;
 
   for (const claim of claims) {
     if (
       !isNumericValueClaimSupportedByResults(
         claim,
-        citedEvidenceResults,
+        evidenceForClaims,
         answerText,
       )
     ) {
       return {
         isGrounded: false,
-        reason: `The answer included "${claim.raw}", but that exact value/unit was not found in the cited evidence snippets.`,
+        reason: `The answer included "${claim.raw}", but that exact value/unit was not found in the retrieved evidence snippets.`,
       };
     }
   }
