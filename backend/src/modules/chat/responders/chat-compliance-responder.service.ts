@@ -32,6 +32,13 @@ interface ComplianceItem {
    * Without the tags the answer cannot say which paper covers what.
    */
   attachments: Array<{ kind: string | null; label: string | null; fileName: string | null }>;
+  /**
+   * Whether ships/:shipId/compliance/docs/:id/file will serve something —
+   * the register's own flag (documentId OR fileStorageKey). Attachments are
+   * a THIRD, rarer path; counting only them told the crew 136 of 137 records
+   * had no file while every one of them opened fine (2026-07-31).
+   */
+  hasFile: boolean;
 }
 
 /**
@@ -218,6 +225,7 @@ export class ChatComplianceResponderService {
               archetype,
               applicabilityVerdict,
               attachments: [],
+              hasFile: false,
             });
           }
           continue;
@@ -244,6 +252,7 @@ export class ChatComplianceResponderService {
                   fileName: this.str(a.fileName),
                 }))
               : [],
+            hasFile: record.hasFile === true,
           });
         }
       }
@@ -457,11 +466,11 @@ export class ChatComplianceResponderService {
         recordId: item.recordId,
         // The file lives behind ships/:shipId/compliance/docs/:id/file, so the
         // client needs the vessel as well as the record to fetch it — and it
-        // needs to know whether there IS a file: only 1 of 137 records on the
-        // vessel has one attached, and a card that looks clickable and does
-        // nothing is worse than one that says the paper is not on file.
+        // needs to know whether there IS a file. The register's hasFile covers
+        // the documentId and fileStorageKey paths that endpoint serves;
+        // attachments (compliance_doc_files) are the third path it can list.
         shipId,
-        hasFile: item.attachments.length > 0,
+        hasFile: item.hasFile || item.attachments.length > 0,
         status: item.status,
         snippet: [
           item.status.toUpperCase(),
