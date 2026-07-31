@@ -7,6 +7,7 @@ import { AssetsController } from './assets.controller';
 import { AssetsService } from './assets.service';
 import { AssetIdService } from './asset-id.service';
 import { AssetImportService } from './asset-import.service';
+import { AssetLinksService } from './asset-links.service';
 import { AssetSnapshotService } from './asset-snapshot.service';
 import { AssetDocumentLinkEntity } from './entities/asset-document-link.entity';
 import { AssetSnapshotEntity } from './entities/asset-snapshot.entity';
@@ -32,8 +33,14 @@ import { SfiModule } from '../sfi/sfi.module';
     AssetsService,
     AssetIdService,
     AssetImportService,
+    AssetLinksService,
     AssetSnapshotService,
   ],
-  exports: [AssetsService, AssetIdService, AssetImportService],
+  exports: [
+    AssetsService,
+    AssetIdService,
+    AssetImportService,
+    AssetLinksService,
+  ],
 })
 export class AssetsModule {}

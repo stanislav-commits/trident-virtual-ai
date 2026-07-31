@@ -26,6 +26,7 @@ import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { AssetsService } from './assets.service';
 import { AssetImportService } from './asset-import.service';
+import { AssetLinksService } from './asset-links.service';
 import { AssetIdService, type IdAvailability } from './asset-id.service';
 import { CommitImportDto } from './dto/commit-import.dto';
 import { CreateAssetDto } from './dto/create-asset.dto';
@@ -45,6 +46,7 @@ export class AssetsController {
     private readonly assetsService: AssetsService,
     private readonly assetIdService: AssetIdService,
     private readonly assetImportService: AssetImportService,
+    private readonly assetLinksService: AssetLinksService,
   ) {}
 
   @Get()
@@ -105,7 +107,7 @@ export class AssetsController {
     @Param('shipId', ParseUUIDPipe) shipId: string,
     @Param('assetId', ParseUUIDPipe) assetId: string,
   ) {
-    return this.assetsService.getRelated(shipId, assetId);
+    return this.assetLinksService.getRelated(shipId, assetId);
   }
 
   @Post()
@@ -206,7 +208,7 @@ export class AssetsController {
     @Param('documentId', ParseUUIDPipe) documentId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<void> {
-    await this.assetsService.linkDocument(
+    await this.assetLinksService.linkDocument(
       shipId, assetId, documentId, user.id,
     );
   }
@@ -219,7 +221,7 @@ export class AssetsController {
     @Param('assetId', ParseUUIDPipe) assetId: string,
     @Param('documentId', ParseUUIDPipe) documentId: string,
   ): Promise<void> {
-    await this.assetsService.unlinkDocument(shipId, assetId, documentId);
+    await this.assetLinksService.unlinkDocument(shipId, assetId, documentId);
   }
 
   // ── Service rules (PMS core) ──
