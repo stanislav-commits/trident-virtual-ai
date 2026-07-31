@@ -66,7 +66,14 @@ export class ChatController {
     @Body() body: { shipId: string },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.chatDailyBriefService.generateForShip(body.shipId, user.id);
+    // shipId comes from the notification payload, but the client is not
+    // trusted to name a vessel: a non-admin only ever briefs their own ship.
+    const shipId =
+      user.role === UserRole.ADMIN ? body?.shipId : user.shipId ?? undefined;
+    if (!shipId) {
+      throw new BadRequestException('shipId is required');
+    }
+    return this.chatDailyBriefService.generateForShip(shipId, user.id);
   }
 
   /**

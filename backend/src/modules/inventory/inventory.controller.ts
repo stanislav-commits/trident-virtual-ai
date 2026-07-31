@@ -18,6 +18,7 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
+import { ShipAccessGuard } from '../../core/auth/guards/ship-access.guard';
 import {
   InventoryService,
   UpsertInventoryInput,
@@ -35,7 +36,7 @@ interface UploadedImportFile {
 }
 
 @Controller('ships/:shipId/inventory')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, ShipAccessGuard, RolesGuard)
 export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,

@@ -14,6 +14,7 @@ import type { Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
+import { ShipAccessGuard } from '../../core/auth/guards/ship-access.guard';
 import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
@@ -69,7 +70,7 @@ export class AlertsWebhookController {
 
 /** Authenticated, ship-scoped read + acknowledge. */
 @Controller('ships/:shipId/alerts')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, ShipAccessGuard, RolesGuard)
 export class AlertsController {
   constructor(
     private readonly alertsService: AlertsService,

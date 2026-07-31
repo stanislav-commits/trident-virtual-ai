@@ -23,6 +23,7 @@ import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
+import { ShipAccessGuard } from '../../core/auth/guards/ship-access.guard';
 import { PmsService, UpsertPmsTaskInput } from './pms.service';
 import { AssetHoursService, SetHoursConfigInput } from './asset-hours.service';
 import {
@@ -39,7 +40,7 @@ interface UploadedImportFile {
 }
 
 @Controller('ships/:shipId/pms')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, ShipAccessGuard, RolesGuard)
 export class PmsController {
   constructor(
     private readonly pmsService: PmsService,

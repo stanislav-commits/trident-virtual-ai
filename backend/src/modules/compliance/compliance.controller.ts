@@ -23,6 +23,7 @@ import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
+import { ShipAccessGuard } from '../../core/auth/guards/ship-access.guard';
 import {
   ComplianceService,
   UpsertComplianceDocInput,
@@ -39,7 +40,7 @@ interface UploadedComplianceFile {
 }
 
 @Controller('ships/:shipId/compliance')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, ShipAccessGuard, RolesGuard)
 export class ComplianceController {
   constructor(
     private readonly complianceService: ComplianceService,

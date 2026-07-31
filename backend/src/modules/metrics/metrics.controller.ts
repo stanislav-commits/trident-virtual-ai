@@ -16,6 +16,7 @@ import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { CurrentUser } from '../../core/auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
+import { ShipAccessGuard } from '../../core/auth/guards/ship-access.guard';
 import { AuthenticatedUser } from '../../core/auth/auth.types';
 import { QueryMetricsDto } from './dto/query-metrics.dto';
 import { CreateMetricConceptDto } from './dto/create-metric-concept.dto';
@@ -42,7 +43,7 @@ import { MetricUnderstandingService } from './metric-understanding/metric-unders
 import { AnalyzeShipOptions } from './metric-understanding/metric-understanding.types';
 
 @Controller('metrics')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ShipAccessGuard)
 export class MetricsController {
   constructor(
     private readonly metricsService: MetricsService,

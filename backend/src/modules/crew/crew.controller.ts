@@ -15,10 +15,11 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
+import { ShipAccessGuard } from '../../core/auth/guards/ship-access.guard';
 import { CrewService, UpsertCrewInput } from './crew.service';
 
 @Controller('ships/:shipId/crew')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, ShipAccessGuard, RolesGuard)
 export class CrewController {
   constructor(private readonly crewService: CrewService) {}
 

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/guards/roles.guard';
+import { ShipAccessGuard } from '../../core/auth/guards/ship-access.guard';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { Roles } from '../../core/auth/decorators/roles.decorator';
 import { OverviewService } from './overview.service';
@@ -16,14 +17,13 @@ import { OverviewTokens, ShipOverviewResponse } from './overview.types';
 
 /**
  * ADMIN-only, unlike the sibling per-ship read endpoints that carry no `@Roles`.
- * Two reasons: the page only exists inside the admin panel, and this response is
- * a deliberate map of where a vessel's data is thin — which section is empty,
- * which integration never ran. That is operator information, and this repo has
- * no per-ship read check to lean on (RolesGuard only inspects the role, so on
- * every other read endpoint any authenticated user can name any shipId).
+ * The page only exists inside the admin panel, and this response is a
+ * deliberate map of where a vessel's data is thin — which section is empty,
+ * which integration never ran. That is operator information, so it stays
+ * admin-only even now that ShipAccessGuard covers the per-ship scoping.
  */
 @Controller('ships/:shipId/overview')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, ShipAccessGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class OverviewController {
   constructor(private readonly overviewService: OverviewService) {}
