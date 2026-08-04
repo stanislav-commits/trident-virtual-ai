@@ -2968,6 +2968,22 @@
   opacity: 1;
 }
 
+/* The download sits beside the open arrow and must stay reachable by keyboard,
+   so it is a real button rather than a decorated span. */
+.chat-source-item__download {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+.chat-source-item__download:hover,
+.chat-source-item__download:focus-visible {
+  opacity: 1;
+  color: var(--chat-text);
+}
+
 /* Staggered source items */
 .chat-source-item:nth-child(1) {
   animation-delay: 0.05s;

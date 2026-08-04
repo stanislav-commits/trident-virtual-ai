@@ -1012,13 +1012,19 @@
 }
 
 /* ── Buttons ── */
+/* The base is the secondary button, not an unstyled one: with only
+   `border: none` a button carrying no modifier fell back to the browser's own
+   light-grey control, so a dialog's Cancel came out the same colour as its
+   primary action on a black panel. */
 .admin-panel__btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
   border-radius: 8px;
-  border: none;
+  background: var(--chat-surface-2);
+  color: var(--chat-text-muted);
+  border: 1px solid var(--chat-border);
   font-size: 0.8125rem;
   font-weight: 600;
   font-family: inherit;
@@ -1032,6 +1038,12 @@
   letter-spacing: 0.01em;
 }
 
+.admin-panel__btn:hover:not(:disabled) {
+  background: var(--chat-surface-3);
+  border-color: var(--chat-border-strong);
+  color: var(--chat-text);
+}
+
 .admin-panel__btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
@@ -1040,6 +1052,7 @@
 .admin-panel__btn--primary {
   background: var(--chat-text);
   color: var(--submit-text);
+  border-color: transparent;
 }
 
 .admin-panel__btn--primary:hover:not(:disabled) {
@@ -2181,12 +2194,26 @@
   text-align: center;
 }
 
+/* Only PublicationsSection uses .admin-panel__table--documents. Its rows
+   carry up to 4 actions (View / Add article / Replace / Remove) once a file
+   is attached vs 1 ("Upload") before — the old fixed 112px column wrapped
+   them onto ragged multi-line stacks that didn't line up row to row.
+   `table-layout: fixed` sizes columns from the declared `width` alone —
+   `min-width` on a fixed-layout cell is NOT honored to grow the column, so
+   an explicit px width is required here, not the shrink-to-fit 1% trick
+   (that collapsed the column to ~10px and let the buttons visually spill
+   past the table edge without the table itself growing). 350px fits the
+   4-button row (measured 328px) plus cell padding; right-aligned so the
+   edge stays fixed regardless of how many buttons a given row has. */
 .admin-panel__table--documents .admin-panel__th--actions,
 .admin-panel__table--documents .admin-panel__td--actions {
-  width: 112px;
-  min-width: 112px;
+  width: 350px;
   padding-right: 12px;
   padding-left: 8px;
+}
+.publications__actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
 }
 
 .admin-panel__document-actions {
@@ -5575,6 +5602,9 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  /* The modal itself lays its children out with no gap, so without this the
+     buttons sit flush against the last field and read as part of it. */
+  margin-top: 20px;
 }
 
 .admin-panel__modal--manuals .admin-panel__modal-actions {
@@ -7699,10 +7729,14 @@
 
   .admin-panel__table--documents .admin-panel__th--actions,
   .admin-panel__table--documents .admin-panel__td--actions {
-    width: 102px;
-    min-width: 102px;
+    width: 220px;
     padding-right: 8px;
     padding-left: 6px;
+  }
+
+  .publications__actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .admin-panel__document-actions {
@@ -7839,10 +7873,14 @@
 
   .admin-panel__table--documents .admin-panel__th--actions,
   .admin-panel__table--documents .admin-panel__td--actions {
-    width: 98px;
-    min-width: 98px;
+    width: 200px;
     padding-right: 8px;
     padding-left: 6px;
+  }
+
+  .publications__actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .admin-panel__document-status-meta {
@@ -10060,6 +10098,479 @@
   background: color-mix(in srgb, var(--status-ok, #3f9d63) 10%, transparent);
   border-radius: 6px; padding: 6px 10px;
 }
+/* ── Publications library: rail + tree of arbitrary depth ── */
+/* Three columns of wildly different length — 27 publications, a few hundred
+   rows, a document — so each one scrolls on its own and the wheel acts on
+   whichever the pointer is over. Scrolling the page as one instead made the
+   rail unreachable: its foot sat below the fold and the wheel moved the page
+   under it. The section is pinned to the height of the panel so the page
+   itself has nothing left to scroll and no second scrollbar appears. */
+.admin-panel__section--publib {
+  height: 100%;
+  min-height: 0;
+}
+.admin-panel__content:has(> .admin-panel__section--publib) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.publib {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.publib__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--chat-surface-2);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.publib__rail-cat,
+.publib__rail-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chat-text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.publib__rail-type { padding-left: 24px; color: var(--chat-text-muted); }
+/* The + / × next to a shelf appear on hover so the rail stays a list of
+   names, not a row of controls. */
+/* The highlight belongs to the ROW, so it runs under the "⋯" as well —
+   a button sitting outside the lit area reads as a separate control. */
+.publib__rail-cat-row,
+.publib__rail-type-row {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+/* The rail itself is surface-2, so the highlight has to step ABOVE it —
+   painting hover in the same colour made the strip look broken. */
+.publib__rail-cat-row:hover,
+.publib__rail-type-row:hover { background: var(--chat-surface-3); }
+/* A publication row keeps room for its "⋯" and its count stops short of the
+   edge; a category row has no menu, so its count takes the full width. */
+.publib__rail-cat-row:hover .publib__rail-cat,
+.publib__rail-type-row:hover .publib__rail-type { background: transparent; }
+.publib__rail-add {
+  flex: 0 0 auto;
+  visibility: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--chat-text-muted);
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 0;
+}
+.publib__rail-cat-row:hover .publib__rail-add,
+.publib__rail-type-row:hover .publib__rail-add { visibility: visible; }
+.publib__rail-add:hover { color: var(--chat-text); background: transparent; }
+.publib__icon-btn { line-height: 0; padding: 3px 7px; }
+.publib__category-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.publib__category-row .publib__rail-add { visibility: visible; }
+.publib__category-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--chat-text-muted);
+  padding: 2px 0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.publib__category-add:hover { color: var(--chat-text); }
+.publib__preview-parse {
+  margin-left: auto;
+  border: 1px solid var(--chat-border);
+  background: transparent;
+  color: var(--chat-text-muted);
+  border-radius: 8px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.publib__preview-parse:hover { color: var(--chat-text); }
+.publib__rail-cat:hover,
+.publib__rail-type:hover { background: var(--chat-surface-3, var(--chat-surface)); }
+.publib__rail-type--active {
+  background: var(--chat-surface-3, var(--chat-surface));
+  color: var(--chat-text);
+}
+.publib__pane {
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--chat-surface-2);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Sticky so the breadcrumb and "+ Add here" stay reachable while the page
+   scrolls through a few hundred rows. */
+.publib__pane-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -8px -8px 0;
+  padding: 10px 12px;
+  background: var(--chat-surface-2);
+  border-radius: 12px 12px 0 0;
+  font-size: 12px;
+  color: var(--chat-text-muted);
+}
+.publib__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 4px;
+  border-top: 1px solid var(--chat-border);
+  font-size: 12.5px;
+}
+.publib__row:hover { background: var(--chat-surface-3, var(--chat-surface)); }
+.publib__twisty {
+  flex: 0 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--chat-text-muted);
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.publib__twisty[aria-hidden="true"] { cursor: inherit; }
+.publib__row { cursor: pointer; }
+.publib__row:focus-visible {
+  outline: 1px solid var(--admin-accent, #6ea8fe);
+  outline-offset: -1px;
+}
+.publib__number {
+  flex: 0 0 auto;
+  color: var(--chat-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.publib__title {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* One line per row: a wrapped title turns a 300-row tree into a wall and
+   makes rows jump height as badges appear. */
+.publib__title > :not(.publib__path),
+.publib__title { text-overflow: ellipsis; }
+.publib__row > .publib__title { white-space: nowrap; }
+.publib__row > .publib__title .publib__path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.publib__path { font-size: 11px; color: var(--chat-text-muted); }
+.publib__count { font-size: 11px; color: var(--chat-text-muted); }
+/* In the rail the count is a column, not a suffix: names run to different
+   lengths and the figures were left ragged down the strip. */
+.publib__rail-cat .publib__count,
+.publib__rail-type .publib__count { margin-left: auto; padding-left: 8px; }
+.publib__badge {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  border-radius: 10px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.publib__badge--warn {
+  color: var(--status-warn, #d98a00);
+  background: color-mix(in srgb, var(--status-warn, #d98a00) 14%, transparent);
+}
+.publib__badge--ok {
+  color: var(--status-ok, #3f9d63);
+  background: color-mix(in srgb, var(--status-ok, #3f9d63) 14%, transparent);
+}
+.publib__badge--ai {
+  color: var(--chat-accent, #6ea8fe);
+  background: color-mix(in srgb, var(--chat-accent, #6ea8fe) 14%, transparent);
+}
+/* Row actions stay out of the way until the row is under the cursor — seven
+   buttons per row on a 300-row list is unreadable. They float ABOVE the row
+   rather than taking part in its layout: revealing them in flow reflowed the
+   row under the cursor (titles wrapped, the twisty moved) and the click that
+   summoned them landed on the wrong element. */
+.publib__actions {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  gap: 4px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 10px;
+  background: var(--chat-surface-3, var(--chat-surface-2));
+  box-shadow: -12px 0 12px -6px var(--chat-surface-3, var(--chat-surface-2));
+}
+.publib__row:hover .publib__actions,
+.publib__actions--open { display: flex; }
+/* The framed look belongs to Parse alone — the "⋯" and the preview eye are
+   glyphs, and a plate around each turned every row into a strip of buttons. */
+.publib__actions button:not(.publib__menu-btn):not(.publib__icon-btn) {
+  border: 1px solid var(--chat-border);
+  background: var(--chat-surface-2);
+  color: var(--chat-text-muted);
+  border-radius: 8px;
+  padding: 2px 7px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.publib__actions button:hover { color: var(--chat-text); }
+.publib__actions .publib__danger:hover { color: var(--status-danger); }
+/* Same "⋯" as the rail's: a bare glyph that lights up, no plate of its own. */
+.publib__menu-btn {
+  line-height: 1;
+  padding: 2px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--chat-text-muted);
+  font-size: 15px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.publib__menu-btn:hover { color: var(--chat-text); background: transparent; }
+.publib__icon-btn {
+  border: 0;
+  background: transparent;
+  color: var(--chat-text-muted);
+}
+.publib__icon-btn:hover { color: var(--chat-text); background: transparent; }
+/* The row menu: everything except Preview lives here, so a 300-row tree is a
+   list of titles rather than a wall of buttons. */
+/* Rendered in a portal at fixed coordinates: inside the row it was clipped by
+   the scrolling pane and painted under the next row's hover layer, which made
+   it look transparent and made every item unclickable. */
+.publib__menu {
+  position: fixed;
+  transform: translateX(-100%);
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--chat-border);
+  border-radius: 10px;
+  background: var(--chat-surface-3, var(--chat-surface-2));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+/* The menu lives in a portal on <body>, so it inherits nothing from the admin
+   panel — every colour has to be stated or the labels come out near-black on
+   the dark surface. */
+.publib__menu button {
+  border: 0;
+  background: transparent;
+  color: var(--chat-text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.publib__menu button:disabled { color: var(--chat-text-muted); cursor: default; }
+.publib__menu .publib__danger { color: var(--status-danger); }
+.publib__menu button:hover { background: var(--chat-surface-2); }
+.publib__head-add {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--chat-text-muted);
+  border-radius: 6px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.publib__head-add:hover { color: var(--chat-text); }
+/* The rail's "⋯" carries the same weight as a row's — one glyph, no icon. */
+.publib__rail-add,
+.publib__head-add { font-size: 15px; line-height: 1; }
+.publib__menu-danger { color: var(--chat-danger, #ff6b6b); }
+/* Preview is a third column, not a modal — reading a regulation while moving
+   around the tree is the normal case, and a modal blocks exactly that. */
+/* With the preview open the rail shrinks and the tree keeps the lion's share —
+   the tree is what you navigate; the preview only needs to be readable. */
+.publib--with-preview {
+  grid-template-columns: 176px minmax(320px, 1fr) minmax(300px, 0.85fr);
+}
+/* Reading a form is a different job from browsing the shelf: the preview takes
+   the section and the rail and the tree step aside until it is closed. */
+/* Review: the queue, the extracted text, the original — all three at once,
+   because the judgement is a comparison. */
+.publib__head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.publib--review {
+  grid-template-columns: 260px minmax(320px, 1fr) minmax(320px, 1fr);
+}
+.publib__review-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chat-text-muted);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.publib__review-row:hover {
+  background: var(--chat-surface-3);
+  color: var(--chat-text);
+}
+.publib__review-row.is-active {
+  background: var(--chat-surface-3);
+  color: var(--chat-text);
+}
+.publib__review-row-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.publib__review-position {
+  min-width: 74px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--chat-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.publib__review-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.publib--preview-full {
+  grid-template-columns: minmax(0, 1fr);
+}
+.publib--preview-full > .publib__rail,
+.publib--preview-full > .publib__pane {
+  display: none;
+}
+/* The three preview actions are one row of equal squares — download, full
+   screen, close — so none of them reads as more important than the others. */
+.publib__preview-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+
+.publib__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--chat-surface-2);
+  min-height: 0;
+  overflow: hidden;
+}
+.publib__preview-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.publib__preview-title { flex: 1 1 auto; font-size: 12.5px; }
+.publib__preview-tabs { display: flex; gap: 4px; }
+.publib__preview-tabs button {
+  border: 1px solid var(--chat-border);
+  background: transparent;
+  color: var(--chat-text-muted);
+  border-radius: 8px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.publib__preview-tabs button.is-active {
+  background: var(--chat-surface-3, var(--chat-surface));
+  color: var(--chat-text);
+}
+.publib__preview-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--chat-text-muted);
+  line-height: 1.5;
+}
+.publib__preview-text {
+  flex: 1 1 auto;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--chat-surface-3, var(--chat-surface));
+  color: var(--chat-text);
+  font-family: var(--chat-font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.publib__preview-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 420px;
+  border: 1px solid var(--chat-border);
+  border-radius: 10px;
+  background: var(--chat-surface);
+}
+.publib__empty,
+.publib__hint {
+  padding: 18px 8px;
+  font-size: 12px;
+  color: var(--chat-text-muted);
+}
+.publib__hint { padding: 4px 8px; }
+
+/* Publications Library category tree (Regs4Ships load) */
+.publications__search { max-width: 280px; }
+.publications__cat-row { cursor: pointer; user-select: none; }
+.publications__cat-row td {
+  background: var(--chat-surface-2);
+  border-top: 1px solid var(--chat-border);
+}
+.publications__cat-row:hover td {
+  background: var(--chat-surface-3, var(--chat-surface-2));
+}
+.publications__cat-toggle { display: inline-block; width: 14px; color: var(--chat-text-muted); }
 .compliance__links {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   margin-left: 4px;

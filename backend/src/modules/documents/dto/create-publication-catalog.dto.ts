@@ -27,4 +27,30 @@ export class CreatePublicationCatalogDto {
   @IsString()
   @MaxLength(120)
   conditionalNote?: string | null;
+
+  /** Library taxonomy (Regs4Ships load) — see PublicationCatalogEntity. */
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  category?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  jurisdiction?: string | null;
+
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  series?: string | null;
+
+  /** Section headings of the merged document — searchable, never rendered. */
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  contents?: string | null;
 }

@@ -16,6 +16,10 @@ export type ShipSummaryItem = {
   netTonnage: number | null;
   shipyard: string | null;
   classSociety: string | null;
+  /** Which shelves of the publications library this vessel reads:
+   *  "flag:MT", "class:RINA". Empty means the whole library. */
+  publicationFlag: string | null;
+  publicationClass: string | null;
   homePort: string | null;
   fleetManagerEmail: string | null;
   operationType: string | null;
@@ -45,6 +49,8 @@ export type CreateShipInput = {
   netTonnage?: number | null;
   shipyard?: string | null;
   classSociety?: string | null;
+  publicationFlag?: string | null;
+  publicationClass?: string | null;
   homePort?: string | null;
   fleetManagerEmail?: string | null;
   operationType?: string | null;
@@ -71,6 +77,8 @@ export type UpdateShipInput = {
   netTonnage?: number | null;
   shipyard?: string | null;
   classSociety?: string | null;
+  publicationFlag?: string | null;
+  publicationClass?: string | null;
   homePort?: string | null;
   fleetManagerEmail?: string | null;
   operationType?: string | null;

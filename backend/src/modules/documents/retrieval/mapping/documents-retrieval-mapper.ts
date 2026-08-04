@@ -182,6 +182,7 @@ export class DocumentsRetrievalMapper {
         candidate.chunk.document_keyword ||
         candidate.chunk.docnm_kwd ||
         'document',
+      hasFile: Boolean(candidate.document.storageKey),
       docClass: candidate.document.docClass,
       parseProfile: candidate.document.parseProfile,
       page: extractFirstChunkPage(candidate.chunk.positions),

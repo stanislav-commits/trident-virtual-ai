@@ -1,4 +1,4 @@
-export type AdminSectionRoute = "overview" | "users" | "ships" | "assets" | "documents" | "metrics" | "compliance" | "maintenance" | "tasks" | "crew" | "inventory" | "alerts" | "publications";
+export type AdminSectionRoute = "overview" | "users" | "ships" | "assets" | "documents" | "metrics" | "compliance" | "maintenance" | "tasks" | "crew" | "inventory" | "alerts" | "publications" | "publications-review";
 
 /**
  * Landing section for the admin panel (entering from chat or bare /admin).
@@ -36,6 +36,7 @@ const adminSections = new Set<AdminSectionRoute>([
   "inventory",
   "alerts",
   "publications",
+  "publications-review",
 ]);
 
 export function isAdminSectionRoute(

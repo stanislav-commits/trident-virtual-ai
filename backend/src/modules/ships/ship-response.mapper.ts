@@ -16,6 +16,8 @@ export interface ShipResponseDto {
   netTonnage: number | null;
   shipyard: string | null;
   classSociety: string | null;
+  publicationFlag: string | null;
+  publicationClass: string | null;
   homePort: string | null;
   fleetManagerEmail: string | null;
   operationType: string | null;
@@ -47,6 +49,8 @@ export function toShipResponse(ship: ShipEntity): ShipResponseDto {
     netTonnage: ship.netTonnage,
     shipyard: ship.shipyard,
     classSociety: ship.classSociety,
+    publicationFlag: ship.publicationFlag,
+    publicationClass: ship.publicationClass,
     homePort: ship.homePort,
     fleetManagerEmail: ship.fleetManagerEmail,
     operationType: ship.operationType,

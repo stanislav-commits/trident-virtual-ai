@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PublicationCatalogItem } from "../../api/documentsApi";
 import {
+  appendPublicationCatalogSection,
   attachPublicationCatalogFile,
   createPublicationCatalogItem,
   detachPublicationCatalogFile,
@@ -37,6 +38,41 @@ export function PublicationsSection({ token }: PublicationsSectionProps) {
   const [addNote, setAddNote] = useState("");
   const [creating, setCreating] = useState(false);
   const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
+  const [query, setQuery] = useState("");
+  const [openCats, setOpenCats] = useState<Set<string>>(() => new Set());
+  // "Add article" modal — append a section to a merged markdown publication
+  const [appendItem, setAppendItem] = useState<PublicationCatalogItem | null>(null);
+  const [appendHeading, setAppendHeading] = useState("");
+  const [appendFile, setAppendFile] = useState<File | null>(null);
+  const [appending, setAppending] = useState(false);
+
+  const submitAppend = async () => {
+    if (!token || !appendItem || !appendFile || !appendHeading.trim()) return;
+    setAppending(true);
+    try {
+      await appendPublicationCatalogSection(
+        token,
+        appendItem.id,
+        appendHeading.trim(),
+        appendFile,
+      );
+      setFeedback({
+        message: `Article added to "${appendItem.title}" — re-parsing.`,
+        type: "success",
+      });
+      setAppendItem(null);
+      setAppendHeading("");
+      setAppendFile(null);
+      void loadCatalog();
+    } catch (e) {
+      setFeedback({
+        message: e instanceof Error ? e.message : "Failed to append the article",
+        type: "error",
+      });
+    } finally {
+      setAppending(false);
+    }
+  };
 
   const loadCatalog = useCallback(async () => {
     if (!token) {
@@ -247,6 +283,40 @@ export function PublicationsSection({ token }: PublicationsSectionProps) {
 
   const uploadedCount = catalog.filter((item) => Boolean(item.fileName)).length;
 
+  // ── Category tree. The Regs4Ships load grows the catalog from 32 slots to
+  //    ~1 100 documents — a flat table stops being scannable, so rows group
+  //    by category (hand-made slots land in "General") behind a search box.
+  //    Searching expands everything that matches; otherwise groups toggle. ──
+  const normalizedQuery = query.trim().toLowerCase();
+  const groups = useMemo(() => {
+    const filtered = normalizedQuery
+      ? catalog.filter((item) =>
+          [item.title, item.series, item.category, item.fileName, item.contents]
+            .filter(Boolean)
+            .some((s) => (s as string).toLowerCase().includes(normalizedQuery)),
+        )
+      : catalog;
+    const byCat = new Map<string, PublicationCatalogItem[]>();
+    for (const item of filtered) {
+      const cat = item.category ?? "General";
+      const list = byCat.get(cat) ?? [];
+      list.push(item);
+      byCat.set(cat, list);
+    }
+    return [...byCat.entries()].sort(([a], [b]) =>
+      a === "General" ? -1 : b === "General" ? 1 : a.localeCompare(b),
+    );
+  }, [catalog, normalizedQuery]);
+  const singleGroup = groups.length === 1;
+
+  const toggleCat = (cat: string) =>
+    setOpenCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+
   return (
     <section className="admin-panel__section">
       <div className="admin-panel__section-head">
@@ -290,12 +360,19 @@ export function PublicationsSection({ token }: PublicationsSectionProps) {
           <div className="admin-panel__metrics-toolbar-strip">
             <div className="admin-panel__metrics-toolbar-left">
               <span className="admin-panel__metrics-count">
-                {uploadedCount} of {catalog.length} uploaded
+                {uploadedCount} of {catalog.length} uploaded ·{" "}
+                {groups.length} categor{groups.length === 1 ? "y" : "ies"}
               </span>
               {loading && (
                 <span className="admin-panel__muted">Refreshing...</span>
               )}
             </div>
+            <input
+              className="admin-panel__input publications__search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search title, series or category…"
+            />
           </div>
 
           <table className="admin-panel__table admin-panel__table--documents">
@@ -309,7 +386,33 @@ export function PublicationsSection({ token }: PublicationsSectionProps) {
               </tr>
             </thead>
             <tbody>
-              {catalog.map((item) => {
+              {groups.flatMap(([cat, items]) => {
+                const open =
+                  Boolean(normalizedQuery) || singleGroup || openCats.has(cat);
+                const done = items.filter((i) => Boolean(i.fileName)).length;
+                const rows = [
+                  <tr
+                    className="admin-panel__row publications__cat-row"
+                    key={`cat:${cat}`}
+                    onClick={() => toggleCat(cat)}
+                  >
+                    <td className="admin-panel__td" colSpan={3}>
+                      <span className="publications__cat-toggle">
+                        {open ? "▾" : "▸"}
+                      </span>{" "}
+                      <strong>{cat}</strong>{" "}
+                      <span className="admin-panel__muted">
+                        {done}/{items.length}
+                        {items[0]?.jurisdiction
+                          ? ` · ${items[0].jurisdiction}`
+                          : ""}
+                      </span>
+                    </td>
+                  </tr>,
+                ];
+                if (!open) return rows;
+                rows.push(
+                  ...items.map((item) => {
                 const hasFile = Boolean(item.fileName);
                 const isOpening = openingId === item.id;
                 const isUploading = uploadingId === item.id;
@@ -358,6 +461,7 @@ export function PublicationsSection({ token }: PublicationsSectionProps) {
                           void handleFileSelected(item, nextFile);
                         }}
                       />
+                      <div className="admin-panel__document-actions publications__actions">
                       {hasFile ? (
                         <>
                           <button
@@ -368,6 +472,21 @@ export function PublicationsSection({ token }: PublicationsSectionProps) {
                           >
                             {isOpening ? "Opening..." : "View"}
                           </button>
+                          {item.fileName?.toLowerCase().endsWith(".md") && (
+                            <button
+                              type="button"
+                              className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
+                              disabled={busy}
+                              title="Append a new article/section to this publication (PDF, .md or .txt)"
+                              onClick={() => {
+                                setAppendItem(item);
+                                setAppendHeading("");
+                                setAppendFile(null);
+                              }}
+                            >
+                              Add article
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="admin-panel__btn admin-panel__btn--ghost admin-panel__btn--compact"
@@ -397,14 +516,85 @@ export function PublicationsSection({ token }: PublicationsSectionProps) {
                           {isUploading ? "Uploading..." : "Upload"}
                         </button>
                       )}
+                      </div>
                     </td>
                   </tr>
                 );
+                  }),
+                );
+                return rows;
               })}
             </tbody>
           </table>
         </div>
       )}
+
+      {appendItem &&
+        createPortal(
+          <div
+            className="admin-panel__modal-overlay"
+            onClick={() => !appending && setAppendItem(null)}
+          >
+            <div
+              className="admin-panel__modal"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h2 className="admin-panel__modal-title">
+                Add article — {appendItem.title}
+              </h2>
+              <div className="admin-panel__modal-form">
+                <div className="admin-panel__modal-field">
+                  <label className="admin-panel__field-label">
+                    Article heading
+                  </label>
+                  <input
+                    className="admin-panel__input admin-panel__input--full"
+                    value={appendHeading}
+                    onChange={(event) => setAppendHeading(event.target.value)}
+                    placeholder="e.g. MS Notice No. 197 — …"
+                    maxLength={200}
+                    autoFocus
+                  />
+                </div>
+                <div className="admin-panel__modal-field">
+                  <label className="admin-panel__field-label">
+                    Article file (PDF with text, .md or .txt)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,.md,.txt"
+                    onChange={(event) =>
+                      setAppendFile(event.target.files?.[0] ?? null)
+                    }
+                  />
+                </div>
+                <p className="admin-panel__muted">
+                  The section is appended to the end of this publication and
+                  the document re-parses — chat picks it up in a few minutes.
+                </p>
+              </div>
+              <div className="admin-panel__modal-actions">
+                <button
+                  type="button"
+                  className="admin-panel__btn"
+                  disabled={appending}
+                  onClick={() => setAppendItem(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="admin-panel__btn admin-panel__btn--primary"
+                  disabled={appending || !appendHeading.trim() || !appendFile}
+                  onClick={() => void submitAppend()}
+                >
+                  {appending ? "Appending..." : "Append article"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {showAddForm &&
         createPortal(

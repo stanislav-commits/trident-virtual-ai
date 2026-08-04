@@ -86,6 +86,18 @@ export class ShipEntity {
   @Column({ name: 'class_society', type: 'varchar', length: 120, nullable: true })
   classSociety!: string | null;
 
+  /**
+   * Which shelves of the publications library this vessel reads, in the
+   * library's own vocabulary: "flag:MT", "class:RINA". Kept apart from `flag`
+   * and `classSociety`, which are free text a human wrote — retrieval must
+   * compare codes, not spellings. Null means "no narrowing": the whole library.
+   */
+  @Column({ name: 'publication_flag', type: 'varchar', length: 40, nullable: true })
+  publicationFlag!: string | null;
+
+  @Column({ name: 'publication_class', type: 'varchar', length: 40, nullable: true })
+  publicationClass!: string | null;
+
   @Column({ name: 'home_port', type: 'varchar', length: 120, nullable: true })
   homePort!: string | null;
 

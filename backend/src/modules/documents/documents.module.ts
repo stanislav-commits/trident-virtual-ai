@@ -8,6 +8,9 @@ import { ShipEntity } from '../ships/entities/ship.entity';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentFormLinkEntity } from './entities/document-form-link.entity';
 import { PublicationCatalogEntity } from './entities/publication-catalog.entity';
+import { PublicationNodeEntity } from './entities/publication-node.entity';
+import { PublicationShelfEntity } from './entities/publication-shelf.entity';
+import { PublicationTreeService } from './publications/publication-tree.service';
 import { DocumentsController } from './documents.controller';
 import { DocumentsIngestionService } from './ingestion/documents-ingestion.service';
 import { DocumentsParseDrainService } from './parsing/documents-parse-drain.service';
@@ -28,7 +31,7 @@ import { PublicationCatalogService } from './publications/publication-catalog.se
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DocumentEntity, DocumentFormLinkEntity, PublicationCatalogEntity, ShipEntity, AssetEntity, AssetDocumentLinkEntity]),
+    TypeOrmModule.forFeature([DocumentEntity, DocumentFormLinkEntity, PublicationCatalogEntity, PublicationNodeEntity, PublicationShelfEntity, ShipEntity, AssetEntity, AssetDocumentLinkEntity]),
     IntegrationsModule,
     AccessControlModule,
   ],
@@ -50,6 +53,7 @@ import { PublicationCatalogService } from './publications/publication-catalog.se
     DocumentsRetrievalService,
     DocumentsFileLookupService,
     PublicationCatalogService,
+    PublicationTreeService,
   ],
   exports: [DocumentsService, DocumentsFileLookupService],
 })

@@ -7,6 +7,10 @@ import {
   type ShipSummaryItem,
 } from "../../api/shipsApi";
 import { instantiateCompliance } from "../../api/complianceApi";
+import {
+  fetchPublicationJurisdictions,
+  type PublicationJurisdiction,
+} from "../../api/publicationTreeApi";
 import { getUsers, updateUserShip, type UserListItem } from "../../api/usersApi";
 import { useAdminShip } from "../../context/AdminShipContext";
 import { useAuth } from "../../context/AuthContext";
@@ -25,6 +29,8 @@ const EMPTY_FORM = {
   buildYear: "",
   shipyard: "",
   classSociety: "",
+  publicationFlag: "",
+  publicationClass: "",
   homePort: "",
   grossTonnage: "",
   netTonnage: "",
@@ -90,6 +96,8 @@ function shipToForm(ship: ShipSummaryItem): FormState {
     buildYear: ship.buildYear != null ? String(ship.buildYear) : "",
     shipyard: ship.shipyard ?? "",
     classSociety: ship.classSociety ?? "",
+    publicationFlag: ship.publicationFlag ?? "",
+    publicationClass: ship.publicationClass ?? "",
     homePort: ship.homePort ?? "",
     grossTonnage: ship.grossTonnage != null ? String(ship.grossTonnage) : "",
     beamM: ship.beamM != null ? String(ship.beamM) : "",
@@ -128,6 +136,7 @@ export function AddVesselModal({
     editShip ? shipToForm(editShip) : EMPTY_FORM,
   );
   const [organizations, setOrganizations] = useState<string[]>([]);
+  const [jurisdictions, setJurisdictions] = useState<PublicationJurisdiction[]>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
 
   // ── Crew assignment (edit mode only) ──────────────────────────────────
@@ -183,6 +192,23 @@ export function AddVesselModal({
   const hasUnresolvedCrewMoves = removedAssigned.some((u) => !movedCrewTargets[u.id]);
 
   // Load the metrics organizations once per open (the modal mounts fresh).
+  // The library's own list, so the two scope fields can only offer shelves
+  // that exist.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    void fetchPublicationJurisdictions(token)
+      .then((entries) => {
+        if (!cancelled) setJurisdictions(entries);
+      })
+      .catch(() => {
+        if (!cancelled) setJurisdictions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
@@ -230,6 +256,8 @@ export function AddVesselModal({
       companyImoNumber: form.companyImoNumber.trim() || null,
       shipyard: form.shipyard.trim() || null,
       classSociety: form.classSociety.trim() || null,
+      publicationFlag: form.publicationFlag.trim() || null,
+      publicationClass: form.publicationClass.trim() || null,
       homePort: form.homePort.trim() || null,
       operationType: form.operationType,
       metricAnalysisHint: form.metricAnalysisHint.trim() || null,
@@ -436,6 +464,53 @@ export function AddVesselModal({
             value={form.classSociety}
             onChange={set("classSociety")}
           />
+          {/* Which shelves of the publications library this vessel reads. The
+              options are whatever the library actually holds, so a vessel can
+              never be scoped to a flag or a society with nothing behind it. */}
+          <label className="vessel-modal__field">
+            <span className="vessel-modal__field-label">Flag rules</span>
+            <select
+              value={form.publicationFlag}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, publicationFlag: event.target.value }))
+              }
+            >
+              <option value="">Whole library</option>
+              {jurisdictions
+                .filter((entry) => entry.kind === "flag")
+                .map((entry) => (
+                  <option
+                    key={entry.jurisdiction}
+                    value={entry.jurisdiction}
+                    title={entry.publications.join(", ")}
+                  >
+                    {entry.label}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="vessel-modal__field">
+            <span className="vessel-modal__field-label">Class register rules</span>
+            <select
+              value={form.publicationClass}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, publicationClass: event.target.value }))
+              }
+            >
+              <option value="">Whole library</option>
+              {jurisdictions
+                .filter((entry) => entry.kind === "class")
+                .map((entry) => (
+                  <option
+                    key={entry.jurisdiction}
+                    value={entry.jurisdiction}
+                    title={entry.publications.join(", ")}
+                  >
+                    {entry.label}
+                  </option>
+                ))}
+            </select>
+          </label>
           <Field
             label="Home port"
             value={form.homePort}

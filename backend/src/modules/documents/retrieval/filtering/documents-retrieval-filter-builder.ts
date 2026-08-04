@@ -19,6 +19,48 @@ import {
   scoreDocumentTitleHintMatch,
 } from '../documents-retrieval.types';
 
+/** Flags inside the Union — an EU regulation binds through the flag. */
+const EU_FLAGS = new Set([
+  'flag:mt', 'flag:cy', 'flag:gr', 'flag:it', 'flag:fr', 'flag:es', 'flag:pt',
+  'flag:de', 'flag:nl', 'flag:be', 'flag:dk', 'flag:se', 'flag:fi', 'flag:pl',
+  'flag:hr', 'flag:ie', 'flag:ee', 'flag:lv', 'flag:lt', 'flag:si', 'flag:bg',
+  'flag:ro', 'flag:lu', 'flag:at', 'flag:cz', 'flag:sk', 'flag:hu',
+]);
+
+/**
+ * Does a publication apply to this vessel?
+ *
+ * A shelf declares whose rules it holds — "flag:MT", "class:RINA",
+ * "international", "eu" — and a vessel declares which flag and class she sails
+ * under. Anything international applies to everyone; anything belonging to
+ * another flag or another society does not, and it is exactly that material
+ * that made an answer about a Maltese requirement come back quoting Bermuda.
+ *
+ * A vessel with no scope set keeps the whole library: the filter narrows on
+ * request, it never hides on a blank field.
+ */
+export function appliesToVessel(
+  jurisdiction: string | null | undefined,
+  scope?: { flag?: string | null; classSociety?: string | null },
+): boolean {
+  if (!jurisdiction) return true;
+  const flag = scope?.flag?.trim() || null;
+  const classSociety = scope?.classSociety?.trim() || null;
+  if (!flag && !classSociety) return true;
+
+  const value = jurisdiction.trim().toLowerCase();
+  if (value === 'international') return true;
+  // The EU shelf belongs to a flag inside the Union, and Malta is one; a
+  // vessel outside it is not bound by an EU regulation through class.
+  if (value === 'eu') return flag ? EU_FLAGS.has(flag.toLowerCase()) : true;
+  if (value.startsWith('flag:')) return !flag || value === flag.toLowerCase();
+  if (value.startsWith('class:')) {
+    return !classSociety || value === classSociety.toLowerCase();
+  }
+  return true;
+}
+
+
 @Injectable()
 export class DocumentsRetrievalFilterBuilder {
   constructor(
@@ -86,8 +128,9 @@ export class DocumentsRetrievalFilterBuilder {
    */
   async loadPublicationDocuments(
     platformDatasetId: string,
+    scope?: { flag?: string | null; classSociety?: string | null },
   ): Promise<DocumentEntity[]> {
-    return this.documentsRepository.find({
+    const documents = await this.documentsRepository.find({
       where: {
         shipId: PLATFORM_SHIP_ID,
         ragflowDatasetId: platformDatasetId,
@@ -100,6 +143,9 @@ export class DocumentsRetrievalFilterBuilder {
         updatedAt: 'DESC',
       },
     });
+    return documents.filter((document) =>
+      appliesToVessel(document.jurisdiction, scope),
+    );
   }
 
   applyLocalMetadataPrefilter(

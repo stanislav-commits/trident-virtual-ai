@@ -262,6 +262,12 @@ export interface PublicationCatalogItem {
   documentId: string | null;
   fileName: string | null;
   parseStatus: string | null;
+  /** Library taxonomy (Regs4Ships load); null on the hand-made slots. */
+  category: string | null;
+  jurisdiction: string | null;
+  series: string | null;
+  /** Section headings of the merged document — searched, not rendered. */
+  contents: string | null;
 }
 
 export async function listPublicationCatalog(
@@ -301,6 +307,30 @@ export async function createPublicationCatalogItem(
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(errorBody.message ?? "Failed to add publication");
+  }
+
+  return response.json();
+}
+
+/** "Add article": append one section to a merged markdown publication. */
+export async function appendPublicationCatalogSection(
+  token: string,
+  catalogId: string,
+  heading: string,
+  file: File,
+): Promise<PublicationCatalogItem> {
+  const form = new FormData();
+  form.append("heading", heading);
+  form.append("file", file);
+
+  const response = await fetchWithAuth(
+    `documents/publications/catalog/${catalogId}/append`,
+    { token, method: "POST", body: form },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.message ?? "Failed to append the article");
   }
 
   return response.json();

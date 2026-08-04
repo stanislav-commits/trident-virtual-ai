@@ -192,6 +192,17 @@ export class VisionExtractionService implements OnApplicationBootstrap {
       return;
     }
 
+    // Vision reads page IMAGES — it has nothing to do with a file that is
+    // already text. The publications library uploads assembled markdown as a
+    // publication document, and those were reaching the extractor and failing
+    // one by one.
+    const fileName = (document.originalFileName ?? '').toLowerCase();
+    if (!fileName.endsWith('.pdf')) {
+      document.extractionStatus = 'none';
+      await this.documentsRepository.save(document);
+      return;
+    }
+
     const extractorDir = this.getExtractorDir();
     if (!extractorDir) {
       await this.markFailed(document, 'Vision extractor is not configured');

@@ -224,6 +224,64 @@ export const XIcon = () => (
   </svg>
 );
 
+/** Save the file as it is. */
+export const DownloadIcon = () => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M12 3v12" />
+    <path d="M7 11l5 5 5-5" />
+    <path d="M4 20h16" />
+  </svg>
+);
+
+/**
+ * Full screen and back. The two states are opposites, not a rotation: going
+ * out, the arrows run to the far corners; coming back, they face each other.
+ */
+export const ExpandIcon = () => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M4 9V4h5" />
+    <path d="M4 4l7 7" />
+    <path d="M20 15v5h-5" />
+    <path d="M20 20l-7-7" />
+  </svg>
+);
+
+export const CollapseIcon = () => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M10 3v5H5" />
+    <path d="M3 3l7 7" />
+    <path d="M14 21v-5h5" />
+    <path d="M21 21l-7-7" />
+  </svg>
+);
+
 export const CopyIcon = () => (
   <svg
     width="12"
@@ -422,5 +480,22 @@ export const EditIcon = () => (
     strokeLinejoin="round"
   >
     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+  </svg>
+);
+
+export const EyeIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
   </svg>
 );

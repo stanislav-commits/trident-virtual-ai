@@ -52,6 +52,8 @@ export class ShipsCommandService {
       grossTonnage: input.grossTonnage ?? null,
       shipyard: input.shipyard ?? null,
       classSociety: input.classSociety ?? null,
+      publicationFlag: input.publicationFlag ?? null,
+      publicationClass: input.publicationClass ?? null,
       homePort: input.homePort ?? null,
       fleetManagerEmail: input.fleetManagerEmail ?? null,
       operationType: input.operationType ?? null,
@@ -151,6 +153,12 @@ export class ShipsCommandService {
     if (input.shipyard !== undefined) ship.shipyard = input.shipyard ?? null;
     if (input.classSociety !== undefined) {
       ship.classSociety = input.classSociety ?? null;
+    }
+    if (input.publicationFlag !== undefined) {
+      ship.publicationFlag = input.publicationFlag ?? null;
+    }
+    if (input.publicationClass !== undefined) {
+      ship.publicationClass = input.publicationClass ?? null;
     }
     if (input.homePort !== undefined) ship.homePort = input.homePort ?? null;
     if (input.fleetManagerEmail !== undefined) {

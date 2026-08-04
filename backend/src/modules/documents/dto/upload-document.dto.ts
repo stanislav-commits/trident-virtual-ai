@@ -55,6 +55,13 @@ export class UploadDocumentDto {
   @IsString()
   language?: string;
 
+  /** Whose rules this is: "flag:MT", "class:RINA", "international". Set when a
+   *  publication shelf is assembled; it is what scopes retrieval to a vessel. */
+  @Transform(({ value }) => normalizeOptionalText(value))
+  @IsOptional()
+  @IsString()
+  jurisdiction?: string;
+
   @Transform(({ value }) => normalizeOptionalText(value))
   @IsOptional()
   @IsString()

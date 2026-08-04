@@ -114,6 +114,10 @@ import { AddTitleModelPrice20260731000200 } from './migrations/20260731000200-ad
 import { AddAdminModelPrice20260731000300 } from './migrations/20260731000300-add-admin-model-price';
 import { ClearNonTimeExpiry20260731001000 } from './migrations/20260731001000-clear-non-time-expiry';
 import { AddComplianceEvents20260801000100 } from './migrations/20260801000100-add-compliance-events';
+import { PublicationCatalogTaxonomy20260801000200 } from './migrations/20260801000200-publication-catalog-taxonomy';
+import { AddPublicationNodes20260801000300 } from './migrations/20260801000300-add-publication-nodes';
+import { AddPublicationShelves20260801000400 } from './migrations/20260801000400-add-publication-shelves';
+import { AddJurisdictionScoping20260804000100 } from './migrations/20260804000100-add-jurisdiction-scoping';
 import { AccessMatrixCellEntity } from '../../modules/access-control/entities/access-matrix-cell.entity';
 import { CrewMemberEntity } from '../../modules/crew/entities/crew-member.entity';
 import { PmsTaskEntity } from '../../modules/pms/entities/pms-task.entity';
@@ -253,6 +257,10 @@ const dataSource = new DataSource({
     AddAdminModelPrice20260731000300,
     ClearNonTimeExpiry20260731001000,
     AddComplianceEvents20260801000100,
+    PublicationCatalogTaxonomy20260801000200,
+    AddPublicationNodes20260801000300,
+    AddPublicationShelves20260801000400,
+    AddJurisdictionScoping20260804000100,
   ],
   synchronize: false,
   ssl: db.ssl

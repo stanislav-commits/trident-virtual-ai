@@ -168,6 +168,11 @@ export class DocumentEntity {
   })
   timeScope!: DocumentTimeScope;
 
+  /** The publication shelf's jurisdiction — "flag:MT", "class:RINA",
+   *  "international". Null for everything that is not a publication. */
+  @Column({ name: 'jurisdiction', type: 'varchar', length: 40, nullable: true })
+  jurisdiction!: string | null;
+
   @Column({ name: 'source_priority', type: 'integer', default: 100 })
   sourcePriority!: number;
 

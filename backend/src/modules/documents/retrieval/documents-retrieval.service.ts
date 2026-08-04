@@ -89,6 +89,8 @@ export class DocumentsRetrievalService {
     const publicationDocuments = platformShip?.ragflowDatasetId
       ? await this.filterBuilder.loadPublicationDocuments(
           platformShip.ragflowDatasetId,
+          // The vessel's own flag and class decide which shelves she reads.
+          { flag: ship.publicationFlag, classSociety: ship.publicationClass },
         )
       : [];
 

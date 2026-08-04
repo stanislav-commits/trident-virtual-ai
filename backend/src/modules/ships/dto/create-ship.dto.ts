@@ -65,6 +65,21 @@ export class CreateShipDto {
   @IsString()
   classSociety?: string | null;
 
+  /**
+   * Which shelves of the publications library this vessel reads, in the
+   * library's own vocabulary: "flag:MT", "class:RINA". Empty means the whole
+   * library — the filter narrows on request, it never hides on a blank field.
+   */
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  publicationFlag?: string | null;
+
+  @Transform(({ value }) => normalizeTrimmedText(value))
+  @IsOptional()
+  @IsString()
+  publicationClass?: string | null;
+
   @Transform(({ value }) => normalizeTrimmedText(value))
   @IsOptional()
   @IsString()

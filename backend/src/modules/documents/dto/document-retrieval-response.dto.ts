@@ -56,6 +56,10 @@ export class DocumentRetrievalResultDto {
   ragflowDocumentId!: string;
   chunkId!: string;
   filename!: string;
+  /** The original is on file and can be handed to the user as-is — a blank
+   *  form is filled in and signed, and no amount of parsing substitutes for
+   *  the sheet itself. */
+  hasFile!: boolean;
   docClass!: DocumentDocClass;
   parseProfile!: DocumentParseProfile;
   page!: number | null;

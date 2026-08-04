@@ -30,6 +30,8 @@ export function buildDocumentContextReferences(
       pageNumber: result.page ?? undefined,
       snippet: result.snippet,
       sourceTitle: result.filename,
+      // Lets the card offer the sheet itself, not only the text of it.
+      hasFile: result.hasFile,
     }));
 }
 

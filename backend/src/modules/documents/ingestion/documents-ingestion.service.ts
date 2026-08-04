@@ -111,6 +111,7 @@ export class DocumentsIngestionService {
       ragflowDatasetId: ship.ragflowDatasetId ?? null,
       ragflowDocumentId: null,
       docClass: input.docClass,
+      jurisdiction: input.jurisdiction ?? null,
       language: input.language ?? null,
       equipmentOrSystem: input.equipmentOrSystem ?? null,
       equipmentName: input.equipmentName ?? null,

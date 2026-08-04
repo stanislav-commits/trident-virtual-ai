@@ -173,6 +173,38 @@ export function getChatSourceGroupKey(citation: ChatContextReferenceDto): string
   );
 }
 
+/**
+ * Save the cited file instead of viewing it.
+ *
+ * A form is not read, it is filled in and signed, so the answer that names one
+ * has to be able to hand over the sheet itself. Same fetch as opening it — the
+ * file endpoint wants the token — but delivered as a download.
+ */
+export async function downloadChatDocumentSource(
+  target: ChatDocumentOpenTarget,
+  token: string | null | undefined,
+  fileName?: string,
+): Promise<boolean> {
+  if (!token || target.kind !== "document") {
+    return false;
+  }
+  try {
+    const blob = await fetchDocumentFile(token, target.documentId);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName?.trim() || "document";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Give the browser the tick it needs to start the save before the blob goes.
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function openChatDocumentSource(
   target: ChatDocumentOpenTarget,
   token: string | null | undefined,

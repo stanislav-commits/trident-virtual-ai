@@ -20,7 +20,8 @@ import {
 } from "../components/admin/AdminPanelIcons";
 import { OverviewSection } from "../components/admin/OverviewSection";
 import { DocumentsSection } from "../components/admin/DocumentsSection";
-import { PublicationsSection } from "../components/admin/PublicationsSection";
+import { PublicationsLibrary } from "../components/admin/PublicationsLibrary";
+import { PublicationsReview } from "../components/admin/PublicationsReview";
 import { MetricsSection } from "../components/admin/MetricsSection";
 import { UsersSection } from "../components/admin/UsersSection";
 import { ShipsSection } from "../components/admin/ShipsSection";
@@ -58,6 +59,7 @@ const SECTION_TITLES: Record<AdminSectionRoute, string> = {
   documents: "Knowledge Base",
   metrics: "Metrics",
   publications: "Publications",
+  "publications-review": "Text review",
 };
 
 export function AdminPanelPage() {
@@ -316,7 +318,7 @@ export function AdminPanelPage() {
 
           <div
             className={`admin-panel__content${
-              ["overview", "compliance", "maintenance", "tasks", "crew", "inventory", "alerts", "documents", "metrics", "publications"].includes(
+              ["overview", "compliance", "maintenance", "tasks", "crew", "inventory", "alerts", "documents", "metrics", "publications", "publications-review"].includes(
                 activeSection,
               )
                 ? " admin-panel__content--wide"
@@ -370,8 +372,20 @@ export function AdminPanelPage() {
 
             {activeSection === "documents" && <DocumentsSection />}
 
+            {/* The queue is a mode of the library, not a section of its own:
+                it is the same shelves, read for a different purpose. */}
             {activeSection === "publications" && (
-              <PublicationsSection token={token} />
+              <PublicationsLibrary
+                token={token}
+                onOpenReview={() => handleNavClick("publications-review")}
+              />
+            )}
+
+            {activeSection === "publications-review" && (
+              <PublicationsReview
+                token={token}
+                onBack={() => handleNavClick("publications")}
+              />
             )}
           </div>
         </main>

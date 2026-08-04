@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import type { ChatContextReferenceDto } from "../../types/chat";
 import {
   CHAT_SOURCE_KIND_LABEL,
+  downloadChatDocumentSource,
   getChatDocumentOpenTarget,
   getChatSourceGroupKey,
   getChatSourceKind,
@@ -127,6 +128,15 @@ export function SourceCitations({
       return rawUrl;
     }
   };
+
+  const handleDownloadDocument = useCallback(
+    (citation: ChatContextReferenceDto) => {
+      const target = getChatDocumentOpenTarget(citation);
+      if (!target) return;
+      void downloadChatDocumentSource(target, token, citation.sourceTitle);
+    },
+    [token],
+  );
 
   const handleOpenDocument = useCallback(
     (citation: ChatContextReferenceDto) => {
@@ -306,6 +316,22 @@ export function SourceCitations({
                     <span className="chat-source-item__page">
                       p.&nbsp;{pages.join(", ")}
                     </span>
+                  )}
+                  {/* A form is handed over, not just read: when the original
+                      is on file, offer to save it beside opening it. */}
+                  {canOpenDocument && primaryCitation.hasFile && (
+                    <button
+                      type="button"
+                      className="chat-source-item__open-icon chat-source-item__download"
+                      title="Download the original"
+                      aria-label="Download the original"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDownloadDocument(primaryCitation);
+                      }}
+                    >
+                      {"\u2913"}
+                    </button>
                   )}
                   {(canOpenDocument || sourceUrl) && (
                     <span

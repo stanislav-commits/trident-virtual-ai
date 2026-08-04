@@ -1,0 +1,122 @@
+RES07	Rules for the classification of floating docks
+RES13	Rules for loading and unloading arrangements and for other lifting appliances on board ships
+RES15	Rules for the classification of underwater units
+RES18	Rules for masting and rigging of sailing ships
+RES21	Rules for the classification of high speed craft (constructed on or after 1 July 2002)
+RES22	Rules for the Classification of Ships with Plastic, Aluminium Alloy or Wooden Hull
+RES27	Rules for the Classification of Workboats
+RES28	Rules for the Classification of Wing-In-Ground (WIG) Craft
+RES30	Rules for the Classification of Electric Harbour Craft
+RES31	Rules for the Classification of Yachts
+NCC13	Rules for the type approval and testing of air pipe automatic closing devices
+NCC18	Rules for the evaluation of a reduced conventional age of ships
+NCC19	Rules for Recognition of Test Laboratories
+NCC20	Rules for type approval of marine plywood
+NCC22	Rules for the certification of lifts and escalators for passengers and crew members
+NCC23	Rules for Testing and Certification of Marine Materials and Equipment
+NCC24	Rules for the type approval of components of composite materials intended for hull construction
+NCC26	Rules for Safety Management System certification
+NCC29	Rules for the certification of welding inspectors
+NCC31	Rules for the type approval, installation and testing of rigid expanded insulating materials
+NCC33	Rules for carrying out non-destructive examinations of welding
+NCC34	Rules for the type approval and testing of portable flexible hyperbaric chambers
+NCC38	Rules for the type approval of flexible hoses and expansion joints
+NCC40	Rules for the type approval of portable tanks for pleasure vessels
+NCC41	Rules for the type approval of inflatable recreational boats
+NCC43	Rules for the certification of service suppliers
+NCC47	Rules for the certification of the bollard pull of tugs
+NCC49	Rules for the certification of rated power of diesel propulsion engines
+NCC57	Rules for the certification of marine equipment in accordance with European Directive 2014/90/EU
+NCC58	Rules for the type approval of mechanical joints for pipes
+NCC59	Rules for the certification and acceptance on board of class A and B fire doors
+NCC61	Rules for the approval of manufacturers of materials
+NCC63	Rules for shipboard security system certification
+NCC66	Rules for the type approval of fixed aerosol fire-extinguishing systems in machinery spaces
+NCC67	Rules for the type approval of glass reinforced plastic grid platforms
+NCC68	Rules for the type approval of products having reaction to fire characteristics (IMO FTP Code)
+NCC69	Rules for the type approval of divisions having resistance to fire characteristics (IMO FTP Code)
+NCC70	Rules for the certification of innovative environmental technologies (IET)
+NCC71	Rules for the type approval of fixed clean agent fire-extinguishing systems in machinery spaces
+NCC72	Rules for the type approval of fixed powder fire-extinguishing systems in machinery spaces
+NCC73	Rules for the EC type examination and RINA type approval certification of fire extinguishers
+NCC74	Rules for the type approval of plastic pipes
+NCC75	Rules for the certification of advanced life jackets and buoyancy aids
+NCC76	Rules for the type approval and periodical controls of liquid foam concentrates
+NCC77	Rules for the qualification and certification of marine adhesive bonders for yachts
+NCC78	Rules for the qualification and certification of coating Inspectors in the marine sector
+NCC79	Rules for the type approval of fixed water-based fire-extinguishing systems in machinery spaces
+NCC80	Rules for the certification of coating systems
+NCC81	Rules for the qualification and certification of technicians working in factories building yachts and composite products
+NCC82	Rules for the certification of the production quality control system of manufacturers of yachts and composite products
+NCC83	Rules for the Certification of Training and Competency Management
+NCC85	Rules for the Certification of Suppliers of Electrical Maintenance Services
+NCC86	Rules for the Certification of Sailing Rigs
+NCC87	Rules for the Certification of Best Management Scheme of Companies Owning or Managing Passenger Ships
+NCC88	Rules for the Certification of Best Management Scheme of Companies Owning or Managing Cargo Ships
+NCC89	Rules for the Certification of Competence Management Systems
+NCC90	Rules for the Certification of Remotely Piloted Vessels
+NCC91	Rules for the Validation of CO2e Index Calculation
+NCC92	Rules for the Type Approval Certification of Lithium Battery Systems
+NCC94	Rules for the Type Approval of Adhesive Bonded Fasteners
+NCC95	Rules for the Marine Operations related to the Sea Transport of Special Cargoes
+NCC96	Rules for the Type Approval of Fuel Cell Power Modules
+NCC97	Rules for Certification of antifouling paints (IMO AFS Convention)
+NCC98	Rules for the Certification of Training Providers for Life Saving Appliances service personnel
+NCC99	Rules for the Certification of Commercial Inflatable Boats for Tender Services
+NCC100	Rules for approval of Packagings, Intermediate Bulk Containers and Large Packagings
+NCC101	Rules for Certification of Synthetic Fiber Ropes used as Falls on LSA Launching Appliances on Yachts
+NCN20	Rules for the design and construction of drilling system
+NCN22	Rules for the evaluation of noise and vibration comfort on board high speed craft
+NAS8	Rules for the issue and maintenance of the Seaworthiness Certificate or the Safety Certificate
+NAS9	Rules for the certification of the power of internal combustion engines for Italian flag fishing vessels
+NAS10	Rules for fire protection, detection and extinction for SOLAS Certificates
+NAS11	Rules for fire protection, detection and extinction for Statutory Certificates other than SOLAS
+NAS12	Rules for the Seaworthiness or Safety Certificate for fishing vessels under 24 m
+NAS13	Rules for fire protection for ships with reinforced plastic, aluminium alloy or wooden hull
+NAS14	Rules for the alternative design and arrangements for fire safety
+NAS15	Rules for the classification of fire reaction of products (Italian Ministry of the Interior)
+NAS17	Rules for the Acceptance and Certification of Ammunition Stores on Board Ship
+NAS18	Rules for Statutory Certificates for Air Cushion Barges in the Caspian Sea and Similar Areas
+NAS19	Rules for Certification of Racing Sailing Yachts
+GUI2	Guide for welding
+GUI3	Guide to perform the failure mode and effect analysis for high speed craft (HSC)
+GUI4	Guide for ship condition assessment program (CAP)
+GUI6	Guide for corrosion prevention systems of ships' ballast tanks
+GUI8	Guide for the hull structures reassessment of in service ships
+GUI9	Guide for the structural design of oil tankers
+GUI10	Guide for the Ship Environmental Rating Assessment (ERA)
+GUI11	Guide for the Design and Operation of Liquefied Natural Gas (LNG) Carriers
+GUI13	Guide for condition based maintenance within the Planned Maintenance Scheme
+GUI14	Guide for the Yacht Condition Assessment Programme (Yacht CAP)
+GUI15	Guide for Risk Analyses
+GUI16	Guide for Technology Qualification Processes
+GUI17	Guide on Software Acceptance in Marine Applications
+GUI18	Guide for the CAP for Construction Vessels and Offshore Support Vessels
+GUI19	Guide for Approval in Principle of Novel Technologies
+GUI20	Guide on Complete Ship Model Calculation of Passenger Ships
+GUI22	Guide for the Structural Verification of PCTC
+GUI23	Guide for Failure Mode and Effect Analysis
+GUI24	Guide for Tank Farms Inspection and Certification
+GUI25	Guide for Whipping and Springing Assessment
+GUI26	Guide for the Storage on Board of Dangerous Substances
+GUI27	Guide for the Risk Assessment for Gas-fuelled Ships Projects
+GUI28	Guide for Ballast Water Management
+GUI29	Guide for the Implementation of the Polar Code
+GUI32	Guide for certification of Offshore Wind Turbine Structures
+GUI33	Guide on Finite Element Analysis of Oil Tankers and Bulk Carriers 90–150 m
+GUI34	Guide for Maritime Bridge Operation Simulators
+GUI35	Guide for Maritime Autonomous Surface Ships (MASS)
+GUI36	Guide for Shipyard with Facilities for LNG Fuelled Ships Survey, Repair and Conversion
+GUI37	Guide for Survey during Construction, Commissioning and Sea Trials of LNG Gas Fuelled Ships
+GUI38	Guide for the Assessment of Cyber Resilience of Ships and Offshore Units
+GUI39	Guide for the Certification of Cybersecurity Capabilities of Marine Materials and Equipment
+GUI40	Guide for the Evaluation of Energy Efficiency Existing Ship Index (EEXI)
+GUI41	Guide for Certification of Floating Offshore Wind Turbine Installation
+GUI42	Guide for installation on deck of equipment for well stimulation and CO2 sequestration
+GUI43	Guide for the development of SEEMP Part III: Ship Operational Carbon Intensity Plan
+GUI44	Guide for the carriage of Alternative Fuelled Vehicles on board ro-ro ships
+GUI45	Guide for Nuclear Installation on Board of Marine Units
+GUI46	Guide for Optimized Shaft Alignment
+GUI47	Guide for Shipyards to assign new buildings with CS-Ready additional class notation
+GUI48	Guide for the emergency towing line for the navy vessels
+GEN1	General Conditions of the Rules
