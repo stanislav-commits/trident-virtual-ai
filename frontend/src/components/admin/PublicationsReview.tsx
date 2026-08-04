@@ -58,6 +58,16 @@ export function PublicationsReview({
     void load();
   }, [load]);
 
+  /**
+   * The queue refills itself. Accepting a row removes it, and a page of fifty
+   * empties in a few minutes of real work; asking the operator to press
+   * Refresh in the middle of that is asking them to remember the machinery.
+   */
+  useEffect(() => {
+    if (loading || queue.length > 5 || queue.length >= total) return;
+    void load();
+  }, [queue.length, total, loading, load]);
+
   // The file endpoint wants the bearer token, so the frame reads a blob.
   useEffect(() => {
     if (!current?.documentId || !token) {
@@ -103,16 +113,6 @@ export function PublicationsReview({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [queue]);
-
-  const move = useCallback(
-    (delta: number) => {
-      setCurrent((node) => {
-        const at = node ? queue.findIndex((row) => row.id === node.id) : -1;
-        return queue[at + delta] ?? node;
-      });
-    },
-    [queue],
-  );
 
   const step = useCallback(
     (id: string) => {
@@ -167,45 +167,47 @@ export function PublicationsReview({
           </p>
         </div>
         <div className="publib__head-actions">
-          {onBack && (
-            <button type="button" className="admin-panel__btn" onClick={onBack}>
-              Back to the library
-            </button>
-          )}
-          <button
-            type="button"
-            className="admin-panel__btn"
-            disabled={index <= 0}
-            title="Previous row (↑ or ←)"
-            aria-label="Previous row"
-            onClick={() => move(-1)}
-          >
-            {"\u2190"}
-          </button>
           <span className="publib__review-position">
             {index >= 0 ? `${index + 1} / ${queue.length}` : "—"}
           </span>
-          <button
-            type="button"
-            className="admin-panel__btn"
-            disabled={index < 0 || index >= queue.length - 1}
-            title="Next row (↓ or →)"
-            aria-label="Next row"
-            onClick={() => move(1)}
-          >
-            {"\u2192"}
-          </button>
-          <button
-            type="button"
-            className="admin-panel__btn"
-            disabled={loading}
-            onClick={() => void load()}
-          >
-            {loading ? "Loading…" : "Refresh"}
-          </button>
+          {onBack && (
+            <button
+              type="button"
+              className="admin-panel__btn publib__preview-btn"
+              title="Back to the library"
+              aria-label="Back to the library"
+              onClick={onBack}
+            >
+              {"\u2192"}
+            </button>
+          )}
         </div>
       </div>
       {error && <div className="admin-panel__error">{error}</div>}
+
+      {/* Where this row lives, spelled out: at a third of the screen the pane
+          head could only show its first few words, and half the queue is
+          called "continued (3 of 4)". */}
+      {current && (
+        <nav className="publib__review-where" aria-label="Location">
+          {[...(current.path ?? []), current.title].map((crumb, i, all) => (
+            <span key={`${crumb}-${i}`}>
+              <span
+                className={
+                  i === all.length - 1
+                    ? "publib__review-crumb publib__review-crumb--last"
+                    : "publib__review-crumb"
+                }
+              >
+                {crumb}
+              </span>
+              {i < all.length - 1 && (
+                <span className="publib__review-sep">{"\u203a"}</span>
+              )}
+            </span>
+          ))}
+        </nav>
+      )}
 
       <div className="publib publib--review">
         <aside className="publib__rail">

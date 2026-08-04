@@ -152,10 +152,12 @@ export class PublicationTreeService {
   ): Promise<{ total: number; nodes: Awaited<ReturnType<PublicationTreeService['content']>>[] }> {
     // The count takes no limit/offset, so it cannot share the parameter list:
     // Postgres rejects a statement handed parameters it does not reference.
-    const filter = publication
-      ? `n.content_text IS NOT NULL AND n.parse_state IN ('needed', 'failed')
-           AND n.category = $1`
-      : `n.content_text IS NOT NULL AND n.parse_state IN ('needed', 'failed')`;
+    // A photo has no text at all — no text is the worst score there is, and
+    // those rows are exactly the ones vision exists for. Requiring text kept
+    // 1 170 image files out of the queue that was meant to catch them.
+    const doubted = `n.parse_state IN ('needed', 'failed')
+        AND (n.content_text IS NOT NULL OR n.document_id IS NOT NULL)`;
+    const filter = publication ? `${doubted} AND n.category = $1` : doubted;
 
     const rows = (await this.nodeRepository.query(
       `SELECT n.id FROM publication_nodes n
@@ -572,6 +574,9 @@ export class PublicationTreeService {
     fileName: string | null;
     /** Where the original came from in the import library, if not uploaded. */
     sourceRef: string | null;
+    /** Publication › category › every branch above this row. A title like
+     *  "continued (3 of 4)" says nothing on its own. */
+    path: string[];
     text: string;
     truncated: boolean;
   }> {
@@ -630,6 +635,9 @@ export class PublicationTreeService {
       documentId: node.documentId,
       fileName: node.document ? node.document.originalFileName : null,
       sourceRef: node.sourceRef,
+      // Publication › category › the branches above: a row called
+      // "continued (3 of 4)" names nothing on its own.
+      path: [node.category, node.nodeType, ...(await this.pathOf(node.id))],
       text: capped,
       truncated: !isOwnText && text.length > DIGEST_LIMIT,
     };

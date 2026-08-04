@@ -107,6 +107,8 @@ export interface PublicationNodeContent {
   hasFile: boolean;
   documentId: string | null;
   fileName: string | null;
+  /** Publication › category › the branches above this row. */
+  path?: string[];
   /** Where the original sits in the import library, when not uploaded yet. */
   sourceRef: string | null;
   text: string;
