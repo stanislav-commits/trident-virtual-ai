@@ -11846,8 +11846,11 @@
   font-size: 14px; line-height: 1; color: var(--chat-text-subtle);
 }
 .overview__gear:hover { color: var(--chat-text); }
+/* The column beside the photo is shorter than the photo, and stopping it early
+   left a band of nothing between "Operation" and the spec rows below. It
+   stretches to the photo's height and spaces its lines out to fill it. */
 .overview__vessel-top {
-  display: flex; gap: 12px; align-items: flex-start; margin-top: 10px;
+  display: flex; gap: 12px; align-items: stretch; margin-top: 10px;
 }
 /* Wide, not square: a yacht photographed beam-on is a wide subject, and this is
    the only image on the page. The empty frame IS the upload control. */
@@ -11889,7 +11892,13 @@
 }
 /* Beside the name: identity and contacts that live in the ships table but were
    shown nowhere, filling the space the name left empty. */
-.overview__vessel-facts { margin: 4px 0 0; display: flex; flex-direction: column; }
+/* The name stays put and the four facts share out whatever height the photo
+   leaves over. Pushing the whole column apart instead put the hole between the
+   name and the first fact, which is the one place it reads as a mistake. */
+.overview__vessel-facts {
+  margin: 4px 0 0; display: flex; flex-direction: column;
+  flex: 1 1 auto; justify-content: space-between;
+}
 .overview__vessel-facts > div {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 8px; min-width: 0; padding: 1px 0;
@@ -12129,10 +12138,17 @@
   height: 22px; margin-top: 4px;
 }
 .overview__spend-bar {
-  flex: 1 1 0; min-width: 0; border-radius: 1px;
-  background: var(--accent); opacity: 0.75;
+  flex: 1 1 0; min-width: 0; border-radius: 1px; padding: 0; border: 0;
+  background: var(--accent); opacity: 0.75; cursor: pointer;
+  align-self: flex-end;
 }
-.overview__spend-bar:hover { opacity: 1; }
+.overview__spend-bar:hover:not(:disabled) { opacity: 1; }
+.overview__spend-bar:disabled { cursor: default; }
+/* The picked day simply reads brighter than its neighbours — an outline around
+   a two-pixel bar is more frame than bar. */
+.overview__spend-bar--picked {
+  opacity: 1; filter: brightness(1.45);
+}
 /* A day with no calls keeps its slot as a baseline tick — a sparse month has to
    look sparse rather than dense-and-small. */
 .overview__spend-bar--empty {

@@ -398,6 +398,8 @@ function TokensTile({
   );
 
   const shown = range || filter ? custom : tokens;
+  const oneDay = Boolean(range && range.from === range.to);
+  const dayStrip = oneDay && tokens ? tokens : shown;
   const [pricesOpen, setPricesOpen] = useState(false);
 
   if (!tokens) {
@@ -505,15 +507,22 @@ function TokensTile({
                   </span>
                 </li>
               ))}
+              {/* A count, not an amount: the money column is where every other
+                  row carries dollars, and a bare "7" sitting in it read as $7
+                  of spend. These calls have no price at all — that is the
+                  whole point of the row — so the amount is a dash. */}
               {shown.unpricedCalls > 0 && (
                 <li>
                   <span className="overview__dot overview__dot--warn" />
                   <span className="overview__spend-bucket-label">
                     Calls with no price
                   </span>
-                  <span className="overview__spend-bucket-value overview__stat-value--warn">
-                    {fmtNumber(shown.unpricedCalls)}
+                  <span className="overview__spend-bucket-tokens overview__stat-value--warn">
+                    {`${fmtNumber(shown.unpricedCalls)} ${
+                      shown.unpricedCalls === 1 ? "call" : "calls"
+                    }`}
                   </span>
+                  <span className="overview__spend-bucket-value">—</span>
                 </li>
               )}
               {/* Document extraction runs as a separate tool whose log knows
@@ -610,7 +619,23 @@ function TokensTile({
             </div>
           </div>
 
-          <SpendDays days={shown.byDay} rangeStart={shown.rangeStart} rangeEnd={shown.rangeEnd} />
+          {/* The strip keeps the month even while a single day is picked:
+              collapsing it to the chosen day would leave one fat bar and no
+              way to step to the day beside it. */}
+          <SpendDays
+            days={(dayStrip ?? shown).byDay}
+            rangeStart={(dayStrip ?? shown).rangeStart}
+            rangeEnd={(dayStrip ?? shown).rangeEnd}
+            picked={range && range.from === range.to ? range.from : null}
+            onPickDay={(day) =>
+              void load(
+                range && range.from === day && range.to === day
+                  ? null
+                  : { from: day, to: day },
+                filter,
+              )
+            }
+          />
         </>
       )}
     </div>
@@ -996,16 +1021,34 @@ function SpendDays({
   days,
   rangeStart,
   rangeEnd,
+  picked,
+  onPickDay,
 }: {
   days: { day: string; tokens: number; costUsd: number | null }[];
   rangeStart: string;
   rangeEnd: string;
+  picked?: string | null;
+  onPickDay?: (day: string) => void;
 }) {
   if (days.length === 0) return null;
 
   const first = new Date(rangeStart);
-  // The stored end is exclusive, so the last bar is the day before it.
-  const last = new Date(new Date(rangeEnd).getTime() - 1);
+  // The window ends at the moment it is read, so a month-to-date strip drew
+  // four fat bars across the whole width and called it August. A month is
+  // thirty-one slots whether they have been lived through or not: the axis
+  // runs to the end of the calendar month, and the days still to come stand
+  // empty like the days without calls.
+  const requested = new Date(new Date(rangeEnd).getTime() - 1);
+  const startsMonth = first.getUTCDate() === 1;
+  const sameMonth =
+    requested.getUTCFullYear() === first.getUTCFullYear() &&
+    requested.getUTCMonth() === first.getUTCMonth();
+  const last =
+    startsMonth && sameMonth
+      ? new Date(
+          Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0),
+        )
+      : requested;
   const span = Math.round(
     (Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate()) -
       Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), first.getUTCDate())) /
@@ -1032,9 +1075,17 @@ function SpendDays({
       </span>
       <div className="overview__spend-bars">
         {bars.map((bar) => (
-          <span
+          <button
+            type="button"
             key={bar.iso}
-            className={`overview__spend-bar${bar.row ? "" : " overview__spend-bar--empty"}`}
+            // A day is a window, so picking one narrows everything above:
+            // the buckets, the purposes, the people and the models become
+            // whoever was working that day. Picking it again lets go.
+            className={`overview__spend-bar${
+              bar.row ? "" : " overview__spend-bar--empty"
+            }${picked === bar.iso ? " overview__spend-bar--picked" : ""}`}
+            disabled={!bar.row || !onPickDay}
+            onClick={() => bar.row && onPickDay?.(bar.iso)}
             style={
               bar.row
                 ? { height: `${Math.max(8, (bar.row.tokens / peak) * 100)}%` }
@@ -1047,6 +1098,7 @@ function SpendDays({
                   }`
                 : `${bar.iso}: no calls`
             }
+            aria-label={bar.iso}
           />
         ))}
       </div>
