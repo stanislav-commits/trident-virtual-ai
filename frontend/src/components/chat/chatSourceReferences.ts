@@ -120,7 +120,10 @@ export function getChatDocumentOpenTarget(
   }
 
   const documentId = citation.documentId?.trim();
-  if (citation.sourceType === "document" && documentId) {
+  if (
+    (citation.sourceType === "document" || citation.sourceType === "figure") &&
+    documentId
+  ) {
     return {
       kind: "document",
       documentId,
@@ -265,6 +268,7 @@ export type ChatSourceKind =
   | "web"
   | "certificate"
   | "document"
+  | "figure"
   | "form"
   | "other";
 
@@ -277,6 +281,9 @@ export function getChatSourceKind(
   if (sourceType === "compliance_doc" || id.startsWith("compliance-doc")) {
     return "certificate";
   }
+  // A rulebook drawing: the answer used its description, the card shows the
+  // image itself.
+  if (sourceType === "figure" || id.startsWith("figure-")) return "figure";
   if (id.startsWith("form-")) return "form";
   if (isHttpUrl(citation.sourceUrl) || id.startsWith("web-")) return "web";
   if (citation.documentId || citation.shipManualId || sourceType === "document") {
@@ -289,6 +296,7 @@ export const CHAT_SOURCE_KIND_LABEL: Record<ChatSourceKind, string> = {
   web: "Web",
   certificate: "Certificate",
   document: "Ship document",
+  figure: "Figure",
   form: "Form",
   other: "Source",
 };

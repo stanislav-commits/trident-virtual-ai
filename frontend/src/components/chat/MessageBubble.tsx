@@ -21,8 +21,10 @@ import ChatMapBlock from "./ChatMapBlock";
 import ChatTableBlock from "./ChatTableBlock";
 import ChatKpiBlock from "./ChatKpiBlock";
 import {
+  getChatSourceKind,
   isDisplayableChatSourceReference,
 } from "./chatSourceReferences";
+import { ChatFigureBlock } from "./ChatFigureBlock";
 
 /**
  * Sent when photos travel without a caption — the API needs some text. The
@@ -353,8 +355,20 @@ export function MessageBubble({
   const { id, role, content, createdAt, contextReferences, ragflowContext } =
     message;
   const refs = useMemo(() => contextReferences ?? [], [contextReferences]);
+  // Figures leave the sources: the drawing belongs in the answer the reader is
+  // looking at, and a source card repeating it would count the same evidence
+  // twice.
+  const figureRefs = useMemo(
+    () => refs.filter((ref) => getChatSourceKind(ref) === "figure"),
+    [refs],
+  );
   const displayableRefs = useMemo(
-    () => refs.filter(isDisplayableChatSourceReference),
+    () =>
+      refs.filter(
+        (ref) =>
+          isDisplayableChatSourceReference(ref) &&
+          getChatSourceKind(ref) !== "figure",
+      ),
     [refs],
   );
   // Chart click-to-ask UI strings (button labels + composed question),
@@ -558,6 +572,14 @@ export function MessageBubble({
           <div className="chat-message__attachments">
             {message.attachments!.map((att) => (
               <UserAttachmentThumb key={att.id} attachment={att} token={token} />
+            ))}
+          </div>
+        )}
+
+        {role === "assistant" && figureRefs.length > 0 && (
+          <div className="chat-message__figures">
+            {figureRefs.map((ref) => (
+              <ChatFigureBlock key={ref.id} citation={ref} />
             ))}
           </div>
         )}

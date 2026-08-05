@@ -50,6 +50,7 @@ import {
   GroundedDocumentAnswer,
 } from './document-answer-repair';
 import { buildDocumentContextReferences } from './document-context-references';
+import { PublicationFigureLookupService } from '../../../documents/publications/publication-figure-lookup.service';
 import {
   buildComponentQueryPlan,
   buildDocumentQueryPlan,
@@ -75,6 +76,7 @@ export class ChatDocumentsResponderService {
   constructor(
     private readonly documentsService: DocumentsService,
     private readonly chatLlmService: ChatLlmService,
+    private readonly figureLookup: PublicationFigureLookupService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -227,6 +229,11 @@ export class ChatDocumentsResponderService {
           groundedAnswer.summary,
           groundedAnswer.groundingStatus,
         ),
+        ...(await this.resolveCitedFigures(
+          retrieval,
+          groundedAnswer,
+          shipId,
+        )),
         ...(groundedAnswer.groundingStatus === 'grounded'
           ? referencedForms.map((form) => ({
               id: `form-${form.documentId}`,
@@ -388,12 +395,46 @@ export class ChatDocumentsResponderService {
           },
         },
       },
-      contextReferences: buildDocumentContextReferences(
-        compositeEvidence.mergedRetrieval,
-        groundedAnswer.summary,
-        groundedAnswer.groundingStatus,
-      ),
+      contextReferences: [
+        ...buildDocumentContextReferences(
+          compositeEvidence.mergedRetrieval,
+          groundedAnswer.summary,
+          groundedAnswer.groundingStatus,
+        ),
+        ...(await this.resolveCitedFigures(
+          compositeEvidence.mergedRetrieval,
+          groundedAnswer,
+          shipId,
+        )),
+      ],
     };
+  }
+
+  /**
+   * The drawings behind the cited chunks. A rulebook figure is retrieved as
+   * its vision-written description; when one grounds the answer, the image
+   * itself is attached as a source so the user sees the drawing being
+   * paraphrased. Never blocks the answer: no figures, no refs.
+   */
+  private async resolveCitedFigures(
+    retrieval: DocumentRetrievalResponseDto,
+    groundedAnswer: GroundedDocumentAnswer,
+    shipId: string,
+  ): Promise<Record<string, unknown>[]> {
+    if (groundedAnswer.groundingStatus !== 'grounded') {
+      return [];
+    }
+    const figures = await this.figureLookup.figuresInChunks(
+      retrieval.results.map((result) => result.snippet ?? ''),
+    );
+    return figures.map((figure) => ({
+      id: `figure-${figure.nodeId}`,
+      sourceType: 'figure',
+      documentId: figure.documentId,
+      shipId,
+      sourceTitle: figure.title,
+      hasFile: true,
+    }));
   }
 
   private async executeCompositeComponent(

@@ -10,6 +10,7 @@ import { DocumentFormLinkEntity } from './entities/document-form-link.entity';
 import { PublicationCatalogEntity } from './entities/publication-catalog.entity';
 import { PublicationNodeEntity } from './entities/publication-node.entity';
 import { PublicationShelfEntity } from './entities/publication-shelf.entity';
+import { PublicationFigureLookupService } from './publications/publication-figure-lookup.service';
 import { PublicationTreeService } from './publications/publication-tree.service';
 import { DocumentsController } from './documents.controller';
 import { DocumentsIngestionService } from './ingestion/documents-ingestion.service';
@@ -53,8 +54,13 @@ import { PublicationCatalogService } from './publications/publication-catalog.se
     DocumentsRetrievalService,
     DocumentsFileLookupService,
     PublicationCatalogService,
+    PublicationFigureLookupService,
     PublicationTreeService,
   ],
-  exports: [DocumentsService, DocumentsFileLookupService],
+  exports: [
+    DocumentsService,
+    DocumentsFileLookupService,
+    PublicationFigureLookupService,
+  ],
 })
 export class DocumentsModule {}

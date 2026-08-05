@@ -3055,6 +3055,43 @@
   font-weight: 400;
 }
 
+/* A cited rulebook drawing, in the answer body. Light backing on purpose:
+   rulebook figures are black line art on white and vanish on the dark theme
+   without it. */
+.chat-message__figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.chat-figure {
+  margin: 0;
+  max-width: 420px;
+}
+
+.chat-figure__frame {
+  display: block;
+  padding: 8px;
+  border: none;
+  border-radius: 10px;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.chat-figure__image {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+}
+
+.chat-figure__caption {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--chat-text-subtle);
+}
+
 .chat-source-item__snippet {
   color: var(--chat-text-muted);
   font-size: 0.775rem;
