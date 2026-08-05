@@ -38,6 +38,14 @@ const TYPE_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+/**
+ * The browser's own PDF viewer, with its furniture turned off: no toolbar, no
+ * thumbnail rail, fitted to the width. What is wanted here is to flick through
+ * the pages and move on — zoom, rotate, print and download belong to the file,
+ * and the file has its own download button in the header.
+ */
+const PDF_VIEW = "#toolbar=0&navpanes=0&scrollbar=0&view=FitH";
+
 const UPLOAD_ACCEPT = ".pdf,.md,.txt,.doc,.docx";
 
 interface AddDialog {
@@ -1004,9 +1012,10 @@ export function PublicationsLibrary({
                       {preview.fileName ?? "Original file"}
                     </p>
                     <iframe
+                      key={preview.documentId ?? "none"}
                       className="publib__preview-frame"
                       title="Original document"
-                      src={originalUrl ?? undefined}
+                      src={originalUrl ? `${originalUrl}${PDF_VIEW}` : undefined}
                     />
                   </>
                 ) : (

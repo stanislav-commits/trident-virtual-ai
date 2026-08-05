@@ -10431,6 +10431,15 @@
 .publib--review {
   grid-template-columns: 260px minmax(320px, 1fr) minmax(320px, 1fr);
 }
+/* The text pane holds a heading and an editable field that has to fill what is
+   left. Without a column here the field falls back to its default two rows and
+   the page reads as empty. */
+.publib--review .publib__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
 .publib__review-row {
   display: flex;
   align-items: center;
@@ -10462,6 +10471,8 @@
 }
 /* The breadcrumb gets the width of the section and wraps rather than
    truncating: it is the only thing that says what the row is. */
+/* One line: the publication, an ellipsis, and the two steps that name the row.
+   Long crumbs shrink instead of wrapping. */
 .publib__review-where {
   display: flex;
   flex-wrap: wrap;
@@ -10476,10 +10487,32 @@
 .publib__review-crumb--last {
   color: var(--chat-text);
   font-weight: 600;
+  flex: 0 1 auto;
 }
 .publib__review-sep {
   margin-left: 6px;
   opacity: 0.5;
+}
+/* The text is read far more often than it is corrected, so it looks like the
+   page it came from until someone types into it. */
+.publib__review-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--chat-surface);
+  color: var(--chat-text);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.publib__review-text:focus-visible {
+  outline: none;
+  border-color: var(--chat-border-strong);
 }
 .publib__review-position {
   min-width: 74px;

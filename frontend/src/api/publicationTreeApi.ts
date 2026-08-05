@@ -109,6 +109,10 @@ export interface PublicationNodeContent {
   fileName: string | null;
   /** Publication › category › the branches above this row. */
   path?: string[];
+  /** The file to read this row against — its own, or the book's. */
+  originalDocumentId?: string | null;
+  originalFileName?: string | null;
+  originalIsInherited?: boolean;
   /** Where the original sits in the import library, when not uploaded yet. */
   sourceRef: string | null;
   text: string;
@@ -360,6 +364,21 @@ export async function fetchPublicationReviewQueue(
   );
   await ensureOk(response, "Review queue");
   return (await response.json()) as PublicationReviewQueue;
+}
+
+/** Correct the extracted text by hand — the row keeps its place, fixed. */
+export function savePublicationText(
+  token: string,
+  nodeId: string,
+  contentText: string,
+): Promise<PublicationNode> {
+  return sendJson(
+    token,
+    `documents/publications/tree/nodes/${nodeId}`,
+    "PATCH",
+    { contentText },
+    "Save text",
+  ) as Promise<PublicationNode>;
 }
 
 /** The text is good enough as it stands — take this row out of the queue. */

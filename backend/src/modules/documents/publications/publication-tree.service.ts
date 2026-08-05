@@ -162,7 +162,11 @@ export class PublicationTreeService {
     const rows = (await this.nodeRepository.query(
       `SELECT n.id FROM publication_nodes n
         WHERE ${filter}
-        ORDER BY n.text_quality ASC NULLS FIRST, n.category, n.sort_order
+        -- What can be judged now comes first. A photograph has no text to read
+        -- against its original, so it waits for vision rather than standing at
+        -- the head of the queue.
+        ORDER BY (n.content_text IS NULL), n.text_quality ASC NULLS FIRST,
+                 n.category, n.sort_order
         LIMIT ${Number(limit)} OFFSET ${Number(offset)}`,
       publication ? [publication] : [],
     )) as Array<{ id: string }>;
@@ -475,6 +479,71 @@ export class PublicationTreeService {
     );
   }
 
+  /**
+   * The nearest original: this row's own file, else the closest ancestor that
+   * has one. RINA and BV were imported as text, so only the book at the top of
+   * the tree carries a PDF — and a reviewer asked to check a section against
+   * "no original uploaded" cannot check anything.
+   */
+  private async originalFor(node: PublicationNodeEntity): Promise<{
+    originalDocumentId: string | null;
+    originalFileName: string | null;
+    originalIsInherited: boolean;
+    /** The node that names the source file, and what it names — so a file can
+     *  be attached where it belongs rather than to every section under it. */
+    sourceOwnerId: string | null;
+    sourceOwnerRef: string | null;
+  }> {
+    const owner = (await this.nodeRepository.query(
+      `
+      WITH RECURSIVE up AS (
+        SELECT id, parent_id, source_ref, 0 AS depth
+          FROM publication_nodes WHERE id = $1
+        UNION ALL
+        SELECT n.id, n.parent_id, n.source_ref, up.depth + 1
+          FROM publication_nodes n JOIN up ON n.id = up.parent_id
+      )
+      SELECT id, source_ref FROM up
+       WHERE source_ref IS NOT NULL ORDER BY depth ASC LIMIT 1
+      `,
+      [node.id],
+    )) as Array<{ id: string; source_ref: string }>;
+    const source = {
+      sourceOwnerId: owner[0]?.id ?? null,
+      sourceOwnerRef: owner[0]?.source_ref ?? null,
+    };
+    if (node.documentId) {
+      return {
+        originalDocumentId: node.documentId,
+        originalFileName: node.document?.originalFileName ?? null,
+        originalIsInherited: false,
+        ...source,
+      };
+    }
+    const [row] = (await this.nodeRepository.query(
+      `
+      WITH RECURSIVE up AS (
+        SELECT id, parent_id, document_id, 0 AS depth
+          FROM publication_nodes WHERE id = $1
+        UNION ALL
+        SELECT n.id, n.parent_id, n.document_id, up.depth + 1
+          FROM publication_nodes n JOIN up ON n.id = up.parent_id
+      )
+      SELECT up.document_id, d.original_file_name
+        FROM up JOIN documents d ON d.id = up.document_id
+       WHERE up.document_id IS NOT NULL
+       ORDER BY up.depth ASC LIMIT 1
+      `,
+      [node.id],
+    )) as Array<{ document_id: string; original_file_name: string }>;
+    return {
+      originalDocumentId: row?.document_id ?? null,
+      originalFileName: row?.original_file_name ?? null,
+      originalIsInherited: Boolean(row),
+      ...source,
+    };
+  }
+
   /** Breadcrumb from the root down to (excluding) this node. */
   private async pathOf(nodeId: string): Promise<string[]> {
     const path: string[] = [];
@@ -574,6 +643,14 @@ export class PublicationTreeService {
     fileName: string | null;
     /** Where the original came from in the import library, if not uploaded. */
     sourceRef: string | null;
+    /** The file to read this row against. A section imported as text has none
+     *  of its own, but the book it belongs to does — without it the review
+     *  screen asks a person to check a text against nothing. */
+    originalDocumentId: string | null;
+    originalFileName: string | null;
+    originalIsInherited: boolean;
+    sourceOwnerId: string | null;
+    sourceOwnerRef: string | null;
     /** Publication › category › every branch above this row. A title like
      *  "continued (3 of 4)" says nothing on its own. */
     path: string[];
@@ -635,6 +712,7 @@ export class PublicationTreeService {
       documentId: node.documentId,
       fileName: node.document ? node.document.originalFileName : null,
       sourceRef: node.sourceRef,
+      ...(await this.originalFor(node)),
       // Publication › category › the branches above: a row called
       // "continued (3 of 4)" names nothing on its own.
       path: [node.category, node.nodeType, ...(await this.pathOf(node.id))],
@@ -719,7 +797,12 @@ export class PublicationTreeService {
 
   async updateNode(
     id: string,
-    input: { number?: string | null; title?: string; nodeType?: string },
+    input: {
+      number?: string | null;
+      title?: string;
+      nodeType?: string;
+      contentText?: string;
+    },
     user: AuthenticatedUser,
   ): Promise<PublicationNodeDto> {
     const node = await this.requireNode(id);
@@ -731,11 +814,23 @@ export class PublicationTreeService {
       node.title = title;
     }
     if (input.nodeType !== undefined) node.nodeType = input.nodeType;
+    // Text edited by hand is text a person has read: it leaves the review
+    // queue and carries the score its own content earns.
+    const textChanged =
+      input.contentText !== undefined && input.contentText !== node.contentText;
+    if (textChanged) {
+      node.contentText = input.contentText ?? null;
+      node.textQuality = String(textQuality(node.contentText ?? ''));
+      node.parseState = 'accepted';
+    }
     const saved = await this.nodeRepository.save(node);
     // Number and title become headings inside the assembled AI document, so a
     // rename leaves retrieval citing the old name until the document is built
     // again. Only the heading matters here — nodeType never reaches the text.
-    if ([saved.number, saved.title].filter(Boolean).join(' ') !== headingBefore) {
+    if (
+      textChanged ||
+      [saved.number, saved.title].filter(Boolean).join(' ') !== headingBefore
+    ) {
       await this.rebuildAiDocumentFor(saved, user);
     }
     this.emitChange('updated');

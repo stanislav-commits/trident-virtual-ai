@@ -90,6 +90,16 @@ export class UpdatePublicationNodeDto {
   @IsString()
   @MaxLength(60)
   nodeType?: string;
+
+  /**
+   * The extracted text itself. A row imported as text has no file of its own,
+   * so vision cannot re-read it — and a row that is needed but came out wrong
+   * could otherwise only be accepted as it stands or deleted. Correcting it by
+   * hand is the third way, and the only one that keeps the rule.
+   */
+  @IsOptional()
+  @IsString()
+  contentText?: string;
 }
 
 export class MovePublicationNodeDto {
