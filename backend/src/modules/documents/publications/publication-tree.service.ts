@@ -1316,7 +1316,15 @@ export class PublicationTreeService {
     const lines = [`# ${[node.number, node.title].filter(Boolean).join(' ')}`, ''];
     if (node.sourceRef) lines.push(sourceLine(node.sourceRef), '');
     for (const row of rows) {
-      if (row.depth === 0) continue;
+      // The owner's own heading is already the title above — but its text is
+      // not. A leaf marked as the AI document (a whole Act, a circular, an
+      // IACS requirement) carries everything it has in content_text and has no
+      // children at all, and skipping the row wholesale published 3 067
+      // documents that were nothing but a title (2026-08-05).
+      if (row.depth === 0) {
+        if (row.content_text) lines.push(row.content_text.trim(), '');
+        continue;
+      }
       const heading = [row.number, row.title].filter(Boolean).join(' ');
       lines.push(`${'#'.repeat(Math.min(6, row.depth + 1))} ${heading}`, '');
       // The source file name is often the only place an amendment's adopting
