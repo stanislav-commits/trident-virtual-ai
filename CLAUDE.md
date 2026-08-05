@@ -35,6 +35,7 @@ CI (`.github/workflows/ci.yml` + `checks` job in `deploy.yml`) runs typecheck + 
 
 ## Working agreement
 
+- **`docs/business-model.md` is the product map** — every screen, every control, every chat tool, and the economics. A change that adds or removes anything a user can see updates that file in the same commit. A control that is not in it is a control nobody outside this repo knows exists.
 - Run `/code-review` on the diff before every commit (bugs); `/simplify` optional for cleanups.
 - A PostToolUse hook (`.claude/settings.json`) runs tsc + eslint on the touched package after every Edit/Write to backend/frontend source — fix failures immediately, don't defer.
 
