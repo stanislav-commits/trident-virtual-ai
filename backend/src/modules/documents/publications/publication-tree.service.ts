@@ -1478,9 +1478,28 @@ function stripNulls(text: string): string {
   return text.split('\u0000').join('');
 }
 
-/** Provenance line placed under a heading in the assembled AI document. */
+/**
+ * Provenance line placed under a heading in the assembled AI document.
+ *
+ * The archive's file names carry the tree in them — "Guidance Notes/LR-GN-008
+ * Guidance Notes for the Classi - Chapter 2 Guidance for Designers for St... -
+ * Section 1 Introduction.pdf" — each segment cut at ~40 characters by the
+ * download. Those segments are the headings printed directly above this line
+ * and are held in full there, so a truncated one adds nothing but noise to the
+ * chunk. Drop them and keep what the headings do NOT say: the folder, and the
+ * complete tail, which is where an amendment's adopting resolution appears
+ * ("… (MSC.577(110))").
+ */
 function sourceLine(sourceRef: string): string {
-  return `_Source: ${sourceRef.replace(/\.(pdf|md|txt|png|gif|docx?)$/i, '')}_`;
+  const clean = sourceRef.replace(/\.(pdf|md|txt|png|jpe?g|gif|docx?)$/i, '');
+  const slash = clean.lastIndexOf('/');
+  const folder = slash > 0 ? clean.slice(0, slash) : '';
+  const file = clean.slice(slash + 1);
+  // The last segment names the leaf and is the one the download left whole;
+  // everything before it was cut mid-word ("…Guidance Notes for the Classi").
+  const parts = file.split(' - ');
+  const tail = (parts[parts.length - 1] || file).replace(/\s*(\.{2,}|…)\s*$/, '');
+  return `_Source: ${[folder, tail].filter(Boolean).join('/')}_`;
 }
 
 /**
