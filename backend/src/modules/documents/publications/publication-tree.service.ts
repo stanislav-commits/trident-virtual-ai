@@ -1349,7 +1349,7 @@ export class PublicationTreeService {
       },
       {
         buffer: body,
-        originalname: `${[node.number, node.title].filter(Boolean).join(' ')}.md`,
+        originalname: aiDocumentFileName(node.number, node.title),
         mimetype: 'text/markdown',
         size: body.length,
       },
@@ -1481,6 +1481,36 @@ function stripNulls(text: string): string {
 /** Provenance line placed under a heading in the assembled AI document. */
 function sourceLine(sourceRef: string): string {
   return `_Source: ${sourceRef.replace(/\.(pdf|md|txt|png|gif|docx?)$/i, '')}_`;
+}
+
+/**
+ * File name for an assembled AI document.
+ *
+ * RAGFlow rejects anything over 255 bytes outright, and a Lloyd's Register
+ * heading restored to its full form — book, then procedure, then section —
+ * runs past that on its own (2026-08-05). The name is only a label: the same
+ * heading opens the document, so trimming the middle costs nothing and keeps
+ * both ends, which is where the book and the section live.
+ */
+const AI_DOCUMENT_NAME_BYTES = 200;
+
+export function aiDocumentFileName(
+  number: string | null,
+  title: string,
+): string {
+  const full = [number, title].filter(Boolean).join(' ');
+  if (Buffer.byteLength(`${full}.md`, 'utf8') <= AI_DOCUMENT_NAME_BYTES) {
+    return `${full}.md`;
+  }
+  let head = full;
+  while (Buffer.byteLength(`${head}.md`, 'utf8') > AI_DOCUMENT_NAME_BYTES) {
+    head = head.slice(0, -1);
+  }
+  // Cut on a word so the tail reads as a name rather than a truncation.
+  const keepTail = 60;
+  const start = head.slice(0, head.length - keepTail).replace(/\s+\S*$/, '');
+  const end = full.slice(-keepTail).replace(/^\S*\s+/, '');
+  return `${start} … ${end}.md`;
 }
 
 /**
