@@ -630,10 +630,13 @@ transcription, Grafana Cloud (alarm evaluation), Windy (marine forecast).
 morning-brief announcement 04:30 UTC · certificate reminders 06:00.
 
 **Storage** — Postgres for everything the product knows (assets, tasks,
-compliance, metrics catalog, publications tree, chat, usage); original files on
-the backend disk today, roughly 1 GB of publication originals alone, with
-DigitalOcean Spaces available and not yet switched on; RAGFlow holds the
-vectors; Influx holds the telemetry.
+compliance, metrics catalog, publications tree with its full text, chat,
+usage); RAGFlow holds the vectors; Influx holds the telemetry. Original files
+live on the backend disk (DigitalOcean Spaces available, not yet switched on) —
+and for the library, **originals are kept only where the file itself is the
+deliverable**: forms a user is handed, and figures drawn in the chat. A text
+node's original is deleted once its markdown is verified — the text is the
+product, and the download archive keeps the source.
 
 **Deployment** — push to `main` deploys production automatically (GitHub Action
 → droplet → build → migrations), about 95 seconds with a ~30 second outage.
